@@ -1,0 +1,32 @@
+.yk-tooltip__content{
+    width: 240px;
+}
+
+.subset{
+    
+
+    &-item{
+        background-color: @bg-color-m;
+        line-height: 32px;
+        padding: 0 @space-l;
+        margin: @space-s 0;
+        border-radius: @radius-r;
+        cursor: pointer;
+        transition: all @animatb;
+        user-select: none;
+
+        &:hover{
+            background-color: @bg-color-s;
+        }
+    }
+
+    &-seledted {
+        background-color: @pcolor-1;
+        color: @pcolor;
+                font-weight: 500;
+
+        &:hover{
+            background-color:  @pcolor-1;
+        }
+    }
+}
