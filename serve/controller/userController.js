@@ -1,5 +1,8 @@
 const userModel = require('../model/dbModel/users/index')
 const bcrypt = require('bcrypt')
+const { generateToken } = require('../utils/jwtutil')
+const config = require('../config/default') // 引入配置
+
 
 //  判断用户是否已被注册
 async function isRegistered(req, res) {
@@ -17,7 +20,7 @@ async function isRegistered(req, res) {
                 mail
             }
         })
-    } catch (error) {
+    } catch (err) {
         res.status(500).json({ code: 500, message: '服务器错误：' + err.message })
     }
 }
@@ -56,12 +59,12 @@ async function register(req, res) {
                 mail
             }
         })
-    } catch (error) {
+    } catch (err) {
         res.status(500).json({ code: 500, message: '服务器错误：' + err.message })
     }
 }
 
-//  处理登录逻辑
+//  处理登录逻辑（添加Token生成）
 async function login(req, res) {
     try {
         const { name, password } = req.body
@@ -80,14 +83,24 @@ async function login(req, res) {
         if (!isPasswordValid) {
             return res.status(400).json({ code: 400, message: '密码错误' });
         }
-        //  剔除密码 返回用户信息
+
+        //  登录成功：生成Token
+        const token = generateToken({
+            userId: user.id, // 用户ID（核心标识）
+        })
+
+        //  剔除密码 返回用户信息和Token
         const { password: _, ...userInfo } = user
         res.json({
             code: 200,
             message: '登录成功',
-            data: userInfo
+            data: {
+                userInfo,
+                token,
+                expiresIn: config.jwt.expiresIn // 返回过期时间（方便前端处理）
+            }
         })
-    } catch (error) {
+    } catch (err) {
         res.status(500).json({ code: 500, message: '服务器错误：' + err.message })
     }
 }

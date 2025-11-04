@@ -1,13 +1,13 @@
 const { query } = require('../../db/dbnew')
 
-//  根据用户名查询用户是否存在
+//  根据用户名查询用户信息
 async function findUserByUsername(username) {
     const sql = 'SELECT id, name, mail, password, imgurl FROM users WHERE name = ?'
     // 查询用户信息
     return query(sql, [username])
 }
 
-//  根据邮箱查询用户
+//  根据邮箱查询用户信息
 async function findUserByMail(mail) {
     const sql = 'SELECT * FROM users WHERE mail = ?'
     return query(sql, [mail])

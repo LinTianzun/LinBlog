@@ -5,6 +5,10 @@ const config = {
         USER: "root",
         PASSWORD: "302060dzl",
         DB: "linlog"
+    },
+    jwt: {
+        secret: 'linzhiyu', // 密钥
+        expiresIn: '24h' // Token 有效期（如 24小时）
     }
 }
 
