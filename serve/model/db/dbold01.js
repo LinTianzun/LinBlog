@@ -1,3 +1,4 @@
+//  第一版数据库 过于简陋
 const mysql = require('mysql') // 引入 MySQL 客户端模块
 const config = require('../../config/default') // 引入数据库配置（主机、账号、密码等）
 
