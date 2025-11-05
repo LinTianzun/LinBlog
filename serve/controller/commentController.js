@@ -1,6 +1,7 @@
 const commentModel = require('../model/dbModel/comment/index')
 const articleModel = require('../model/dbModel/article/index') // 用于校验文章是否存在
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
+const { query } = require('../model/db/dbnew')
 /**
  * 分页查询评论（支持一级/二级评论，关联文章信息）
  */
