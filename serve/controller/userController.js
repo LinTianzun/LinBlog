@@ -2,6 +2,7 @@ const userModel = require('../model/dbModel/users/index') // 修正路径：user
 const bcrypt = require('bcrypt') // 统一为 bcryptjs（与数据库初始化一致）
 const config = require('../config/default')
 const { generateToken } = require('../utils/jwtutil')
+const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 
 // 判断用户是否已注册（按邮箱校验）
 async function isRegistered(req, res) {
@@ -134,21 +135,22 @@ async function getAllUsers(req, res) {
             return res.status(403).json({ code: 403, message: '无权限访问，仅管理员可查询全部用户' })
         }
 
-        //  获取分页参数 
-        let { page = 1, pageSize = 3 } = req.query
+        //  调用分页工具校验参数（自定义默认每页5条，最大20条）
+        const paginationResult = formatPaginationParams(req.query, {
+            defaultPageSize: 5, // 用户接口默认每页5条（符合需求）
+            maxPageSize: 20      // 用户接口最多允许20条/页
+        });
 
-        //  参数校验
-        page = parseInt(page, 10)
-        pageSize = parseInt(pageSize, 10)
-        if (isNaN(page) || isNaN(pageSize) || page < 1 || pageSize < 1 || pageSize > 50) {
-            return res.status(400).json({
-                code: 400,
-                message: '参数错误：page和pageSize必须是正整数，且pageSize不超过50'
-            })
+        //  参数校验失败，直接返回错误
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg });
         }
 
+        //  校验通过，获取格式化后的参数（含offset）
+        const { page, pageSize, offset } = paginationResult.data;
+
         //  调用分页查询
-        const result = await userModel.findUsersByPage(page, pageSize)
+        const result = await userModel.findUsersByPage(page, pageSize, offset)
 
         //  返回分页结果
         res.json({

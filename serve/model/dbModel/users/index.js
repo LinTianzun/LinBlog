@@ -39,9 +39,7 @@ async function insertUser(userInfo) {
 }
 
 // 分页查询用户（含总条数）
-async function findUsersByPage(page = 1, pageSize = 3) {
-    // 计算偏移量（page从1开始，OFFSET = (page-1)*pageSize）
-    const offset = (page - 1) * pageSize;
+async function findUsersByPage(page, pageSize, offset) {
 
     // 1. 查询当前页用户数据（不含密码）
     const userSql = `

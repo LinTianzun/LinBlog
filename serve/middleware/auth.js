@@ -17,7 +17,7 @@ async function authMiddleware(req, res, next) {
             })
         }
 
-        //  提取 Token（去掉 "Bearer " 前缀，trim() 去除空格）
+        //  提取 Token（去掉 "Bearer " 前缀）
         const token = authHeader.split(' ')[1]
 
         // 验证 Token

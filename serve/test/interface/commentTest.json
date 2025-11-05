@@ -1,0 +1,409 @@
+{
+	"info": {
+		"_postman_id": "f8888888-4444-4444-8888-aaaaaaaaaaaa",
+		"name": "Linlog-评论接口测试",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "评论模块接口测试：分页查询所有评论、新增评论、删除评论、查询个人评论"
+	},
+	"variables": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000", // 替换为你的服务地址
+			"description": "服务基础地址"
+		},
+		{
+			"key": "token",
+			"value": "your_admin_or_user_token", // 替换为登录后的有效Token
+			"description": "登录后的Bearer Token"
+		},
+		{
+			"key": "testArticleId",
+			"value": "1", // 替换为你数据库中存在的文章ID
+			"description": "测试用文章ID（需存在于article表）"
+		},
+		{
+			"key": "testCommentId",
+			"value": "1", // 替换为当前用户的评论ID（删除接口用）
+			"description": "测试用评论ID（需是当前用户的评论）"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "1. 分页查询所有评论",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/comment?page=1&pageSize=10",
+					"host": ["{{baseUrl}}"],
+					"path": ["/api/comment"],
+					"query": [
+						{
+							"key": "page",
+							"value": "1",
+							"description": "页码（默认1）"
+						},
+						{
+							"key": "pageSize",
+							"value": "10",
+							"description": "每页条数（1-50，默认10）"
+						}
+					]
+				},
+				"description": "查询所有正常状态的评论，需登录（管理员/普通用户均可）"
+			},
+			"response": [
+				{
+					"name": "查询成功",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comment?page=1&pageSize=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["/api/comment"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json; charset=utf-8"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"code\": 200,\n    \"message\": \"查询成功\",\n    \"data\": {\n        \"total\": 23,\n        \"page\": 1,\n        \"pageSize\": 10,\n        \"totalPage\": 3,\n        \"list\": [\n            {\n                \"id\": 7,\n                \"userId\": 2,\n                \"userName\": \"编辑小李\",\n                \"article\": {\n                    \"id\": 3,\n                    \"title\": \"自制家庭美食合集\"\n                },\n                \"parentId\": 6,\n                \"content\": \"需要盖盖子煮10分钟，最后开盖收汁，这样更入味～\",\n                \"complaint\": 0,\n                \"isRead\": 0,\n                \"createdAt\": \"2025-11-05T08:00:00.000Z\"\n            }\n        ]\n    }\n}"
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// 验证状态码",
+							"pm.test(\"状态码为200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// 验证响应格式",
+							"pm.test(\"响应为JSON格式\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"// 验证响应字段",
+							"pm.test(\"响应包含必要字段\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property(\"code\").that.equals(200);",
+							"    pm.expect(response).to.have.property(\"data\");",
+							"    pm.expect(response.data).to.have.property(\"list\");",
+							"    pm.expect(response.data).to.have.property(\"total\");",
+							"    pm.expect(response.data.list[0]).to.have.property(\"article\");",
+							"});"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "2. 新增评论",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"articleId\": {{testArticleId}},\n    \"content\": \"这是一条Postman测试评论，内容不超过512字～\",\n    \"parentId\": 0\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/comment",
+					"host": ["{{baseUrl}}"],
+					"path": ["/api/comment"]
+				},
+				"description": "新增一级评论（parentId=0）或二级回复（parentId=父评论ID），需登录"
+			},
+			"response": [
+				{
+					"name": "评论成功",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"articleId\": {{testArticleId}},\n    \"content\": \"这是一条Postman测试评论，内容不超过512字～\",\n    \"parentId\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/comment",
+							"host": ["{{baseUrl}}"],
+							"path": ["/api/comment"]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json; charset=utf-8"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"code\": 200,\n    \"message\": \"评论成功\",\n    \"data\": {\n        \"commentId\": 8,\n        \"createdAt\": \"2025-11-06T14:30:00.000Z\"\n    }\n}"
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// 验证状态码",
+							"pm.test(\"状态码为201或200\", function () {",
+							"    pm.response.to.have.status.match(/200|201/);",
+							"});",
+							"",
+							"// 验证响应格式",
+							"pm.test(\"响应为JSON格式\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"// 验证响应字段",
+							"pm.test(\"新增成功并返回commentId\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property(\"code\").that.equals(200);",
+							"    pm.expect(response.data).to.have.property(\"commentId\");",
+							"});",
+							"",
+							"// 保存新增的评论ID到变量（供删除接口使用）",
+							"pm.test(\"保存评论ID到变量\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.collectionVariables.set(\"testCommentId\", response.data.commentId);",
+							"    console.log(\"新增评论ID已保存：\", response.data.commentId);",
+							"});"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "3. 删除评论",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/comment/{{testCommentId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["/api/comment", "{{testCommentId}}"]
+				},
+				"description": "删除当前用户的评论（管理员可删任意），需登录，URL传评论ID"
+			},
+			"response": [
+				{
+					"name": "删除成功",
+					"originalRequest": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comment/{{testCommentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["/api/comment", "{{testCommentId}}"]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json; charset=utf-8"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"code\": 200,\n    \"message\": \"评论删除成功\"\n}"
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// 验证状态码",
+							"pm.test(\"状态码为200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// 验证响应格式",
+							"pm.test(\"响应为JSON格式\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"// 验证响应字段",
+							"pm.test(\"删除成功\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property(\"code\").that.equals(200);",
+							"    pm.expect(response.message).to.include(\"删除成功\");",
+							"});"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "4. 分页查询当前用户评论",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/comment/my?page=1&pageSize=5",
+					"host": ["{{baseUrl}}"],
+					"path": ["/api/comment/my"],
+					"query": [
+						{
+							"key": "page",
+							"value": "1",
+							"description": "页码（默认1）"
+						},
+						{
+							"key": "pageSize",
+							"value": "5",
+							"description": "每页条数（1-50，默认10）"
+						}
+					]
+				},
+				"description": "查询当前登录用户发出的所有评论，需登录"
+			},
+			"response": [
+				{
+					"name": "查询成功",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/comment/my?page=1&pageSize=5",
+							"host": ["{{baseUrl}}"],
+							"path": ["/api/comment/my"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "5"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json; charset=utf-8"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"code\": 200,\n    \"message\": \"查询成功\",\n    \"data\": {\n        \"total\": 3,\n        \"page\": 1,\n        \"pageSize\": 5,\n        \"totalPage\": 1,\n        \"list\": [\n            {\n                \"id\": 7,\n                \"userId\": 2,\n                \"userName\": \"编辑小李\",\n                \"article\": {\n                    \"id\": 3,\n                    \"title\": \"自制家庭美食合集\"\n                },\n                \"parentId\": 6,\n                \"content\": \"需要盖盖子煮10分钟，最后开盖收汁，这样更入味～\",\n                \"complaint\": 0,\n                \"isRead\": 0,\n                \"createdAt\": \"2025-11-05T08:00:00.000Z\"\n            }\n        ]\n    }\n}"
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// 验证状态码",
+							"pm.test(\"状态码为200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// 验证响应格式",
+							"pm.test(\"响应为JSON格式\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"// 验证响应字段",
+							"pm.test(\"响应包含个人评论列表\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property(\"code\").that.equals(200);",
+							"    pm.expect(response.data).to.have.property(\"list\");",
+							"    pm.expect(response.data.list[0]).to.have.property(\"userId\").that.equals(pm.response.json().data.list[0].userId);",
+							"});"
+						]
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// 全局前置脚本：确保Token已配置",
+					"if (!pm.collectionVariables.get(\"token\") || pm.collectionVariables.get(\"token\") === \"your_admin_or_user_token\") {",
+					"    console.warn(\"警告：请先配置有效的Token！\");",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// 全局测试脚本：捕获500错误",
+					"pm.test(\"服务器无错误\", function () {",
+					"    pm.response.to.not.have.status(500);",
+					"});"
+				]
+			}
+		}
+	]
+}
