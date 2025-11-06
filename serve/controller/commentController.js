@@ -53,7 +53,7 @@ async function createComment(req, res) {
             return res.status(400).json({ code: 400, message: '评论内容不能超过512字' })
         }
         // 3. 校验文章是否存在（可选，提升体验）
-        const [article] = await articleModel.findAtricleById(articleId)
+        const [article] = await articleModel.findAtricleStateById(articleId)
         if (!article || article.state === 'deleted') {
             return res.status(404).json({ code: 404, message: '关联文章不存在或已删除' })
         }
