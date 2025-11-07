@@ -6,4 +6,6 @@ module.exports = (app) => {
     require('./comment')(app)
     //  引入文章相关路由
     require('./article')(app)
+    //  引入消息相关路由
+    require('./message')(app)
 }

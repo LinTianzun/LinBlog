@@ -8,7 +8,7 @@ const config = {
     },
     jwt: {
         secret: 'linzhiyu', // 密钥
-        expiresIn: '24h' // Token 有效期（如 24小时）
+        expiresIn: '7D' // Token 有效期（如 24小时）
     }
 }
 
