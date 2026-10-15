@@ -1,9 +1,21 @@
-//  侧边栏菜单
-export const navLinks = [
+
+export interface MenuItem {
+    path: string
+    name: string
+    icon: string
+}
+
+// 全部菜单：管理员使用
+export const navLinks: MenuItem[] = [
     {
-        path: 'overview',
+        path: 'overView',
         name: '总览',
         icon: 'IconHomepageFill'
+    },
+    {
+        path: 'userManagement',
+        name: '用户管理',
+        icon: 'IconAvatarFill'
     },
     {
         path: 'localfile',
@@ -30,6 +42,19 @@ export const navLinks = [
         name: '设置',
         icon: 'IconSettingsFill'
     }
+]
+
+// 编辑、普通用户可见的菜单
+export const contentLinks: MenuItem[] = [
+    navLinks[0],
+    navLinks[3],
+    navLinks[4],
+    navLinks[5]
+]
+
+// 游客可见的菜单
+export const visitorLinks: MenuItem[] = [
+    navLinks[0]
 ]
 
 //  总览总数

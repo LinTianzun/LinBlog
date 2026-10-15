@@ -1,6 +1,6 @@
 <template>
     <yk-space dir="vertical" class="menu-bar" size="m">
-        <router-link class="menu-bar-nav" :to="item.path" v-for="(item, index) in navLinks" :key="item.path">
+        <router-link class="menu-bar-nav" :to="item.path" v-for="(item, index) in visibleLinks" :key="item.path">
             <yk-space align="center" size="m">
                 <component :is="item.icon" />
                 <yk-text>
@@ -11,8 +11,46 @@
     </yk-space>
 </template>
 
+
 <script lang="ts" setup>
-    import { navLinks } from '../../utils/menu.ts'
+import { computed } from 'vue'
+import {
+    navLinks,
+    contentLinks,
+    visitorLinks
+} from '../../utils/menu.ts'
+
+// 获取当前登录用户信息
+const getUserInfo = () => {
+    try {
+        const savedUserInfo = localStorage.getItem('userInfo')
+        return savedUserInfo ? JSON.parse(savedUserInfo) : null
+    } catch (error) {
+        console.error('读取用户信息失败：', error)
+        return null
+    }
+}
+
+// 根据用户角色筛选菜单
+const visibleLinks = computed(() => {
+    const userInfo = getUserInfo()
+    const role = userInfo?.user_type
+
+    if (role === 'admin') {
+        return navLinks
+    }
+
+    if (role === 'editor' || role === 'normal') {
+        return contentLinks
+    }
+
+    if (role === 'visitor') {
+        return visitorLinks
+    }
+
+    // 没有有效用户信息时，不显示业务菜单
+    return []
+})
 </script>
 
 <style lang="less" scoped>

@@ -8,7 +8,14 @@
             <yk-badge is-dot>
                 <IconMailOutline @click="changeActive(true)" style="font-size: 20px;" />
             </yk-badge>
-            <yk-avatar img-url="/src/assets/img/xw11.jpg"></yk-avatar>
+            <!-- <yk-avatar img-url="/src/assets/img/xw11.jpg"></yk-avatar> -->
+             <yk-avatar
+    :img-url="userInfo?.imgurl || defaultAvatar"
+></yk-avatar>
+
+<span class="user-name">
+    {{ userInfo?.username || '用户' }}
+</span>
             <div>
                 <yk-theme @click="switchBg" />
             </div>
@@ -42,9 +49,35 @@
     }
 
     //  退出登录
+    // const quit = () => {
+    //     router.push('/loginRegister')
+    // }
+    // 退出登录
     const quit = () => {
+        // 清除本地登录信息
+        localStorage.removeItem('token')
+        localStorage.removeItem('userInfo')
+
+        // 跳转到登录页
         router.push('/loginRegister')
     }
+
+const userInfo = ref<Record<string, any>>({})
+
+const defaultAvatar = '/src/assets/img/xw11.jpg'
+
+onMounted(() => {
+    const savedUserInfo = localStorage.getItem('userInfo')
+
+    if (savedUserInfo) {
+        try {
+            userInfo.value = JSON.parse(savedUserInfo)
+        } catch (error) {
+            console.error('读取用户信息失败：', error)
+            userInfo.value = {}
+        }
+    }
+})
 
     //  打开私信
     const active = ref(false)

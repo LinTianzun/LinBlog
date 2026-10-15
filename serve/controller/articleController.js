@@ -10,7 +10,11 @@ async function createArticle(req, res) {
             title, content, classify, subsetId,
             label, introduce, cover
         } = req.body
-        const { userId } = req.user
+        const { userId, userType } = req.user
+
+        if (!['admin', 'editor', 'normal'].includes(userType)) {
+            return res.status(403).json({ code: 403, message: '当前用户无权创建文章' })
+        }
 
         //  必传参数校验
         if (!title || !content || !classify) {

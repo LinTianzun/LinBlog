@@ -69,6 +69,7 @@
 | 字段名         | 数据类型                          | 约束/默认值                                                                 | 注释                                  |
 |----------------|-----------------------------------|-----------------------------------------------------------------------------|---------------------------------------|
 | id             | BIGINT UNSIGNED                   | 主键、自增                                                                 | 文章/图片集ID                         |
+| user_id        | BIGINT UNSIGNED                   | 可选（允许为NULL）、普通索引（idx_article_user）、外键（关联 users.id）       | 作者ID（删除用户时设为NULL）          |
 | title          | VARCHAR(150)                      | 非空                                                                       | 标题（文章/图片集名称）               |
 | subset_id      | INT UNSIGNED                      | 可选（允许为NULL）、普通索引（idx_subset）、外键（关联 subset.id）           | 所属分类ID（分类删除时设为NULL）      |
 | classify       | ENUM('article', 'image')          | 非空、普通索引（idx_classify）                                             | 内容类型：文章/图片集                 |
@@ -84,6 +85,7 @@
 | updated_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`                 | 更新时间（自动触发）                  |
 | published_at    | DATETIME                          | 可选（允许为NULL）                                                         | 发布时间（仅已发布状态有效）          |
 | 索引补充       | ——                                | 全文索引（ft_title_intro：title + introduce）                               | 支持标题+简介的模糊搜索                |
+| 外键规则       | ——                                | FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL               | 作者删除时保留内容并清空作者ID        |
 | 外键规则       | ——                                | FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL            | 分类删除时，关联内容的分类ID设为NULL  |
 
 #### 2.2.5 点赞表（praise）
@@ -171,6 +173,7 @@
 #### 2.3.1 核心关系图谱
 ```
 users（用户）
+├── 1:N → article（文章/图片集）：一个用户可创建多条内容
 ├── 1:N → comment（评论）：一个用户可发多条评论
 ├── 1:N → praise（点赞）：一个用户可点赞多条内容
 ├── 1:N → message（消息）：一个用户可发送/接收多条消息
@@ -195,6 +198,7 @@ label（标签）
 | 从表字段         | 主表字段       | 删除规则       | 说明                                  |
 |------------------|----------------|----------------|---------------------------------------|
 | file.subset_id   | subset.id      | ON DELETE SET NULL | 分类删除时，文件的分类ID设为NULL      |
+| article.user_id  | users.id       | ON DELETE SET NULL | 作者删除时保留内容并清空作者ID        |
 | article.subset_id| subset.id      | ON DELETE SET NULL | 分类删除时，内容的分类ID设为NULL      |
 | diary.weather_id | weather.id     | ON DELETE SET NULL | 天气字典删除时，日记的天气ID设为NULL  |
 | praise.user_id   | users.id       | ON DELETE CASCADE  | 用户删除时，点赞记录级联删除          |
@@ -209,10 +213,10 @@ label（标签）
 ## 三、数据库初始化逻辑
 ### 3.1 初始化流程
 1. **首次启动**：
-   - 检查 `model` 目录下是否存在 `.db_initialized` 标记文件。
-   - 不存在则执行：创建数据库 → 切换数据库 → 按依赖顺序创建11张表 → 插入模拟数据 → 写入初始化标记 → 初始化连接池。
+   - 检查 `serve/model` 目录下是否存在 `.db_initialized` 标记文件。
+   - 不存在则执行：创建数据库 → 切换数据库 → 按依赖顺序创建11张表 → 插入模拟数据 → 写入初始化标记 → 初始化连接池 → 检查文章作者字段。
 2. **后续启动**：
-   - 检测到标记文件，直接初始化连接池，跳过表创建和模拟数据插入。
+   - 检测到标记文件，初始化连接池并检查文章作者字段；缺少作者字段、索引或外键时执行只增加结构的兼容迁移，不重建表或删除数据。
 
 ### 3.2 模拟数据说明
 初始化时自动插入测试数据，方便开发调试：
@@ -352,7 +356,7 @@ async function deleteComment(commentId) {
 ## 五、维护与调试
 ### 5.1 重置数据库
 当需要重新初始化数据库时，执行以下步骤：
-1. 删除 `model` 目录下的两个标记文件：`.db_initialized` 和 `.mock_data_inserted`。
+1. 删除 `serve/model` 目录下的两个标记文件：`.db_initialized` 和 `.mock_data_inserted`。
 2. （可选）手动删除 MySQL 中的 `linlog` 数据库（`DROP DATABASE IF EXISTS linlog;`）。
 3. 重启项目，系统会重新执行“创建库表+插入模拟数据”流程。
 

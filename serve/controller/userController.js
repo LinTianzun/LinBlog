@@ -68,6 +68,128 @@ async function register(req, res) {
     }
 }
 
+// 管理员创建用户
+async function createUser(req, res) {
+    try {
+        // 1. 权限校验
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({
+                code: 403,
+                message: '无权限操作，仅管理员可以添加用户'
+            });
+        }
+
+        // 2. 获取表单数据
+        const { username, mail, password, imgurl, user_type } = req.body;
+
+        // 3. 必填项校验
+        if (
+            typeof username !== 'string' ||
+            typeof mail !== 'string' ||
+            typeof password !== 'string' ||
+            typeof user_type !== 'string' ||
+            !username.trim() ||
+            !mail.trim() ||
+            !password
+        ) {
+            return res.status(400).json({
+                code: 400,
+                message: '请填写用户名、邮箱、密码和用户角色'
+            });
+        }
+
+        if (password.length < 6 || password.length > 72) {
+            return res.status(400).json({
+                code: 400,
+                message: '密码长度必须为 6 到 72 个字符'
+            });
+        }
+
+        const cleanUsername = username.trim();
+        const cleanMail = mail.trim();
+
+        if (cleanUsername.length < 2 || cleanUsername.length > 30) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户名长度必须为 2 到 30 个字符'
+            });
+        }
+
+        // 4. 邮箱格式校验
+        const mailReg = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!mailReg.test(cleanMail)) {
+            return res.status(400).json({
+                code: 400,
+                message: '请输入合法邮箱'
+            });
+        }
+
+        // 5. 角色白名单校验
+        const allowedRoles = ['normal', 'editor', 'visitor', 'admin'];
+
+        if (!allowedRoles.includes(user_type)) {
+            return res.status(400).json({
+                code: 400,
+                message: '无效的用户角色'
+            });
+        }
+
+        // 6. 检查邮箱是否已注册
+        const mailExists = await userModel.findUserByMail(cleanMail);
+
+        if (mailExists.length > 0) {
+            return res.status(409).json({
+                code: 409,
+                message: '该邮箱已被注册'
+            });
+        }
+
+        // 7. 检查用户名是否已存在
+        const usernameExists =
+            await userModel.findUserByAccount(cleanUsername);
+
+        if (usernameExists.length > 0) {
+            return res.status(409).json({
+                code: 409,
+                message: '该用户名已被使用'
+            });
+        }
+
+        // 8. 密码加密，与现有注册逻辑保持一致
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // 9. 插入数据库
+        const insertResult = await userModel.insertUserByAdmin({
+            username: cleanUsername,
+            mail: cleanMail,
+            password: hashedPassword,
+            imgurl: imgurl || 'https://picsum.photos/id/64/200',
+            user_type
+        });
+
+        // 10. 返回创建结果，不返回密码
+        return res.status(201).json({
+            code: 200,
+            message: '用户创建成功',
+            data: {
+                id: insertResult.insertId,
+                username: cleanUsername,
+                mail: cleanMail,
+                user_type
+            }
+        });
+    } catch (err) {
+        console.error('管理员创建用户失败：', err);
+
+        return res.status(500).json({
+            code: 500,
+            message: '创建用户失败，请稍后重试'
+        });
+    }
+}
+
 // 登录逻辑（支持「用户名/邮箱」双登录，字段统一）
 async function login(req, res) {
     try {
@@ -146,24 +268,36 @@ async function getAllUsers(req, res) {
             return res.status(400).json({ code: 400, message: paginationResult.errorMsg });
         }
 
-        //  校验通过，获取格式化后的参数（含offset）
+        // 必须从分页工具结果中取出这三个变量
         const { page, pageSize, offset } = paginationResult.data;
 
-        //  调用分页查询
-        const result = await userModel.findUsersByPage(page, pageSize, offset)
+        const keyword =
+            typeof req.query.keyword === 'string'
+                ? req.query.keyword.trim()
+                : '';
 
-        //  返回分页结果
-        res.json({
+        const result = await userModel.findUsersByPage(
+            page,
+            pageSize,
+            offset,
+            keyword
+        );
+
+        return res.json({
             code: 200,
-            message: '分页查询成功',
+            message: '查询成功',
             data: {
-                total: result.total, // 总用户数
-                page: result.page, // 当前页码
-                pageSize: result.pageSize, // 每页条数
-                totalPage: result.totalPage, // 总页数
+                total: result.total,       // 当前搜索结果总数
+                allTotal: result.allTotal, // 全部用户总数
+                roleCounts: result.roleCounts,
+                page: result.page,  // 当前页码
+                pageSize: result.pageSize,  // 每页条数
+                totalPage: result.totalPage,// 总页数
                 list: result.list // 当前页用户列表（无密码）
             }
-        })
+        });
+
+
     } catch (err) {
         res.status(500).json({ code: 500, message: '服务器错误：' + err.message })
     }
@@ -173,6 +307,7 @@ module.exports = {
     getUserInfo,
     isRegistered,
     register,
+    createUser,
     login,
     getAllUsers
 }

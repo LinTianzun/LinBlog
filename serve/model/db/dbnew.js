@@ -1,4 +1,4 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const config = require('../../config/default');
 const fs = require('fs').promises;
 const path = require('path');
@@ -163,6 +163,7 @@ const tablesSql = {
 
   article: `CREATE TABLE IF NOT EXISTS article(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '文章ID',
+    user_id BIGINT UNSIGNED NULL COMMENT '作者ID',
     title VARCHAR(150) NOT NULL COMMENT '文章标题',
     subset_id INT UNSIGNED COMMENT '所属分类ID',
     classify ENUM('article', 'image') NOT NULL COMMENT '内容类型：文章/图片集',
@@ -178,7 +179,9 @@ const tablesSql = {
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     published_at DATETIME COMMENT '发布时间',
     PRIMARY KEY (id),
+    CONSTRAINT fk_article_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
+    INDEX idx_article_user (user_id),
     INDEX idx_subset (subset_id),
     INDEX idx_classify (classify),
     INDEX idx_state (state),
@@ -382,6 +385,7 @@ async function insertMockData() {
     const articles = [
       {
         title: 'Vue3 + Vite 项目搭建实战',
+        user_id: userIds[1],
         subset_id: subsetIds.article[0],
         classify: 'article',
         label: 'Vue,JavaScript',
@@ -396,6 +400,7 @@ async function insertMockData() {
       },
       {
         title: '周末徒步旅行：感受大自然的治愈',
+        user_id: userIds[2],
         subset_id: subsetIds.article[1],
         classify: 'article',
         label: '旅行,生活',
@@ -410,6 +415,7 @@ async function insertMockData() {
       },
       {
         title: '自制家庭美食合集',
+        user_id: userIds[3],
         subset_id: subsetIds.image[1],
         classify: 'image',
         label: '美食,烹饪',
@@ -426,10 +432,10 @@ async function insertMockData() {
     const articleIds = [];
     for (const article of articles) {
       const result = await baseQuery(`
-        INSERT INTO article (title, subset_id, classify, label, introduce, content, cover, views, likes, comments, state, published_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO article (user_id, title, subset_id, classify, label, introduce, content, cover, views, likes, comments, state, published_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        article.title, article.subset_id, article.classify, article.label,
+        article.user_id, article.title, article.subset_id, article.classify, article.label,
         article.introduce, article.content, article.cover, article.views,
         article.likes, article.comments, article.state, article.published_at
       ]);
@@ -609,6 +615,52 @@ function initPool() {
   console.log('[DB] 数据库连接池初始化完成（可正常提供业务查询）');
 }
 
+async function ensureArticleOwnerSchema() {
+  const [ownerColumn] = await query(`
+    SELECT COLUMN_NAME
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'article'
+      AND COLUMN_NAME = 'user_id'
+  `);
+  if (!ownerColumn) {
+    await query(`
+      ALTER TABLE article
+      ADD COLUMN user_id BIGINT UNSIGNED NULL COMMENT '作者ID' AFTER id
+    `);
+  }
+
+  const [ownerIndex] = await query(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'article'
+      AND INDEX_NAME = 'idx_article_user'
+      AND COLUMN_NAME = 'user_id'
+      AND SEQ_IN_INDEX = 1
+  `);
+  if (!ownerIndex) {
+    await query('ALTER TABLE article ADD INDEX idx_article_user (user_id)');
+  }
+
+  const [ownerConstraint] = await query(`
+    SELECT CONSTRAINT_NAME
+    FROM information_schema.KEY_COLUMN_USAGE
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'article'
+      AND COLUMN_NAME = 'user_id'
+      AND REFERENCED_TABLE_NAME = 'users'
+      AND REFERENCED_COLUMN_NAME = 'id'
+  `);
+  if (!ownerConstraint) {
+    await query(`
+      ALTER TABLE article
+      ADD CONSTRAINT fk_article_user
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    `);
+  }
+}
+
 // -------------------------- 对外暴露的初始化函数（核心入口）--------------------------
 async function initDatabase() {
   // 防止并发调用
@@ -624,16 +676,15 @@ async function initDatabase() {
       if (hasInit) {
         console.log('[DB] 检测到已完成首次初始化，直接初始化连接池...');
         initPool(); // 仅初始化连接池，跳过所有创建/插入操作
-        isInited = true;
-        console.log('[DB] 服务启动完成（已初始化，可正常使用）');
-        return;
+      } else {
+        // 未初始化：执行首次初始化（创建表+插入数据）
+        console.log('[DB] 未检测到初始化标记，执行首次初始化...');
+        await doInit();
       }
 
-      // 未初始化：执行首次初始化（创建表+插入数据）
-      console.log('[DB] 未检测到初始化标记，执行首次初始化...');
-      await doInit();
+      await ensureArticleOwnerSchema();
       isInited = true;
-      console.log('[DB] 首次初始化完成，服务启动成功！');
+      console.log('[DB] 数据库结构检查完成，服务启动成功！');
     } catch (err) {
       console.error('[DB] 初始化失败，服务无法启动：', err);
       throw err;

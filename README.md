@@ -1,9 +1,52 @@
 # LinBlog
-个人博客
+个人博客管理项目，采用 Vue 3 + TypeScript 前端与 Express + MySQL 后端。项目已有页面、部分后端接口和数据库模型，仍在开发中；多个内容页面目前使用 Mock 数据，尚不能视为完整可用的博客系统。
 
-# LinBlog后端接口
+## 项目结构与当前状态
 
+| 目录/模块 | 当前实现 |
+| --- | --- |
+| `lin_blog/` | Vue 3、TypeScript、Vite、Pinia、Vue Router；包含总览、用户管理、文章、图库、文件、日记及编辑页面。 |
+| `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；当前有用户、文章、评论和消息路由。 |
+| `Documentation/` | 开发进度及数据库设计文档。 |
+| 用户管理 | 管理员可以查看、搜索、分页用户并创建用户；编辑弹窗目前只有表单界面，没有保存逻辑或对应后端更新接口。 |
+| 文章、评论、消息 | 后端已有部分 API；前端多数对应界面仍依赖 Mock，尚未完成端到端联调。 |
+| 其他内容模块 | 分类、标签、文件上传、图库、日记、天气、访问统计等页面/组件仍有 Mock 数据，后端接口尚未齐备。 |
 
+### 本地开发命令
+
+前端在 `lin_blog/` 目录安装项目依赖后，可使用：
+
+```sh
+npm run dev
+npm run build
+```
+
+`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。当前构建检查尚有 TypeScript 错误；请先查看本文件“当前限制与待办”和 `Documentation/开发进度.md`，不要将失败构建视为可发布产物。
+
+后端依赖由 `serve/pnpm-lock.yaml` 管理。在 `serve/` 目录准备依赖后，可用 `node linlog.js` 启动；后端 `package.json` 当前没有 `start`、`dev` 或 `test` 脚本。数据库连接配置在 `serve/config/default.js`，数据库密码可通过 `LINBLOG_DB_PASSWORD` 环境变量提供。前端 Vite 开发服务器将 `/api` 请求代理到 `http://localhost:3030`。
+
+**数据库安全提示：** 后端启动会调用数据库初始化逻辑。首次初始化可建库、建表并插入演示数据；已有初始化标记时仍会检查并可能为 `article` 表增加作者列、索引或外键。只应在已确认的本地/隔离开发数据库中启动，使用有价值的数据前先审查迁移并做好备份。本次未执行后端启动或数据库操作。
+
+### 已注册的后端 API
+
+| 模块 | 路由 | 认证/说明 |
+| --- | --- | --- |
+| 用户 | `GET /api/user/isRegistered`、`POST /api/user/register`、`POST /api/user/login` | 注册和登录公开。 |
+| 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
+| 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
+| 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
+| 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
+
+前端用户管理 API 位于 `lin_blog/src/api/user.ts`：列表通过 `POST /api/user/allUser` 传递分页和关键词，创建用户调用 `POST /api/user/createUser`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；请求拦截器从 `localStorage` 读取令牌并添加认证头。
+
+### 当前限制与待办
+
+* 前端 `npm run build` 在 Vue/TypeScript 检查阶段失败。已看到的问题包括多处既有组件类型错误，以及 `UserManagement.vue` 将 Axios 响应按业务响应对象读取、`countByRole` 未使用等诊断；当前页面和用户 API 的类型契约需统一。
+* 用户管理页的“编辑/保存修改”尚未接入更新 API；“编辑与普通用户”统计使用“总用户数减管理员数”，会把游客也计入该项。
+* 用户登录、注册和用户管理已有部分前后端调用，但文章、评论、消息等其他页面仍未全面接入真实 API。
+* 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；新表定义和启动时增量迁移代码已加入，但现有数据库迁移、历史数据兼容和实际 MySQL 行为尚未验证。历史文章作者列允许为 `NULL`。
+* 认证逻辑、JWT 密钥配置及 CORS 来源还需进一步复核；不要把前端路由守卫视为后端接口授权的替代。
+* 后端当前没有统一的自动化测试脚本。`serve/test/articleModel.test.js` 是使用查询替身的模型隔离测试，不连接 MySQL，也不覆盖真实 HTTP 接口。
 
 # LinBlog数据库
 
@@ -85,6 +128,7 @@
 | 字段名         | 数据类型                          | 约束/默认值                                                                 | 注释                                  |
 |----------------|-----------------------------------|-----------------------------------------------------------------------------|---------------------------------------|
 | id             | BIGINT UNSIGNED                   | 主键、自增                                                                 | 文章/图片集ID                         |
+| user_id        | BIGINT UNSIGNED                   | 可选（允许为NULL）、普通索引（idx_article_user）、外键（关联 users.id）       | 作者ID（删除用户时设为NULL）          |
 | title          | VARCHAR(150)                      | 非空                                                                       | 标题（文章/图片集名称）               |
 | subset_id      | INT UNSIGNED                      | 可选（允许为NULL）、普通索引（idx_subset）、外键（关联 subset.id）           | 所属分类ID（分类删除时设为NULL）      |
 | classify       | ENUM('article', 'image')          | 非空、普通索引（idx_classify）                                             | 内容类型：文章/图片集                 |
@@ -100,6 +144,7 @@
 | updated_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`                 | 更新时间（自动触发）                  |
 | published_at    | DATETIME                          | 可选（允许为NULL）                                                         | 发布时间（仅已发布状态有效）          |
 | 索引补充       | ——                                | 全文索引（ft_title_intro：title + introduce）                               | 支持标题+简介的模糊搜索                |
+| 外键规则       | ——                                | FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL               | 作者删除时保留内容并清空作者ID        |
 | 外键规则       | ——                                | FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL            | 分类删除时，关联内容的分类ID设为NULL  |
 
 ####  点赞表（praise）
@@ -196,6 +241,7 @@
 
 ```
 users（用户）
+├── 1:N → article（文章/图片集）：一个用户可创建多条内容
 ├── 1:N → comment（评论）：一个用户可发多条评论
 ├── 1:N → praise（点赞）：一个用户可点赞多条内容
 ├── 1:N → message（消息）：一个用户可发送/接收多条消息
@@ -221,6 +267,7 @@ label（标签）
 | 从表字段         | 主表字段       | 删除规则       | 说明                                  |
 |------------------|----------------|----------------|---------------------------------------|
 | file.subset_id   | subset.id      | ON DELETE SET NULL | 分类删除时，文件的分类ID设为NULL      |
+| article.user_id  | users.id       | ON DELETE SET NULL | 作者删除时保留内容并清空作者ID        |
 | article.subset_id| subset.id      | ON DELETE SET NULL | 分类删除时，内容的分类ID设为NULL      |
 | diary.weather_id | weather.id     | ON DELETE SET NULL | 天气字典删除时，日记的天气ID设为NULL  |
 | praise.user_id   | users.id       | ON DELETE CASCADE  | 用户删除时，点赞记录级联删除          |
@@ -236,10 +283,10 @@ label（标签）
 ### 初始化流程
 
 1. 首次启动：
-   - 检查是否存在 `/.db_initialized` 标记文件，不存在则执行初始化。
-   - 步骤：创建数据库 → 切换数据库 → 按顺序创建 11 张表 → 插入模拟数据 → 写入初始化标记 → 初始化连接池。
+   - 检查 `serve/model/.db_initialized` 标记文件，不存在则执行初始化。
+   - 步骤：创建数据库 → 切换数据库 → 按顺序创建 11 张表 → 插入模拟数据 → 写入初始化标记 → 初始化连接池 → 检查文章作者字段。
 2. 后续启动：
-   - 检测到标记文件，直接初始化连接池，跳过表创建和模拟数据插入。
+   - 检测到标记文件，初始化连接池并检查文章作者字段；缺少作者字段、索引或外键时执行只增加结构的兼容迁移，不重建表或删除数据。
 
 ### 模拟数据说明
 
@@ -252,7 +299,7 @@ label（标签）
 - **个人数据**：3 条日记、5 条天气字典记录。
 - **通知数据**：5 条消息（系统消息 / 私信 / 通知）。
 - **统计数据**：5 条访问记录（含游客访问）。
-- 模拟数据标记：`.mock_data_inserted`（避免重复插入）。
+- 模拟数据标记：`.mock_data_inserted` 会在种子数据插入完成后写入；当前初始化流程实际以 `.db_initialized` 决定是否执行首次初始化，未使用该模拟数据标记进行独立的重复插入检查。
 
 ### 连接池配置
 
@@ -312,7 +359,7 @@ bootstrap()
 
 当需要重新初始化数据库时，执行以下步骤：
 
-1. 删除 `model` 目录下的两个标记文件：`.db_initialized` 和 `.mock_data_inserted`。
+1. 删除 `serve/model` 目录下的两个标记文件：`.db_initialized` 和 `.mock_data_inserted`。
 2. （可选）手动删除 MySQL 中的 `linlog` 数据库（`DROP DATABASE IF EXISTS linlog;`）。
 3. 重启项目，系统会重新执行 “创建库表 + 插入模拟数据” 流程。
 
@@ -324,4 +371,3 @@ bootstrap()
 | 插入数据时提示“外键约束失败”          | 关联的主表记录不存在                  |
 | 查询无结果但数据存在                  | 字符集不匹配/索引失效                 |
 | 连接池报错 “PROTOCOL_CONNECTION_LOST” | MySQL 服务断开连接                    |
-

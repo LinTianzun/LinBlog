@@ -3,7 +3,7 @@ const config = {
     database: {  //  连接数据库
         HOST: "localhost",
         USER: "root",
-        PASSWORD: "302060dzl",
+        PASSWORD: process.env.LINBLOG_DB_PASSWORD || "",
         DB: "linlog"
     },
     jwt: {

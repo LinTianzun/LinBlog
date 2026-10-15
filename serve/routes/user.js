@@ -19,4 +19,7 @@ module.exports = (app) => {
 
     //  获取所有的用户信息 用作用户管理（POST）
     app.post('/api/user/allUser', authMiddleware, userController.getAllUsers)
+
+    // 管理员创建用户（POST）
+    app.post('/api/user/createUser', authMiddleware, userController.createUser)
 }

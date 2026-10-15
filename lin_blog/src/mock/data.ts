@@ -71,7 +71,7 @@ export const survey = Mock.mock({
 //  评论
 export const comment = Mock.mock({
     "data": {
-        "count": 123,
+        "count": 13,
         "list|123": [
             {
                 "id|+1": 0,

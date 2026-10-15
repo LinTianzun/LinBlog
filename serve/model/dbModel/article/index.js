@@ -18,17 +18,17 @@ async function findAtricleStateById(articleId) {
 async function insertArticle(articleInfo) {
     const {
         title, content, classify, subsetId = null,
-        label = '', introduce = '', cover = ''
+        label = '', introduce = '', cover = '', userId
     } = articleInfo
     const sql = `
         INSERT INTO article (
-            title, subset_id, classify, label, introduce, 
+            user_id, title, subset_id, classify, label, introduce,
             content, cover, state, published_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', NULL)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL)
     `
     const result = await query(sql, [
-        title, subsetId, classify, label, introduce, content, cover
+        userId, title, subsetId, classify, label, introduce, content, cover
     ])
     return { articleId: result.insertId }
 }
@@ -47,11 +47,16 @@ async function findArticlesByPage(params) {
     if (userType === 'normal') {
         whereClause += ' AND a.user_id = ?'
         whereParams.push(userId)
+    } else if (userType === 'visitor') {
+        whereClause += ' AND a.state = ?'
+        whereParams.push('published')
+    } else if (!['admin', 'editor'].includes(userType)) {
+        whereClause += ' AND 1 = 0'
     }
 
     //  筛选条件：状态
     if (state && ['draft', 'published', 'rejected'].includes(state)) {
-        whereClause += 'AND a.state = ?'
+        whereClause += ' AND a.state = ?'
         whereParams.push(state)
     }
 
@@ -63,7 +68,7 @@ async function findArticlesByPage(params) {
 
     //  筛选条件：所属分类
     if (subsetId && !isNaN(subsetId)) {
-        whereClause += 'AND a.subset_id = ?'
+        whereClause += ' AND a.subset_id = ?'
         whereParams.push(subsetId)
     }
 
@@ -71,6 +76,7 @@ async function findArticlesByPage(params) {
     const listSql = `
         SELECT 
             a.id,
+            a.user_id AS userId,
             a.title,
             a.subset_id AS subsetId,
             s.subset_name AS subsetName,
@@ -126,11 +132,17 @@ async function findAtricleById(articleId, userId, userType) {
     if (userType === 'normal') {
         whereClause += ' AND (a.user_id = ? OR a.state = ?)'
         whereParams.push(userId, 'published')
+    } else if (userType === 'visitor') {
+        whereClause += ' AND a.state = ?'
+        whereParams.push('published')
+    } else if (!['admin', 'editor'].includes(userType)) {
+        return null
     }
 
     const sql = `
         SELECT 
             a.id,
+            a.user_id AS userId,
             a.title,
             a.subset_id AS subsetId,
             s.subset_name AS subsetName,
@@ -164,6 +176,8 @@ async function findAtricleById(articleId, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function updateArticle(articleId, updateData, userId, userType) {
+    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+
     // 筛选非空的更新字段，映射前端驼峰→数据库下划线
     const fieldMap = {
         subsetId: 'subset_id',
@@ -228,6 +242,8 @@ async function updateArticle(articleId, updateData, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function deleteArticle(articleId, userId, userType) {
+    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+
     let whereClause = 'id = ? AND state != ?'
     const whereParams = [articleId, 'deleted']
 
@@ -255,6 +271,8 @@ async function deleteArticle(articleId, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function updateArticleStatus(articleId, state, userId, userType) {
+    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+
     //  状态合法性校验（适配数据库enum）
     if (!['draft', 'published', 'rejected'].includes(state)) {
         console.warn(`[DB] 无效状态值：${state}`);
