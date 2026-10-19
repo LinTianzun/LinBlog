@@ -7,6 +7,7 @@ export interface UserInfo {
   mail: string;
   user_type: string;
   imgurl?: string;
+  status: 0 | 1;
 }
 
 // 分页用户列表响应类型
@@ -32,19 +33,6 @@ export function getAllUsers(page = 1, pageSize = 5, keyword = "") {
     },
   });
 }
-// export function getAllUsers(page = 1, pageSize = 5) {
-//     return request.post<unknown, UserListResponse>(
-//         '/user/allUser',
-//         null,
-//         {
-//             params: {
-//                 page,
-//                 pageSize
-//             }
-//         }
-//     )
-// }
-
 
 // 创建用户时提交的数据
 export interface CreateUserParams {
@@ -57,5 +45,27 @@ export interface CreateUserParams {
 
 // 创建用户（仅管理员）
 export function createUser(data: CreateUserParams) {
-  return request.post('/user/createUser', data);
+  return request.post('/user/createUser', data)
+}
+
+// 编辑用户时提交的数据
+export interface UpdateUserParams {
+  username: string;
+  mail: string;
+  user_type: 'normal' | 'editor' | 'visitor' | 'admin';
+}
+
+// 更新用户（仅管理员）
+export function updateUser(id: number, data: UpdateUserParams) {
+  return request.put(`/user/updateUser/${id}`, data)
+}
+
+// 删除用户（仅管理员，具体权限由后端校验）
+export function deleteUser(id: number) {
+  return request.delete(`/user/deleteUser/${id}`)
+}
+
+// 修改用户启用/禁用状态（仅管理员）
+export function updateUserStatus(id: number, status: 0 | 1) {
+  return request.put(`/user/updateUserStatus/${id}`, { status });
 }

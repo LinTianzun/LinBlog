@@ -17,6 +17,19 @@ async function findUserByMail(mail) {
     return query(sql, [mail]);
 }
 
+// 编辑用户时检查用户名或邮箱是否被其他用户占用
+async function findUserConflictForUpdate(username, mail, userId) {
+    const sql = `
+        SELECT id, username, mail
+        FROM users
+        WHERE (username = ? OR mail = ?)
+          AND id <> ?
+        LIMIT 2
+    `;
+
+    return query(sql, [username, mail, userId]);
+}
+
 // 按 ID 查询用户（获取信息用）
 async function findUserById(userId) {
     const sql = `
@@ -54,6 +67,30 @@ async function insertUserByAdmin(userInfo) {
         imgurl,
         user_type
     ]);
+}
+
+// 管理员更新用户资料
+async function updateUserByAdmin(userId, userInfo) {
+    const { username, mail, user_type } = userInfo;
+
+    const sql = `
+        UPDATE users
+        SET username = ?, mail = ?, user_type = ?
+        WHERE id = ?
+    `;
+
+    return query(sql, [username, mail, user_type, userId]);
+}
+
+// 管理员修改用户启用/禁用状态
+async function updateUserStatus(userId, status) {
+    const sql = `
+        UPDATE users
+        SET status = ?
+        WHERE id = ?
+    `;
+
+    return query(sql, [status, userId]);
 }
 
 // 分页查询用户，支持关键词搜索和全局角色统计
@@ -127,40 +164,37 @@ async function findUsersByPage(page, pageSize, offset, keyword = '') {
         page,
         pageSize,
         totalPage: Math.ceil(total / pageSize)
-    };
+    }
 }
 
-// 分页查询用户（含总条数）
-// async function findUsersByPage(page, pageSize, offset) {
+// 统计管理员数量
+async function countAdminUsers() {
+    const [result] = await query(
+        "SELECT COUNT(*) AS total FROM users WHERE user_type = ?",
+        ['admin']
+    );
 
-//     // 1. 查询当前页用户数据（不含密码）
-//     const userSql = `
-//         SELECT id, username, mail, imgurl, user_type, status, created_at, last_login_at 
-//         FROM users 
-//         ORDER BY created_at ASC 
-//         LIMIT ? OFFSET ?
-//     `;
-//     const users = await query(userSql, [pageSize, offset]);
+    return Number(result.total);
+}
 
-//     // 2. 查询总条数（用于计算总页数）
-//     const totalSql = 'SELECT COUNT(*) AS total FROM users';
-//     const [totalResult] = await query(totalSql);
-//     const total = totalResult.total;
-
-//     return {
-//         list: users,
-//         total,
-//         page,
-//         pageSize,
-//         totalPage: Math.ceil(total / pageSize) // 总页数（向上取整）
-//     };
-// }
+// 根据用户 ID 删除用户
+async function deleteUserByAdmin(userId) {
+    return query(
+        'DELETE FROM users WHERE id = ?',
+        [userId]
+    );
+}
 
 module.exports = {
     findUserByAccount, // 新增：支持双登录查询
     findUserByMail,
+    findUserConflictForUpdate,
     findUserById,
     insertUser,
     insertUserByAdmin,
-    findUsersByPage
+    updateUserByAdmin,
+    updateUserStatus,
+    findUsersByPage,
+    countAdminUsers,
+    deleteUserByAdmin
 }

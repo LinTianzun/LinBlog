@@ -190,6 +190,308 @@ async function createUser(req, res) {
     }
 }
 
+
+/**
+ * 管理员编辑用户资料
+ * 仅更新用户名、邮箱和角色，不修改密码
+ */
+async function updateUser(req, res) {
+    try {
+        // 1. 检查管理员权限
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({
+                code: 403,
+                message: '无权限操作，仅管理员可以编辑用户'
+            });
+        }
+
+        // 2. 获取并校验用户 ID
+        const userId = Number(req.params.id);
+
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户 ID 不合法'
+            });
+        }
+
+        // 3. 获取表单数据
+        const { username, mail, user_type } = req.body;
+
+        const cleanUsername =
+            typeof username === 'string' ? username.trim() : '';
+
+        const cleanMail =
+            typeof mail === 'string' ? mail.trim() : '';
+
+        const allowedRoles = ['normal', 'editor', 'visitor', 'admin'];
+
+        if (!cleanUsername || !cleanMail || !user_type) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户名、邮箱和角色不能为空'
+            });
+        }
+
+        if (cleanUsername.length > 50) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户名不能超过 50 个字符'
+            });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(cleanMail)) {
+            return res.status(400).json({
+                code: 400,
+                message: '邮箱格式不正确'
+            });
+        }
+
+        if (!allowedRoles.includes(user_type)) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户角色不合法'
+            });
+        }
+
+        // 4. 检查用户是否存在
+        const existingUser = await userModel.findUserById(userId);
+
+        if (!existingUser || existingUser.length === 0) {
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在'
+            });
+        }
+
+        // 5. 检查用户名或邮箱是否被其他用户占用
+        const conflicts = await userModel.findUserConflictForUpdate(
+            cleanUsername,
+            cleanMail,
+            userId
+        );
+
+        if (conflicts.length > 0) {
+            const usernameConflict = conflicts.some(
+                user => user.username === cleanUsername
+            );
+
+            const mailConflict = conflicts.some(
+                user => user.mail === cleanMail
+            );
+
+            let message = '用户名或邮箱已被使用';
+
+            if (usernameConflict && mailConflict) {
+                message = '用户名和邮箱均已被其他用户使用';
+            } else if (usernameConflict) {
+                message = '用户名已被其他用户使用';
+            } else if (mailConflict) {
+                message = '邮箱已被其他用户使用';
+            }
+
+            return res.status(409).json({
+                code: 409,
+                message
+            });
+        }
+
+        // 6. 更新用户资料
+        await userModel.updateUserByAdmin(userId, {
+            username: cleanUsername,
+            mail: cleanMail,
+            user_type
+        });
+
+        // 7. 返回结果
+        return res.status(200).json({
+            code: 200,
+            message: '用户资料更新成功',
+            data: {
+                id: userId,
+                username: cleanUsername,
+                mail: cleanMail,
+                user_type
+            }
+        });
+    } catch (error) {
+        console.error('编辑用户失败：', error);
+
+        return res.status(500).json({
+            code: 500,
+            message: '服务器内部错误，编辑用户失败'
+        });
+    }
+}
+
+// 管理员启用/禁用用户
+async function updateUserStatus(req, res) {
+    try {
+        const currentUserId = String(req.user.userId);
+        const targetUserId = String(req.params.id);
+        const status = Number(req.body.status);
+
+        // 禁止修改自己的状态
+        if (currentUserId === targetUserId) {
+            return res.status(400).json({
+                code: 400,
+                message: '不能修改当前登录账号的状态'
+            });
+        }
+
+        // 1. 仅管理员可以操作
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({
+                code: 403,
+                message: '无权限操作，仅管理员可以修改用户状态'
+            });
+        }
+
+        // 2. 校验用户 ID
+        const userId = Number(req.params.id);
+
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户 ID 不合法'
+            });
+        }
+
+        // 3. 校验状态，只允许 0 或 1
+        const { status } = req.body;
+
+        if (status !== 0 && status !== 1) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户状态只能是 0 或 1'
+            });
+        }
+
+        // 4. 防止管理员误禁用自己
+        if (String(req.user.userId) === String(userId) && status === 0) {
+            return res.status(400).json({
+                code: 400,
+                message: '不能禁用当前登录的管理员账号'
+            });
+        }
+
+        // 5. 检查用户是否存在
+        const existingUser = await userModel.findUserById(userId);
+
+        if (!existingUser || existingUser.length === 0) {
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在'
+            });
+        }
+
+        // 6. 更新数据库
+        await userModel.updateUserStatus(userId, status);
+
+        return res.json({
+            code: 200,
+            message: status === 1 ? '用户已启用' : '用户已禁用',
+            data: { id: userId, status }
+        });
+    } catch (error) {
+        console.error('修改用户状态失败：', error);
+
+        return res.status(500).json({
+            code: 500,
+            message: '服务器内部错误，修改用户状态失败'
+        });
+    }
+}
+
+// 管理员删除用户
+async function deleteUser(req, res) {
+    try {
+        // 1. 仅管理员可以删除用户
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({
+                code: 403,
+                message: '无权限操作，仅管理员可以删除用户'
+            });
+        }
+
+        // 2. 校验用户 ID
+        const userId = Number(req.params.id);
+
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(400).json({
+                code: 400,
+                message: '用户 ID 不合法'
+            });
+        }
+
+        // 3. 禁止删除当前登录账号
+        if (Number(req.user.userId) === userId) {
+            return res.status(400).json({
+                code: 400,
+                message: '不能删除当前登录的管理员账号'
+            });
+        }
+
+        // 4. 检查用户是否存在
+        const existingUser = await userModel.findUserById(userId);
+
+        if (!existingUser || existingUser.length === 0) {
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在或已被删除'
+            });
+        }
+
+        // 5. 如果目标用户是管理员，禁止删除最后一名管理员
+        if (existingUser[0].user_type === 'admin') {
+            const adminCount = await userModel.countAdminUsers();
+
+            if (adminCount <= 1) {
+                return res.status(400).json({
+                    code: 400,
+                    message: '系统至少需要保留一名管理员，无法删除'
+                });
+            }
+        }
+
+        // 6. 执行删除
+        const result = await userModel.deleteUserByAdmin(userId);
+
+        if (!result || result.affectedRows !== 1) {
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在或删除失败'
+            });
+        }
+
+        return res.status(200).json({
+            code: 200,
+            message: '用户删除成功',
+            data: { id: userId }
+        });
+    } catch (error) {
+        console.error('删除用户失败：', error);
+
+        // 用户存在文章等关联数据时，数据库外键可能阻止删除
+        if (
+            error.code === 'ER_ROW_IS_REFERENCED_2' ||
+            error.code === 'ER_ROW_IS_REFERENCED'
+        ) {
+            return res.status(409).json({
+                code: 409,
+                message: '该用户存在关联数据，暂时无法删除'
+            });
+        }
+
+        return res.status(500).json({
+            code: 500,
+            message: '服务器内部错误，删除用户失败'
+        });
+    }
+}
+
 // 登录逻辑（支持「用户名/邮箱」双登录，字段统一）
 async function login(req, res) {
     try {
@@ -204,6 +506,15 @@ async function login(req, res) {
         }
 
         const user = result[0]
+
+        // 检查账号是否已禁用
+        if (Number(user.status) !== 1) {
+            return res.status(403).json({
+                code: 403,
+                message: '该账号已被禁用，请联系管理员'
+            });
+        }
+
         // 密码校验（与数据库存储的 bcrypt 哈希匹配）
         const isPasswordValid = await bcrypt.compare(password, user.password)
         if (!isPasswordValid) {
@@ -308,6 +619,9 @@ module.exports = {
     isRegistered,
     register,
     createUser,
+    updateUser,
+    updateUserStatus,
     login,
-    getAllUsers
+    getAllUsers,
+    deleteUser
 }

@@ -107,13 +107,9 @@ const registerUser = ref({
 
 //  登录
 const login = async () => {
-    console.log("[LinBlog] login 函数已触发");
 
     const account = user.value.name.trim();
     const password = user.value.pwd;
-
-    console.log("[LinBlog] 账号是否填写：", Boolean(account));
-    console.log("[LinBlog] 密码是否填写：", Boolean(password));
 
     if (!account || !password) {
         proxy?.$message({
@@ -122,8 +118,6 @@ const login = async () => {
         });
         return;
     }
-
-    console.log("[LinBlog] 即将发送登录请求");
 
     try {
         const response = await fetch("/api/user/login", {

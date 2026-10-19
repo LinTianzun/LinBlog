@@ -65,6 +65,7 @@
                             <th>用户名</th>
                             <th>邮箱</th>
                             <th>用户角色</th>
+                            <th>状态</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -80,9 +81,27 @@
                                 </span>
                             </td>
                             <td>
-                                <button type="button" class="edit-user-btn" @click="openEditUserModal(user)">
-                                    编辑
-                                </button>
+                                <yk-switch :model-value="Number(user.status) === 1" :checked-value="true"
+                                    :unchecked-value="false" checked-color="#1fb4a2" unchecked-color="#fa5247"
+                                    :disabled="isCurrentUser(user) ||
+                                        updatingStatusIds.has(String(user.id))
+                                        " :loading="updatingStatusIds.has(String(user.id))"
+                                         @change="(checked) => handleStatusChange(user, checked)" />
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <yk-button type="secondary" size="m" status="primary" @click="openEditUserModal(user)">
+                                         编辑
+                                    </yk-button>
+
+                                    <yk-popconfirm placement="top"  trigger="click" title="确认删除" :content="`确定删除用户「${user.username}」吗？`"
+                                        @confirm="handleDeleteUser(user)" >
+                                        <yk-button type="secondary" size="m" status="danger"  :disabled="deletingUserId === user.id">
+                                             {{ deletingUserId === user.id ? '正在删除...' : '删除' }}
+                                        </yk-button>
+                                        
+                                    </yk-popconfirm>
+                                </div>
                             </td>
                         </tr>
 
@@ -93,8 +112,6 @@
                         </tr>
                     </tbody>
                 </table>
-
-
             </div>
 
             <div class="user-pagination">
@@ -117,9 +134,6 @@
                 </div>
 
                 <form @submit.prevent="submitAddUser">
-                    <p v-if="createMessage" class="create-message" :class="`message-${createMessageType}`">
-                        {{ createMessage }}
-                    </p>
                     
                     <div class="form-item">
                         <label for="new-username">用户名</label>
@@ -171,10 +185,7 @@
                     </button>
                 </div>
 
-                <form @submit.prevent>
-                    <p v-if="editMessage" class="create-message" :class="`message-${editMessageType}`">
-                        {{ editMessage }}
-                    </p>
+                <form @submit.prevent="submitEditUser">
 
                     <div class="form-item">
                         <label for="edit-username">用户名</label>
@@ -202,7 +213,7 @@
                             取消
                         </button>
 
-                        <button type="submit" class="add-user-btn" :disabled="editSubmitting">
+                       <button type="submit" class="add-user-btn" :disabled="editSubmitting || !isEditChanged">
                             {{ editSubmitting ? '正在保存...' : '保存修改' }}
                         </button>
                     </div>
@@ -214,9 +225,11 @@
 
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
-import { getAllUsers, createUser, type UserInfo, type CreateUserParams } from '../api/user'
+import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
+
+const proxy: any = getCurrentInstance()?.proxy
 
 // 用户列表与分页状态
 const users = ref<UserInfo[]>([])
@@ -227,6 +240,8 @@ const pageSize = ref(10)
 const searchKeyword = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
+// 正在删除的用户 ID，避免重复提交
+const deletingUserId = ref<number | null>(null)
 
 // 全局统计数据，不随搜索条件变化
 const allTotal = ref(0)
@@ -238,11 +253,9 @@ const roleCounts = ref({
     visitor: 0
 })
 
-
 const addUserModalVisible = ref(false)
 const submitting = ref(false)
-const createMessage = ref('')
-const createMessageType = ref<'success' | 'error'>('success')
+const updatingStatusIds = ref(new Set<string>())
 
 const newUser = ref({
     username: '',
@@ -265,6 +278,47 @@ const editUser = ref({
     user_type: 'normal'
 })
 
+// 保存打开编辑弹窗时的原始数据，用于判断是否有修改
+const originalEditUser = ref({
+    username: '',
+    mail: '',
+    user_type: 'normal'
+})
+
+// 获取当前登录用户 ID
+function getCurrentUserId(): string | null {
+    // 这里的 userInfo 必须替换为你项目实际保存用户信息的 key
+    const raw = localStorage.getItem('userInfo');
+
+    if (!raw) return null;
+
+    try {
+        const currentUser = JSON.parse(raw);
+        return currentUser?.id != null
+            ? String(currentUser.id)
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+// 判断是否为当前登录用户
+function isCurrentUser(user: UserInfo): boolean {
+    const currentUserId = getCurrentUserId();
+
+    return currentUserId !== null &&
+        String(user.id) === currentUserId;
+}
+
+// 判断表单内容是否发生变化
+const isEditChanged = computed(() => {
+    return (
+        editUser.value.username.trim() !== originalEditUser.value.username ||
+        editUser.value.mail.trim() !== originalEditUser.value.mail ||
+        editUser.value.user_type !== originalEditUser.value.user_type
+    )
+})
+
 const openAddUserModal = () => {
     addUserModalVisible.value = true
 }
@@ -273,6 +327,12 @@ const openAddUserModal = () => {
 const openEditUserModal = (user: UserInfo) => {
     editingUserId.value = user.id
     editUser.value = {
+        username: user.username,
+        mail: user.mail,
+        user_type: user.user_type
+    }
+    // 保存原始数据快照
+    originalEditUser.value = {
         username: user.username,
         mail: user.mail,
         user_type: user.user_type
@@ -304,7 +364,7 @@ const closeAddUserModal = () => {
     }
 }
 
-
+//  提交添加用户表单
 const submitAddUser = async () => {
     if (submitting.value) return
 
@@ -314,14 +374,18 @@ const submitAddUser = async () => {
     const user_type = newUser.value.user_type
 
     if (!username || !mail || !password) {
-        createMessageType.value = 'error'
-        createMessage.value = '请填写用户名、邮箱和初始密码'
+        proxy?.$message({
+            type: 'warning',
+            message: '请填写用户名、邮箱和初始密码'
+        })
         return
     }
 
     if (password.length < 6) {
-        createMessageType.value = 'error'
-        createMessage.value = '初始密码至少需要 6 个字符'
+        proxy?.$message({
+            type: 'warning',
+            message: '初始密码至少需要 6 个字符'
+        })
         return
     }
 
@@ -333,21 +397,19 @@ const submitAddUser = async () => {
     }
 
     submitting.value = true
-    createMessage.value = ''
 
     try {
         const result = await createUser(params)
 
         if (result.code !== 200) {
-            createMessageType.value = 'error'
-            createMessage.value = result.message || '创建用户失败'
+            proxy?.$message({
+                type: 'error',
+                message: result.message || '创建用户失败'
+            })
             return
         }
 
-        createMessageType.value = 'success'
-        createMessage.value = '用户创建成功'
-
-        // 重置表单并关闭弹窗
+        // 创建成功后重置表单并关闭弹窗
         newUser.value = {
             username: '',
             mail: '',
@@ -357,22 +419,223 @@ const submitAddUser = async () => {
 
         addUserModalVisible.value = false
 
-        // 回到第一页，刷新列表与统计数据
+        // 刷新第一页及统计数据
         currentPage.value = 1
         await fetchUsers(1, pageSize.value, searchKeyword.value)
+
+        proxy?.$message({
+            type: 'success',
+            message: '用户创建成功'
+        })
     } catch (error: any) {
         console.error('创建用户失败：', error)
 
-        createMessageType.value = 'error'
-        createMessage.value =
-            error.response?.data?.message ||
-            error.message ||
-            '创建用户失败，请检查后端服务'
+        proxy?.$message({
+            type: 'error',
+            message:
+                error.response?.data?.message ||
+                error.message ||
+                '创建用户失败，请检查后端服务'
+        })
     } finally {
         submitting.value = false
     }
 }
 
+// 处理用户启用/禁用状态切换
+async function handleStatusChange(
+    user: UserInfo,
+    checked: boolean | string | number
+) {
+    const id = String(user.id)
+
+    if (
+        updatingStatusIds.value.has(id) ||
+        isCurrentUser(user)
+    ) {
+        return
+    }
+
+    const oldStatus: 0 | 1 =
+        Number(user.status) === 1 ? 1 : 0
+
+    const newStatus: 0 | 1 =
+        checked === true || checked === 1 || checked === 'true'
+            ? 1
+            : 0
+
+    if (oldStatus === newStatus) return
+
+    updatingStatusIds.value.add(id)
+
+    try {
+        const result = await updateUserStatus(user.id, newStatus)
+
+        if (result.code !== 200) {
+            throw new Error(result.message || '修改用户状态失败')
+        }
+
+        // 服务端确认成功后才更新状态
+        user.status = newStatus
+
+        proxy?.$message({
+            type: 'success',
+            message: newStatus === 1 ? '用户已启用' : '用户已禁用'
+        })
+    } catch (error: any) {
+        proxy?.$message({
+            type: 'error',
+            message:
+                error?.response?.data?.message ||
+                error?.message ||
+                '修改用户状态失败'
+        })
+
+        // 失败后重新加载服务端数据，恢复正确状态
+        await fetchUsers(
+            currentPage.value,
+            pageSize.value,
+            searchKeyword.value
+        )
+    } finally {
+        updatingStatusIds.value.delete(id)
+    }
+}
+
+//  保存编辑后的用户资料
+const submitEditUser = async () => {
+    if (editSubmitting.value) return
+
+    // 没有实际修改，不发送请求
+    if (!isEditChanged.value) {
+        proxy?.$message({
+            type: 'warning',
+            message: '用户信息未发生变化，无需保存'
+        })
+        return
+    }
+
+    const userId = editingUserId.value
+
+    if (userId === null || userId === '') {
+        proxy?.$message({
+            type: 'error',
+            message: '未找到当前编辑的用户'
+        })
+        return
+    }
+
+    const username = editUser.value.username.trim()
+    const mail = editUser.value.mail.trim()
+    const user_type = editUser.value.user_type
+
+    if (!username || !mail) {
+        proxy?.$message({
+            type: 'warning',
+            message: '请填写用户名和邮箱'
+        })
+        return
+    }
+
+    const params: UpdateUserParams = {
+        username,
+        mail,
+        user_type: user_type as UpdateUserParams['user_type']
+    }
+
+    editSubmitting.value = true
+
+    try {
+        const result = await updateUser(Number(userId), params)
+
+        if (result.code !== 200) {
+            proxy?.$message({
+                type: 'error',
+                message: result.message || '更新用户失败'
+            })
+            return
+        }
+
+        // 先刷新列表
+        await fetchUsers(
+            currentPage.value,
+            pageSize.value,
+            searchKeyword.value
+        )
+
+        // 关闭弹窗并清理编辑状态
+        editUserModalVisible.value = false
+        editingUserId.value = null
+        editMessage.value = ''
+
+        // 显示全局成功提示
+        proxy?.$message({
+            type: 'success',
+            message: '用户资料更新成功'
+        })
+    } catch (error: any) {
+        console.error('更新用户失败：', error)
+
+        proxy?.$message({
+            type: 'error',
+            message:
+                error.response?.data?.message ||
+                error.message ||
+                '更新用户失败，请检查后端服务'
+        })
+    } finally {
+        editSubmitting.value = false
+    }
+}
+
+// 删除用户
+const handleDeleteUser = async (user: UserInfo) => {
+    if (deletingUserId.value !== null) return
+
+    deletingUserId.value = user.id
+
+    try {
+        const result = await deleteUser(user.id)
+
+        if (result.code !== 200) {
+            proxy?.$message({
+                type: 'error',
+                message: result.message || '删除用户失败'
+            })
+            return
+        }
+
+        // 如果删除的是当前页最后一条记录，且不是第一页，
+        // 就退回上一页，避免显示空白列表
+        const targetPage =
+            users.value.length === 1 && currentPage.value > 1
+                ? currentPage.value - 1
+                : currentPage.value
+
+        await fetchUsers(
+            targetPage,
+            pageSize.value,
+            searchKeyword.value
+        )
+
+        proxy?.$message({
+            type: 'success',
+            message: `用户「${user.username}」删除成功`
+        })
+    } catch (error: any) {
+        console.error('删除用户失败：', error)
+
+        proxy?.$message({
+            type: 'error',
+            message:
+                error.response?.data?.message ||
+                error.message ||
+                '删除用户失败，请检查后端服务'
+        })
+    } finally {
+        deletingUserId.value = null
+    }
+}
 
 // 根据页码和每页条数从后端获取用户数据
 const fetchUsers = async (
@@ -385,7 +648,7 @@ const fetchUsers = async (
 
     try {
         const result = await getAllUsers(page, size, search)
-        console.log('获取用户列表结果：', result)
+        // console.log('获取用户列表结果：', result)
         if (result.code === 200) {
             users.value = result.data.list
             total.value = result.data.total
@@ -432,8 +695,6 @@ const changePageSize = (size: number) => {
     // 更改每页条数后，从第一页重新查询
     fetchUsers(1, size)
 }
-
-
 
 // 搜索
 const handleSearch = (value: string) => {
@@ -501,7 +762,7 @@ onMounted(() => {
 
 .table-wrapper {
     width: 100%;
-    overflow-x: auto;
+    overflow-x: visible;
 }
 
 table {
@@ -716,5 +977,11 @@ td {
 
 .edit-user-btn:hover {
     background: rgba(128, 128, 128, 0.12);
+}
+
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 </style>

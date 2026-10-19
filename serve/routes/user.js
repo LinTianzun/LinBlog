@@ -22,4 +22,13 @@ module.exports = (app) => {
 
     // 管理员创建用户（POST）
     app.post('/api/user/createUser', authMiddleware, userController.createUser)
+
+    // 管理员编辑用户（PUT）
+    app.put('/api/user/updateUser/:id', authMiddleware, userController.updateUser)
+
+    // 管理员删除用户（DELETE）
+    app.delete('/api/user/deleteUser/:id', authMiddleware, userController.deleteUser)
+
+    // 管理员修改用户启用/禁用状态（PUT）
+    app.put('/api/user/updateUserStatus/:id',authMiddleware,userController.updateUserStatus)
 }
