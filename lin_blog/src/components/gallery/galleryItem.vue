@@ -4,21 +4,21 @@
 
             <div class="gallery-item-image">
                 <div class="gallery-item-cover">
-                    <yk-image :src="props.data.cover" fit="cover" :preview="false" width="238" height="160"
+                    <yk-image :src="props.data?.cover" fit="cover" :preview="false" width="238" height="160"
                         :is-lazy="true" />
                 </div>
                 <yk-space :size="2">
                     <div class="gallery-item-image-left image-div">
-                        <yk-image :src="props.data.content[0]" fit="cover" :preview="false" width="78" height="78"
-                            :is-lazy="true" v-if="props.data.content[0]" />
+                        <yk-image :src="props.data.content?.[0]" fit="cover" :preview="false" width="78" height="78"
+                            :is-lazy="true" v-if="props.data?.content?.[0]" />
                     </div>
                     <div class="gallery-item-image-center image-div">
-                        <yk-image :src="props.data.content[1]" fit="cover" :preview="false" width="78" height="78"
-                            :is-lazy="true" v-if="props.data.content[1]" />
+                        <yk-image :src="props.data.content?.[1]" fit="cover" :preview="false" width="78" height="78"
+                            :is-lazy="true" v-if="props.data?.content?.[1]" />
                     </div>
                     <div class="gallery-item-image-right image-div">
-                        <yk-image :src="props.data.content[2]" fit="cover" :preview="false" width="78" height="78"
-                            :is-lazy="true" v-if="props.data.content[2]" />
+                        <yk-image :src="props.data.content?.[2]" fit="cover" :preview="false" width="78" height="78"
+                            :is-lazy="true" v-if="props.data?.content?.[2]" />
                     </div>
                 </yk-space>
 
@@ -49,7 +49,7 @@
                             </yk-text>
                         </yk-space>
                     </yk-space>
-                    <yk-text type="third">{{momentm(props.data?.moment)}}</yk-text>
+                    <yk-text type="third">  {{ props.data.moment ? momentm(props.data.moment) : '' }}</yk-text>
                 </div>
 
             </div>
@@ -58,26 +58,23 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
-    import { ArticleData } from '../../utils/interface.ts'
-    import { momentm } from '../../utils/moment.ts'
+import type { ArticleData } from '../../utils/interface.ts'
+import { momentm } from '../../utils/moment.ts'
 
+const props = defineProps<{
+    data: ArticleData
+}>()
 
-    type GalleryItemProps = {
-        data?: ArticleData
-    }
+const emits = defineEmits<{
+    (e: 'delete', id: ArticleData['id']): void
+}>()
 
-    const props = withDefaults(defineProps < GalleryItemProps > (), {})
-
-    const emits = defineEmits(['delete'])
-
-    //  删除
-    const deleteGallery = () => {
-        emits('delete', props.data.id)
-    }
-
-
+// 删除
+const deleteGallery = (): void => {
+    emits('delete', props.data.id)
+}
 </script>
+
 
 <style lang="less" scoped>
     .gallery-item {

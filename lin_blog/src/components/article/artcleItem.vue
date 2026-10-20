@@ -21,7 +21,7 @@
                     <yk-space size="xl">
                         <yk-text type="secondary">
                             {{subsetStore.subsetName(props.data.subsetId)}}
-                            <yk-text type="secondary" v-if="props.data?.label?.length > 0">
+                            <yk-text type="secondary" v-if="(props.data.label?.length ?? 0) > 0">
                                 /
                                 <span v-for="(item, index) in props.data?.label" :key="index"
                                     style="padding-right: 4px;">
@@ -70,31 +70,37 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
-    import { ArticleData } from '../../utils/interface.ts'
-    import { useSubsetStore } from '../../store/subset.ts'
-    import { momentm } from '../../utils/moment.ts'
 
-    //  store
-    const subsetStore = useSubsetStore()
+import type { ArticleData } from '../../utils/interface'
+import { useSubsetStore } from '../../store/subset'
+import { momentm } from '../../utils/moment'
 
-    type ArticleItemProps = {
-        data?: ArticleData
-    }
+// store
+const subsetStore = useSubsetStore()
 
-    const props = withDefaults(defineProps < ArticleItemProps > (), {})
+type ArticleItemProps = {
+    data: ArticleData
+}
 
-    const emits = defineEmits(['delete', 'state'])
+const props = defineProps<ArticleItemProps>()
 
-    //  删除
-    const deleteArtcle = () => {
-        emits('delete', props.data.id)
-    }
+const emits = defineEmits<{
+    (event: 'delete', id: number): void
+    (event: 'state', payload: { id: number; state: number }): void
+}>()
 
-    //  修改状态
-    const updateState = (e) => {
-        emits('state', { id: props.data.id, state: e })
-    }
+// 删除
+const deleteArtcle = (): void => {
+    emits('delete', props.data.id)
+}
+
+// 修改状态
+const updateState = (state: number): void => {
+    emits('state', {
+        id: props.data.id,
+        state,
+    })
+}
 
 </script>
 

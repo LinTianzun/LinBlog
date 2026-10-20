@@ -19,54 +19,52 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, watch, onMounted, computed, shallowRef, onBeforeUnmount, getCurrentInstance } from 'vue'
+    import { ref,  getCurrentInstance } from 'vue'
     import editor from '../components/editor/editor.vue'
     import forms from '../components/forms/forms.vue'
     import { momentDay } from '../utils/moment.ts'
 
     const proxy = getCurrentInstance()?.proxy
 
-    const articleData = ref()
+// 收取 form 内容
+const form = ref()
 
-    //  收取form内容
-    const form = ref()
-    const formData = (e) => {
-        // console.log(e)
-        form.value = e
-    }
+const formData = (data: unknown) => {
+    form.value = data
+}
 
-    const editors = ref()
-    //  收取editor内容
-    const editorData = (e) => {
-        // console.log(e)
-        editors.value = e
-    }
+const editors = ref()
 
-    const saveMoment = ref()
+// 收取 editor 内容
+const editorData = (data: string) => {
+    editors.value = data
+}
 
-    //  发布(1)or保存(0) 内容
-    const submitArticle = (e) => {
-        if (form.value && form.value.title) {
-            if (e == 0) {
-                let nowDate = new Date()
-                saveMoment.value = momentDay(nowDate) + ' 保存'
-            }
+const saveMoment = ref<string>()
 
-            let request = {
-                ...form.value,
-                ...{
-                    content: editors.value,
-                    state: e,
-                    classify: 0,
-                    moment: new Date(),
-                }
-            }
-            console.log(request)
-        } else {
-            proxy.$message({ type: 'warning', message: '请输入标题' })
+// 发布(1) or 保存(0) 内容
+const submitArticle = (state: 0 | 1) => {
+    if (form.value && form.value.title) {
+        if (state === 0) {
+            const nowDate = new Date()
+            saveMoment.value = momentDay(nowDate) + ' 保存'
         }
-    }
 
+        const request = {
+            ...form.value,
+            ...{
+                content: editors.value,
+                state,
+                classify: 0,
+                moment: new Date(),
+            }
+        }
+
+        console.log(request)
+    } else {
+        proxy?.$message({ type: 'warning', message: '请输入标题' })
+    }
+}
 </script>
 
 <style lang="less" scoped>

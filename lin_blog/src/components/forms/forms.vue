@@ -26,7 +26,7 @@
             </yk-space>
 
             <div :class="{introduce:props.classify ? 0 : 1}">
-                <yk-text-area v-model="val" clearable placeholder="请输入简介" :auto-size="raws"
+                <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
                     :max-length="800"></yk-text-area>
             </div>
 
@@ -60,125 +60,164 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, watch, onMounted, computed, shallowRef, onBeforeUnmount } from 'vue'
-    import { subset, mklabel } from '../../mock/data.ts'
-    import { LabelData } from '../../utils/interface.ts'
-    import '@wangeditor/editor/dist/css/style.css' // 引入 css
-    import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import { ref, watch, onMounted, computed } from 'vue'
+import { subset, mklabel } from '../../mock/data.ts'
+import '@wangeditor/editor/dist/css/style.css'
 
-    const props = defineProps({
-        classify: {
-            type: Number,
-            default: 0,
-        },
-    })
+type FormData = {
+    title: string
+    subsetId: number | undefined
+    label: string[]
+    introduce: string
+    cover: string
+    classify: number
+}
 
-    const emits = defineEmits(['formData'])
+type SubsetOption = {
+    id: number
+    name: string
+}
 
-    const formData = ref({
-        title: '',
-        subsetId: undefined,
-        label: [],   //  标签
-        introduce: '',   //  简介
-        cover: '',
-        classify: props.classify
-    })
+type LabelOption = {
+    id: number
+    name: string
+}
 
-    //  简介行数
-    const raws = computed(() => {
-        if (props.classify == 1) {
-            return {
-                minRows: 18,
-                maxRows: 18,
-            }
-        } else {
-            return {
-                minRows: 4,
-                maxRows: 10,
-            }
-        }
-    })
+const props = defineProps({
+    classify: {
+        type: Number,
+        default: 0,
+    },
+})
 
-    //  分类名称
-    const subsetName = ref()
+const emits = defineEmits<{
+    formData: [data: FormData]
+}>()
 
-    //  获取分类
-    const subsetList = ref()
-    const getSubset = () => {
-        subsetList.value = subset.data.list
-        // console.log(subsetList.value)
-    }
+const formData = ref<FormData>({
+    title: '',
+    subsetId: undefined,
+    label: [],
+    introduce: '',
+    cover: '',
+    classify: props.classify,
+})
 
-    //  选择分类
-    const subsetSelect = (e) => {
-        // console.log(e)
-        formData.value.subsetId = e
-        const subset = subsetList.value.find(item => item.id === e);
-        if (subset) {
-            subsetName.value = subset.name;
+// 简介行数
+const raws = computed(() => {
+    if (props.classify === 1) {
+        return {
+            minRows: 18,
+            maxRows: 18,
         }
     }
 
-    //  标签
-    //  所有标签
-    const tags = ref([])
-    const labelArr = ref([])
-    const inputLabel = ref()
-    const getTags = () => {
-        tags.value = mklabel.data.list
-        for (let i = 0; i < tags.value.length; i++) {
-            labelArr.value.push(tags.value[i].name)
+    return {
+        minRows: 4,
+        maxRows: 10,
+    }
+})
+
+// 分类名称
+const subsetName = ref<string>('')
+
+// 分类列表
+const subsetList = ref<SubsetOption[]>([])
+
+const getSubset = () => {
+    subsetList.value = subset.data.list.map((item: { id: string | number; name: string }) => ({
+        id: Number(item.id),
+        name: String(item.name),
+    }))
+}
+
+// 选择分类
+const subsetSelect = (value: string | number) => {
+    const id = Number(value)
+    if (!Number.isFinite(id)) return
+
+    formData.value.subsetId = id
+
+    const selectedSubset = subsetList.value.find(item => item.id === id)
+    if (selectedSubset) {
+        subsetName.value = selectedSubset.name
+    }
+}
+
+// 标签
+const tags = ref<LabelOption[]>([])
+const labelArr = ref<string[]>([])
+const inputLabel = ref<string>('')
+
+const getTags = () => {
+    tags.value = mklabel.data.list.map((item: { id: string | number; name: string }) => ({
+        id: Number(item.id),
+        name: String(item.name),
+    }))
+    labelArr.value = tags.value.map((item: LabelOption) => item.name)
+}
+
+// 标签弹窗
+const visible = ref(false)
+
+const showModal = () => {
+    visible.value = true
+}
+
+// 新增标签
+const addLabel = () => {
+    const label = inputLabel.value.trim()
+
+    if (label && formData.value.label.length < 3) {
+        if (!formData.value.label.includes(label)) {
+            formData.value.label.push(label)
+            labelArr.value = labelArr.value.filter(item => item !== label)
         }
-        // console.log(labelArr.value)
     }
 
-    //  标签弹窗
-    const visible = ref < boolean > (false)
-    const showModal = () => {
-        visible.value = true
+    inputLabel.value = ''
+}
+
+// 选择标签
+const selectLabel = (label: string) => {
+    if (
+        formData.value.label.length < 3 &&
+        !formData.value.label.includes(label)
+    ) {
+        formData.value.label.push(label)
+        labelArr.value = labelArr.value.filter(item => item !== label)
     }
+}
 
-    //  新增标签
-    const addLabel = () => {
-        if (inputLabel.value && formData.value.label.length < 3) {
-            formData.value.label.push(inputLabel.value)
-        }
-        inputLabel.value = ''
-        // console.log(labelArr.value)
+// 删除标签
+const deleteLabel = (label: string) => {
+    formData.value.label = formData.value.label.filter(
+        item => item !== label
+    )
+
+    if (!labelArr.value.includes(label)) {
+        labelArr.value.push(label)
     }
-    //  选择标签
-    const selectLabel = (e) => {
-        if (formData.value.label.length < 3) {
-            formData.value.label.push(e)
-            labelArr.value = labelArr.value.filter(item => {
-                return item != e
-            })
-        }
-        // console.log(labelArr.value)
-    }
+}
 
-    //  删除标签
-    const deleteLabel = (e) => {
-        labelArr.value.unshift(e)
-        formData.value.label = formData.value.label.filter(item => {
-            return item != e
-        })
-    }
+// 封面
+const fileUrl = ref<unknown[]>([])
 
-    //  封面
-    const fileUrl = ref([])
+// 表单数据变化时通知父组件
+watch(
+    formData,
+    (data) => {
+        emits('formData', data)
+    },
+    { deep: true }
+)
 
-    watch(formData.value, (e) => {
-        emits('formData', e)
-    })
-
-
-    onMounted(() => {
-        getSubset()
-        getTags()
-    })
-
+onMounted(() => {
+    getSubset()
+    getTags()
+})
 </script>
+
 
 <style lang="less" scoped>
     .forms {

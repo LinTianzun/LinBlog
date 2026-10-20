@@ -1,11 +1,11 @@
 <template>
     <yk-space dir="vertical" size="xl">
-        <top-title :is-search="false" />
+        <top-title name="总览" :is-search="false" />
         <gather />
 
         <yk-space style="width: 100%;" size="xl">
             <datas />
-            <comment style="width: 50%;" height="483px" />
+            <comment style="width: 50%;" :page-size="8" height="483px" />
         </yk-space>
     </yk-space>
 </template>

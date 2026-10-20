@@ -21,53 +21,47 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, computed } from 'vue'
-    import { mkphotos } from '../../mock/data.ts'
+import { ref, onMounted } from 'vue'
+import { mkphotos } from '../../mock/data.ts'
 
-    const uploadUrl = ''
-    const fileUrl = ref([])
+// 上传配置
+const uploadUrl = ''
+const fileUrl = ref([])
 
-    //  获取图片
-    const photos = ref()
-    const getPhotos = () => {
-        photos.value = mkphotos.data
+// 图片数据类型
+type Photo = (typeof mkphotos.data)[number]
+
+// 获取图片
+const photos = ref<Photo[]>([])
+
+const getPhotos = (): void => {
+    photos.value = mkphotos.data
+}
+
+// 封面
+const coverIndex = ref<number>(0)
+
+// 设为封面
+const changeCover = (id: Photo['id']): void => {
+    coverIndex.value = id
+}
+
+// 删除图片
+const deletePhoto = (id: Photo['id']): void => {
+    photos.value = photos.value.filter(item => item.id !== id)
+
+    if (coverIndex.value === id && photos.value.length > 0) {
+        coverIndex.value = photos.value[0].id
+    } else if (coverIndex.value === id) {
+        coverIndex.value = -1
     }
+}
 
-    // 将图片分成三列
-    const photoColumns = computed(() => {
-        if (!photos.value) return [[], [], []]
-        const columns = [[], [], []]
-        photos.value.forEach((photo, index) => {
-            columns[index % 3].push(photo) // 按顺序分配到三列
-        })
-        return columns
-    })
-
-    //  封面
-    const coverIndex = ref(0)
-
-    //  设为封面
-    const changeCover = (e) => {
-        coverIndex.value = e
-    }
-
-    //  删除图片
-    const deletePhoto = (e) => {
-        photos.value = photos.value.filter(item => item.id !== e)
-        if (coverIndex.value == e && photos.value.length > 0) {
-            coverIndex.value = photos.value[0].id
-        } else if (coverIndex.value == e && photos.value.length <= 0) {
-            coverIndex.value = -1
-        }
-        // console.log(coverIndex.value)
-    }
-
-    onMounted(() => {
-        getPhotos()
-        // console.log(photos.value)
-    })
-
+onMounted(() => {
+    getPhotos()
+})
 </script>
+
 
 <style lang="less" scoped>
     .edit_photo {

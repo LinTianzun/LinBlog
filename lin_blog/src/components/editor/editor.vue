@@ -14,85 +14,76 @@
 </template>
 
 <script lang="ts" setup>
-    // import forms from '../../components/forms/forms.vue'
-    import { onBeforeUnmount, ref, shallowRef, onMounted, watch } from 'vue'
-    import './style.less' // 引入 css
-    import { colors } from './colors.js'
-    import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
-    import { IToolbarConfig } from '@wangeditor/editor'
+import { onBeforeUnmount, ref, shallowRef } from 'vue'
+import type { IToolbarConfig, IDomEditor } from '@wangeditor/editor'
+import './style.less'
+import { colors } from './colors.js'
+import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 
-    //  工具固定
-    const top = ref(false)
-    const toolbarTop = (e) => {
-        // console.log(e)
-        top.value = e
-    }
+const mode = 'default'
 
-    const emits = defineEmits(['editors'])
+// 工具栏固定状态
+const top = ref(false)
 
-    //  获取内容
-    const onChange = () => {
-        emits('editors', valueHtml.value)
-        // console.log(valueHtml.value)
-    }
+const toolbarTop = (value: boolean): void => {
+    top.value = value
+}
 
-    // 编辑器实例，必须用 shallowRef
-    const editorRef = shallowRef()
+const emits = defineEmits<{
+    (event: 'editors', content: string): void
+}>()
 
-    // 内容 HTML
-    const valueHtml = ref('<p>hello</p>')
-    //  工具栏配置
-    const toolbarConfig = {}
-    //  菜单配置
-    const editorConfig = {
-        MENU_CONF: {
-            color: {
-                colors,
-            },
-            bgColor: {
-                colors,
-            },
-            uploadImage: {
-                // server: '/api/upload',
-                // async customUpload(file: File, insertFn: InsertFnType) {
-                //     // const formData = new FormData()
-                //     // formData.append('file', 'cover')
-                //     // formData.append('id', '123')
-                //     // uploadApi(formData).then(() => {
-                //     // })
-                //     insertFn(url, alt, href)
-                // },
-            },
-            codeSelectLang: {
-                // 代码语言
-                codeLangs: [
-                    { text: 'CSS', value: 'css' },
-                    { text: 'HTML', value: 'html' },
-                    { text: 'XML', value: 'xml' },
-                    // 其他
-                ],
-            }
+// 获取编辑器内容
+const onChange = (): void => {
+    emits('editors', valueHtml.value)
+}
+
+// 编辑器实例
+const editorRef = shallowRef<IDomEditor | null>(null)
+
+// 内容 HTML
+const valueHtml = ref('<p>hello</p>')
+
+// 工具栏配置
+const toolbarConfig: Partial<IToolbarConfig> = {}
+
+// 菜单配置
+const editorConfig = {
+    MENU_CONF: {
+        color: {
+            colors,
         },
-    }
+        bgColor: {
+            colors,
+        },
+        uploadImage: {
+            // 后续在这里配置真实的图片上传接口
+        },
+        codeSelectLang: {
+            codeLangs: [
+                { text: 'CSS', value: 'css' },
+                { text: 'HTML', value: 'html' },
+                { text: 'XML', value: 'xml' },
+            ],
+        },
+    },
+}
 
+// 编辑器创建完成
+const handleCreated = (editor: IDomEditor): void => {
+    editorRef.value = editor
+}
 
-    // 模拟 ajax 异步获取内容
-    // onMounted(() => {
+// 组件销毁时销毁编辑器
+onBeforeUnmount(() => {
+    const editor = editorRef.value
+    if (!editor) return
 
-    // })
-
-    // 组件销毁时，也及时销毁编辑器
-    onBeforeUnmount(() => {
-        const editor = editorRef.value
-        if (editor == null) return
-        editor.destroy()
-    })
-
-    const handleCreated = (editor) => {
-        editorRef.value = editor // 记录 editor 实例，重要！
-        // console.log(editor.getAllMenuKeys())
-    }
+    editor.destroy()
+    editorRef.value = null
+})
 </script>
+
 
 <style lang="less" scoped>
     .editor {

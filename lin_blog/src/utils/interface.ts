@@ -2,7 +2,7 @@
 export type ReplyDat =
     {
         id: number;
-        atricle?: {
+        article?: {
             id: number;
             title: string;
         };

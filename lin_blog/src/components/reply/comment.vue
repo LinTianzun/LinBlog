@@ -5,7 +5,7 @@
         </div>
         <yk-scrollbar ref="scrollbar" :height="height" style="padding: 0 24px;">
             <yk-space dir="vertical">
-                <reply v-for="(item, index) in comments" :key="item.id" :content="item" @delete="deleteComment" />
+                <reply v-for="item in comments" :key="item.id" :content="item" is-comment @delete="deleteComment" />
             </yk-space>
         </yk-scrollbar>
         <div class="comment-pagination">
@@ -18,7 +18,7 @@
     import { ref, onMounted, getCurrentInstance } from 'vue'
     import reply from './reply.vue'
     import { comment } from '../../mock/data.ts'
-    import { CommentProps } from './reply.ts'
+    import type { CommentProps } from './reply.ts'
 
     const proxy = getCurrentInstance()?.proxy
 
@@ -30,7 +30,8 @@
     //  评论总数
     const count = ref(123)
     //  数据内容
-    const comments = ref()
+    type CommentItem = (typeof comment.data.list)[number]
+    const comments = ref<CommentItem[]>([])
 
     //  请求
     type Request = {
@@ -56,20 +57,17 @@
         )
     }
 
-    //  分页
-    const changePage = (e) => {
-        request.nowPage = e
-        drwCommentData()
-    }
+    // 分页
+const changePage = (page: number) => {
+    request.nowPage = page
+    drwCommentData()
+}
 
-    //  删除评论
-    const deleteComment = (e) => {
-        // console.log(e)
-        comments.value = comments.value.filter((obj) => {
-            return obj.id !== e
-        })
-        proxy.$message({ type: 'primary', message: '删除成功' })
-    }
+   // 删除评论
+const deleteComment = (id: string | number) => {
+    comments.value = comments.value.filter((item) => item.id !== id)
+    proxy?.$message({ type: 'primary', message: '删除成功' })
+}
 
     onMounted(() => {
         drwCommentData()

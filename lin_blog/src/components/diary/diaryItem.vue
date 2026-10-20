@@ -27,30 +27,28 @@
     </div>
 </template>
 
+
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
-    import { DiaryData } from '../../utils/interface.ts'
-    import { momentl } from '../../utils/moment.ts'
-    import { weathers } from '../../utils/weather.ts'
+import type { DiaryData } from '../../utils/interface'
+import { weathers } from '../../utils/weather'
+import { momentl } from '../../utils/moment'
 
+type DiaryItemProps = {
+    data: DiaryData
+}
 
-    type DiaryItemProps = {
-        data?: DiaryData
-    }
+const props = defineProps<DiaryItemProps>()
 
-    const props = withDefaults(defineProps < DiaryItemProps > (), {})
+const emits = defineEmits<{
+    (event: 'delete', id: number): void
+}>()
 
-    const emits = defineEmits(['delete'])
-
-    //  删除
-    const deleteDiary = () => {
-        emits('delete', props.data.id)
-    }
-
-    onMounted(() => {
-        // console.log(props.data)
-    })
+// 删除日记
+const deleteDiary = (): void => {
+    emits('delete', props.data.id)
+}
 </script>
+
 
 <style lang="less" scoped>
     .diary-item {

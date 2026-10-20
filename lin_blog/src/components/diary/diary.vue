@@ -2,7 +2,7 @@
     <div class="diary">
         <yk-scrollbar ref="scrollbar" style="padding: 0 20px;">
             <yk-space dir="vertical" size="xl">
-                <diaryItem v-for="(item, index) in diaryList" :key="item.id" :data="item" @delete="deleteDiary">
+                <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary">
                 </diaryItem>
             </yk-space>
         </yk-scrollbar>
@@ -12,65 +12,86 @@
     </div>
 </template>
 
+
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
-    import diaryItem from './diaryItem.vue'
-    import { DiaryData } from '../../utils/interface.ts'
-    import { mkdiary } from '../../mock/data.ts'
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import diaryItem from './diaryItem.vue'
+import type { DiaryData } from '../../utils/interface'
+import { mkdiary } from '../../mock/data'
 
+const props = defineProps({
+    pageSize: {
+        type: Number,
+        default: 6,
+    },
+    serchTerm: {
+        type: String,
+        default: '',
+    },
+})
 
-    const props = defineProps({
-        pageSize: {
-            type: Number,
-            default: 6,
-        },
-        serchTerm: {
-            type: String,
-            default: "",
-        },
+type MessageOptions = {
+    type: 'primary'
+    message: string
+}
+
+type MessageProxy = {
+    $message?: (options: MessageOptions) => void
+}
+
+const proxy = getCurrentInstance()?.proxy as unknown as
+    MessageProxy | null | undefined
+
+const showMessage = (message: string): void => {
+    proxy?.$message?.({
+        type: 'primary',
+        message,
     })
+}
 
-    const proxy = getCurrentInstance()?.proxy
+const request = {
+    pageSize: props.pageSize,
+    nowPage: 1,
+    serchTerm: props.serchTerm,
+    count: true,
+}
 
-    const request = {
-        pageSize: props.pageSize,//单页条数；
-        nowPage: 1,//当前页
-        serchTerm: props.serchTerm,
-        count: true,
+// 日记列表
+const diaryList = ref<DiaryData[]>([])
+
+// 日记总数
+const count = ref(0)
+
+// 获取日记
+const getDiaryData = (): void => {
+    if (request.nowPage === 1) {
+        count.value = mkdiary.count
     }
 
-    //  获取日记
-    //  日记
-    const diaryList = ref < DiaryData > ([])
-    //  日记总数
-    const count = ref(0)
+    diaryList.value = mkdiary.list.slice(
+        (request.nowPage - 1) * request.pageSize,
+        request.nowPage * request.pageSize
+    )
+}
 
-    const getDiaryData = () => {
-        if (request.nowPage == 1) count.value = mkdiary.count
-        diaryList.value = mkdiary.list.slice(
-            (request.nowPage - 1) * request.pageSize,
-            request.nowPage * request.pageSize
-        )
-        // console.log(diaryList.value)
-    }
+// 分页
+const changePage = (page: number): void => {
+    request.nowPage = page
+    getDiaryData()
+}
 
-    //  分页
-    const changePage = (e) => {
-        request.nowPage = e
-        getDiaryData()
-    }
+// 删除日记
+const deleteDiary = (id: number): void => {
+    diaryList.value = diaryList.value.filter(item => item.id !== id)
+    count.value = Math.max(0, count.value - 1)
+    showMessage('删除完成')
+}
 
-    //  删除
-    const deleteDiary = (e) => [
-        diaryList.value = diaryList.value.filter(item => item.id !== e),
-        proxy.$message({ type: 'primary', message: '删除完成' })
-    ]
-
-
-    onMounted(() => {
-        getDiaryData()
-    })
+onMounted(() => {
+    getDiaryData()
+})
 </script>
+
 
 <style lang="less" scoped>
     .diary {

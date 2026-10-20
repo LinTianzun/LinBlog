@@ -13,73 +13,86 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
-    import galleryItem from './galleryItem.vue'
-    import { ArticleData } from '../../utils/interface.ts'
-    import { mkgallery } from '../../mock/data.ts'
+import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import galleryItem from './galleryItem.vue'
+import type { ArticleData } from '../../utils/interface.ts'
+import { mkgallery } from '../../mock/data.ts'
 
-    const props = defineProps({
-        pageSize: {
-            type: Number,
-            default: 6,
-        },
-        subsetId: {
-            type: Number,
-            default: -1,
-        },
-        serchTerm: {
-            type: String,
-            default: "",
-        },
-        state: {
-            type: Number,
-            default: 0,
-        },
-    })
+const props = defineProps({
+    pageSize: {
+        type: Number,
+        default: 6,
+    },
+    subsetId: {
+        type: Number,
+        default: -1,
+    },
+    serchTerm: {
+        type: String,
+        default: '',
+    },
+    state: {
+        type: Number,
+        default: 0,
+    },
+})
 
-    const proxy = getCurrentInstance()?.proxy
+// 为当前实例补充 $message 的局部类型声明，避免修改全局类型配置。
+type MessageOptions = {
+    type: 'primary'
+    message: string
+}
 
-    const request = {
-        pageSize: props.pageSize,//单页条数；
-        nowPage: 1,//当前页
-        state: props.state,//状态
-        subsetId: props.subsetId,//分组
-        serchTerm: props.serchTerm,
-        count: true,
+type GalleryComponentInstance = ComponentPublicInstance & {
+    $message?: (options: MessageOptions) => void
+}
+
+const proxy = getCurrentInstance()?.proxy as GalleryComponentInstance | null | undefined
+
+const request = {
+    pageSize: props.pageSize,
+    nowPage: 1,
+    state: props.state,
+    subsetId: props.subsetId,
+    serchTerm: props.serchTerm,
+    count: true,
+}
+
+// 图库列表：这里必须是 ArticleData 数组
+const galleryList = ref<ArticleData[]>([])
+
+// 图库总数
+const count = ref(0)
+
+// 获取图库
+const getGalleryData = (isInitial: boolean): void => {
+    if (isInitial) {
+        count.value = mkgallery.count
     }
 
-    //  获取图库
-    //  图库
-    const galleryList = ref < ArticleData > ([])
-    //  图库总数
-    const count = ref(0)
+    galleryList.value = mkgallery.list.slice(
+        (request.nowPage - 1) * request.pageSize,
+        request.nowPage * request.pageSize,
+    )
+}
 
-    const getGalleryData = (e) => {
-        if (e) count.value = mkgallery.count
-        galleryList.value = mkgallery.list.slice(
-            (request.nowPage - 1) * request.pageSize,
-            request.nowPage * request.pageSize
-        )
-    }
+// 分页
+const changePage = (page: number): void => {
+    request.nowPage = page
+    getGalleryData(false)
+}
 
-    //  分页
-    const changePage = (e) => {
-        request.nowPage = e
-        getGalleryData(false)
-    }
+// 删除
+const deleteGallery = (id: ArticleData['id']): void => {
+    galleryList.value = galleryList.value.filter(item => item.id !== id)
+    proxy?.$message?.({ type: 'primary', message: '删除完成' })
+}
 
-    //  删除
-    const deleteGallery = (e) => {
-        galleryList.value = galleryList.value.filter(item => item.id !== e)
-        proxy.$message({ type: 'primary', message: '删除完成' })
-
-    }
-
-
-    onMounted(() => {
-        getGalleryData(true)
-    })
+onMounted(() => {
+    getGalleryData(true)
+})
 </script>
+
 
 <style lang="less" scoped>
     .gallery {

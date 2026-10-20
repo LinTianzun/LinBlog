@@ -39,66 +39,89 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
-    import { mklabel } from '../../mock/data.ts'
-    import { LabelData } from '../../utils/interface.ts'
-    import labelManage from './labelManage.vue'
+import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { mklabel } from '../../mock/data.ts'
+import type { LabelData } from '../../utils/interface.ts'
+import labelManage from './labelManage.vue'
 
-    // const emits = defineEmits(['nowSubset'])
+type MessageOptions = {
+    type: 'primary' | 'warning'
+    message: string
+}
 
-    //  新建标签内容
-    const inputValue = ref()
+type MessageInstance = ComponentPublicInstance & {
+    $message?: (options: MessageOptions) => void
+}
 
-    //  当前选择
-    const selected = ref('-1all')
+const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
 
-    //  选择切换
-    const changeSeleted = (id, type) => {
-        if (id + type != selected.value) {
-            selected.value = id + type
-            emits('nowSubset', { id, type })
+// 新建标签内容
+const inputValue = ref('')
+
+// 当前选择
+const selected = ref('-1all')
+
+// 定义组件事件
+const emits = defineEmits<{
+    (e: 'nowSubset', payload: { id: LabelData['id']; type: 'label' }): void
+}>()
+
+// 选择切换
+const changeSeleted = (id: LabelData['id'], type: 'label'): void => {
+    if (id + type !== selected.value) {
+        selected.value = id + type
+        emits('nowSubset', { id, type })
+    }
+}
+
+// 获取标签
+const label = ref<LabelData[]>([])
+
+const rawLabel = (): void => {
+    label.value = [...mklabel.data.list]
+}
+
+// 取消新建
+const cancel = (): void => {
+    inputValue.value = ''
+}
+
+// 新建标签
+const confirm = (): void => {
+    const name = inputValue.value.trim()
+
+    if (name) {
+        const nextId = label.value.reduce(
+            (max, item) => Math.max(max, Number(item.id) || 0),
+            0
+        ) + 1
+
+        const newLabel: LabelData = {
+            id: nextId,
+            name,
+            moment: new Date().toLocaleString()
         }
-    }
 
-    //  获取标签
-    const label = ref < LabelData > ([])
-    const rawLabel = () => {
-        label.value = [...mklabel.data.list]
-        // console.log('rawlabel' + label.value)
-    }
-
-    //  新建标签
-    const proxy = getCurrentInstance()?.proxy
-    //  取消
-    function cancel() {
+        label.value.push(newLabel)
+        proxy?.$message?.({ type: 'primary', message: '插入完成' })
         inputValue.value = ''
+    } else {
+        proxy?.$message?.({ type: 'warning', message: '内容不能为空' })
     }
-    //  插入
-    function confirm() {
-        if (inputValue.value) {
-            let obj = {
-                id: 4,
-                name: inputValue.value,
-                value: 0
-            }
-            label.value.push(obj)
-            proxy.$message({ type: 'primary', message: '插入完成' })
-            inputValue.value = ''
-        } else {
-            proxy.$message({ type: 'warning', message: '内容不能为空' })
-        }
-    }
+}
 
-    //  显示管理标签
-    const visible = ref < boolean > (false)
-    const showModal = () => {
-        visible.value = !visible.value
-    }
+// 显示管理标签
+const visible = ref(false)
 
-    onMounted(() => {
-        rawLabel()
-    })
+const showModal = (): void => {
+    visible.value = !visible.value
+}
+
+onMounted(() => {
+    rawLabel()
+})
 </script>
+
 
 <style lang="less" scoped>
     .label {

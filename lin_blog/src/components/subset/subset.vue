@@ -47,7 +47,6 @@
 <script lang="ts" setup>
     import { ref, onMounted, getCurrentInstance } from 'vue'
     import { subset, state } from '../../mock/data.ts'
-    import { SubsetData } from '../../utils/interface.ts'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
 
@@ -63,7 +62,9 @@
     const selected = ref('-1all')
 
     //  选择切换
-    const changeSeleted = (id, type) => {
+type SubsetType = 'all' | 'state' | 'exclude' | 'subset'
+
+const changeSeleted = (id: string | number, type: SubsetType) => {
         if (id + type != selected.value) {
             selected.value = id + type
             emits('nowSubset', { id, type })
@@ -84,20 +85,24 @@
         inputValue.value = ''
     }
     //  插入
-    function confirm() {
-        if (inputValue.value) {
-            let obj = {
-                id: -2,
-                name: inputValue.value,
-                value: 0
-            }
-            subsetStore.data.push(obj)
-            proxy.$message({ type: 'primary', message: '插入完成' })
-            inputValue.value = ''
-        } else {
-            proxy.$message({ type: 'warning', message: '内容不能为空' })
+   function confirm() {
+    const name = String(inputValue.value ?? '').trim()
+
+    if (name) {
+        const obj = {
+            id: -2,
+            name,
+            value: 0,
+            moment: new Date().toLocaleDateString()
         }
+
+        subsetStore.data.push(obj)
+        proxy?.$message({ type: 'primary', message: '插入完成' })
+        inputValue.value = ''
+    } else {
+        proxy?.$message({ type: 'warning', message: '内容不能为空' })
     }
+}
 
     //  显示管理分组
     const visible = ref < boolean > (false)

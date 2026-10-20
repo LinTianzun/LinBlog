@@ -38,176 +38,176 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
-    import { mkfiles } from '../../mock/data.ts'
-    import fileItem from './filesItem.vue'
-    import { useSubsetStore } from '../../store/subset.ts'
-    import './files.less'
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import { mkfiles } from '../../mock/data.ts'
+import fileItem from './filesItem.vue'
+import { useSubsetStore } from '../../store/subset.ts'
+import type { FileData } from '../../utils/interface.ts'
+import './files.less'
 
+type FileProps = {
+    pageSize: number
+    subsetId: number | string
+}
 
-    type FileProps = {
-        pageSize: number
-        subsetId: number | string
-    }
+type FileChangeSubset = {
+    id: number
+    subsetId: number | undefined
+}
 
-    const props = withDefaults(defineProps < FileProps > (), {
-        pageSize: 8,
-        subsetId: -1,
-    })
+const props = withDefaults(defineProps<FileProps>(), {
+    pageSize: 8,
+    subsetId: -1,
+})
 
-    //  store
-    const subsetStore = useSubsetStore()
+const subsetStore = useSubsetStore()
 
-    //  头部操作
-    const indeterminate = ref(false)
-    const checkedAll = ref(false)
+const indeterminate = ref(false)
+const checkedAll = ref(false)
 
-    const handleChangeAll = (value) => {
-        indeterminate.value = false
-        if (value) {
-            checkedAll.value = true
-            // 更新所有文件为选中状态并收集所有 ID
-            selectedFilesId.value = files.value.map(file => {
-                file.selected = true;
-                return file.id;
-            });
-            // console.log(files.value)
-            // console.log(selectedFilesId.value)
-        } else {
-            checkedAll.value = false
-            cancelCheck()
+const count = ref(123)
+const files = ref<FileData[]>([])
+const selectedFilesId = ref<(number | string)[]>([])
+const subsetSelectedId = ref<number | string>()
 
-        }
-    }
+type Request = {
+    token?: string
+    pageSize: number
+    nowPage: number
+}
 
-    //  评论总数
-    const count = ref(123)
-    //  数据内容
-    const files = ref()
+const request: Request = {
+    pageSize: props.pageSize,
+    nowPage: 1,
+}
 
-    //  请求
-    type Request = {
-        token?: string;
-        pageSize: number;//单页条数；
-        nowPage: number;//当前页
-        // count?: boolean;
-    }
+const handleChangeAll = (value: boolean) => {
+    indeterminate.value = false
 
-    const request: Request = {
-        pageSize: props.pageSize,
-        nowPage: 1,
-        // count: false,
-    }
-
-    //  获取数据
-    const drwData = (e: boolean) => {
-        let data = mkfiles
-        if (e) {
-            count.value = data.count
-        }
-        files.value = data.list.slice(
-            (request.nowPage - 1) * request.pageSize,
-            request.nowPage * request.pageSize
-        )
-        //  加入选择项
-        for (let i = 0; i < files.value.length; i++) {
-            files.value[i].selected = false
-        }
-
-        // console.log(files.value)
-    }
-
-    //  已选择的数组
-    const selectedFilesId = ref([])
-
-    //  选择操作
-    const selectFile = (e) => {
-        selectedFilesId.value = files.value.reduce((acc, file) => {
-            if (file.id === e) {
-                file.selected = !file.selected;
-            }
-            if (file.selected) {
-                acc.push(file.id);
-            }
-
-            return acc;
-        }, []);
-        // 计算全选和半选状态
-        const selectedCount = selectedFilesId.value.length;
-        const totalCount = files.value.length;
-
-        checkedAll.value = selectedCount === totalCount && totalCount > 0;
-        indeterminate.value = selectedCount > 0 && selectedCount < totalCount;
-
-        // console.log(selectedFilesId.value)
-    }
-
-    //  取消选中
-    const cancelCheck = (e) => {
-        for (let i = 0; i < files.value.length; i++) {
-            files.value[i].selected = false
-        }
-        selectedFilesId.value = []
-    }
-
-    //  删除单张图片
-    const deleteFile = (e) => {
-        // console.log('删除文件 ID:', e);
-        files.value = files.value.filter((item) => {
-            return item.id !== e
+    if (value) {
+        checkedAll.value = true
+        selectedFilesId.value = files.value.map(file => {
+            file.selected = true
+            return file.id
         })
+    } else {
+        checkedAll.value = false
+        cancelCheck()
     }
-    //  删除多张图片
-    const deleteMultipleFile = () => {
-        // 根据 selectedFilesId 过滤 files.value
-        files.value = files.value.filter(file => !selectedFilesId.value.includes(file.id));
+}
 
-        // 清空选中状态
-        selectedFilesId.value = [];
-        checkedAll.value = false;
-        indeterminate.value = false;
+const drwData = (updateCount: boolean) => {
+    const data = mkfiles
 
+    if (updateCount) {
+        count.value = data.count
     }
 
+    files.value = data.list.slice(
+        (request.nowPage - 1) * request.pageSize,
+        request.nowPage * request.pageSize
+    ).map((file: FileData): FileData => ({
+        ...file,
+        selected: false,
+    }))
 
-    //  切换分组
-    const changeSubset = (e) => {
-        console.log(e)
-        for (let i = 0; i < files.value.length; i++) {
-            if (files.value[i].id = e.id) {
-                files.value[i].subsetId = e.subsetId
-                return
-            }
+    selectedFilesId.value = []
+    checkedAll.value = false
+    indeterminate.value = false
+}
+
+const selectFile = (id: number | string) => {
+    selectedFilesId.value = files.value.reduce<(number | string)[]>((acc, file) => {
+        if (file.id === id) {
+            file.selected = !file.selected
         }
-        console.log(files.value)
-    }
 
-    //  分页
-    const changePage = (e) => {
-        request.nowPage = e
-        drwData(false)
-    }
+        if (file.selected) {
+            acc.push(file.id)
+        }
 
-    //  分类选择
-    const subsetSelectedId = ref()
-    //  切换分组
-    const changeOption = (e) => {
-        subsetSelectedId.value = e
-    }
+        return acc
+    }, [])
 
-    const proxy = getCurrentInstance()?.proxy
-    function cancel() {
-        proxy.$message({ type: 'warning', message: '你点击了取消按钮' })
-    }
-    function confirm() {
-        proxy.$message({ type: 'primary', message: '你点击了确认按钮' })
-    }
+    const selectedCount = selectedFilesId.value.length
+    const totalCount = files.value.length
 
-    onMounted(() => {
-        drwData(true)
+    checkedAll.value = selectedCount === totalCount && totalCount > 0
+    indeterminate.value = selectedCount > 0 && selectedCount < totalCount
+}
+
+const cancelCheck = () => {
+    files.value.forEach(file => {
+        file.selected = false
     })
 
+    selectedFilesId.value = []
+    checkedAll.value = false
+    indeterminate.value = false
+}
+
+const deleteFile = (id: number | string) => {
+    files.value = files.value.filter(item => item.id !== id)
+    selectedFilesId.value = selectedFilesId.value.filter(selectedId => selectedId !== id)
+}
+
+const deleteMultipleFile = () => {
+    files.value = files.value.filter(
+        file => !selectedFilesId.value.includes(file.id)
+    )
+
+    selectedFilesId.value = []
+    checkedAll.value = false
+    indeterminate.value = false
+}
+
+const changeSubset = (event: FileChangeSubset) => {
+    const file = files.value.find(item => item.id === event.id)
+
+    if (file) {
+        file.subsetId = event.subsetId
+    }
+}
+
+const changePage = (page: number) => {
+    request.nowPage = page
+    drwData(false)
+}
+
+const changeOption = (id: number | string) => {
+    subsetSelectedId.value = id
+}
+
+type MessageOptions = {
+    type: 'warning' | 'primary'
+    message: string
+}
+
+type ProxyWithMessage = {
+    $message?: (options: MessageOptions) => void
+}
+
+const proxy = getCurrentInstance()?.proxy as ProxyWithMessage | null | undefined
+
+function cancel() {
+    proxy?.$message?.({
+        type: 'warning',
+        message: '你点击了取消按钮',
+    })
+}
+
+function confirm() {
+    proxy?.$message?.({
+        type: 'primary',
+        message: '你点击了确认按钮',
+    })
+}
+
+onMounted(() => {
+    drwData(true)
+})
 </script>
+
 
 <style lang="less" scoped>
     .files {

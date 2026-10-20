@@ -37,44 +37,19 @@
     //  访问量
     const visitData = ref([])
 
-    const getVisit = (e) => {
-        let data = visit.data
-        if (e == 'week') {
-            data = data.slice(0, 7)
-        }
+  const getVisit = (period: string) => {
+    let data = visit.data
 
-        visitData.value = data
-        // console.log(visitData.value)
+    if (period === 'week') {
+        data = data.slice(0, 7)
     }
 
-    //  数据监测
-    // const device = ref([])
-    // const website = ref([])
+    visitData.value = data
+}
 
-
-
-    // const getDevice = (e) => {
-    //     let data = survey.data.device
-    //     if (e == 'week') {
-    //         data = data.slice(0, 7)
-    //     }
-
-    //     device.value = data
-    // }
-
-    // const getWebsite = (e) => {
-    //     let data = survey.data.website
-    //     if (e == 'week') {
-    //         data = data.slice(0, 7)
-    //     }
-
-    //     website.value = data
-    // }
 
     onMounted(() => {
         getVisit(visitRadio.value)
-        // getDevice(checkRadio.value)
-        // getWebsite(checkRadio.value)
     })
 </script>
 

@@ -1,5 +1,5 @@
 <template>
-    <yk-table :data="dataList">
+    <yk-table :data="subsetStore.data"">
         <yk-table-column property="email" label="名称"></yk-table-column>
         <yk-table-column property="bir" label="关联文章数"></yk-table-column>
         <yk-table-column property="desc" label="创建时间"></yk-table-column>
@@ -24,47 +24,46 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
-    import { useSubsetStore } from '../../store/subset.ts'
+import { getCurrentInstance } from 'vue'
+import { useSubsetStore } from '../../store/subset.ts'
 
-    const proxy = getCurrentInstance()?.proxy
+const proxy = getCurrentInstance()?.proxy
 
-    //  store
-    const subsetStore = useSubsetStore()
+const subsetStore = useSubsetStore()
 
-    //  当前分组名称
-    let nowName = ''
+type SubsetItem = (typeof subsetStore.data)[number]
 
-    //  聚焦名称
-    const focusSubset = (id) => {
-        let result = subsetStore.data.find((item) => item.id === id)
-        if (result) {
-            nowName = result.name
+let nowName: SubsetItem['name'] | undefined
+
+// 聚焦名称
+const focusSubset = (id: SubsetItem['id']) => {
+    const result = subsetStore.data.find((item) => item.id === id)
+    if (result) {
+        nowName = result.name
+    }
+}
+
+// 失焦
+const blurSubset = (id: SubsetItem['id']) => {
+    const result = subsetStore.data.find((item) => item.id === id)
+
+    if (result && nowName !== result.name) {
+        // 提交后端处理
+        proxy?.$message({ type: 'primary', message: '修改成功' })
+    }
+}
+
+// 删除
+const deleteSubset = (id: SubsetItem['id']) => {
+    subsetStore.data = subsetStore.data.filter((item) => {
+        if (item.id === id) {
+            subsetStore.exclude.value += item.value
         }
-    }
+        return item.id !== id
+    })
 
-    //  失焦
-    const blurSubset = (id) => {
-        let result = subsetStore.data.find((item) => item.id === id)
-        if (result && nowName != result.name) {
-            //  提交后端处理
-            proxy.$message({ type: 'primary', message: '修改成功' })
-        }
-    }
-
-    //  删除
-    const deleteSubset = (id) => {
-        subsetStore.data = subsetStore.data.filter(
-            (obj: { value: any; id: number | string }) => {
-                if (obj.id === id) {
-                    subsetStore.exclude.value += obj.value
-                }
-                return obj.id !== id
-            }
-        )
-        proxy.$message({ type: 'primary', message: '删除成功' })
-    }
-
+    proxy?.$message({ type: 'primary', message: '删除成功' })
+}
 </script>
 
 <style lang="less" scoped>

@@ -86,7 +86,7 @@
                                     :disabled="isCurrentUser(user) ||
                                         updatingStatusIds.has(String(user.id))
                                         " :loading="updatingStatusIds.has(String(user.id))"
-                                         @change="(checked) => handleStatusChange(user, checked)" />
+                                         @change="(checked:boolean | number | string) => handleStatusChange(user, checked)" />
                             </td>
                             <td>
                                 <div class="action-buttons">
@@ -705,10 +705,6 @@ const handleSearch = (value: string) => {
 
 // 当前页内搜索
 const filteredUsers = computed(() => users.value);
-
-// 当前页内角色统计
-const countByRole = (role: string) =>
-    users.value.filter(user => user.user_type === role).length
 
 // 角色名称映射
 const roleName = (role: string) => {

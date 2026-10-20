@@ -1,6 +1,6 @@
 <template>
     <yk-space dir="vertical" class="menu-bar" size="m">
-        <router-link class="menu-bar-nav" :to="item.path" v-for="(item, index) in visibleLinks" :key="item.path">
+        <router-link class="menu-bar-nav" :to="item.path" v-for="item in visibleLinks" :key="item.path">
             <yk-space align="center" size="m">
                 <component :is="item.icon" />
                 <yk-text>

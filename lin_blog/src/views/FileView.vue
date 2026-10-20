@@ -11,7 +11,7 @@
 
         <subset />
 
-        <files />
+        <files :page-size="8" :subset-id="-1" />
     </yk-space>
 </template>
 

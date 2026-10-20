@@ -1,4 +1,4 @@
-import { ReplyDat } from '../../utils/interface'
+import type { ReplyDat } from '../../utils/interface'
 
 export type CommentProps = {
     pageSize: number;
@@ -7,7 +7,7 @@ export type CommentProps = {
 }
 
 export type ReplyProps = {
-    content?: ReplyDat;
+    content: ReplyDat;
     isComment: boolean;
 
 }

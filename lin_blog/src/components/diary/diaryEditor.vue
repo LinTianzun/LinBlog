@@ -26,7 +26,7 @@
             </yk-text-area>
 
             <div class="diary-editor-top-picture">
-                <yk-upload :upload-url="uploadUrl" :limit="dynamicLimit" :file-list="diaryForm.picture"
+                <yk-upload :limit="dynamicLimit" :file-list="diaryForm.picture"
                     accept="image/*"></yk-upload>
             </div>
         </div>
@@ -42,60 +42,62 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, onBeforeUnmount } from 'vue'
-    import { weathers } from '../../utils/weather.ts'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { weathers } from '../../utils/weather'
 
-    type DiaryForm = {
-        title?: string
-        weatherId: number
-        content?: string
-        picture?: string
+type DiaryForm = {
+    title?: string
+    weatherId: number
+    content?: string
+    picture?: string[]
+}
+
+type WeatherItem = {
+    id: number
+    name: string
+    iconUrl: string
+}
+
+const diaryForm = ref<DiaryForm>({
+    weatherId: 0,
+    picture: [],
+})
+
+// 当前天气
+const seWeather = ref<string>('')
+const swWeatherId = ref<number>(0)
+
+// 选择天气
+const selectWeather = (item: WeatherItem): void => {
+    seWeather.value = item.iconUrl
+    swWeatherId.value = item.id
+    diaryForm.value.weatherId = item.id
+}
+
+// 动态 limit
+const dynamicLimit = ref<number>(4)
+
+// 根据窗口高度更新上传数量限制
+const updateLimit = (): void => {
+    dynamicLimit.value = window.innerHeight <= 850 ? 4 : 9
+}
+
+onMounted(() => {
+    const defaultWeather = weathers.find(item => item.id === 0)
+
+    if (defaultWeather) {
+        selectWeather(defaultWeather)
     }
 
-    const diaryForm = ref < DiaryForm > ({ id: 0 })
+    updateLimit()
+    window.addEventListener('resize', updateLimit)
+})
 
-    //  当前天气
-    const seWeather = ref()
-    const swWeatherId = ref()
-    //  选择天气
-    const selectWeather = (e) => {
-        seWeather.value = e.iconUrl
-        swWeatherId.value = e.id
-    }
-
-    //  日记内容
-    const diaryContent = ref()
-
-    // 动态 limit
-    const dynamicLimit = ref < number > (4); // 默认值为 4
-
-    // 更新 limit 的方法
-    const updateLimit = () => {
-        dynamicLimit.value = window.innerHeight <= 850 ? 4 : 9; // 小于等于 850px 时 limit=4，否则 limit=6
-    };
-
-    //  日记图片
-    //  上传地址
-    // const uploadUrl = 'https://www.huohuo90.com:3005/upload'
-    const fileUrl = ref([])
-
-    onMounted(() => {
-        selectWeather({
-            id: 0,
-            name: '晴天',
-            iconUrl: '/src/assets/weather/qing.svg'
-        });
-
-        // 初始化 limit 并监听窗口大小变化
-        updateLimit();
-        window.addEventListener('resize', updateLimit);
-    })
-
-    onBeforeUnmount(() => {
-        // 清理事件监听器
-        window.removeEventListener('resize', updateLimit);
-    });
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', updateLimit)
+})
 </script>
+
 
 <style lang="less" scoped>
     .diary-editor {

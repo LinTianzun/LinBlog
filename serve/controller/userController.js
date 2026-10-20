@@ -360,7 +360,7 @@ async function updateUserStatus(req, res) {
         }
 
         // 3. 校验状态，只允许 0 或 1
-        const { status } = req.body;
+        // const { status } = req.body;
 
         if (status !== 0 && status !== 1) {
             return res.status(400).json({

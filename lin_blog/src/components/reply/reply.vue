@@ -11,7 +11,7 @@
             </yk-text>
             <yk-space size="s" align="center" v-if="isComment">
                 <yk-tag class="tag" type="primary">
-                    {{content.article.title}}
+                  {{ content.article?.title }}
                 </yk-tag>
                 <yk-text type="danger" v-show="content.complaint>0">
                     举报 {{content.complaint}}
@@ -24,21 +24,20 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
-    import { ReplyProps } from './reply.ts'
-    import imgUrl from '../../assets/img/xw10.jpg'
+import type { ReplyProps } from './reply.ts'
 
-    const props = withDefaults(defineProps < ReplyProps > (), {
-        isComment: true
-    })
+withDefaults(defineProps<ReplyProps>(), {
+    isComment: true
+})
 
-    const emits = defineEmits(["delete"])
+const emits = defineEmits<{
+    (e: 'delete', id: string | number): void
+}>()
 
-    //  删除
-    const deleteReply = (e) => [
-        emits("delete", e)
-    ]
-
+// 删除回复
+const deleteReply = (id: string | number) => {
+    emits('delete', id)
+}
 </script>
 
 <style lang="less" scoped>

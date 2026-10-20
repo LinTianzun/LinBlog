@@ -33,8 +33,9 @@ async function authMiddleware(req, res, next) {
         // 挂载用户核心信息到 req.user（供后续接口使用）
         req.user = {
             userId: decoded.userId,
-            user_type: userResult[0].user_type // 关键：传递用户类型
-        };
+            user_type: userResult[0].user_type, // 关键：传递用户类型
+            userType: userResult[0].user_type
+        }
         next(); // 验证通过，进入下一步
     } catch (err) {
         //  Token 无效/过期，返回 401 错误

@@ -5,7 +5,6 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref } from 'vue'
     import LoginRegister from '../components/loginRegister/LoginRegister.vue';
 
 </script>

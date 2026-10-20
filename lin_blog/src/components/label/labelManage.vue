@@ -1,5 +1,5 @@
 <template>
-    <yk-table :data="dataList">
+    <yk-table :data="labelData">
         <yk-table-column property="email" label="标签名称"></yk-table-column>
         <yk-table-column property="desc" label="创建时间"></yk-table-column>
         <yk-table-column property="manage" label="操作" align="right"></yk-table-column>
@@ -20,37 +20,40 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance, watch } from 'vue'
-    import { LabelData } from '../../utils/interface.ts'
+import { ref, getCurrentInstance, watch, type ComponentPublicInstance } from 'vue'
+import type { LabelData } from '../../utils/interface.ts'
 
-    type labelProps = {
-        label: LabelData[]
-    }
+type MessageInstance = ComponentPublicInstance & {
+    $message?: (options: {
+        type: 'primary'
+        message: string
+    }) => void
+}
 
-    const props = withDefaults(defineProps < labelProps > (), {})
+const props = defineProps<{
+    label: LabelData[]
+}>()
 
-    const proxy = getCurrentInstance()?.proxy
+const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
 
-    //  当前标签
-    const labelData = ref < LabelData > ([])
+// 当前标签
+const labelData = ref<LabelData[]>([])
 
+// 删除标签
+const deleteSubset = (id: LabelData['id']): void => {
+    labelData.value = labelData.value.filter(item => item.id !== id)
+    proxy?.$message?.({ type: 'primary', message: '删除成功' })
+}
 
-    //  删除标签
-    const deleteSubset = (id) => {
-        labelData.value = labelData.value.filter(
-            (obj: { id: number | string }) => {
-                return obj.id !== id
-            }
-        )
-        proxy.$message({ type: 'primary', message: '删除成功' })
-    }
-
-    watch(() => props.label, (e) => {
-        labelData.value = e
+watch(
+    () => props.label,
+    value => {
+        labelData.value = [...value]
     },
-        { immediate: true })
-
+    { immediate: true }
+)
 </script>
+
 
 <style lang="less" scoped>
 

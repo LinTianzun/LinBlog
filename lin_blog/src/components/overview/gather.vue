@@ -32,10 +32,9 @@
     }
 
     //  跳转指定页面
-    const editPage = (e) => {
-        // console.log(e)
-        router.push(e)
-    }
+    const editPage = (path: string) => {
+    router.push(path)
+}
 
     onMounted(() => {
         drawGatherData()
