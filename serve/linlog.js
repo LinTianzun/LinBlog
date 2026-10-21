@@ -1,6 +1,10 @@
+const { loadEnvFile } = require('node:process')
+const path = require('path')
+
+loadEnvFile(path.join(__dirname, '.env'))
+
 const express = require('express')
 const cors = require('cors')
-const path = require('path') // 新增path模块
 const app = express()
 const config = require('./config/default')
 const db = require('./model/db/dbnew')
