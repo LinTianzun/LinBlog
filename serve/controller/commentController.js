@@ -44,33 +44,48 @@ async function createComment(req, res) {
         const { articleId, content, parentId = 0 } = req.body
         const { userId, userType } = req.user // 从Token获取当前用户ID和类型
 
-        // 1. 必传参数校验
-        if (!articleId || !content) {
-            return res.status(400).json({ code: 400, message: '文章ID和评论内容不能为空' })
+        // 严格校验文章 ID、父评论 ID 和评论内容，避免非法值进入数据层。
+        const parsedArticleId = Number(articleId)
+        const parsedParentId = Number(parentId)
+        if (!Number.isSafeInteger(parsedArticleId) || parsedArticleId <= 0) {
+            return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
         }
-        // 2. 评论内容长度校验（不超过512字）
+        if (typeof content !== 'string' || content.trim().length === 0) {
+            return res.status(400).json({ code: 400, message: '评论内容不能为空' })
+        }
         if (content.length > 512) {
             return res.status(400).json({ code: 400, message: '评论内容不能超过512字' })
         }
-        // 3. 校验文章是否存在（可选，提升体验）
-        const [article] = await articleModel.findAtricleStateById(articleId)
+        if (!Number.isSafeInteger(parsedParentId) || parsedParentId < 0) {
+            return res.status(400).json({ code: 400, message: '父评论ID必须是非负整数' })
+        }
+
+        // 仅允许对已发布文章发表评论，防止通过接口评论草稿或驳回文章。
+        const [article] = await articleModel.findAtricleStateById(parsedArticleId)
         if (!article || article.state === 'deleted') {
             return res.status(404).json({ code: 404, message: '关联文章不存在或已删除' })
         }
-        // 4. 校验父评论是否存在（如果是二级回复）
-        if (parentId > 0) {
-            const [parentComment] = await query('SELECT id FROM comment WHERE id = ? AND status = 1', [parentId])
+        if (article.state !== 'published') {
+            return res.status(403).json({ code: 403, message: '只能对已发布文章发表评论' })
+        }
+
+        // 回复必须属于同一篇文章，防止跨文章构造评论树。
+        if (parsedParentId > 0) {
+            const [parentComment] = await query(
+                'SELECT id FROM comment WHERE id = ? AND article_id = ? AND status = 1',
+                [parsedParentId, parsedArticleId]
+            )
             if (!parentComment) {
-                return res.status(404).json({ code: 404, message: '回复的评论不存在或已删除' })
+                return res.status(404).json({ code: 404, message: '父评论不存在、已删除或不属于当前文章' })
             }
         }
 
-        // 调用模型新增评论
+        // 调用模型新增评论，统一使用经过校验的 ID。
         const result = await commentModel.createComment({
             userId,
-            articleId,
-            content,
-            parentId
+            articleId: parsedArticleId,
+            content: content.trim(),
+            parentId: parsedParentId
         })
 
         res.status(201).json({
