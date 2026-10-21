@@ -67,6 +67,22 @@ async function getCommentsByPage(page, pageSize, offset) {
  */
 async function createComment(commentInfo) {
     const { userId, articleId, content, parentId = 0 } = commentInfo
+
+    // 模型层再次校验，避免其他调用方绕过控制器的业务规则。
+    const articles = await query('SELECT id, state FROM article WHERE id = ?', [articleId])
+    if (!articles.length || articles[0].state !== 'published') {
+        throw new Error('仅已发布文章允许评论')
+    }
+    if (Number(parentId) > 0) {
+        const parents = await query(
+            'SELECT id, article_id FROM comment WHERE id = ? AND status = 1',
+            [parentId]
+        )
+        if (!parents.length || Number(parents[0].article_id) !== Number(articleId)) {
+            throw new Error('回复评论必须存在且属于同一篇文章')
+        }
+    }
+
     const sql = `
         INSERT INTO comment (user_id, article_id, parent_id, content)
         VALUES (?, ?, ?, ?)
