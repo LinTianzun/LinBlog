@@ -80,17 +80,19 @@ test('visitors can only list and read published articles', async () => {
     assert.deepEqual(calls[2].values, [123, 'deleted', 'published'])
 })
 
-test('normal users can only mutate their own articles', async () => {
+test('normal users can edit and delete only their own articles but cannot change review state', async () => {
     await articleModel.updateArticle(123, { title: 'Updated' }, 42, 'normal')
     await articleModel.deleteArticle(123, 42, 'normal')
-    await articleModel.updateArticleStatus(123, 'published', 42, 'normal')
+    const stateUpdate = await articleModel.updateArticleStatus(123, 'published', 42, 'normal')
+    const genericStateUpdate = await articleModel.updateArticle(123, { state: 'published' }, 42, 'normal')
 
-    assert.match(calls[0].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
+    assert.match(calls[0].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
     assert.deepEqual(calls[0].values, ['Updated', 123, 'deleted', 42])
-    assert.match(calls[1].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
+    assert.match(calls[1].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
     assert.deepEqual(calls[1].values, [123, 'deleted', 42])
-    assert.match(calls[2].sql, /WHERE article\.id = \? AND article\.state != \? AND article\.user_id = \?/)
-    assert.deepEqual(calls[2].values, ['published', 123, 'deleted', 42])
+    assert.equal(stateUpdate, 0)
+    assert.equal(genericStateUpdate, 0)
+    assert.equal(calls.length, 2)
 })
 
 test('visitors cannot create or mutate articles', async () => {
@@ -118,4 +120,12 @@ test('visitors cannot create or mutate articles', async () => {
     assert.equal(await articleModel.deleteArticle(123, 42, 'visitor'), 0)
     assert.equal(await articleModel.updateArticleStatus(123, 'published', 42, 'visitor'), 0)
     assert.equal(calls.length, 0)
+})
+
+
+test('article deletion SQL excludes articles already marked deleted and updates timestamp', async () => {
+    await articleModel.deleteArticle(123, 42, 'normal')
+    assert.match(calls[0].sql, /SET state = 'deleted', updated_at = NOW\\(\\)/)
+    assert.match(calls[0].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.deepEqual(calls[0].values, [123, 'deleted', 42])
 })
