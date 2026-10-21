@@ -89,15 +89,14 @@ test('normal users can edit/delete their own articles but cannot publish or reje
     assert.equal(await articleModel.updateArticleStatus(123, 'rejected', 42, 'normal'), 0)
     await articleModel.updateArticleStatus(123, 'draft', 42, 'normal')
 
-    assert.match(calls[0].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.ok(calls[0].sql.includes('WHERE id = ? AND state != ? AND user_id = ?'))
     assert.deepEqual(calls[0].values, ['Updated', 123, 'deleted', 42])
-    assert.match(calls[1].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.ok(calls[1].sql.includes('WHERE id = ? AND state != ? AND user_id = ?'))
     assert.deepEqual(calls[1].values, [123, 'deleted', 42])
-    assert.match(calls[2].sql, /WHERE article\\.id = \\? AND article\\.state != \\? AND article\\.user_id = \\?/)
+    assert.ok(calls[2].sql.includes('WHERE article.id = ? AND article.state != ? AND article.user_id = ?'))
     assert.deepEqual(calls[2].values, ['draft', 123, 'deleted', 42])
     assert.equal(calls.length, 3)
 })
-
 
 test('normal users are forbidden from publishing or rejecting through controller endpoints', async () => {
     const makeResponse = () => ({
