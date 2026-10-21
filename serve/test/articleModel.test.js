@@ -130,3 +130,43 @@ test('visitors cannot create or mutate articles', async () => {
     assert.equal(await articleModel.updateArticleStatus(123, 'published', 42, 'visitor'), 0)
     assert.equal(calls.length, 0)
 })
+
+
+test('article controller rejects normal-user publish and reject requests', async () => {
+    function makeResponse() {
+        return {
+            statusCode: 200,
+            body: null,
+            status(code) {
+                this.statusCode = code
+                return this
+            },
+            json(body) {
+                this.body = body
+                return this
+            }
+        }
+    }
+
+    const req = {
+        params: { id: '123' },
+        body: { state: 'published' },
+        user: { userId: 42, userType: 'normal' }
+    }
+
+    const updateResponse = makeResponse()
+    await articleController.updateArticle(req, updateResponse)
+    assert.equal(updateResponse.statusCode, 403)
+
+    const statusResponse = makeResponse()
+    await articleController.updateArticleStatus(req, statusResponse)
+    assert.equal(statusResponse.statusCode, 403)
+
+    const rejectResponse = makeResponse()
+    await articleController.updateArticleStatus({
+        ...req,
+        body: { state: 'rejected' }
+    }, rejectResponse)
+    assert.equal(rejectResponse.statusCode, 403)
+    assert.equal(calls.length, 0)
+})
