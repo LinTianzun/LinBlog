@@ -1,14 +1,22 @@
+const jwtSecret = process.env.LINBLOG_JWT_SECRET
+
+if (typeof jwtSecret !== 'string' || jwtSecret.length < 32) {
+    throw new Error(
+        '配置错误：请在 serve/.env 中设置至少 32 个字符的随机 LINBLOG_JWT_SECRET。'
+    )
+}
+
 const config = {
     port: 3030,
-    database: {  //  连接数据库
+    database: {
         HOST: "localhost",
         USER: "root",
         PASSWORD: process.env.LINBLOG_DB_PASSWORD || "",
         DB: "linlog"
     },
     jwt: {
-        secret: 'linzhiyu', // 密钥
-        expiresIn: '7D' // Token 有效期（如 24小时）
+        secret: jwtSecret,
+        expiresIn: '7D'
     }
 }
 

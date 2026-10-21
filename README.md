@@ -1,5 +1,5 @@
 # LinBlog
-个人博客管理项目，采用 Vue 3 + TypeScript 前端与 Express + MySQL 后端。项目已有页面、部分后端接口和数据库模型，仍在开发中；多个内容页面目前使用 Mock 数据，尚不能视为完整可用的博客系统。
+LinBlog 是一个尚在开发中的个人博客管理项目，采用 Vue 3 + TypeScript 前端和 Express + MySQL 后端。当前已有用户管理及若干内容 API，但文章、评论等多个前端页面仍使用 Mock 数据，不能视为完整可用的博客系统。
 
 ## 项目结构与当前状态
 
@@ -8,9 +8,9 @@
 | `lin_blog/` | Vue 3、TypeScript、Vite、Pinia、Vue Router；包含总览、用户管理、文章、图库、文件、日记及编辑页面。 |
 | `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；当前有用户、文章、评论和消息路由。 |
 | `Documentation/` | 开发进度及数据库设计文档。 |
-| 用户管理 | 管理员可以查看、搜索、分页用户并创建用户；编辑弹窗目前只有表单界面，没有保存逻辑或对应后端更新接口。 |
-| 文章、评论、消息 | 后端已有部分 API；前端多数对应界面仍依赖 Mock，尚未完成端到端联调。 |
-| 其他内容模块 | 分类、标签、文件上传、图库、日记、天气、访问统计等页面/组件仍有 Mock 数据，后端接口尚未齐备。 |
+| 用户管理 | 管理员用户列表/搜索/分页、创建、编辑、删除和启用/禁用已有前后端实现；“编辑与普通用户”统计会把游客也计入。 |
+| 文章、评论、消息 | 后端已有 API；文章列表、评论/消息展示仍使用 Mock，尚未完成端到端联调。文章 API 客户端封装存在，但页面尚未调用。 |
+| 其他内容模块 | 分类、标签、文件、图库、日记、天气和访问统计等页面/组件仍使用 Mock，后端业务 API 尚未齐备。 |
 
 ### 本地开发命令
 
@@ -21,31 +21,33 @@ npm run dev
 npm run build
 ```
 
-`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。当前构建检查尚有 TypeScript 错误；请先查看本文件“当前限制与待办”和 `Documentation/开发进度.md`，不要将失败构建视为可发布产物。
+`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-21 本地验证构建通过；仍有 MockJS `eval` 警告和单个 500 KB 以上的打包 chunk 警告，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
 
-后端依赖由 `serve/pnpm-lock.yaml` 管理。在 `serve/` 目录准备依赖后，可用 `node linlog.js` 启动；后端 `package.json` 当前没有 `start`、`dev` 或 `test` 脚本。数据库连接配置在 `serve/config/default.js`，数据库密码可通过 `LINBLOG_DB_PASSWORD` 环境变量提供。前端 Vite 开发服务器将 `/api` 请求代理到 `http://localhost:3030`。
+后端依赖由 `serve/pnpm-lock.yaml` 管理。`serve/package.json` 暂无 `start`、`dev`、`test` 脚本；准备依赖并配置环境变量后，在 `serve/` 目录执行 `node linlog.js`。配置需要 `LINBLOG_JWT_SECRET`（至少 32 个字符的随机值）及可选的 `LINBLOG_DB_PASSWORD`。模板见 `serve/.env.example`；当前项目没有 dotenv 加载器，单纯创建 `.env` 不会自动把变量载入进程。请在启动进程前显式设置环境变量，或使用所用 Node.js 版本支持的环境文件启动方式。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
 
-**数据库安全提示：** 后端启动会调用数据库初始化逻辑。首次初始化可建库、建表并插入演示数据；已有初始化标记时仍会检查并可能为 `article` 表增加作者列、索引或外键。只应在已确认的本地/隔离开发数据库中启动，使用有价值的数据前先审查迁移并做好备份。本次未执行后端启动或数据库操作。
+**数据库安全提示：** 后端启动会调用数据库初始化逻辑。首次初始化可创建数据库、表并插入演示数据；已有初始化标记时仍会检查 `article` 表，并可能执行作者列、索引或外键的增量 DDL。仅在确认的本地/隔离数据库上启动；对有价值的数据先审查迁移、备份并验证恢复流程。本文档更新期间未启动后端或执行数据库操作。
 
 ### 已注册的后端 API
 
 | 模块 | 路由 | 认证/说明 |
 | --- | --- | --- |
+| 用户管理 | `PUT /api/user/updateUser/:id`、`DELETE /api/user/deleteUser/:id`、`PUT /api/user/updateUserStatus/:id` | 管理员操作，需要认证。 |
 | 用户 | `GET /api/user/isRegistered`、`POST /api/user/register`、`POST /api/user/login` | 注册和登录公开。 |
 | 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 
-前端用户管理 API 位于 `lin_blog/src/api/user.ts`：列表通过 `POST /api/user/allUser` 传递分页和关键词，创建用户调用 `POST /api/user/createUser`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；请求拦截器从 `localStorage` 读取令牌并添加认证头。
+用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，但目前没有页面调用它。
 
 ### 当前限制与待办
 
-* 前端 `npm run build` 在 Vue/TypeScript 检查阶段失败。已看到的问题包括多处既有组件类型错误，以及 `UserManagement.vue` 将 Axios 响应按业务响应对象读取、`countByRole` 未使用等诊断；当前页面和用户 API 的类型契约需统一。
-* 用户管理页的“编辑/保存修改”尚未接入更新 API；“编辑与普通用户”统计使用“总用户数减管理员数”，会把游客也计入该项。
-* 用户登录、注册和用户管理已有部分前后端调用，但文章、评论、消息等其他页面仍未全面接入真实 API。
+* 用户管理 CRUD 和账号启停用已有接口及页面处理；“编辑与普通用户”统计仍使用“总用户数减管理员数”，会将游客计入。公开注册只检查邮箱是否已注册，未显式检查用户名冲突；用户名唯一键冲突的错误处理需要补齐。
+* 前端构建目前通过，但打包有 MockJS `eval` 警告和大 chunk 警告；需评估 MockJS 移除/隔离及按需拆包，不应只提高警告阈值。
+* 用户登录/注册及用户管理已有前后端调用，但文章列表仍使用 Mock；评论、消息、分类/标签、文件、图库、日记、天气和统计页面也未全面接入真实 API。
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；新表定义和启动时增量迁移代码已加入，但现有数据库迁移、历史数据兼容和实际 MySQL 行为尚未验证。历史文章作者列允许为 `NULL`。
-* 认证逻辑、JWT 密钥配置及 CORS 来源还需进一步复核；不要把前端路由守卫视为后端接口授权的替代。
+* JWT 密钥改为环境变量 `LINBLOG_JWT_SECRET` 并要求至少 32 字符；`.env.example` 只是模板，当前项目没有自动加载 `.env` 的逻辑。登录和认证中间件都会拒绝禁用账号，但缺少这些行为的自动化接口测试。
+* `serve/linlog.js` 使用 `config.allowedOrigins`，但 `serve/config/default.js` 未定义该值；CORS `allowedHeaders` 未列 `Authorization`，`methods` 未列 `PATCH`。Vite 同源代理开发路径不代表跨域部署已验证。不要把前端路由守卫视为后端接口授权的替代。
 * 后端当前没有统一的自动化测试脚本。`serve/test/articleModel.test.js` 是使用查询替身的模型隔离测试，不连接 MySQL，也不覆盖真实 HTTP 接口。
 
 # LinBlog数据库

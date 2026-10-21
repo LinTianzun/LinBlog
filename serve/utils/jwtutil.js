@@ -1,46 +1,57 @@
-const jwt = require('jsonwebtoken') // 引入JWT库
-const config = require('../config/default') // 引入配置
+const jwt = require('jsonwebtoken')
+const config = require('../config/default')
+
+function getJwtSecret() {
+    const secret = config.jwt.secret
+
+    if (typeof secret !== 'string' || secret.length < 32) {
+        throw new Error('JWT 密钥缺失或强度不足，请检查 LINBLOG_JWT_SECRET。')
+    }
+
+    return secret
+}
 
 /**
- * 生成 Token（加密）
- * @param {Object} payload - Token 载荷（存储的用户信息，避免敏感数据）
- * @returns {string} 生成的 Token 字符串
+ * 生成 Token
+ * @param {Object} payload Token 载荷
+ * @returns {string} Token 字符串
  */
 function generateToken(payload) {
     try {
-        if (typeof payload !== 'object' || payload === null) {
+        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
             throw new Error('Token 载荷必须是对象')
         }
 
-        //  生成Token   参数(载荷，密钥，配置项)
         return jwt.sign(
-            payload, // 存储用户标识（如 userId、userType）
-            config.jwt.secret,  //  密钥
-            { expiresIn: config.jwt.expiresIn } //  过期时间
+            payload,
+            getJwtSecret(),
+            { expiresIn: config.jwt.expiresIn }
         )
     } catch (err) {
-        console.error('Token 生成失败：', err.message);
-        throw err; // 抛出错误，让调用方处理
+        console.error('Token 生成失败：', err.message)
+        throw err
     }
 }
 
 /**
- * 验证 Token（解密）
- * @param {string} token - 待验证的 Token 字符串
- * @returns {Object} 解密后的载荷（如 { userId: 1, exp: 1735689600 }）
+ * 验证 Token
+ * @param {string} token 待验证的 Token
+ * @returns {Object} 解码后的载荷
  */
 function verifyToken(token) {
     try {
-        //  校验 Token 是否存在
         if (!token || typeof token !== 'string') {
             throw new Error('Token 不能为空且必须是字符串')
         }
 
-        //  验证 Token 有效性：返回解密后的载荷
-        return jwt.verify(token, config.jwt.secret)
+        return jwt.verify(token, getJwtSecret())
     } catch (err) {
-        //  分类处理错误
+        if (err.message === 'JWT 密钥缺失或强度不足，请检查 LINBLOG_JWT_SECRET。') {
+            throw err
+        }
+
         let errorMsg = 'Token 验证失败'
+
         if (err.name === 'JsonWebTokenError') {
             errorMsg = 'Token 格式无效'
         } else if (err.name === 'TokenExpiredError') {
@@ -48,8 +59,9 @@ function verifyToken(token) {
         } else if (err.name === 'NotBeforeError') {
             errorMsg = 'Token 尚未生效'
         }
-        console.error(errorMsg + '：', err.message);
-        throw new Error(errorMsg); // 抛出格式化后的错误
+
+        console.error(errorMsg + '：', err.message)
+        throw new Error(errorMsg)
     }
 }
 
