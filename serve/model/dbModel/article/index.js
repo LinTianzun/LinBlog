@@ -177,6 +177,8 @@ async function findAtricleById(articleId, userId, userType) {
  */
 async function updateArticle(articleId, updateData, userId, userType) {
     if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    // 普通用户只能保存草稿，不能通过通用更新接口发布或驳回文章。
+    if (userType === 'normal' && updateData.state !== undefined && updateData.state !== 'draft') return 0
 
     // 筛选非空的更新字段，映射前端驼峰→数据库下划线
     const fieldMap = {
@@ -272,6 +274,8 @@ async function deleteArticle(articleId, userId, userType) {
  */
 async function updateArticleStatus(articleId, state, userId, userType) {
     if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    // 发布和驳回属于审核操作，仅管理员/编辑可执行。
+    if (userType === 'normal' && state !== 'draft') return 0
 
     //  状态合法性校验（适配数据库enum）
     if (!['draft', 'published', 'rejected'].includes(state)) {
