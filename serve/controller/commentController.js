@@ -44,24 +44,36 @@ async function createComment(req, res) {
         const { articleId, content, parentId = 0 } = req.body
         const { userId, userType } = req.user // 从Token获取当前用户ID和类型
 
-        // 1. 必传参数校验
-        if (!articleId || !content) {
-            return res.status(400).json({ code: 400, message: '文章ID和评论内容不能为空' })
+        // 1. 参数校验：评论仅支持一级评论(parentId=0)和二级回复。
+        if (!Number.isInteger(Number(articleId)) || Number(articleId) <= 0 || typeof content !== 'string' || !content.trim()) {
+            return res.status(400).json({ code: 400, message: '文章ID和评论内容不能为空或格式无效' })
         }
-        // 2. 评论内容长度校验（不超过512字）
         if (content.length > 512) {
             return res.status(400).json({ code: 400, message: '评论内容不能超过512字' })
+        }
+        const normalizedParentId = Number(parentId)
+        if (!Number.isInteger(normalizedParentId) || normalizedParentId < 0) {
+            return res.status(400).json({ code: 400, message: '父评论ID必须是非负整数' })
         }
         // 3. 校验文章是否存在（可选，提升体验）
         const [article] = await articleModel.findAtricleStateById(articleId)
         if (!article || article.state === 'deleted') {
             return res.status(404).json({ code: 404, message: '关联文章不存在或已删除' })
         }
-        // 4. 校验父评论是否存在（如果是二级回复）
-        if (parentId > 0) {
-            const [parentComment] = await query('SELECT id FROM comment WHERE id = ? AND status = 1', [parentId])
+        // 4. 二级回复只能指向同一篇文章中的一级评论，禁止三级及更深层级。
+        if (normalizedParentId > 0) {
+            const [parentComment] = await query(
+                'SELECT id, article_id, parent_id FROM comment WHERE id = ? AND status = 1',
+                [normalizedParentId]
+            )
             if (!parentComment) {
                 return res.status(404).json({ code: 404, message: '回复的评论不存在或已删除' })
+            }
+            if (Number(parentComment.article_id) !== Number(articleId)) {
+                return res.status(400).json({ code: 400, message: '不能回复其他文章下的评论' })
+            }
+            if (Number(parentComment.parent_id) !== 0) {
+                return res.status(400).json({ code: 400, message: '评论最多支持两层，不能回复二级评论' })
             }
         }
 
@@ -70,7 +82,7 @@ async function createComment(req, res) {
             userId,
             articleId,
             content,
-            parentId
+            parentId: normalizedParentId
         })
 
         res.status(201).json({
