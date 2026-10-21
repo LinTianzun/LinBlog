@@ -86,9 +86,9 @@ test('normal users can edit and delete only their own articles but cannot change
     const stateUpdate = await articleModel.updateArticleStatus(123, 'published', 42, 'normal')
     const genericStateUpdate = await articleModel.updateArticle(123, { state: 'published' }, 42, 'normal')
 
-    assert.match(calls[0].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.match(calls[0].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
     assert.deepEqual(calls[0].values, ['Updated', 123, 'deleted', 42])
-    assert.match(calls[1].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.match(calls[1].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
     assert.deepEqual(calls[1].values, [123, 'deleted', 42])
     assert.equal(stateUpdate, 0)
     assert.equal(genericStateUpdate, 0)
@@ -125,7 +125,7 @@ test('visitors cannot create or mutate articles', async () => {
 
 test('article deletion SQL excludes articles already marked deleted and updates timestamp', async () => {
     await articleModel.deleteArticle(123, 42, 'normal')
-    assert.match(calls[0].sql, /SET state = 'deleted', updated_at = NOW\\(\\)/)
-    assert.match(calls[0].sql, /WHERE id = \\? AND state != \\? AND user_id = \\?/)
+    assert.match(calls[0].sql, /SET state = 'deleted', updated_at = NOW\(\)/)
+    assert.match(calls[0].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
     assert.deepEqual(calls[0].values, [123, 'deleted', 42])
 })
