@@ -98,6 +98,31 @@ test('normal users can edit/delete their own articles but cannot publish or reje
     assert.equal(calls.length, 3)
 })
 
+
+test('normal users are forbidden from publishing or rejecting through controller endpoints', async () => {
+    const makeResponse = () => ({
+        statusCode: 200,
+        body: null,
+        status(code) { this.statusCode = code; return this },
+        json(body) { this.body = body; return this }
+    })
+
+    const req = {
+        params: { id: '123' },
+        body: { state: 'published' },
+        user: { userId: 42, userType: 'normal' }
+    }
+    const updateResponse = makeResponse()
+    await articleController.updateArticle(req, updateResponse)
+    assert.equal(updateResponse.statusCode, 403)
+    assert.equal(calls.length, 0)
+
+    const statusResponse = makeResponse()
+    await articleController.updateArticleStatus(req, statusResponse)
+    assert.equal(statusResponse.statusCode, 403)
+    assert.equal(calls.length, 0)
+})
+
 test('visitors cannot create or mutate articles', async () => {
     const response = {
         statusCode: 200,
