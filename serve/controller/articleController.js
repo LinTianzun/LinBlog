@@ -155,6 +155,12 @@ async function updateArticle(req, res) {
             return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
         }
 
+        // 普通用户只能保存草稿，不能通过文章更新接口发布或驳回文章。
+        // 已发布文章也不能由普通用户直接编辑，以免绕过审核修改线上内容。
+        if (userType === 'normal' && state !== undefined && state !== 'draft') {
+            return res.status(403).json({ code: 403, message: '普通用户只能将自己的文章保存为草稿，不能直接发布或驳回' })
+        }
+
         //  检验更新字段
         const updateData = {}
         if (title !== undefined) {
@@ -279,6 +285,11 @@ async function updateArticleStatus(req, res) {
                 code: 400,
                 message: '状态值无效，仅支持 draft（草稿）/ published（已发布）/ rejected（已驳回）'
             })
+        }
+
+        // 普通用户只能将被驳回的文章退回草稿，不能发布或驳回文章。
+        if (userType === 'normal' && state !== 'draft') {
+            return res.status(403).json({ code: 403, message: '普通用户不能直接发布或驳回文章' })
         }
 
         //  调用模型修改状态（参数顺序：articleId → state → userId → userType）

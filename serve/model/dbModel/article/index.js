@@ -178,6 +178,9 @@ async function findAtricleById(articleId, userId, userType) {
 async function updateArticle(articleId, updateData, userId, userType) {
     if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
 
+    // 权限在模型层再次兜底：普通用户不能设置 published/rejected。
+    if (userType === 'normal' && updateData.state !== undefined && updateData.state !== 'draft') return 0
+
     // 筛选非空的更新字段，映射前端驼峰→数据库下划线
     const fieldMap = {
         subsetId: 'subset_id',
@@ -210,8 +213,9 @@ async function updateArticle(articleId, updateData, userId, userType) {
     const whereParams = [articleId, 'deleted'] // 条件参数：先放 ID 和状态
     // 普通用户：只能更新自己的文章（追加 user_id 条件）
     if (userType === 'normal') {
-        whereClause += ' AND user_id = ?'
-        whereParams.push(userId) // 条件参数：追加用户ID
+        // 普通用户只能编辑自己的草稿/驳回文章，不能直接修改已发布文章。
+        whereClause += " AND user_id = ? AND state IN ('draft', 'rejected')"
+        whereParams.push(userId)
     }
 
     // 发布时自动填充 published_at
@@ -273,6 +277,9 @@ async function deleteArticle(articleId, userId, userType) {
 async function updateArticleStatus(articleId, state, userId, userType) {
     if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
 
+    // 普通用户只能把被驳回的自己的文章退回草稿。
+    if (userType === 'normal' && state !== 'draft') return 0
+
     //  状态合法性校验（适配数据库enum）
     if (!['draft', 'published', 'rejected'].includes(state)) {
         console.warn(`[DB] 无效状态值：${state}`);
@@ -285,7 +292,7 @@ async function updateArticleStatus(articleId, state, userId, userType) {
 
     // 权限控制：普通用户只能修改自己的文章
     if (userType === 'normal') {
-        whereClause += ' AND article.user_id = ?';
+        whereClause += " AND article.user_id = ? AND article.state = 'rejected'";
         whereParams.push(userId);
     }
 
