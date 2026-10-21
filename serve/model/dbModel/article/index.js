@@ -177,6 +177,8 @@ async function findAtricleById(articleId, userId, userType) {
  */
 async function updateArticle(articleId, updateData, userId, userType) {
     if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    // 普通用户可编辑自己的文章内容，但不能通过通用更新接口绕过审核修改状态。
+    if (userType === 'normal' && Object.prototype.hasOwnProperty.call(updateData, 'state')) return 0
 
     // 筛选非空的更新字段，映射前端驼峰→数据库下划线
     const fieldMap = {
@@ -271,7 +273,8 @@ async function deleteArticle(articleId, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function updateArticleStatus(articleId, state, userId, userType) {
-    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    // 状态审核仅允许管理员和编辑操作，普通用户不能自行发布或驳回文章。
+    if (!['admin', 'editor'].includes(userType)) return 0
 
     //  状态合法性校验（适配数据库enum）
     if (!['draft', 'published', 'rejected'].includes(state)) {
