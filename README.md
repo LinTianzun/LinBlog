@@ -23,7 +23,11 @@ npm run build
 
 `build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-21 本地验证构建通过；仍有 MockJS `eval` 警告和单个 500 KB 以上的打包 chunk 警告，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
 
-后端依赖由 `serve/pnpm-lock.yaml` 管理。`serve/package.json` 暂无 `start`、`dev`、`test` 脚本；准备依赖并配置环境变量后，在 `serve/` 目录执行 `node linlog.js`。配置需要 `LINBLOG_JWT_SECRET`（至少 32 个字符的随机值）及可选的 `LINBLOG_DB_PASSWORD`。模板见 `serve/.env.example`；当前项目没有 dotenv 加载器，单纯创建 `.env` 不会自动把变量载入进程。请在启动进程前显式设置环境变量，或使用所用 Node.js 版本支持的环境文件启动方式。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
+后端依赖由 `serve/pnpm-lock.yaml` 管理。`serve/package.json` 暂无 `start`、`dev`、`test` 脚本；准备依赖并配置环境变量后，在 `serve/` 目录执行 `node linlog.js`。配置需要 `LINBLOG_JWT_SECRET`（至少 32 个字符的随机值）和 `LINBLOG_ALLOWED_ORIGINS`（逗号分隔的精确前端来源列表）；`LINBLOG_PORT`、`LINBLOG_DB_HOST`、`LINBLOG_DB_USER`、`LINBLOG_DB_NAME` 可选，数据库密码通过 `LINBLOG_DB_PASSWORD` 设置。模板见 `serve/.env.example`。当前项目没有 dotenv 加载器，单纯创建 `.env` 不会自动把变量载入进程。请在 `serve/` 目录启动时使用 Node.js 支持的环境文件方式，例如 `node --env-file=.env linlog.js`，或在进程管理器/部署平台中注入同名环境变量。缺少 JWT 密钥或允许来源配置、JWT 密钥过短、来源格式错误时，服务会在启动配置阶段给出明确错误并退出。
+
+#### CORS 跨域配置
+
+`LINBLOG_ALLOWED_ORIGINS` 必须列出实际访问前端的完整来源（协议、域名和可选端口），多个来源用英文逗号分隔，例如 `http://localhost:5173,https://blog.example.com`。不要配置路径、尾部斜杠或通配符。后端允许 `Authorization` 请求头以及 `GET`、`POST`、`PUT`、`PATCH`、`DELETE` 等实际使用的方法；浏览器的 `OPTIONS` 预检由 CORS 中间件在路由前处理。来源不在白名单时，响应不会包含允许该来源的 `Access-Control-Allow-Origin`，浏览器因此会阻止跨域读取。生产部署应只填写可信前端来源，并通过部署平台的环境变量管理密钥。
 
 **数据库安全提示：** 后端启动会调用数据库初始化逻辑。首次初始化可创建数据库、表并插入演示数据；已有初始化标记时仍会检查 `article` 表，并可能执行作者列、索引或外键的增量 DDL。仅在确认的本地/隔离数据库上启动；对有价值的数据先审查迁移、备份并验证恢复流程。本文档更新期间未启动后端或执行数据库操作。
 
@@ -47,7 +51,7 @@ npm run build
 * 用户登录/注册及用户管理已有前后端调用，但文章列表仍使用 Mock；评论、消息、分类/标签、文件、图库、日记、天气和统计页面也未全面接入真实 API。
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；新表定义和启动时增量迁移代码已加入，但现有数据库迁移、历史数据兼容和实际 MySQL 行为尚未验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥改为环境变量 `LINBLOG_JWT_SECRET` 并要求至少 32 字符；`.env.example` 只是模板，当前项目没有自动加载 `.env` 的逻辑。登录和认证中间件都会拒绝禁用账号，但缺少这些行为的自动化接口测试。
-* `serve/linlog.js` 使用 `config.allowedOrigins`，但 `serve/config/default.js` 未定义该值；CORS `allowedHeaders` 未列 `Authorization`，`methods` 未列 `PATCH`。Vite 同源代理开发路径不代表跨域部署已验证。不要把前端路由守卫视为后端接口授权的替代。
+* CORS 配置从必填环境变量 `LINBLOG_ALLOWED_ORIGINS` 读取精确来源白名单；`Authorization` 请求头、`PATCH` 方法和 `OPTIONS` 预检均已纳入配置。Vite 同源代理开发路径不代表跨域部署已验证。不要把前端路由守卫视为后端接口授权的替代。
 * 后端当前没有统一的自动化测试脚本。`serve/test/articleModel.test.js` 是使用查询替身的模型隔离测试，不连接 MySQL，也不覆盖真实 HTTP 接口。
 
 # LinBlog数据库
