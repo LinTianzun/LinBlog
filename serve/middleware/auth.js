@@ -30,6 +30,10 @@ async function authMiddleware(req, res, next) {
         if (userResult.length === 0) {
             return res.status(401).json({ code: 401, message: '用户不存在' });
         }
+        // status=1 表示启用；每次请求都重新读取数据库状态，立即使禁用账号的旧 Token 失效。
+        if (Number(userResult[0].status) !== 1) {
+            return res.status(403).json({ code: 403, message: '账号已禁用，请联系管理员' });
+        }
         // 挂载用户核心信息到 req.user（供后续接口使用）
         req.user = {
             userId: decoded.userId,
