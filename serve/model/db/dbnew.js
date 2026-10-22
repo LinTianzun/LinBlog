@@ -599,12 +599,10 @@ function initPool() {
     database: 'linlog',
     charset: 'utf8mb4',
     connectTimeout: 15000,
-    acquireTimeout: 15000,
     waitForConnections: true,
     queueLimit: 100,
     supportBigNumbers: true,
     bigNumberStrings: false,
-    timeout: 30000,
   });
   pool.on('error', handlePoolError);
   console.log('[DB] 数据库连接池初始化完成（可正常提供业务查询）');
