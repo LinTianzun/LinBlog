@@ -1,13 +1,6 @@
 const mysql = require('mysql2');
 const config = require('../../config/default');
-const fs = require('fs').promises;
-const path = require('path');
 const bcrypt = require('bcrypt');
-
-// -------------------------- 关键优化：使用绝对路径存储标记文件（避免路径问题）--------------------------
-const baseMarkPath = path.resolve(__dirname, '../'); // 标记文件存储在 model 目录下
-const markFilePath = path.join(baseMarkPath, '.db_initialized'); // 数据库初始化完成标记
-const mockDataMarkPath = path.join(baseMarkPath, '.mock_data_inserted'); // 模拟数据插入标记
 
 // 初始化状态标记与锁
 let isInited = false;
@@ -15,60 +8,31 @@ let initPromise = null;
 let pool = null; // 连接池全局变量
 
 // -------------------------- 工具函数 --------------------------
-/**
- * 检查数据库是否已初始化（表已创建）
- */
-async function checkPersistMark() {
-  try {
-    await fs.access(markFilePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 写入数据库初始化完成标记
- */
-async function writePersistMark() {
-  try {
-    await fs.writeFile(markFilePath, `Initialized at: ${new Date().toISOString()}`);
-    console.log('[DB] 已写入数据库初始化标记文件');
-  } catch (err) {
-    console.warn('[DB] 标记文件写入失败（不影响功能，但下次启动可能重复初始化）：', err);
-  }
-}
-
-/**
- * 检查模拟数据是否已插入
- */
-async function checkMockDataInserted() {
-  try {
-    await fs.access(mockDataMarkPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+let createConn = null; // 每次初始化单独创建，失败后可安全重试
 /**
  * 单连接查询方法（仅首次初始化用）
  */
-const createConn = mysql.createConnection({
+const createConnConfig = {
   host: config.database.HOST,
   user: config.database.USER,
   password: config.database.PASSWORD,
   charset: 'utf8mb4'
-});
+};
 
 const baseQuery = (sql, values = []) => {
   return new Promise((resolve, reject) => {
+    if (!createConn) return reject(new Error('初始化数据库连接不可用'));
     createConn.query(sql, values, (err, result) => {
       if (err) reject(err);
       else resolve(result);
     });
   });
 };
+
+const connectionAction = (action) => new Promise((resolve, reject) => {
+  if (!createConn) return reject(new Error('初始化数据库连接不可用'));
+  createConn[action]((err) => err ? reject(err) : resolve());
+});
 
 /**
  * 连接池查询方法（对外暴露，业务使用）
@@ -105,7 +69,7 @@ const handlePoolError = (err) => {
   }
 };
 
-// -------------------------- 数据库与表结构SQL（仅首次执行）--------------------------
+// -------------------------- 数据库与表结构SQL（每次启动校验，缺失时补建）--------------------------
 const createDbSql = `
   CREATE DATABASE IF NOT EXISTS linlog 
   DEFAULT CHARACTER SET utf8mb4 
@@ -288,9 +252,12 @@ const tablesSql = {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='访问记录表';`
 };
 
-// -------------------------- 模拟数据插入（仅首次执行）--------------------------
+// -------------------------- 模拟数据插入（事务保护，避免失败后留下半套数据）--------------------------
 async function insertMockData() {
+  let transactionStarted = false;
   try {
+    await connectionAction('beginTransaction');
+    transactionStarted = true;
     console.log('[DB] 开始插入模拟数据...');
 
     const passwordHash = await bcrypt.hash('123456', 10);
@@ -459,15 +426,24 @@ async function insertMockData() {
     // 8. 插入评论数据
     const comments = [
       { user_id: userIds[2], article_id: articleIds[0], parent_id: 0, content: '请问Vite怎么配置跨域呀？' },
-      { user_id: userIds[1], article_id: articleIds[0], parent_id: 1, content: '在vite.config.js中配置server.proxy即可，示例：proxy: { "/api": { target: "http://localhost:3000", changeOrigin: true } }' },
+      { user_id: userIds[1], article_id: articleIds[0], parentIndex: 0, content: '在vite.config.js中配置server.proxy即可，示例：proxy: { "/api": { target: "http://localhost:3000", changeOrigin: true } }' },
       { user_id: userIds[3], article_id: articleIds[0], parent_id: 0, content: '文章写得很详细，已经成功搭建了项目，感谢分享！' },
       { user_id: userIds[4], article_id: articleIds[1], parent_id: 0, content: '请问这个徒步路线具体在哪里呀？' },
-      { user_id: userIds[2], article_id: articleIds[1], parent_id: 4, content: '是XX市的青山国家森林公园，导航直接搜就能到，门票20元～' },
+      { user_id: userIds[2], article_id: articleIds[1], parentIndex: 3, content: '是XX市的青山国家森林公园，导航直接搜就能到，门票20元～' },
       { user_id: userIds[1], article_id: articleIds[2], parent_id: 0, content: '可乐鸡翅看起来好香！请问煮的时候需要盖盖子吗？' },
-      { user_id: userIds[3], article_id: articleIds[2], parent_id: 6, content: '需要盖盖子煮10分钟，最后开盖收汁，这样更入味～' }
+      { user_id: userIds[3], article_id: articleIds[2], parentIndex: 5, content: '需要盖盖子煮10分钟，最后开盖收汁，这样更入味～' }
     ];
+    const commentIds = [];
     for (const comment of comments) {
-      await baseQuery(`INSERT INTO comment (user_id, article_id, parent_id, content) VALUES (?, ?, ?, ?)`, [comment.user_id, comment.article_id, comment.parent_id, comment.content]);
+      const parentId = comment.parentIndex === undefined ? 0 : commentIds[comment.parentIndex];
+      if (comment.parentIndex !== undefined && parentId === undefined) {
+        throw new Error(`模拟评论的父评论索引无效：${comment.parentIndex}`);
+      }
+      const result = await baseQuery(
+        `INSERT INTO comment (user_id, article_id, parent_id, content) VALUES (?, ?, ?, ?)`,
+        [comment.user_id, comment.article_id, parentId, comment.content]
+      );
+      commentIds.push(result.insertId);
     }
     console.log(`[DB] 插入 ${comments.length} 条评论数据（含回复）`);
 
@@ -537,10 +513,17 @@ async function insertMockData() {
     }
     console.log(`[DB] 插入 ${records.length} 条访问记录数据`);
 
-    // 写入模拟数据标记
-    await fs.writeFile(mockDataMarkPath, `Mock data inserted at: ${new Date().toISOString()}`);
+    await connectionAction('commit');
+    transactionStarted = false;
     console.log('[DB] 模拟数据插入完成！');
   } catch (err) {
+    if (transactionStarted) {
+      try {
+        await connectionAction('rollback');
+      } catch (rollbackErr) {
+        console.error('[DB] 模拟数据事务回滚失败：', rollbackErr);
+      }
+    }
     console.error('[DB] 模拟数据插入失败：', err);
     throw err;
   }
@@ -548,45 +531,57 @@ async function insertMockData() {
 
 // -------------------------- 首次初始化逻辑（仅执行一次）--------------------------
 async function doInit() {
+  let connected = false;
   try {
-    // 1. 连接单连接（仅首次创建表用）
+    createConn = mysql.createConnection(createConnConfig);
     await new Promise((resolve, reject) => {
       createConn.connect((err) => err ? reject(err) : resolve());
     });
-    console.log('[DB] 单连接成功（首次初始化）');
+    connected = true;
+    console.log('[DB] 初始化连接成功');
 
-    // 2. 创建数据库
     await baseQuery(createDbSql);
-    console.log('[DB] 数据库 linlog 创建完成');
-
-    // 3. 切换数据库
     await baseQuery('USE linlog;');
-    console.log('[DB] 已切换到 linlog 数据库');
 
-    // 4. 创建所有数据表
+    // 每次启动都执行 IF NOT EXISTS，确保缺失的表能够补建。
     const createOrder = ['users', 'subset', 'weather', 'label', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record'];
     for (const tableName of createOrder) {
       await baseQuery(tablesSql[tableName]);
-      console.log(`[DB] 数据表 ${tableName} 创建完成`);
     }
 
-    // 5. 插入模拟数据
-    await insertMockData();
+    // 先补齐文章作者结构，避免旧数据库缺少 user_id 时无法写入种子文章。
+    await ensureArticleOwnerSchemaWith(baseQuery);
 
-    // 6. 关闭单连接（后续不再使用）
-    await new Promise((resolve, reject) => {
-      createConn.end((err) => err ? reject(err) : resolve());
-    });
-    console.log('[DB] 单连接已关闭（首次初始化完成）');
-
-    // 7. 写入初始化标记（关键：后续启动不再执行上述步骤）
-    await writePersistMark();
-
-    // 8. 初始化连接池（供业务使用）
-    initPool();
+    // 数据库是全新/空数据时填充演示数据；已存在种子管理员时不重复插入。
+    const [seedAdmin] = await baseQuery(
+      'SELECT id FROM users WHERE mail = ? LIMIT 1',
+      ['admin@linlog.com']
+    );
+    if (seedAdmin) {
+      console.log('[DB] 检测到演示管理员账号，跳过模拟数据插入');
+    } else {
+      await insertMockData();
+    }
   } catch (err) {
-    console.error('[DB] 首次初始化失败：', err);
+    console.error('[DB] 数据库结构或模拟数据初始化失败：', err);
     throw err;
+  } finally {
+    if (createConn) {
+      if (connected) {
+        try {
+          await new Promise((resolve, reject) => {
+            createConn.end((err) => err ? reject(err) : resolve());
+          });
+        } catch (closeErr) {
+          console.warn('[DB] 关闭初始化连接时发生错误：', closeErr);
+          createConn.destroy();
+        }
+      } else {
+        // connect 失败时也销毁底层连接，避免重试时遗留句柄。
+        createConn.destroy();
+      }
+      createConn = null;
+    }
   }
 }
 
@@ -615,8 +610,8 @@ function initPool() {
   console.log('[DB] 数据库连接池初始化完成（可正常提供业务查询）');
 }
 
-async function ensureArticleOwnerSchema() {
-  const [ownerColumn] = await query(`
+async function ensureArticleOwnerSchemaWith(queryFn) {
+  const [ownerColumn] = await queryFn(`
     SELECT COLUMN_NAME
     FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE()
@@ -624,13 +619,13 @@ async function ensureArticleOwnerSchema() {
       AND COLUMN_NAME = 'user_id'
   `);
   if (!ownerColumn) {
-    await query(`
+    await queryFn(`
       ALTER TABLE article
       ADD COLUMN user_id BIGINT UNSIGNED NULL COMMENT '作者ID' AFTER id
     `);
   }
 
-  const [ownerIndex] = await query(`
+  const [ownerIndex] = await queryFn(`
     SELECT INDEX_NAME
     FROM information_schema.STATISTICS
     WHERE TABLE_SCHEMA = DATABASE()
@@ -640,10 +635,10 @@ async function ensureArticleOwnerSchema() {
       AND SEQ_IN_INDEX = 1
   `);
   if (!ownerIndex) {
-    await query('ALTER TABLE article ADD INDEX idx_article_user (user_id)');
+    await queryFn('ALTER TABLE article ADD INDEX idx_article_user (user_id)');
   }
 
-  const [ownerConstraint] = await query(`
+  const [ownerConstraint] = await queryFn(`
     SELECT CONSTRAINT_NAME
     FROM information_schema.KEY_COLUMN_USAGE
     WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -653,7 +648,7 @@ async function ensureArticleOwnerSchema() {
       AND REFERENCED_COLUMN_NAME = 'id'
   `);
   if (!ownerConstraint) {
-    await query(`
+    await queryFn(`
       ALTER TABLE article
       ADD CONSTRAINT fk_article_user
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -661,9 +656,11 @@ async function ensureArticleOwnerSchema() {
   }
 }
 
+async function ensureArticleOwnerSchema() {
+  return ensureArticleOwnerSchemaWith(query);
+}
 // -------------------------- 对外暴露的初始化函数（核心入口）--------------------------
 async function initDatabase() {
-  // 防止并发调用
   if (initPromise) {
     console.log('[DB] 初始化中，等待完成...');
     return initPromise;
@@ -671,17 +668,9 @@ async function initDatabase() {
 
   initPromise = (async () => {
     try {
-      // 检查是否已初始化（通过标记文件）
-      const hasInit = await checkPersistMark();
-      if (hasInit) {
-        console.log('[DB] 检测到已完成首次初始化，直接初始化连接池...');
-        initPool(); // 仅初始化连接池，跳过所有创建/插入操作
-      } else {
-        // 未初始化：执行首次初始化（创建表+插入数据）
-        console.log('[DB] 未检测到初始化标记，执行首次初始化...');
-        await doInit();
-      }
-
+      // 不依赖本地标记文件；每次启动均校验/补建表结构。
+      await doInit();
+      initPool();
       await ensureArticleOwnerSchema();
       isInited = true;
       console.log('[DB] 数据库结构检查完成，服务启动成功！');
