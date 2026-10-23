@@ -168,6 +168,32 @@ async function findAtricleById(articleId, userId, userType) {
 }
 
 /**
+ * 更新前判断文章是否存在及当前用户是否有修改权限。
+ * 避免把“字段值未变化”产生的 0 影响行数误判为无权限。
+ */
+async function findArticleMutationAccess(articleId, userId, userType, action = 'update') {
+    const rows = await query(
+        'SELECT id, user_id, state FROM article WHERE id = ? LIMIT 1',
+        [articleId]
+    )
+
+    if (rows.length === 0 || rows[0].state === 'deleted') {
+        return { exists: false, allowed: false, article: null }
+    }
+
+    const article = rows[0]
+    let allowed = ['admin', 'editor'].includes(userType)
+
+    if (userType === 'normal') {
+        const editableStates = action === 'status' ? ['rejected'] : ['draft', 'rejected']
+        allowed = Number(article.user_id) === Number(userId) &&
+            editableStates.includes(article.state)
+    }
+
+    return { exists: true, allowed, article }
+}
+
+/**
  * 编辑更新文章（适配真实字段，支持部分更新）
  * @param {number} articleId - 文章ID
  * @param {Object} updateData - 待更新字段
@@ -193,8 +219,19 @@ async function updateArticle(articleId, updateData, userId, userType) {
         state: 'state'
     }
 
+    const nullableFields = new Set([
+        'subset_id',
+        'label',
+        'introduce',
+        'cover'
+    ])
+
     const updateFields = Object.entries(updateData)
-        .filter(([_, value]) => value !== undefined && value !== null)
+        .filter(([key, value]) => {
+            if (value === undefined) return false
+            if (value === null) return nullableFields.has(fieldMap[key])
+            return true
+        })
         .map(([key]) => fieldMap[key])
         .filter(key => key) // 过滤无效字段
 
@@ -320,6 +357,7 @@ module.exports = {
     findAtricleStateById,
     findArticlesByPage,
     findAtricleById,
+    findArticleMutationAccess,
     updateArticle,
     deleteArticle,
     updateArticleStatus,

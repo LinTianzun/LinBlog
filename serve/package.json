@@ -1,4 +1,14 @@
 {
+	"name": "linblog-server",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"start": "node linlog.js",
+		"dev": "node --watch linlog.js",
+		"test": "node --test test/articleModel.test.js test/commentSecurity.test.js test/userSecurity.test.js test/userModelAdminGuard.test.js test/messageController.test.js test/authMiddleware.test.js test/dbMigration.test.js test/normalizeBody.test.js",
+		"db:migrate": "node scripts/migrate.js",
+		"db:seed": "node scripts/seed-demo.js"
+	},
 	"dependencies": {
 		"bcrypt": "^6.0.0",
 		"cors": "^2.8.5",

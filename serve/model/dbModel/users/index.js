@@ -1,4 +1,36 @@
-const { query } = require('../../db/dbnew')
+const { query, withTransaction } = require('../../db/dbnew')
+
+function executeOnConnection(connection, sql, values = []) {
+    return new Promise((resolve, reject) => {
+        connection.query(sql, values, (err, result) => {
+            if (err) reject(err)
+            else resolve(result)
+        })
+    })
+}
+
+function countActiveAdmins(admins) {
+    return admins.filter((admin) => Number(admin.status) === 1).length
+}
+
+async function lockAdminAccounts(exec) {
+    return exec(`
+        SELECT id, user_type, status
+        FROM users
+        WHERE user_type = ?
+        ORDER BY id
+        FOR UPDATE
+    `, ['admin'])
+}
+
+async function lockUserById(exec, userId) {
+    return exec(`
+        SELECT id, user_type, status
+        FROM users
+        WHERE id = ?
+        FOR UPDATE
+    `, [userId])
+}
 
 // 按「用户名/邮箱」查询用户（支持双登录）
 async function findUserByAccount(account) {
@@ -70,7 +102,7 @@ async function insertUserByAdmin(userInfo) {
 }
 
 // 管理员更新用户资料
-async function updateUserByAdmin(userId, userInfo) {
+async function updateUserByAdmin(userId, userInfo, exec = query) {
     const { username, mail, user_type } = userInfo;
 
     const sql = `
@@ -79,18 +111,18 @@ async function updateUserByAdmin(userId, userInfo) {
         WHERE id = ?
     `;
 
-    return query(sql, [username, mail, user_type, userId]);
+    return exec(sql, [username, mail, user_type, userId]);
 }
 
 // 管理员修改用户启用/禁用状态
-async function updateUserStatus(userId, status) {
+async function updateUserStatus(userId, status, exec = query) {
     const sql = `
         UPDATE users
         SET status = ?
         WHERE id = ?
     `;
 
-    return query(sql, [status, userId]);
+    return exec(sql, [status, userId]);
 }
 
 // 分页查询用户，支持关键词搜索和全局角色统计
@@ -178,11 +210,105 @@ async function countAdminUsers() {
 }
 
 // 根据用户 ID 删除用户
-async function deleteUserByAdmin(userId) {
-    return query(
+async function deleteUserByAdmin(userId, exec = query) {
+    return exec(
         'DELETE FROM users WHERE id = ?',
         [userId]
     );
+}
+
+async function updateUserByAdminGuarded(userId, userInfo, currentUserId) {
+    return withTransaction(async (connection) => {
+        const exec = (sql, values = []) => executeOnConnection(connection, sql, values)
+        const admins = await lockAdminAccounts(exec)
+        const targetRows = await lockUserById(exec, userId)
+
+        if (targetRows.length === 0) {
+            return { ok: false, reason: 'not_found' }
+        }
+
+        const target = targetRows[0]
+
+        if (
+            String(userId) === String(currentUserId) &&
+            userInfo.user_type !== target.user_type
+        ) {
+            return { ok: false, reason: 'self_role_change' }
+        }
+
+        const removesActiveAdmin =
+            target.user_type === 'admin' &&
+            Number(target.status) === 1 &&
+            userInfo.user_type !== 'admin'
+
+        if (removesActiveAdmin && countActiveAdmins(admins) <= 1) {
+            return { ok: false, reason: 'last_admin' }
+        }
+
+        await updateUserByAdmin(userId, userInfo, exec)
+        return { ok: true }
+    })
+}
+
+async function updateUserStatusGuarded(userId, status, currentUserId) {
+    return withTransaction(async (connection) => {
+        const exec = (sql, values = []) => executeOnConnection(connection, sql, values)
+        const admins = await lockAdminAccounts(exec)
+        const targetRows = await lockUserById(exec, userId)
+
+        if (targetRows.length === 0) {
+            return { ok: false, reason: 'not_found' }
+        }
+
+        if (String(userId) === String(currentUserId)) {
+            return { ok: false, reason: 'self_status_change' }
+        }
+
+        const target = targetRows[0]
+        const disablesLastActiveAdmin =
+            status === 0 &&
+            target.user_type === 'admin' &&
+            Number(target.status) === 1 &&
+            countActiveAdmins(admins) <= 1
+
+        if (disablesLastActiveAdmin) {
+            return { ok: false, reason: 'last_admin' }
+        }
+
+        await updateUserStatus(userId, status, exec)
+        return { ok: true }
+    })
+}
+
+async function deleteUserByAdminGuarded(userId, currentUserId) {
+    return withTransaction(async (connection) => {
+        const exec = (sql, values = []) => executeOnConnection(connection, sql, values)
+        const admins = await lockAdminAccounts(exec)
+        const targetRows = await lockUserById(exec, userId)
+
+        if (targetRows.length === 0) {
+            return { ok: false, reason: 'not_found' }
+        }
+
+        if (String(userId) === String(currentUserId)) {
+            return { ok: false, reason: 'self_delete' }
+        }
+
+        const target = targetRows[0]
+        const deletesLastActiveAdmin =
+            target.user_type === 'admin' &&
+            Number(target.status) === 1 &&
+            countActiveAdmins(admins) <= 1
+
+        if (deletesLastActiveAdmin) {
+            return { ok: false, reason: 'last_admin' }
+        }
+
+        const result = await deleteUserByAdmin(userId, exec)
+        return result.affectedRows === 1
+            ? { ok: true }
+            : { ok: false, reason: 'not_found' }
+    })
 }
 
 module.exports = {
@@ -194,7 +320,10 @@ module.exports = {
     insertUserByAdmin,
     updateUserByAdmin,
     updateUserStatus,
+    updateUserByAdminGuarded,
+    updateUserStatusGuarded,
     findUsersByPage,
     countAdminUsers,
-    deleteUserByAdmin
+    deleteUserByAdmin,
+    deleteUserByAdminGuarded
 }
