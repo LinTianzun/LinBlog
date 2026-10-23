@@ -3,7 +3,7 @@
         <div class="card-title">
             <p class="card-title-name">评论 {{count}}</p>
         </div>
-        <yk-scrollbar ref="scrollbar" :height="height" style="padding: 0 24px;">
+        <yk-scrollbar ref="scrollbar"  style="padding: 0 24px; height: calc(100vh * 0.55); border-bottom: 1px solid rgba(30,32,37,0.08);">
             <yk-space dir="vertical">
                 <reply v-for="item in comments" :key="item.id" :content="item" is-comment @delete="deleteComment" />
             </yk-space>
@@ -24,7 +24,7 @@
 
     const props = withDefaults(defineProps < CommentProps > (), {
         pageSize: 8,
-        height: "490px",
+        height: "calc(100vh * 0.67)",
     })
 
     //  评论总数
@@ -80,7 +80,8 @@ const deleteComment = (id: string | number) => {
     .comment {
         position: relative;
         padding: @space-xl 0 64px;
-        ;
+        height: calc(100vh * 0.67);
+            /* 固定高度为屏幕高度 */
         /* height: 100vh;
         overflow: hidden; */
         /* padding-bottom: 64px; */
@@ -98,7 +99,7 @@ const deleteComment = (id: string | number) => {
             padding: @space-l @space-xl;
             align-items: center;
             justify-content: flex-end;
-            border-top: 1px solid @line-color-s;
+            // border-top: 1px solid @line-color-s;
         }
     }
 </style>
