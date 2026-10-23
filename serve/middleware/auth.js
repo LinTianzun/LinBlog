@@ -24,7 +24,16 @@ async function authMiddleware(req, res, next) {
             })
         }
 
-        const decoded = verifyToken(token)
+        let decoded
+
+        try {
+            decoded = verifyToken(token)
+        } catch (err) {
+            return res.status(401).json({
+                code: 401,
+                message: err.message || 'Token 无效或已过期'
+            })
+        }
 
         if (!decoded || !decoded.userId) {
             return res.status(401).json({
@@ -33,7 +42,17 @@ async function authMiddleware(req, res, next) {
             })
         }
 
-        const userResult = await userModel.findUserById(decoded.userId)
+        let userResult
+
+        try {
+            userResult = await userModel.findUserById(decoded.userId)
+        } catch (err) {
+            console.error('[Auth] 查询用户失败：', err)
+            return res.status(503).json({
+                code: 503,
+                message: '认证服务暂时不可用，请稍后重试'
+            })
+        }
 
         if (!userResult || userResult.length === 0) {
             return res.status(401).json({
@@ -59,9 +78,10 @@ async function authMiddleware(req, res, next) {
 
         return next()
     } catch (err) {
-        return res.status(401).json({
-            code: 401,
-            message: err.message || 'Token 校验失败，请重新登录'
+        console.error('[Auth] 认证中间件异常：', err)
+        return res.status(500).json({
+            code: 500,
+            message: '认证服务内部错误'
         })
     }
 }

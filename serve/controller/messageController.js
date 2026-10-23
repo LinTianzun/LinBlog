@@ -10,26 +10,35 @@ async function sendMessage(req, res) {
         const { userId, userType } = req.user
 
         //  参数校验
-        if (!receiverId || !type || !content) {
+        if (receiverId === undefined || receiverId === null || !type || !content) {
             return res.status(400).json({ code: 400, message: '接收者ID、消息类型、消息内容不能为空' })
         }
-        if (isNaN(receiverId)) {
+        const normalizedReceiverId = Number(receiverId)
+        if (!Number.isSafeInteger(normalizedReceiverId) || normalizedReceiverId <= 0) {
             return res.status(400).json({ code: 400, message: '接收者ID必须是有效数字' });
         }
         if (!['system', 'private', 'notice'].includes(type)) {
             return res.status(400).json({ code: 400, message: '消息类型仅支持 system/private/notice' });
         }
-        if (content.length > 512) {
+        if (typeof content !== 'string' || !content.trim()) {
+            return res.status(400).json({ code: 400, message: '消息内容必须是非空字符串' });
+        }
+        const normalizedContent = content.trim()
+        if (normalizedContent.length > 512) {
             return res.status(400).json({ code: 400, message: '消息内容不能超过512字' });
         }
 
-        // 权限控制：普通用户仅能发送private消息
-        if (userType === 'normal' && type !== 'private') {
-            return res.status(403).json({ code: 403, message: '普通用户仅能发送私信（private类型）' });
+        // 系统消息、通知只能由管理员发送，避免普通账号伪造通知。
+        if (userType !== 'admin' && type !== 'private') {
+            return res.status(403).json({ code: 403, message: '仅管理员可以发送系统消息或通知' });
         }
 
         //  调用模型发送消息
-        const result = await messageModel.insertMessage({ receiverId, type, content }, userId)
+        const result = await messageModel.insertMessage({
+            receiverId: normalizedReceiverId,
+            type,
+            content: normalizedContent
+        }, userId)
 
         res.status(201).json({
             code: 200,

@@ -23,9 +23,18 @@ npm run build
 
 `build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-21 本地验证构建通过；仍有 MockJS `eval` 警告和单个 500 KB 以上的打包 chunk 警告，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
 
-后端依赖由 `serve/pnpm-lock.yaml` 管理。`serve/package.json` 暂无 `start`、`dev`、`test` 脚本；准备依赖并配置环境变量后，在 `serve/` 目录执行 `node linlog.js`。配置需要 `LINBLOG_JWT_SECRET`（至少 32 个字符的随机值）及可选的 `LINBLOG_DB_PASSWORD`。模板见 `serve/.env.example`；当前项目没有 dotenv 加载器，单纯创建 `.env` 不会自动把变量载入进程。请在启动进程前显式设置环境变量，或使用所用 Node.js 版本支持的环境文件启动方式。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
+后端在 `serve/` 目录执行：
 
-**数据库安全提示：** 后端启动会调用数据库初始化逻辑。首次初始化可创建数据库、表并插入演示数据；已有初始化标记时仍会检查 `article` 表，并可能执行作者列、索引或外键的增量 DDL。仅在确认的本地/隔离数据库上启动；对有价值的数据先审查迁移、备份并验证恢复流程。本文档更新期间未启动后端或执行数据库操作。
+```sh
+npm test
+npm run db:migrate
+npm run db:seed
+npm start
+```
+
+`serve/.env.example` 提供 JWT、数据库连接、CORS 和 JSON 请求体限制的配置模板；`serve/linlog.js` 会通过 Node.js 的 `loadEnvFile` 加载 `.env`。`LINBLOG_JWT_SECRET` 至少需要 32 个字符。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
+
+**数据库安全提示：** 后端启动会幂等创建数据库和表，并执行 `schema_migrations` 中尚未应用的增量迁移，但不会自动插入演示数据。需要演示数据时显式执行 `npm run db:seed`；该脚本在 `users` 表已有数据时跳过。对有价值的数据仍应先备份并在隔离环境验证迁移。
 
 ### 已注册的后端 API
 
@@ -45,10 +54,10 @@ npm run build
 * 用户管理 CRUD 和账号启停用已有接口及页面处理；“编辑与普通用户”统计仍使用“总用户数减管理员数”，会将游客计入。公开注册只检查邮箱是否已注册，未显式检查用户名冲突；用户名唯一键冲突的错误处理需要补齐。
 * 前端构建目前通过，但打包有 MockJS `eval` 警告和大 chunk 警告；需评估 MockJS 移除/隔离及按需拆包，不应只提高警告阈值。
 * 用户登录/注册及用户管理已有前后端调用，但文章列表仍使用 Mock；评论、消息、分类/标签、文件、图库、日记、天气和统计页面也未全面接入真实 API。
-* 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；新表定义和启动时增量迁移代码已加入，但现有数据库迁移、历史数据兼容和实际 MySQL 行为尚未验证。历史文章作者列允许为 `NULL`。
-* JWT 密钥改为环境变量 `LINBLOG_JWT_SECRET` 并要求至少 32 字符；`.env.example` 只是模板，当前项目没有自动加载 `.env` 的逻辑。登录和认证中间件都会拒绝禁用账号，但缺少这些行为的自动化接口测试。
-* `serve/linlog.js` 使用 `config.allowedOrigins`，但 `serve/config/default.js` 未定义该值；CORS `allowedHeaders` 未列 `Authorization`，`methods` 未列 `PATCH`。Vite 同源代理开发路径不代表跨域部署已验证。不要把前端路由守卫视为后端接口授权的替代。
-* 后端当前没有统一的自动化测试脚本。`serve/test/articleModel.test.js` 是使用查询替身的模型隔离测试，不连接 MySQL，也不覆盖真实 HTTP 接口。
+* 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
+* JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
+* CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
+* 后端已有 `npm test` 脚本，默认覆盖文章、评论、用户权限、消息角色、认证故障、迁移幂等和请求体归一化；测试使用模块替身，不替代真实 MySQL 集成测试。
 
 # LinBlog数据库
 
@@ -284,15 +293,18 @@ label（标签）
 
 ### 初始化流程
 
-1. 首次启动：
-   - 检查 `serve/model/.db_initialized` 标记文件，不存在则执行初始化。
-   - 步骤：创建数据库 → 切换数据库 → 按顺序创建 11 张表 → 插入模拟数据 → 写入初始化标记 → 初始化连接池 → 检查文章作者字段。
-2. 后续启动：
-   - 检测到标记文件，初始化连接池并检查文章作者字段；缺少作者字段、索引或外键时执行只增加结构的兼容迁移，不重建表或删除数据。
+每次启动都会执行幂等结构检查：
+
+1. 创建数据库（`CREATE DATABASE IF NOT EXISTS`）。
+2. 切换数据库并按依赖顺序创建 11 张表（`CREATE TABLE IF NOT EXISTS`）。
+3. 创建 `schema_migrations` 并执行尚未登记的迁移。
+4. 初始化业务连接池。
+
+演示数据不随服务启动自动写入，需显式执行 `npm run db:seed`。
 
 ### 模拟数据说明
 
-初始化时自动插入测试数据，方便开发调试：
+执行 `npm run db:seed` 时插入测试数据，方便开发调试：
 
 - **用户数据**：5 个测试账号（管理员 / 编辑 / 普通用户 / 游客），默认密码 `123456`。
 - **分类数据**：7 个分类（技术博客 / 生活随笔 / 风景摄影等）。
@@ -301,7 +313,7 @@ label（标签）
 - **个人数据**：3 条日记、5 条天气字典记录。
 - **通知数据**：5 条消息（系统消息 / 私信 / 通知）。
 - **统计数据**：5 条访问记录（含游客访问）。
-- 模拟数据标记：`.mock_data_inserted` 会在种子数据插入完成后写入；当前初始化流程实际以 `.db_initialized` 决定是否执行首次初始化，未使用该模拟数据标记进行独立的重复插入检查。
+- 播种过程在事务中执行，并以 `users` 表是否已有记录作为幂等判断；不再依赖文件标记。
 
 ### 连接池配置
 
@@ -311,15 +323,14 @@ label（标签）
 | host             | 从config读取 | 数据库服务器地址                      |
 | user             | 从config读取 | 数据库登录账号                        |
 | password         | 从config读取 | 数据库登录密码                        |
-| database         | linlog       | 目标数据库名                          |
+| database         | 从config读取 | 目标数据库名（`LINBLOG_DB_NAME`）     |
 | charset          | utf8mb4      | 字符集                                |
 | connectTimeout   | 15000ms      | 连接超时时间                          |
-| acquireTimeout   | 15000ms      | 获取连接超时时间                      |
 | waitForConnections| true        | 连接耗尽时等待（而非直接报错）        |
 | queueLimit       | 100          | 等待队列上限                          |
 | supportBigNumbers| true         | 支持 BIGINT 等大数字类型              |
 | bigNumberStrings | false        | 大数字返回 Number 类型（而非字符串）  |
-| timeout          | 30000ms      | 连接空闲超时时间                      |
+| enableKeepAlive  | true         | 启用 TCP Keep-Alive                   |
 
 ---
 
@@ -334,7 +345,7 @@ const db = require('./model/db/dbnew')
 // 项目启动时初始化数据库（必须先执行）
 async function bootstrap() {
   try {
-    // 等待数据库初始化完成（首次启动会创建库表和模拟数据）
+    // 等待数据库结构检查和迁移完成
     await db.initDatabase()
     console.log('数据库初始化成功，可正常执行查询操作')
   } catch (error) {
@@ -359,11 +370,11 @@ bootstrap()
 
 ### 重置数据库
 
-当需要重新初始化数据库时，执行以下步骤：
+当需要重新初始化数据库时，先备份并确认目标为本地/隔离测试库，然后执行：
 
-1. 删除 `serve/model` 目录下的两个标记文件：`.db_initialized` 和 `.mock_data_inserted`。
-2. （可选）手动删除 MySQL 中的 `linlog` 数据库（`DROP DATABASE IF EXISTS linlog;`）。
-3. 重启项目，系统会重新执行 “创建库表 + 插入模拟数据” 流程。
+1. 手动删除目标数据库，例如 `DROP DATABASE IF EXISTS linlog;`。
+2. 在 `serve/` 执行 `npm run db:migrate` 重建库表并应用迁移。
+3. 如需演示数据，执行 `npm run db:seed`。
 
 ### 常见问题排查
 
