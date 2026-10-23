@@ -86,4 +86,41 @@ async function authMiddleware(req, res, next) {
     }
 }
 
-module.exports = { authMiddleware }
+/**
+ * yk-upload 使用 XMLHttpRequest 上传，无法附加自定义请求头。
+ * 仅上传接口允许从 query 读取 Token，再复用统一的认证逻辑。
+ */
+function authMiddlewareFromQuery(req, res, next) {
+    const queryToken = typeof req.query.token === 'string'
+        ? req.query.token.trim()
+        : ''
+
+    if (!queryToken) {
+        return res.status(200).json({
+            code: 401,
+            error: '上传凭证不能为空，请重新登录',
+            message: '上传凭证不能为空，请重新登录'
+        })
+    }
+
+    req.headers.authorization = `Bearer ${queryToken}`
+
+    // yk-upload 不会处理非 200 响应，认证失败也要用 error 字段返回。
+    const uploadResponse = {
+        status() {
+            return {
+                json(payload) {
+                    return res.status(200).json({
+                        code: payload.code,
+                        error: payload.message || '上传认证失败',
+                        message: payload.message || '上传认证失败'
+                    })
+                }
+            }
+        }
+    }
+
+    return authMiddleware(req, uploadResponse, next)
+}
+
+module.exports = { authMiddleware, authMiddlewareFromQuery }

@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 **/node_modules/
+.pnpm-store/
 
 # Local environment variables and secrets
 .env
@@ -23,6 +24,11 @@ pnpm-debug.log*
 # Generated database initialization markers
 serve/model/.db_initialized*
 serve/model/.mock_data_inserted*
+
+# Runtime cover uploads. Bundled xw demo images stay tracked.
+serve/data/img/*
+!serve/data/img/xw*.jpg
+!serve/data/img/xw*.png
 
 # Operating system files
 .DS_Store

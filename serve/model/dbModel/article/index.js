@@ -39,7 +39,10 @@ async function insertArticle(articleInfo) {
  * @returns {Promise<Object>} 分页文章数据
  */
 async function findArticlesByPage(params) {
-    const { page, pageSize, offset, state, classify, subsetId, userId, userType } = params
+    const {
+        page, pageSize, offset, state, classify, subsetId,
+        uncategorized, keyword, userId, userType
+    } = params
     let whereClause = 'a.state != ?'  //  排除已删除文章
     const whereParams = ['deleted']
 
@@ -70,6 +73,23 @@ async function findArticlesByPage(params) {
     if (subsetId && !isNaN(subsetId)) {
         whereClause += ' AND a.subset_id = ?'
         whereParams.push(subsetId)
+    }
+
+    //  筛选条件：未分类
+    if (uncategorized) {
+        whereClause += ' AND a.subset_id IS NULL'
+    }
+
+    //  筛选条件：标题、简介、标签或正文关键词
+    if (keyword) {
+        whereClause += ` AND (
+            a.title LIKE ?
+            OR a.introduce LIKE ?
+            OR a.label LIKE ?
+            OR a.content LIKE ?
+        )`
+        const searchTerm = `%${keyword}%`
+        whereParams.push(searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
     // 查询当前页文章（关联分类表获取分类名称）

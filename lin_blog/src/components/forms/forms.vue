@@ -1,41 +1,44 @@
 <template>
     <div class="forms" :class="{formsHeight:props.classify ? 0 : 1}">
-        <yk-space dir="vertical" size="xl">
-            <input type="text" class="forms-title" v-model="formData.title" placeholder="请输入标题">
+        <div class="forms-layout">
+            <div class="forms-content">
+                <input type="text" class="forms-title" v-model="formData.title" maxlength="150"
+                    placeholder="请输入标题">
 
-            <yk-space style="width: 100%;align-items: center;">
-                <div class="forms-subset">
-                    <input type="text" v-model="subsetName" placeholder="选择分类" style="width: 100px;line-height: 28px;">
-                    <IconDownOutline />
-                    <yk-dropdown @selected="subsetSelect">
+                <div class="forms-meta">
+                    <yk-dropdown :title="subsetName || '选择分类'" type="secondary" size="s" trigger="click"
+                        @selected="subsetSelect">
                         <yk-dropdown-item v-for="(item, index) in subsetList" :key="index"
                             :value="item.id">{{item.name}}</yk-dropdown-item>
                     </yk-dropdown>
+                    <yk-space class="forms-tags" align="center" size="s">
+                        <yk-tag v-for="(tag, index) in formData.label" :key="index" class="tag" shape="round"
+                            @close="deleteLabel(tag)" closeable>
+                            {{ tag }}
+                        </yk-tag>
+                        <yk-text @click="showModal" style="cursor: pointer;white-space: nowrap;" type="third"
+                            v-show="formData.label.length<3">
+                            插入标签
+                        </yk-text>
+                    </yk-space>
                 </div>
-                <yk-space style="align-items: center;width: 100%;" size="s">
-                    <yk-tag v-for="(tag, index) in formData.label" :key="index" class="tag" shape="round"
-                        @close="deleteLabel(tag)" closeable>
-                        {{ tag }}
-                    </yk-tag>
-                    <yk-text @click="showModal" style="cursor: pointer;white-space: nowrap;" type="third"
-                        v-show="formData.label.length<3">
-                        插入标签
-                    </yk-text>
-                </yk-space>
 
-            </yk-space>
-
-            <div :class="{introduce:props.classify ? 0 : 1}">
-                <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
-                    :max-length="800"></yk-text-area>
+                <div :class="{introduce:props.classify ? 0 : 1}">
+                    <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
+                        :max-length="512"></yk-text-area>
+                </div>
             </div>
 
-            <!-- <div v-if="props.classify == 0">
-
-            </div> -->
-        </yk-space>
-        <div class="forms-cover" v-if="props.classify == 0">
-            <yk-upload :limit="1" :file-list="fileUrl" desc="封面 800 X 600" accept="image/*"></yk-upload>
+            <div class="forms-cover" v-if="props.classify == 0">
+                <span class="forms-cover-label">文章封面</span>
+                <yk-upload :file-list="coverFileList" :upload-url="uploadUrl" :limit="1" :multiple="false"
+                    accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
+                    desc="上传封面" @handle-success="handleCoverSuccess"
+                    @handle-error="handleCoverError" @handle-delete="handleCoverDelete" />
+                <p v-if="coverUploadError" class="forms-cover-error">
+                    {{ coverUploadError }}
+                </p>
+            </div>
         </div>
     </div>
 
@@ -60,18 +63,21 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
 import { subset, mklabel } from '../../mock/data.ts'
 import '@wangeditor/editor/dist/css/style.css'
 
 type FormData = {
     title: string
     subsetId: number | undefined
+    subsetName?: string
     label: string[]
     introduce: string
     cover: string
     classify: number
 }
+
+type InitialFormData = Partial<FormData>
 
 type SubsetOption = {
     id: number
@@ -83,16 +89,38 @@ type LabelOption = {
     name: string
 }
 
-const props = defineProps({
-    classify: {
-        type: Number,
-        default: 0,
-    },
+type CoverFile = {
+    name: string
+    url: string
+}
+
+type UploadResponse = {
+    data?: {
+        url?: string
+    }
+    url?: string
+}
+
+const props = withDefaults(defineProps<{
+    classify?: number
+    initialData?: InitialFormData
+}>(), {
+    classify: 0,
+    initialData: undefined,
 })
 
 const emits = defineEmits<{
     formData: [data: FormData]
 }>()
+
+type MessageProxy = {
+    $message?: (options: {
+        type: 'primary' | 'warning' | 'error' | 'success'
+        message: string
+    }) => void
+}
+
+const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 
 const formData = ref<FormData>({
     title: '',
@@ -102,6 +130,13 @@ const formData = ref<FormData>({
     cover: '',
     classify: props.classify,
 })
+
+const emitFormData = (): void => {
+    emits('formData', {
+        ...formData.value,
+        label: [...formData.value.label],
+    })
+}
 
 // 简介行数
 const raws = computed(() => {
@@ -124,11 +159,68 @@ const subsetName = ref<string>('')
 // 分类列表
 const subsetList = ref<SubsetOption[]>([])
 
+// 封面上传
+const coverFileList = ref<CoverFile[]>([])
+const coverUploadError = ref('')
+const uploadUrl = computed(() => {
+    const token = (localStorage.getItem('token') || '').trim()
+    return `/api/upload/image?token=${encodeURIComponent(token)}`
+})
+
+const syncCoverFileList = () => {
+    coverFileList.value = formData.value.cover
+        ? [{ name: '文章封面', url: formData.value.cover }]
+        : []
+}
+
+const handleCoverSuccess = (response: UploadResponse): void => {
+    const url = response.data?.url || response.url
+    if (!url) return
+
+    coverUploadError.value = ''
+    formData.value.cover = url
+    coverFileList.value = [{ name: '文章封面', url }]
+}
+
+const handleCoverError = (error: unknown): void => {
+    let message = '封面上传失败，请确认后端服务已启动并重新登录后再试'
+
+    if (typeof error === 'string' && error.trim()) {
+        message = error
+    } else if (typeof error === 'object' && error !== null) {
+        const response = error as {
+            error?: unknown
+            message?: unknown
+        }
+        const responseMessage = response.error || response.message
+        if (typeof responseMessage === 'string' && responseMessage.trim()) {
+            message = responseMessage
+        }
+    }
+
+    coverUploadError.value = message
+    proxy?.$message?.({ type: 'error', message })
+}
+
+const handleCoverDelete = (): void => {
+    coverUploadError.value = ''
+    formData.value.cover = ''
+    coverFileList.value = []
+}
+
 const getSubset = () => {
     subsetList.value = subset.data.list.map((item: { id: string | number; name: string }) => ({
         id: Number(item.id),
         name: String(item.name),
     }))
+    syncSubsetName()
+}
+
+const syncSubsetName = () => {
+    const selected = subsetList.value.find(
+        item => item.id === formData.value.subsetId
+    )
+    subsetName.value = formData.value.subsetName || selected?.name || ''
 }
 
 // 选择分类
@@ -141,6 +233,7 @@ const subsetSelect = (value: string | number) => {
     const selectedSubset = subsetList.value.find(item => item.id === id)
     if (selectedSubset) {
         subsetName.value = selectedSubset.name
+        formData.value.subsetName = selectedSubset.name
     }
 }
 
@@ -200,21 +293,47 @@ const deleteLabel = (label: string) => {
     }
 }
 
-// 封面
-const fileUrl = ref<unknown[]>([])
-
 // 表单数据变化时通知父组件
 watch(
     formData,
     (data) => {
-        emits('formData', data)
+        emits('formData', {
+            ...data,
+            label: [...data.label],
+        })
     },
     { deep: true }
+)
+
+watch(
+    () => formData.value.subsetId,
+    () => {
+        syncSubsetName()
+    }
+)
+
+watch(
+    () => props.initialData,
+    (data) => {
+        if (!data) return
+
+        formData.value = {
+            ...formData.value,
+            ...data,
+            label: Array.isArray(data.label) ? [...data.label] : [],
+            classify: props.classify,
+        }
+        syncSubsetName()
+        syncCoverFileList()
+        emitFormData()
+    },
+    { deep: true, immediate: true }
 )
 
 onMounted(() => {
     getSubset()
     getTags()
+    emitFormData()
 })
 </script>
 
@@ -234,21 +353,38 @@ onMounted(() => {
         }
 
         &-title {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             font-size: @size-xl;
             font-weight: bold;
             color: @font-color-l;
             align-items: center;
-            /* padding-bottom: @space-m; */
         }
 
-        &-subset {
+        &-layout {
+            display: flex;
             width: 100%;
+            gap: @space-xl;
+            align-items: flex-start;
+        }
 
-            .yk-dropdown {
-                position: absolute;
-                top: 0;
-                left: 0;
-            }
+        &-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        &-meta {
+            display: flex;
+            align-items: center;
+            gap: @space-l;
+            width: 100%;
+            margin-top: @space-l;
+        }
+
+        &-tags {
+            flex: 1;
+            min-width: 0;
         }
 
         .introduce {
@@ -258,9 +394,24 @@ onMounted(() => {
         }
 
         &-cover {
-            position: absolute;
-            right: 0;
-            top: 0;
+            flex: 0 0 160px;
+            display: flex;
+            flex-direction: column;
+            gap: @space-s;
+
+            &-label {
+                color: @font-color-m;
+                font-size: @size-s;
+                line-height: 20px;
+            }
+
+            &-error {
+                max-width: 160px;
+                color: #d84a3a;
+                font-size: @size-s;
+                line-height: 1.5;
+                overflow-wrap: anywhere;
+            }
         }
 
         input {
@@ -289,12 +440,6 @@ onMounted(() => {
 </style>
 <style lang="less">
     .forms {
-        .yk-dropdown__title {
-            opacity: 0;
-            height: 24px;
-            width: 100px;
-        }
-
         .yk-text-area {
             background-color: transparent;
             border: none;
@@ -312,14 +457,31 @@ onMounted(() => {
             }
         }
 
+        .forms-cover {
+            .yk-upload__picture,
+            .yk-upload-picture,
+            .yk-upload__picture-button {
+                width: 160px;
+                height: 120px;
+            }
+        }
 
-        .yk-upload-picture,
-        .yk-upload__picture-button {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 160px;
-            height: 120px;
+        @media (max-width: 900px) {
+            .forms-layout {
+                flex-direction: column-reverse;
+            }
+
+            .forms-cover {
+                width: 100%;
+                flex-basis: auto;
+            }
+
+            .forms-cover .yk-upload__picture,
+            .forms-cover .yk-upload-picture,
+            .forms-cover .yk-upload__picture-button {
+                width: 160px;
+                height: 120px;
+            }
         }
     }
 </style>
