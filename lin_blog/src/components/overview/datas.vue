@@ -1,5 +1,5 @@
 <template>
-    <yk-space dir="vertical" size="xl" style="width: 50%;">
+    <yk-space class="datas" dir="vertical" size="xl" style="width: 50%;">
         <div class="card">
             <div class="card-title">
                 <p class="card-title-name">访问量</p>
@@ -54,5 +54,19 @@
 </script>
 
 <style lang="less" scoped>
+.datas {
+    display: flex;
+    width: 100%;
+    height: calc(100vh * 0.67);
+    /* 固定高度为屏幕高度 */
+}
+
+        .card {
+            width: 100%;
+            height: 50%;
+            background-color: @white;
+            border-radius: @radius-m;
+            padding: @space-xl;
+        }
 
 </style>
