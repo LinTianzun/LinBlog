@@ -1,15 +1,16 @@
 # LinBlog
-LinBlog 是一个尚在开发中的个人博客管理项目，采用 Vue 3 + TypeScript 前端和 Express + MySQL 后端。当前已有用户管理及若干内容 API，但文章、评论等多个前端页面仍使用 Mock 数据，不能视为完整可用的博客系统。
+LinBlog 是一个尚在开发中的个人博客管理项目，采用 Vue 3 + TypeScript 前端和 Express + MySQL 后端。当前用户管理和文章模块已完成前后端联调，文章支持列表、新建、编辑、搜索、发布、撤回、删除及当前页详情弹窗；评论、消息和其他内容模块仍有部分页面使用 Mock 数据，不能视为完整可用的博客系统。
 
 ## 项目结构与当前状态
 
 | 目录/模块 | 当前实现 |
 | --- | --- |
-| `lin_blog/` | Vue 3、TypeScript、Vite、Pinia、Vue Router；包含总览、用户管理、文章、图库、文件、日记及编辑页面。 |
-| `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；当前有用户、文章、评论和消息路由。 |
+| `lin_blog/` | Vue 3、TypeScript、Vite、Pinia、Vue Router、Yike Design；包含总览、用户管理、文章、图库、文件、日记及编辑页面。文章封面使用 `yk-upload`，详情 HTML 使用 DOMPurify 清洗。 |
+| `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；当前有用户、文章、评论、消息和图片上传路由。 |
 | `Documentation/` | 开发进度及数据库设计文档。 |
 | 用户管理 | 管理员用户列表/搜索/分页、创建、编辑、删除和启用/禁用已有前后端实现；“编辑与普通用户”统计会把游客也计入。 |
-| 文章、评论、消息 | 后端已有 API；文章列表、评论/消息展示仍使用 Mock，尚未完成端到端联调。文章 API 客户端封装存在，但页面尚未调用。 |
+| 文章 | 已完成列表、筛选、搜索、新建、编辑、发布、撤回、删除及当前页详情弹窗联调；新建入口位于总览/Gather 页面。图片上传到本地目录，文章 `cover` 字段保存访问 URL。 |
+| 评论、消息 | 后端已有 API；前端评论、消息展示仍部分使用 Mock，尚未完成真实接口联调。 |
 | 其他内容模块 | 分类、标签、文件、图库、日记、天气和访问统计等页面/组件仍使用 Mock，后端业务 API 尚未齐备。 |
 
 ### 本地开发命令
@@ -21,7 +22,7 @@ npm run dev
 npm run build
 ```
 
-`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-21 本地验证构建通过；仍有 MockJS `eval` 警告和单个 500 KB 以上的打包 chunk 警告，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
+`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-23 本地验证构建通过；仍有 MockJS `eval` 警告和单个 500 KB 以上的打包 chunk 警告，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
 
 后端在 `serve/` 目录执行：
 
@@ -44,20 +45,30 @@ npm start
 | 用户 | `GET /api/user/isRegistered`、`POST /api/user/register`、`POST /api/user/login` | 注册和登录公开。 |
 | 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
+| 图片上传 | `POST /api/upload/image?token=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 
-用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，但目前没有页面调用它。
+用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，文章列表、编辑器和详情弹窗已调用真实接口。
+
+上传图片不会以 BLOB 形式写入 MySQL：后端 `multer` 将文件保存到 `serve/data/img/`，数据库只保存 `/api/uploads/<filename>` URL。`yk-upload` 通过查询参数携带 Token，因为其上传请求不能附加自定义认证头；上传失败也以 HTTP 200 返回，并通过 `error` 字段传递原因。运行时上传文件已被 `.gitignore` 忽略。
 
 ### 当前限制与待办
 
 * 用户管理 CRUD 和账号启停用已有接口及页面处理；“编辑与普通用户”统计仍使用“总用户数减管理员数”，会将游客计入。公开注册只检查邮箱是否已注册，未显式检查用户名冲突；用户名唯一键冲突的错误处理需要补齐。
 * 前端构建目前通过，但打包有 MockJS `eval` 警告和大 chunk 警告；需评估 MockJS 移除/隔离及按需拆包，不应只提高警告阈值。
-* 用户登录/注册及用户管理已有前后端调用，但文章列表仍使用 Mock；评论、消息、分类/标签、文件、图库、日记、天气和统计页面也未全面接入真实 API。
+* 文章模块已完成真实 API 联调，搜索覆盖标题、简介、标签和正文；详情以当前页弹窗展示，并对 HTML 内容执行清洗。评论、消息、分类/标签、文件、图库、日记、天气和统计页面仍未全面接入真实 API。
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 后端已有 `npm test` 脚本，默认覆盖文章、评论、用户权限、消息角色、认证故障、迁移幂等和请求体归一化；测试使用模块替身，不替代真实 MySQL 集成测试。
+* 图片目前保存在服务器本地磁盘，没有云存储、备份或孤儿文件清理机制；删除文章不会自动删除已上传封面。部署时应将 `serve/data/img/` 纳入备份并配置独立静态资源域名/存储。
+* 后端 `npm test` 当前 `38/38` 通过，覆盖文章、评论、用户权限、消息角色、认证故障、迁移幂等和请求体归一化；测试使用模块替身，不替代真实 MySQL 集成测试。
+
+### 当前验证状态
+
+* 2026-10-23：前端 `vue-tsc` 类型检查和 Vite 生产构建通过，后端测试 `38/38` 通过。
+* 文章上传、静态访问、搜索以及详情弹窗已完成本地端到端验证。
+* 当前分支 `codex/article-e2e` 相对 `origin/main` 可快进合并；实际合并前仍应重新拉取远程并确认 `main` 未产生新提交。
 
 # LinBlog数据库
 
