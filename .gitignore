@@ -21,8 +21,8 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Generated database initialization markers
-serve/model/.db_initialized
-serve/model/.mock_data_inserted
+serve/model/.db_initialized*
+serve/model/.mock_data_inserted*
 
 # Operating system files
 .DS_Store

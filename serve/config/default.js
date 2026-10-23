@@ -6,14 +6,24 @@ if (typeof jwtSecret !== 'string' || jwtSecret.length < 32) {
     )
 }
 
+const allowedOrigins = (
+    process.env.LINBLOG_ALLOWED_ORIGINS ||
+    'http://localhost:5173,http://127.0.0.1:5173'
+)
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+
 const config = {
     port: 3030,
     database: {
-        HOST: "localhost",
-        USER: "root",
+        HOST: process.env.LINBLOG_DB_HOST || "localhost",
+        USER: process.env.LINBLOG_DB_USER || "root",
         PASSWORD: process.env.LINBLOG_DB_PASSWORD || "",
-        DB: "linlog"
+        DB: process.env.LINBLOG_DB_NAME || "linlog"
     },
+    allowedOrigins,
+    jsonLimit: process.env.LINBLOG_JSON_LIMIT || '1mb',
     jwt: {
         secret: jwtSecret,
         expiresIn: '7D'

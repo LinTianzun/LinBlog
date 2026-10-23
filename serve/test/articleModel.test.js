@@ -4,6 +4,8 @@ const path = require('node:path')
 const test = require('node:test')
 
 const calls = []
+let mutationAccessRows = []
+let updateAffectedRows = 1
 const articleModelPath = path.resolve(__dirname, '../model/dbModel/article/index.js')
 const originalLoad = Module._load
 
@@ -11,7 +13,8 @@ async function query(sql, values = []) {
     calls.push({ sql, values })
     if (sql.includes('COUNT(*)')) return [{ total: 1 }]
     if (sql.includes('INSERT INTO article')) return { insertId: 123 }
-    if (sql.includes('UPDATE article')) return { affectedRows: 1 }
+    if (sql.includes('SELECT id, user_id, state FROM article')) return mutationAccessRows
+    if (sql.includes('UPDATE article')) return { affectedRows: updateAffectedRows }
     return []
 }
 
@@ -28,6 +31,8 @@ const articleController = require('../controller/articleController')
 
 test.beforeEach(() => {
     calls.length = 0
+    mutationAccessRows = []
+    updateAffectedRows = 1
 })
 
 test('new articles persist their authenticated owner', async () => {
@@ -88,6 +93,51 @@ test('normal users can edit only their own draft or rejected articles', async ()
     assert.deepEqual(calls[0].values, ['Updated', 123, 'deleted', 42])
     assert.match(calls[1].sql, /WHERE id = \? AND state != \? AND user_id = \?/)
     assert.deepEqual(calls[1].values, [123, 'deleted', 42])
+})
+
+test('nullable article fields can be cleared', async () => {
+    await articleModel.updateArticle(123, {
+        subsetId: null,
+        label: null,
+        introduce: null,
+        cover: null
+    }, 42, 'normal')
+
+    assert.match(
+        calls[0].sql,
+        /SET subset_id = \?, label = \?, introduce = \?, cover = \?/
+    )
+    assert.deepEqual(calls[0].values, [null, null, null, null, 123, 'deleted', 42])
+})
+
+test('article controller accepts clearing nullable fields', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft' }]
+    const res = {
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    }
+
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: {
+            subsetId: null,
+            label: null,
+            introduce: null,
+            cover: null
+        },
+        user: { userId: 42, userType: 'normal' }
+    }, res)
+
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(calls[1].values, [null, null, null, null, '123', 'deleted', 42])
 })
 
 test('normal users cannot publish or reject articles through model methods', async () => {
@@ -169,4 +219,89 @@ test('article controller rejects normal-user publish and reject requests', async
     }, rejectResponse)
     assert.equal(rejectResponse.statusCode, 403)
     assert.equal(calls.length, 0)
+})
+
+test('article mutation access distinguishes ownership and editable state', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'rejected' }]
+
+    assert.deepEqual(
+        await articleModel.findArticleMutationAccess(123, 42, 'normal', 'update'),
+        {
+            exists: true,
+            allowed: true,
+            article: mutationAccessRows[0]
+        }
+    )
+
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'published' }]
+    assert.equal(
+        (await articleModel.findArticleMutationAccess(123, 42, 'normal', 'update')).allowed,
+        false
+    )
+
+    mutationAccessRows = [{ id: 123, user_id: 99, state: 'draft' }]
+    assert.equal(
+        (await articleModel.findArticleMutationAccess(123, 42, 'normal', 'update')).allowed,
+        false
+    )
+})
+
+test('unchanged article updates are reported as success instead of 403', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'published' }]
+    updateAffectedRows = 0
+
+    const makeResponse = () => ({
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    })
+
+    const updateResponse = makeResponse()
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: { title: 'Unchanged title' },
+        user: { userId: 1, userType: 'admin' }
+    }, updateResponse)
+
+    assert.equal(updateResponse.statusCode, 200)
+
+    const statusResponse = makeResponse()
+    await articleController.updateArticleStatus({
+        params: { id: '123' },
+        body: { state: 'published' },
+        user: { userId: 1, userType: 'admin' }
+    }, statusResponse)
+
+    assert.equal(statusResponse.statusCode, 200)
+})
+
+test('article controller returns 404 when the article does not exist', async () => {
+    mutationAccessRows = []
+    const res = {
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    }
+
+    await articleController.updateArticle({
+        params: { id: '404' },
+        body: { title: 'Missing' },
+        user: { userId: 1, userType: 'admin' }
+    }, res)
+
+    assert.equal(res.statusCode, 404)
 })

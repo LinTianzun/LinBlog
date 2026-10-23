@@ -8,19 +8,21 @@ const cors = require('cors')
 const app = express()
 const config = require('./config/default')
 const db = require('./model/db/dbnew')
+const { normalizeJsonBody } = require('./middleware/normalizeBody')
 
 // 1. 配置跨域
 app.use(cors({
     origin: config.allowedOrigins, // 从配置文件获取允许的域名
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
     credentials: true, // 仅在需要携带认证信息时保留
-    methods: ['PUT', 'POST', 'GET', 'DELETE', 'OPTIONS'],
+    methods: ['PUT', 'PATCH', 'POST', 'GET', 'DELETE', 'OPTIONS'],
     preflightContinue: false,
     optionsSuccessStatus: 200
 }))
 
 // 2. 解析请求体
-app.use(express.json())
+app.use(express.json({ limit: config.jsonLimit }))
+app.use(normalizeJsonBody)
 
 // 3. 托管静态文件
 app.use(express.static(path.join(__dirname, 'data')))
@@ -37,7 +39,18 @@ require('./routes/index')(app)
 // 错误处理中间件（放在所有路由之后）
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ message: '服务器内部错误' });
+
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({
+            code: 413,
+            message: '请求体过大'
+        });
+    }
+
+    res.status(500).json({
+        code: 500,
+        message: '服务器内部错误'
+    });
 });
 
 // 等待数据库初始化后启动服务

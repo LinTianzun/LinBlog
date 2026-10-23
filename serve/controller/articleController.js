@@ -164,13 +164,21 @@ async function updateArticle(req, res) {
         //  检验更新字段
         const updateData = {}
         if (title !== undefined) {
+            if (typeof title !== 'string') {
+                return res.status(400).json({ code: 400, message: '文章标题必须是字符串' })
+            }
             if (title.length < 1 || title.length > 150) {
                 return res.status(400).json({ code: 400, message: '文章标题长度需在1-150字之间' })
             }
             updateData.title = title
         }
 
-        if (content !== undefined) updateData.content = content
+        if (content !== undefined) {
+            if (typeof content !== 'string' || content.length === 0) {
+                return res.status(400).json({ code: 400, message: '文章内容不能为空' })
+            }
+            updateData.content = content
+        }
 
         if (classify !== undefined) {
             if (!['article', 'image'].includes(classify)) {
@@ -186,16 +194,29 @@ async function updateArticle(req, res) {
             updateData.subsetId = subsetId
         }
 
-        if (label !== undefined) updateData.label = label
+        if (label !== undefined) {
+            if (label !== null && typeof label !== 'string') {
+                return res.status(400).json({ code: 400, message: '文章标签必须是字符串或null' })
+            }
+            updateData.label = label
+        }
 
         if (introduce !== undefined) {
-            if (introduce.length > 512) {
+            if (introduce !== null && typeof introduce !== 'string') {
+                return res.status(400).json({ code: 400, message: '文章简介必须是字符串或null' })
+            }
+            if (introduce && introduce.length > 512) {
                 return res.status(400).json({ code: 400, message: '文章简介长度不能超过512字' })
             }
             updateData.introduce = introduce
         }
 
-        if (cover !== undefined) updateData.cover = cover
+        if (cover !== undefined) {
+            if (cover !== null && typeof cover !== 'string') {
+                return res.status(400).json({ code: 400, message: '封面地址必须是字符串或null' })
+            }
+            updateData.cover = cover
+        }
 
         if (state !== undefined) {
             if (!['draft', 'published', 'rejected'].includes(state)) {
@@ -209,6 +230,21 @@ async function updateArticle(req, res) {
             return res.status(400).json({ code: 400, message: '请传入至少一个更新字段' })
         }
 
+        const access = await articleModel.findArticleMutationAccess(
+            articleId,
+            userId,
+            userType,
+            'update'
+        )
+
+        if (!access.exists) {
+            return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+        }
+
+        if (!access.allowed) {
+            return res.status(403).json({ code: 403, message: '无权限更新该文章' })
+        }
+
         //  调用模型更新
         const affectedRows = await articleModel.updateArticle(
             articleId,
@@ -218,7 +254,21 @@ async function updateArticle(req, res) {
         )
 
         if (affectedRows === 0) {
-            return res.status(403).json({ code: 403, message: '无权限更新该文章或文章不存在' })
+            // 更新值与数据库一致时 MySQL 可能返回 0；再次确认权限和存在性。
+            const latestAccess = await articleModel.findArticleMutationAccess(
+                articleId,
+                userId,
+                userType,
+                'update'
+            )
+
+            if (!latestAccess.exists) {
+                return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+            }
+
+            if (!latestAccess.allowed) {
+                return res.status(403).json({ code: 403, message: '无权限更新该文章' })
+            }
         }
 
         res.json({
@@ -292,10 +342,38 @@ async function updateArticleStatus(req, res) {
             return res.status(403).json({ code: 403, message: '普通用户不能直接发布或驳回文章' })
         }
 
+        const access = await articleModel.findArticleMutationAccess(
+            articleId,
+            userId,
+            userType,
+            'status'
+        )
+
+        if (!access.exists) {
+            return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+        }
+
+        if (!access.allowed) {
+            return res.status(403).json({ code: 403, message: '无权限修改该文章状态' })
+        }
+
         //  调用模型修改状态（参数顺序：articleId → state → userId → userType）
         const affectedRows = await articleModel.updateArticleStatus(articleId, state, userId, userType)
         if (affectedRows === 0) {
-            return res.status(403).json({ code: 403, message: '无权限修改该文章状态或文章不存在' })
+            const latestAccess = await articleModel.findArticleMutationAccess(
+                articleId,
+                userId,
+                userType,
+                'status'
+            )
+
+            if (!latestAccess.exists) {
+                return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+            }
+
+            if (!latestAccess.allowed) {
+                return res.status(403).json({ code: 403, message: '无权限修改该文章状态' })
+            }
         }
 
         // 状态中文映射

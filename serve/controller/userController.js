@@ -266,6 +266,21 @@ async function updateUser(req, res) {
             });
         }
 
+        const targetUser = existingUser[0];
+        const currentUserId = String(req.user.userId);
+        const targetUserId = String(userId);
+
+        // 防止管理员通过编辑接口修改自己的角色，造成权限突然丢失。
+        if (
+            currentUserId === targetUserId &&
+            user_type !== targetUser.user_type
+        ) {
+            return res.status(400).json({
+                code: 400,
+                message: '不能修改当前登录账号的角色'
+            });
+        }
+
         // 5. 检查用户名或邮箱是否被其他用户占用
         const conflicts = await userModel.findUserConflictForUpdate(
             cleanUsername,
@@ -299,11 +314,36 @@ async function updateUser(req, res) {
         }
 
         // 6. 更新用户资料
-        await userModel.updateUserByAdmin(userId, {
-            username: cleanUsername,
-            mail: cleanMail,
-            user_type
-        });
+        const updateResult = await userModel.updateUserByAdminGuarded(
+            userId,
+            {
+                username: cleanUsername,
+                mail: cleanMail,
+                user_type
+            },
+            req.user.userId
+        );
+
+        if (!updateResult.ok) {
+            if (updateResult.reason === 'last_admin') {
+                return res.status(400).json({
+                    code: 400,
+                    message: '系统至少需要保留一名管理员，无法修改该用户角色'
+                });
+            }
+
+            if (updateResult.reason === 'self_role_change') {
+                return res.status(400).json({
+                    code: 400,
+                    message: '不能修改当前登录账号的角色'
+                });
+            }
+
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在'
+            });
+        }
 
         // 7. 返回结果
         return res.status(200).json({
@@ -329,6 +369,14 @@ async function updateUser(req, res) {
 // 管理员启用/禁用用户
 async function updateUserStatus(req, res) {
     try {
+        // 1. 仅管理员可以操作
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({
+                code: 403,
+                message: '无权限操作，仅管理员可以修改用户状态'
+            });
+        }
+
         const currentUserId = String(req.user.userId);
         const targetUserId = String(req.params.id);
         const status = Number(req.body.status);
@@ -338,14 +386,6 @@ async function updateUserStatus(req, res) {
             return res.status(400).json({
                 code: 400,
                 message: '不能修改当前登录账号的状态'
-            });
-        }
-
-        // 1. 仅管理员可以操作
-        if (!req.user || req.user.user_type !== 'admin') {
-            return res.status(403).json({
-                code: 403,
-                message: '无权限操作，仅管理员可以修改用户状态'
             });
         }
 
@@ -388,7 +428,32 @@ async function updateUserStatus(req, res) {
         }
 
         // 6. 更新数据库
-        await userModel.updateUserStatus(userId, status);
+        const updateResult = await userModel.updateUserStatusGuarded(
+            userId,
+            status,
+            req.user.userId
+        );
+
+        if (!updateResult.ok) {
+            if (updateResult.reason === 'last_admin') {
+                return res.status(400).json({
+                    code: 400,
+                    message: '系统至少需要保留一名管理员，无法禁用'
+                });
+            }
+
+            if (updateResult.reason === 'self_status_change') {
+                return res.status(400).json({
+                    code: 400,
+                    message: '不能修改当前登录账号的状态'
+                });
+            }
+
+            return res.status(404).json({
+                code: 404,
+                message: '用户不存在'
+            });
+        }
 
         return res.json({
             code: 200,
@@ -444,22 +509,27 @@ async function deleteUser(req, res) {
             });
         }
 
-        // 5. 如果目标用户是管理员，禁止删除最后一名管理员
-        if (existingUser[0].user_type === 'admin') {
-            const adminCount = await userModel.countAdminUsers();
+        // 6. 执行删除
+        const deleteResult = await userModel.deleteUserByAdminGuarded(
+            userId,
+            req.user.userId
+        );
 
-            if (adminCount <= 1) {
-                return res.status(400).json({
-                    code: 400,
-                    message: '系统至少需要保留一名管理员，无法删除'
-                });
-            }
+        if (!deleteResult.ok && deleteResult.reason === 'last_admin') {
+            return res.status(400).json({
+                code: 400,
+                message: '系统至少需要保留一名管理员，无法删除'
+            });
         }
 
-        // 6. 执行删除
-        const result = await userModel.deleteUserByAdmin(userId);
+        if (!deleteResult.ok && deleteResult.reason === 'self_delete') {
+            return res.status(400).json({
+                code: 400,
+                message: '不能删除当前登录的管理员账号'
+            });
+        }
 
-        if (!result || result.affectedRows !== 1) {
+        if (!deleteResult.ok) {
             return res.status(404).json({
                 code: 404,
                 message: '用户不存在或删除失败'
