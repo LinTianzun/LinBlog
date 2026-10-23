@@ -5,9 +5,10 @@
         <slot name="custom" />
         <yk-space size="s" v-if="isSearch">
             <yk-button type="secondary" v-show="SearchData" @click="cancelSearch">取消搜索</yk-button>
-            <yk-input-search placeholder="请输入" style="width: 320px" v-model="SearchData" @search="search">
+            <yk-input-search :key="searchInputKey" placeholder="请输入关键词" style="width: 320px"
+                @search="search">
                 <template #suffix>
-                    <yk-button type="secondary">
+                    <yk-button type="secondary" aria-label="搜索">
                         <IconSearchOutline />
                     </yk-button>
                 </template>
@@ -19,7 +20,8 @@
 <script lang="ts" setup>
     import { ref } from 'vue'
 
-    const SearchData = ref()
+    const SearchData = ref('')
+    const searchInputKey = ref(0)
 
 
 
@@ -35,15 +37,17 @@
     const emit = defineEmits(['search'])
 
     //  搜索事件
-    const search = () => {
-        // console.log('search', SearchData.value)
-        emit('search', SearchData.value)
+    const search = (value?: unknown) => {
+        const keyword = String(value ?? '').trim()
+        SearchData.value = keyword
+        emit('search', keyword)
     }
 
     //  取消搜索
     const cancelSearch = () => {
         emit('search', '')
         SearchData.value = ''
+        searchInputKey.value += 1
     }
 
 </script>

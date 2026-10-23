@@ -69,6 +69,63 @@ test('article list filters compose valid SQL and preserve parameter order', asyn
     assert.deepEqual(calls[1].values, ['deleted', 42, 'published', 'image', 3])
 })
 
+test('article list supports keyword and uncategorized filters', async () => {
+    await articleModel.findArticlesByPage({
+        page: 1,
+        pageSize: 10,
+        offset: 0,
+        uncategorized: true,
+        keyword: '联调',
+        userId: 1,
+        userType: 'admin'
+    })
+
+    assert.match(
+        calls[0].sql,
+        /a\.subset_id IS NULL AND \(\s*a\.title LIKE \?\s*OR a\.introduce LIKE \?\s*OR a\.label LIKE \?\s*OR a\.content LIKE \?\s*\)/
+    )
+    assert.deepEqual(calls[0].values, [
+        'deleted', '%联调%', '%联调%', '%联调%', '%联调%', 10, 0
+    ])
+    assert.deepEqual(calls[1].values, [
+        'deleted', '%联调%', '%联调%', '%联调%', '%联调%'
+    ])
+})
+
+test('article controller normalizes keyword and passes list filters to the model', async () => {
+    const res = {
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    }
+
+    await articleController.getArticles({
+        query: {
+            page: '1',
+            pageSize: '10',
+            keyword: '  联调  ',
+            uncategorized: 'true'
+        },
+        user: { userId: 1, userType: 'admin' }
+    }, res)
+
+    assert.equal(res.statusCode, 200)
+    assert.match(
+        calls[0].sql,
+        /a\.subset_id IS NULL AND \(\s*a\.title LIKE \?\s*OR a\.introduce LIKE \?\s*OR a\.label LIKE \?\s*OR a\.content LIKE \?\s*\)/
+    )
+    assert.deepEqual(calls[0].values, [
+        'deleted', '%联调%', '%联调%', '%联调%', '%联调%', 10, 0
+    ])
+})
+
 test('visitors can only list and read published articles', async () => {
     await articleModel.findArticlesByPage({
         page: 1,

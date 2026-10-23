@@ -32,6 +32,10 @@ const routes = [
                 component: () => import('../views/ArticleView.vue'),
             },
             {
+                path: 'article/:id',
+                redirect: '/article',
+            },
+            {
                 path: 'gallery',
                 component: () => import('../views/GalleryView.vue'),
             },
@@ -46,7 +50,7 @@ const routes = [
         ],
     },
     {
-        path: '/editarticle',
+        path: '/editarticle/:id?',
         component: () => import('../views/EditArticle.vue'),
     },
     {

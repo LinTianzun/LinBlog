@@ -36,6 +36,8 @@ export interface ArticleListParams {
   state?: ArticleState;
   classify?: ArticleClassify;
   subsetId?: number;
+  uncategorized?: boolean;
+  keyword?: string;
 }
 
 export interface ArticlePageData {
@@ -81,6 +83,61 @@ export interface UpdateArticleStatusResult {
   articleId: number | string;
   state: ArticleState;
   updatedAt: string;
+}
+
+const articleStateLabels: Record<ArticleState, string> = {
+  draft: "草稿",
+  published: "已发布",
+  rejected: "已驳回",
+};
+
+// 后端用逗号字符串存储标签，前端表单使用数组。
+export function parseArticleLabels(label?: string | null): string[] {
+  if (!label) return [];
+
+  return label
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function formatArticleLabels(labels: string[]): string {
+  return labels.map((item) => item.trim()).filter(Boolean).join(",");
+}
+
+export function getArticleStateLabel(
+  state?: ArticleDatabaseState | null
+): string {
+  if (!state || state === "deleted") return "未知状态";
+  return articleStateLabels[state];
+}
+
+export function formatArticleDate(value?: string | null): string {
+  if (!value) return "暂无时间";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "暂无时间";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+// 把接口请求错误转成可直接展示的中文提示。
+export function getArticleErrorMessage(
+  error: unknown,
+  fallback = "请求失败，请稍后重试"
+): string {
+  if (typeof error !== "object" || error === null) return fallback;
+
+  const response = (error as {
+    response?: { data?: { message?: unknown } };
+  }).response;
+  const message = response?.data?.message;
+
+  return typeof message === "string" && message ? message : fallback;
 }
 
 // 分页查询文章

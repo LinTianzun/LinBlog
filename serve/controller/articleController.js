@@ -69,7 +69,7 @@ async function createArticle(req, res) {
 async function getArticles(req, res) {
     try {
         const { userId, userType } = req.user
-        const { state, classify, subsetId } = req.query
+        const { state, classify, subsetId, keyword, uncategorized } = req.query
 
         //  分页参数校验
         const paginationResult = formatPaginationParams(req.query, {
@@ -80,6 +80,11 @@ async function getArticles(req, res) {
             return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
         }
         const { page, pageSize, offset } = paginationResult.data
+        const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
+
+        if (normalizedKeyword.length > 100) {
+            return res.status(400).json({ code: 400, message: '搜索关键词不能超过100字' })
+        }
 
         //  调用模型查询
         const result = await articleModel.findArticlesByPage({
@@ -89,6 +94,8 @@ async function getArticles(req, res) {
             state,          // 可选筛选：draft/published/rejected
             classify,       // 可选筛选：article/image
             subsetId: subsetId && !isNaN(subsetId) ? subsetId : null, // 分类ID筛选
+            uncategorized: uncategorized === 'true' || uncategorized === true,
+            keyword: normalizedKeyword,
             userId,
             userType
         })

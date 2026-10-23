@@ -14,11 +14,17 @@
 </template>
 
 <script lang="ts" setup>
-import { onBeforeUnmount, ref, shallowRef } from 'vue'
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import type { IToolbarConfig, IDomEditor } from '@wangeditor/editor'
 import './style.less'
 import { colors } from './colors.js'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+
+const props = withDefaults(defineProps<{
+    modelValue?: string
+}>(), {
+    modelValue: '',
+})
 
 const mode = 'default'
 
@@ -30,11 +36,13 @@ const toolbarTop = (value: boolean): void => {
 }
 
 const emits = defineEmits<{
+    (event: 'update:modelValue', content: string): void
     (event: 'editors', content: string): void
 }>()
 
 // 获取编辑器内容
 const onChange = (): void => {
+    emits('update:modelValue', valueHtml.value)
     emits('editors', valueHtml.value)
 }
 
@@ -42,7 +50,16 @@ const onChange = (): void => {
 const editorRef = shallowRef<IDomEditor | null>(null)
 
 // 内容 HTML
-const valueHtml = ref('<p>hello</p>')
+const valueHtml = ref(props.modelValue)
+
+watch(
+    () => props.modelValue,
+    (content) => {
+        if (content !== valueHtml.value) {
+            valueHtml.value = content
+        }
+    }
+)
 
 // 工具栏配置
 const toolbarConfig: Partial<IToolbarConfig> = {}
