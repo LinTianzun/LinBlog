@@ -114,6 +114,20 @@ export function formatArticleLabels(labels: string[]): string {
   return labels.map((item) => item.trim()).filter(Boolean).join(",");
 }
 
+// 图库 content 存 JSON 字符串，展示时解析为图片 URL 数组
+export function parseGalleryContent(content?: string | null): string[] {
+  if (!content) return [];
+
+  try {
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    // 兼容旧数据
+    return [];
+  }
+}
+
 export function getArticleStateLabel(
   state?: ArticleDatabaseState | null
 ): string {

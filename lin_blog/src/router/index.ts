@@ -58,6 +58,10 @@ const routes = [
         component: () => import('../views/EditGallery.vue'),
     },
     {
+        path: '/editgallery/:id',
+        component: () => import('../views/EditGallery.vue'),
+    },
+    {
         path: '/loginRegister',
         component: () => import('../views/LoginRegister.vue'),
         meta: { hideHeader: true, requiresAuth: false }

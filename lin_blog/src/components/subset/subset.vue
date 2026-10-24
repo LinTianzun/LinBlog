@@ -58,6 +58,12 @@
     //  store
     const subsetStore = useSubsetStore()
 
+    const props = withDefaults(defineProps<{
+        classify?: 'article' | 'image'
+    }>(), {
+        classify: 'article',
+    })
+
     //  当前选择
     const selected = ref('-1all')
 
@@ -73,7 +79,13 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
 
     //  获取分组
     const rawSubset = async () => {
-        await Promise.all([subsetStore.fetchSubsets(), subsetStore.fetchStateSummary()])
+        if (props.classify === 'article') {
+            await Promise.all([subsetStore.fetchSubsets(), subsetStore.fetchStateSummary()])
+            return
+        }
+
+        // 图库页签：加载图片分类与图片集统计
+        await Promise.all([subsetStore.fetchSubsets(props.classify), subsetStore.fetchStateSummary(props.classify)])
     }
 
     //  新建分组
@@ -95,7 +107,7 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
         }
 
         try {
-            const result = await createSubset({ name, classify: 'article' })
+            const result = await createSubset({ name, classify: props.classify })
             if (result.code !== 200) {
                 throw new Error(result.message || '创建失败')
             }

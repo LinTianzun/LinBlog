@@ -43,9 +43,9 @@ export const useSubsetStore = defineStore('subsets', {
     },
     actions: {
         // 从数据库加载文章分类，写入 count 和 data
-        async fetchSubsets() {
+        async fetchSubsets(classify: 'article' | 'image' = 'article') {
             try {
-                const result = await getSubsets('article')
+                const result = await getSubsets(classify)
                 if (result.code === 200 && result.data) {
                     this.count = result.data.count
                     this.data = result.data.list.map(item => ({
@@ -60,9 +60,9 @@ export const useSubsetStore = defineStore('subsets', {
             }
         },
         // 从数据库加载文章状态统计
-        async fetchStateSummary() {
+        async fetchStateSummary(classify: 'article' | 'image' = 'article') {
             try {
-                const result = await getArticleStateSummary('article')
+                const result = await getArticleStateSummary(classify)
                 if (result.code === 200 && result.data) {
                     this.stateSummary = { ...emptySummary, ...result.data }
                 }
