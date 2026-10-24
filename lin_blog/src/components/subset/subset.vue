@@ -19,7 +19,9 @@
             </div>
         </yk-space>
         <yk-space style="flex:none">
-            <yk-popconfirm title="请输入分组名称" trigger="click" placement="bottom" @cancel="cancel" @confirm="confirm">
+            <!-- 图库共用文章分组，分组只在文章页维护 -->
+            <yk-popconfirm v-if="props.classify === 'article'" title="请输入分组名称" trigger="click"
+                placement="bottom" @cancel="cancel" @confirm="confirm">
                 <yk-text type="primary">
                     <IconCirclePlusOutline style="margin-right: 4px;" /> 新建
                 </yk-text>
@@ -30,7 +32,7 @@
                     </div>
                 </template>
             </yk-popconfirm>
-            <yk-text type="primary" @click="showModal">
+            <yk-text v-if="props.classify === 'article'" type="primary" @click="showModal">
                 <IconSettingsOutline style="margin-right: 4px;" /> 管理分组
             </yk-text>
             <!-- 管理分组对话框 -->
@@ -79,13 +81,11 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
 
     //  获取分组
     const rawSubset = async () => {
-        if (props.classify === 'article') {
-            await Promise.all([subsetStore.fetchSubsets(), subsetStore.fetchStateSummary()])
-            return
-        }
-
-        // 图库页签：加载图片分类与图片集统计
-        await Promise.all([subsetStore.fetchSubsets(props.classify), subsetStore.fetchStateSummary(props.classify)])
+        //  图库共用文章分组：classify=image 时接口返回文章分组但计数只统计图片集
+        await Promise.all([
+            subsetStore.fetchSubsets(props.classify),
+            subsetStore.fetchStateSummary(props.classify),
+        ])
     }
 
     //  新建分组
@@ -107,7 +107,7 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
         }
 
         try {
-            const result = await createSubset({ name, classify: props.classify })
+            const result = await createSubset({ name, classify: 'article' })
             if (result.code !== 200) {
                 throw new Error(result.message || '创建失败')
             }

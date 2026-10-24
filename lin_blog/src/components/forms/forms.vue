@@ -334,9 +334,8 @@ watch(
 )
 
 onMounted(() => {
-    //  分类来自数据库，若 store 尚未加载则先拉取
-    const classify = props.classify === 1 ? 'image' : 'article'
-    void subsetStore.fetchSubsets(classify).then(() => getSubset())
+    //  分类来自数据库；图库共用文章分组
+    void subsetStore.fetchSubsets('article').then(() => getSubset())
     //  标签建议来自数据库字典表
     if (labelStore.data.length === 0) {
         void labelStore.fetchLabels().then(() => getTags())

@@ -2,7 +2,7 @@ const { query } = require('../../db/dbnew')
 
 const CLASSIFY_TYPES = ['article', 'image', 'resource']
 
-async function findSubsets({ classify, includeCount = false } = {}) {
+async function findSubsets({ classify, includeCount = false, countClassify } = {}) {
     const whereParams = []
     let whereClause = 'status = 1'
 
@@ -11,16 +11,24 @@ async function findSubsets({ classify, includeCount = false } = {}) {
         whereParams.push(classify)
     }
 
-    const columns = includeCount
-        ? `id, subset_name AS name, classify, sort,
+    let columns = 'id, subset_name AS name, classify, sort, created_at AS moment'
+    const countParams = []
+    if (includeCount) {
+        //  countClassify 指定统计哪类内容；图库共用文章分组但只统计图片集
+        let countFilter = ''
+        if (countClassify && ['article', 'image'].includes(countClassify)) {
+            countFilter = ' AND a.classify = ?'
+            countParams.push(countClassify)
+        }
+        columns = `id, subset_name AS name, classify, sort,
            (SELECT COUNT(*) FROM article a
-             WHERE a.subset_id = subset.id AND a.state != 'deleted') AS value,
+             WHERE a.subset_id = subset.id AND a.state != 'deleted'${countFilter}) AS value,
            created_at AS moment`
-        : 'id, subset_name AS name, classify, sort, created_at AS moment'
+    }
 
     return query(
         `SELECT ${columns} FROM subset WHERE ${whereClause} ORDER BY sort DESC, id ASC`,
-        whereParams
+        [...countParams, ...whereParams]
     )
 }
 

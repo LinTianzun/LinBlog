@@ -48,6 +48,32 @@ test('getSubsets returns count and formatted list', async () => {
     }
 })
 
+test('getSubsets reuses article subsets for gallery with image counts', async () => {
+    const originalFind = subsetModel.findSubsets
+    let received = null
+    subsetModel.findSubsets = async (params) => {
+        received = params
+        return [
+            { id: 1, name: '技术博客', classify: 'article', sort: 10, value: 2, moment: '2026-10-24' }
+        ]
+    }
+
+    try {
+        const res = createRes()
+        await subsetController.getSubsets({ query: { classify: 'image' }, user: { userId: 1, userType: 'admin' } }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(received, {
+            classify: 'article',
+            includeCount: true,
+            countClassify: 'image'
+        })
+        assert.equal(res.body.data.list[0].value, 2)
+    } finally {
+        subsetModel.findSubsets = originalFind
+    }
+})
+
 test('createSubset rejects non-manager users', async () => {
     const res = createRes()
 
