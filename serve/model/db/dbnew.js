@@ -329,6 +329,10 @@ async function seedDemoData() {
 
     // 2. 插入分类数据
     const subsets = [
+      { subset_name: '图片', classify: 'resource', sort: 100 },
+      { subset_name: '文件', classify: 'resource', sort: 99 },
+      { subset_name: '视频', classify: 'resource', sort: 98 },
+      { subset_name: '压缩包', classify: 'resource', sort: 97 },
       { subset_name: '技术博客', classify: 'article', sort: 10 },
       { subset_name: '生活随笔', classify: 'article', sort: 9 },
       { subset_name: '读书分享', classify: 'article', sort: 8 },
@@ -345,6 +349,8 @@ async function seedDemoData() {
       `, [subset.subset_name, subset.classify, subset.sort]);
       if (!subsetIds[subset.classify]) subsetIds[subset.classify] = [];
       subsetIds[subset.classify].push(result.insertId);
+      //  按下标取分组容易随插入顺序错位，名称映射更稳妥
+      subsetIds[subset.subset_name] = result.insertId;
     }
     console.log(`[DB] 插入 ${subsets.length} 条分类数据`);
 
@@ -384,10 +390,10 @@ async function seedDemoData() {
 
     // 5. 插入文件数据
     const files = [
-      { file_name: 'Vue官方文档.pdf', format: 'pdf', size: 2048000, url: 'https://picsum.photos/id/20/255', subset_id: subsetIds.resource[0] },
-      { file_name: '风景图1.jpg', format: 'jpg', size: 512000, url: 'https://picsum.photos/id/21/255', subset_id: subsetIds.image[0] },
-      { file_name: '美食图2.png', format: 'png', size: 384000, url: 'https://picsum.photos/id/22/255', subset_id: subsetIds.image[1] },
-      { file_name: '学习资料.zip', format: 'zip', size: 5120000, url: 'https://picsum.photos/id/23/255', subset_id: subsetIds.resource[1] }
+      { file_name: 'Vue官方文档.pdf', format: 'pdf', size: 2048000, url: 'https://picsum.photos/id/20/255', subset_id: subsetIds['文件'] },
+      { file_name: '风景图1.jpg', format: 'jpg', size: 512000, url: 'https://picsum.photos/id/21/255', subset_id: subsetIds['图片'] },
+      { file_name: '美食图2.png', format: 'png', size: 384000, url: 'https://picsum.photos/id/22/255', subset_id: subsetIds['图片'] },
+      { file_name: '学习资料.zip', format: 'zip', size: 5120000, url: 'https://picsum.photos/id/23/255', subset_id: subsetIds['压缩包'] }
     ];
     const fileIds = [];
     for (const file of files) {

@@ -9,13 +9,10 @@
                 :class="{'subset-menu-seledted':selected==item.id+'state'}" @click="changeSeleted(item.id,'state')">
                 {{ item.name }} {{ item.value }}
             </div>
-            <div class="subset-menu" :class="{'subset-menu-seledted':selected==subsetStore.exclude.id+'exclude'}"
-                @click="changeSeleted(subsetStore.exclude.id,'exclude')">
-                {{ subsetStore.exclude.name }} {{ subsetStore.exclude.value }}
-            </div>
-            <div class="subset-menu" v-for="(item, index) in subsetStore.data" :key="index"
-                @click="changeSeleted(item.id,'subset')" :class="{'subset-menu-seledted':selected==item.id+'subset'}">
-                {{item.name}} {{item.value}}
+            <div class="subset-menu" v-for="menu in groupMenus" :key="menu.key"
+                @click="changeSeleted(menu.id, menu.type)"
+                :class="{'subset-menu-seledted':selected==menu.id+menu.type}">
+                {{ menu.name }} {{ menu.value }}
             </div>
         </yk-space>
         <yk-space style="flex:none">
@@ -47,7 +44,7 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted, getCurrentInstance } from 'vue'
+    import { ref, computed, onMounted, getCurrentInstance } from 'vue'
     import { createSubset } from '../../api/subset'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
@@ -68,6 +65,26 @@
 
     //  当前选择
     const selected = ref('-1all')
+
+    //  分组菜单顺序：文件页分组紧跟「全部」之后、未分类放最后；其余栏目保持未分类在前
+    const groupMenus = computed(() => {
+        const subsets = subsetStore.data.map(item => ({
+            key: `subset-${item.id}`,
+            id: item.id,
+            type: 'subset' as const,
+            name: String(item.name),
+            value: item.value
+        }))
+        const exclude = {
+            key: 'exclude',
+            id: subsetStore.exclude.id,
+            type: 'exclude' as const,
+            name: String(subsetStore.exclude.name),
+            value: subsetStore.exclude.value
+        }
+
+        return props.classify === 'resource' ? [...subsets, exclude] : [exclude, ...subsets]
+    })
 
     //  选择切换
 type SubsetType = 'all' | 'state' | 'exclude' | 'subset'
