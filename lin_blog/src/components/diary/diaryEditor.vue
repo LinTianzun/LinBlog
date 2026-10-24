@@ -26,8 +26,8 @@
             </yk-text-area>
 
             <div class="diary-editor-top-picture">
-                <yk-upload :limit="dynamicLimit" :file-list="fileList" :upload-url="uploadUrl"
-                    accept="image/*" desc="支持 JPG / PNG / WebP / GIF，单张不超过 8MB"
+                <yk-upload :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
+                    accept="image/*" multiple
                     @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                     @handle-delete="handleUploadDelete"></yk-upload>
             </div>
@@ -44,7 +44,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { ref, computed, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
 import { createDiary, getRequestErrorMessage } from '../../api/diary'
 
@@ -102,15 +102,15 @@ const selectWeather = (item: WeatherItem): void => {
     diaryForm.value.weatherId = item.id
 }
 
-// 图片上传
+// 图片上传（photos 为唯一数据源，不把 fileList 回传给 yk-upload，
+// 否则其内部会整体重建列表导致 uid 失配、删除一张时数据错乱）
 const photos = ref<string[]>([])
-const fileList = ref<{ name: string; url: string }[]>([])
 const uploadUrl = computed(() => {
     const token = (localStorage.getItem('token') || '').trim()
     return `/api/upload/image?token=${encodeURIComponent(token)}`
 })
 
-const handleUploadSuccess = (response: UploadResponse, file?: { name?: string }): void => {
+const handleUploadSuccess = (response: UploadResponse): void => {
     const url = response.data?.url || response.url
     if (!url) {
         proxy?.$message?.({ type: 'error', message: '上传成功但未返回图片地址' })
@@ -118,9 +118,6 @@ const handleUploadSuccess = (response: UploadResponse, file?: { name?: string })
     }
 
     photos.value.push(url)
-    if (file?.name) {
-        fileList.value = [...fileList.value, { name: file.name, url }]
-    }
     diaryForm.value.picture = [...photos.value]
 }
 
@@ -141,24 +138,18 @@ const handleUploadError = (error: unknown): void => {
 }
 
 const handleUploadDelete = (payload: unknown): void => {
-    // yk-upload 删除时回传 [被删项, 剩余列表]
+    // yk-upload 删除时回传 [被删项, 剩余列表]，按「剩余数量」反推被删序号
     const [, remainList] = Array.isArray(payload) ? payload : []
-    const remainUrls = (remainList as { url?: string }[] | undefined)
-        ?.map(item => item.url)
-        .filter((url): url is string => Boolean(url)) ?? []
-
-    photos.value = photos.value.filter(url => remainUrls.includes(url))
-    fileList.value = fileList.value.filter(item => remainUrls.includes(item.url))
+    const remainCount = Array.isArray(remainList) ? remainList.length : 0
+    const removedIndex = photos.value.length - remainCount - 1
+    if (removedIndex >= 0) {
+        photos.value.splice(removedIndex, 1)
+    }
     diaryForm.value.picture = [...photos.value]
 }
 
-// 动态 limit
-const dynamicLimit = ref<number>(4)
-
-// 根据窗口高度更新上传数量限制
-const updateLimit = (): void => {
-    dynamicLimit.value = window.innerHeight <= 850 ? 4 : 9
-}
+// 图片数量上限（与后端校验一致）
+const maxPhotoCount = 9
 
 // 新建日记
 const submitting = ref(false)
@@ -173,6 +164,10 @@ const submitDiary = async (): Promise<void> => {
     }
     if (!content) {
         proxy?.$message?.({ type: 'error', message: '请输入日记内容' })
+        return
+    }
+    if (photos.value.length > maxPhotoCount) {
+        proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请删除部分后重试` })
         return
     }
 
@@ -201,7 +196,6 @@ const submitDiary = async (): Promise<void> => {
 const resetForm = (): void => {
     diaryForm.value = { weatherId: swWeatherId.value, picture: [] }
     photos.value = []
-    fileList.value = []
     const defaultWeather = weathers.find(item => item.id === 0)
     if (defaultWeather) {
         selectWeather(defaultWeather)
@@ -214,13 +208,6 @@ onMounted(() => {
     if (defaultWeather) {
         selectWeather(defaultWeather)
     }
-
-    updateLimit()
-    window.addEventListener('resize', updateLimit)
-})
-
-onBeforeUnmount(() => {
-    window.removeEventListener('resize', updateLimit)
 })
 </script>
 
