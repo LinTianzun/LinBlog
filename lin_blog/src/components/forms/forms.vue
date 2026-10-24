@@ -64,7 +64,8 @@
 
 <script lang="ts" setup>
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
-import { subset, mklabel } from '../../mock/data.ts'
+import { mklabel } from '../../mock/data.ts'
+import { useSubsetStore } from '../../store/subset.ts'
 import '@wangeditor/editor/dist/css/style.css'
 
 type FormData = {
@@ -121,6 +122,7 @@ type MessageProxy = {
 }
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
+const subsetStore = useSubsetStore()
 
 const formData = ref<FormData>({
     title: '',
@@ -209,7 +211,7 @@ const handleCoverDelete = (): void => {
 }
 
 const getSubset = () => {
-    subsetList.value = subset.data.list.map((item: { id: string | number; name: string }) => ({
+    subsetList.value = subsetStore.data.map(item => ({
         id: Number(item.id),
         name: String(item.name),
     }))
@@ -331,7 +333,12 @@ watch(
 )
 
 onMounted(() => {
-    getSubset()
+    //  分类来自数据库，若 store 尚未加载则先拉取
+    if (subsetStore.data.length === 0) {
+        void subsetStore.fetchSubsets().then(() => getSubset())
+    } else {
+        getSubset()
+    }
     getTags()
     emitFormData()
 })

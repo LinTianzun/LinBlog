@@ -8,6 +8,9 @@ module.exports = (app) => {
     // 文章分页查询（支持多条件筛选）
     app.get('/api/article', authMiddleware, articleController.getArticles)
 
+    // 文章状态统计（需放在 /:id 路由前，避免被参数路由吞掉）
+    app.get('/api/article/state/summary', authMiddleware, articleController.getArticleStateSummary)
+
     // 根据 ID 查询文章详情
     app.get('/api/article/:id', authMiddleware, articleController.getArticleById)
 

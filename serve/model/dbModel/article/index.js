@@ -138,6 +138,51 @@ async function findArticlesByPage(params) {
 }
 
 /**
+ * 统计文章状态分布（权限规则与列表查询一致）
+ * @param {Object} params - 统计参数
+ * @returns {Promise<Object>} 各状态数量汇总
+ */
+async function countArticlesByState(params) {
+    const { classify, userId, userType } = params
+    let whereClause = 'a.state != ?'  //  排除已删除文章
+    const whereParams = ['deleted']
+
+    if (userType === 'normal') {
+        whereClause += ' AND a.user_id = ?'
+        whereParams.push(userId)
+    } else if (userType === 'visitor') {
+        whereClause += ' AND a.state = ?'
+        whereParams.push('published')
+    } else if (!['admin', 'editor'].includes(userType)) {
+        whereClause += ' AND 1 = 0'
+    }
+
+    if (classify && ['article', 'image'].includes(classify)) {
+        whereClause += ' AND a.classify = ?'
+        whereParams.push(classify)
+    }
+
+    const rows = await query(
+        `SELECT a.state, COUNT(*) AS total FROM article a WHERE ${whereClause} GROUP BY a.state`,
+        whereParams
+    )
+    const summary = { all: 0, published: 0, draft: 0, rejected: 0 }
+    for (const row of rows) {
+        if (row.state in summary) {
+            summary[row.state] = Number(row.total)
+            summary.all += Number(row.total)
+        }
+    }
+
+    const [uncategorizedRow] = await query(
+        `SELECT COUNT(*) AS total FROM article a WHERE ${whereClause} AND a.subset_id IS NULL`,
+        whereParams
+    )
+    summary.uncategorized = Number(uncategorizedRow.total)
+    return summary
+}
+
+/**
  * 根据ID查询文章详情
  * @param {number} articleId - 文章ID
  * @param {number} userId - 当前登录用户ID
@@ -376,6 +421,7 @@ async function updateArticleStatus(articleId, state, userId, userType) {
 module.exports = {
     findAtricleStateById,
     findArticlesByPage,
+    countArticlesByState,
     findAtricleById,
     findArticleMutationAccess,
     updateArticle,

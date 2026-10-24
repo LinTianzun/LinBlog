@@ -48,6 +48,14 @@ export interface ArticlePageData {
   list: ArticleItem[];
 }
 
+export interface ArticleStateSummary {
+  all: number;
+  published: number;
+  draft: number;
+  rejected: number;
+  uncategorized: number;
+}
+
 export interface CreateArticleParams {
   title: string;
   content: string;
@@ -145,6 +153,14 @@ export function getArticles(params: ArticleListParams = {}) {
   return request.get<ApiResult<ArticlePageData>>("/article", {
     params,
   });
+}
+
+// 文章状态统计（状态页签展示）
+export function getArticleStateSummary(classify: ArticleClassify = "article") {
+  return request.get<ApiResult<ArticleStateSummary>>(
+    "/article/state/summary",
+    { params: { classify } }
+  );
 }
 
 // 查询文章详情

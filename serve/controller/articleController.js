@@ -146,6 +146,30 @@ async function getArticleById(req, res) {
 }
 
 /**
+ *  文章状态统计（供状态页签展示：全部/已发布/未发布/未分类）
+ */
+async function getArticleStateSummary(req, res) {
+    try {
+        const { userId, userType } = req.user
+        const { classify } = req.query
+
+        const summary = await articleModel.countArticlesByState({
+            classify: classify && ['article', 'image'].includes(classify) ? classify : undefined,
+            userId,
+            userType
+        })
+
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: summary
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '文章统计查询失败：' + err.message })
+    }
+}
+
+/**
  * 文章编辑更新（支持部分字段更新）
  */
 async function updateArticle(req, res) {
@@ -407,6 +431,7 @@ async function updateArticleStatus(req, res) {
 module.exports = {
     createArticle,
     getArticles,
+    getArticleStateSummary,
     getArticleById,
     updateArticle,
     deleteArticle,

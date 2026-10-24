@@ -6,11 +6,13 @@ const test = require('node:test')
 const calls = []
 let mutationAccessRows = []
 let updateAffectedRows = 1
+let stateSummaryRows = []
 const articleModelPath = path.resolve(__dirname, '../model/dbModel/article/index.js')
 const originalLoad = Module._load
 
 async function query(sql, values = []) {
     calls.push({ sql, values })
+    if (sql.includes('GROUP BY a.state')) return stateSummaryRows
     if (sql.includes('COUNT(*)')) return [{ total: 1 }]
     if (sql.includes('INSERT INTO article')) return { insertId: 123 }
     if (sql.includes('SELECT id, user_id, state FROM article')) return mutationAccessRows
@@ -33,6 +35,32 @@ test.beforeEach(() => {
     calls.length = 0
     mutationAccessRows = []
     updateAffectedRows = 1
+    stateSummaryRows = []
+})
+
+test('article state summary aggregates counts per state and uncategorized', async () => {
+    stateSummaryRows = [
+        { state: 'published', total: 3 },
+        { state: 'draft', total: 2 },
+        { state: 'rejected', total: 1 }
+    ]
+
+    const summary = await articleModel.countArticlesByState({
+        classify: 'article',
+        userId: 1,
+        userType: 'admin'
+    })
+
+    assert.deepEqual(summary, {
+        all: 6,
+        published: 3,
+        draft: 2,
+        rejected: 1,
+        uncategorized: 1
+    })
+    assert.match(calls[0].sql, /a\.classify = \?[\s\S]*GROUP BY a\.state/)
+    assert.deepEqual(calls[0].values, ['deleted', 'article'])
+    assert.match(calls[1].sql, /a\.subset_id IS NULL/)
 })
 
 test('new articles persist their authenticated owner', async () => {

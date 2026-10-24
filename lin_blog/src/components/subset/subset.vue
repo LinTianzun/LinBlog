@@ -3,9 +3,9 @@
         <yk-space wrap>
             <div class="subset-menu" :class="{'subset-menu-seledted':selected=='-1all'}"
                 @click="changeSeleted(-1,'all')">
-                全部 {{ subsetStore.count }}
+                全部 {{ subsetStore.stateSummary.all }}
             </div>
-            <div class="subset-menu" v-for="(item, index) in state.data" :key="index"
+            <div class="subset-menu" v-for="(item, index) in subsetStore.stateTabs" :key="index"
                 :class="{'subset-menu-seledted':selected==item.id+'state'}" @click="changeSeleted(item.id,'state')">
                 {{ item.name }}{{ item.value }}
             </div>
@@ -46,7 +46,6 @@
 
 <script lang="ts" setup>
     import { ref, onMounted, getCurrentInstance } from 'vue'
-    import { state } from '../../mock/data.ts'
     import { createSubset } from '../../api/subset'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
@@ -74,7 +73,7 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
 
     //  获取分组
     const rawSubset = async () => {
-        await subsetStore.fetchSubsets()
+        await Promise.all([subsetStore.fetchSubsets(), subsetStore.fetchStateSummary()])
     }
 
     //  新建分组
@@ -123,7 +122,7 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
     const handleModalChange = (value: boolean) => {
         visible.value = value
         if (!value) {
-            void subsetStore.fetchSubsets()
+            void rawSubset()
         }
     }
 
