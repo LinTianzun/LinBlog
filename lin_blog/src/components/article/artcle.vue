@@ -41,6 +41,7 @@ import {
 } from '../../api/article'
 import artcleItem from './artcleItem.vue'
 import ArticleDetailView from '../../views/ArticleDetailView.vue'
+import { useSubsetStore } from '../../store/subset'
 
 type Props = {
     pageSize?: number
@@ -73,6 +74,7 @@ type MessageProxy = {
 }
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
+const subsetStore = useSubsetStore()
 const articleList = ref<ArticleItem[]>([])
 const count = ref(0)
 const page = ref(1)
@@ -160,6 +162,8 @@ const openDetail = (id: number): void => {
 
 const handleDetailChanged = (): void => {
     void fetchArticles()
+    void subsetStore.fetchStateSummary()
+    void subsetStore.fetchSubsets()
 }
 
 const removeArticle = async (id: number): Promise<void> => {
@@ -174,6 +178,7 @@ const removeArticle = async (id: number): Promise<void> => {
         }
 
         await fetchArticles()
+        await Promise.all([subsetStore.fetchStateSummary(), subsetStore.fetchSubsets()])
     } catch (error) {
         showMessage('error', getArticleErrorMessage(error, '删除失败，请稍后重试'))
     }
@@ -186,6 +191,7 @@ const updateState = async (event: StateUpdateEvent): Promise<void> => {
 
         showMessage('primary', result.message || '文章状态已更新')
         await fetchArticles()
+        await Promise.all([subsetStore.fetchStateSummary(), subsetStore.fetchSubsets()])
     } catch (error) {
         showMessage('error', getArticleErrorMessage(error, '状态修改失败，请稍后重试'))
     }
