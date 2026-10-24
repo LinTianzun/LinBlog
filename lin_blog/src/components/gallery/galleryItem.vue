@@ -5,6 +5,9 @@
                 <div class="gallery-item-cover">
                     <yk-image :src="cover" fit="cover" :preview="false" width="238" height="160"
                         :is-lazy="true" />
+                    <p class="gallery-item-state" :class="`is-${props.data.state}`">
+                        {{ stateLabel }}
+                    </p>
                 </div>
                 <yk-space :size="2">
                     <div v-for="n in 3" :key="n" class="image-div"
@@ -52,7 +55,11 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ArticleItem } from '../../api/article.ts'
-import { formatArticleDate, parseGalleryContent } from '../../api/article.ts'
+import {
+    formatArticleDate,
+    getArticleStateLabel,
+    parseGalleryContent,
+} from '../../api/article.ts'
 
 const props = defineProps<{
     data: ArticleItem
@@ -64,9 +71,15 @@ const emits = defineEmits<{
 
 const router = useRouter()
 
-const photos = computed(() => parseGalleryContent(props.data.content))
-const cover = computed(() => props.data.cover || photos.value[0] || '')
+const allPhotos = computed(() => parseGalleryContent(props.data.content))
+const cover = computed(() => props.data.cover || allPhotos.value[0] || '')
+// 小图跳过封面本身，避免与大图重复
+const photos = computed(() => {
+    const filtered = cover.value ? allPhotos.value.filter(url => url !== cover.value) : allPhotos.value
+    return filtered.slice(0, 3)
+})
 const articleDate = computed(() => formatArticleDate(props.data.createdAt))
+const stateLabel = computed(() => getArticleStateLabel(props.data.state))
 
 const openEditor = (): void => {
     router.push(`/editgallery/${props.data.id}`)
@@ -135,6 +148,28 @@ const deleteGallery = (): void => {
         border-radius: @radius-m @radius-m 0 0;
         overflow: hidden;
         padding-bottom: 2px;
+    }
+
+    &-state {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        line-height: 26px;
+        text-align: center;
+        color: @white;
+        font-size: @size-s;
+        font-weight: 600;
+        background: rgba(43, 90, 237, 0.82);
+        margin: 0;
+
+        &.is-published {
+            background: rgba(31, 157, 99, 0.84);
+        }
+
+        &.is-rejected {
+            background: rgba(218, 80, 66, 0.86);
+        }
     }
 
     &-title {

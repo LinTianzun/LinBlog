@@ -93,6 +93,7 @@ async function getArticles(req, res) {
             offset,
             state,          // 可选筛选：draft/published/rejected
             classify,       // 可选筛选：article/image
+            withContent: classify === 'image',  // 图库列表返回 content 供预览小图
             subsetId: subsetId && !isNaN(subsetId) ? subsetId : null, // 分类ID筛选
             uncategorized: uncategorized === 'true' || uncategorized === true,
             label: typeof label === 'string' ? label.trim() : undefined,

@@ -2,9 +2,12 @@
     <div class="edit-gallery">
         <div class="edit-gallery-topbar">
             <div>
-                <p class="edit-gallery-topbar-title">
-                    {{ isEditing ? '编辑摄影图库' : '新建摄影图库' }}
-                </p>
+                <yk-space align="center" size="m">
+                    <p class="edit-gallery-topbar-title">
+                        {{ isEditing ? '编辑摄影图库' : '新建摄影图库' }}
+                    </p>
+                    <yk-tag v-if="stateLabel" :color="stateColor" shape="round">{{ stateLabel }}</yk-tag>
+                </yk-space>
                 <yk-text v-if="saveMoment" type="secondary">{{ saveMoment }}</yk-text>
             </div>
             <yk-space align="center">
@@ -66,6 +69,7 @@ import {
     updateArticle,
     updateArticleStatus,
 } from '../api/article'
+import { getArticleStateLabel } from '../api/article'
 import editphoto from '../components/gallery/editPhoto.vue'
 import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
@@ -122,6 +126,14 @@ const articleId = computed(() => {
 })
 const isEditing = computed(() => articleId.value !== null)
 const canPublish = computed(() => ['admin', 'editor'].includes(currentRole))
+const stateLabel = computed(() => isEditing.value && article.value
+    ? getArticleStateLabel(article.value.state)
+    : '草稿')
+const stateColor = computed(() => {
+    if (article.value?.state === 'published') return '#1f9d63'
+    if (article.value?.state === 'rejected') return '#d84a3a'
+    return '#2b5aed'
+})
 
 const initialPhotos = computed(() => parseGalleryContent(article.value?.content))
 const initialCover = computed(() => article.value?.cover || initialPhotos.value[0] || '')
@@ -248,7 +260,9 @@ const submitGallery = async (action: SubmitAction): Promise<void> => {
 
             saveMoment.value = `${momentDay(new Date())} 已保存`
             showMessage('success', action === 'publish' ? '图库已发布' : '图库已保存为草稿')
-            await router.push('/gallery')
+            //  保存后留在当前页并进入编辑态，让用户看到最新状态标识
+            await router.replace(`/editgallery/${nextId}`)
+            await loadGallery()
             return
         }
 
@@ -281,7 +295,8 @@ const submitGallery = async (action: SubmitAction): Promise<void> => {
                     ? '图库已撤回为草稿'
                     : '图库已保存'
         )
-        await router.push('/gallery')
+        await loadGallery()
+        return
     } catch (error) {
         showMessage('error', describeError(error, '操作失败，请稍后重试'))
     } finally {

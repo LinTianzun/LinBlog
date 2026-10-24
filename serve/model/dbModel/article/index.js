@@ -43,7 +43,7 @@ async function insertArticle(articleInfo) {
  */
 async function findArticlesByPage(params) {
     const {
-        page, pageSize, offset, state, classify, subsetId,
+        page, pageSize, offset, state, classify, subsetId, withContent,
         uncategorized, label, keyword, userId, userType
     } = params
     let whereClause = 'a.state != ?'  //  排除已删除文章
@@ -112,6 +112,7 @@ async function findArticlesByPage(params) {
             a.classify,
             a.label,
             a.introduce,
+            ${withContent ? 'a.content,' : ''}
             a.cover,
             a.views,
             a.likes,
