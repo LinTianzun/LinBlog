@@ -32,7 +32,7 @@
             </div>
         </div>
         <div class="file-item-name">
-            <p class="file-item-name-file">{{ props.data.fileName }}</p>
+            <p class="file-item-name-file">{{ displayName }}</p>
             <p>.{{ props.data.format }}</p>
         </div>
     </div>
@@ -58,6 +58,14 @@ const previewFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
 const isPreviewable = computed(() =>
     previewFormats.includes(String(props.data.format || '').toLowerCase())
 )
+
+// 数据库存的是完整文件名，下方已单独展示后缀，这里去掉尾部扩展名避免「a.mp4 .mp4」
+const displayName = computed(() => {
+    const name = String(props.data.fileName || '')
+    const ext = String(props.data.format || '').toLowerCase()
+    if (!ext) return name
+    return name.toLowerCase().endsWith(`.${ext}`) ? name.slice(0, -(ext.length + 1)) : name
+})
 
 type FileItemProps = {
     data: FileData
