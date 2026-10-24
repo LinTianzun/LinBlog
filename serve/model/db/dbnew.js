@@ -349,12 +349,16 @@ async function seedDemoData() {
     console.log(`[DB] 插入 ${subsets.length} 条分类数据`);
 
     // 3. 插入天气数据
+    // 名称与前端 src/utils/weather.ts 保持一致，图标路径对齐 src/assets/weather
     const weathers = [
-      { weather_name: '晴', icon: 'https://picsum.photos/id/10/32' },
-      { weather_name: '阴', icon: 'https://picsum.photos/id/11/32' },
-      { weather_name: '雨', icon: 'https://picsum.photos/id/12/32' },
-      { weather_name: '雪', icon: 'https://picsum.photos/id/13/32' },
-      { weather_name: '多云', icon: 'https://picsum.photos/id/14/32' }
+      { weather_name: '晴天', icon: '/src/assets/weather/qing.svg' },
+      { weather_name: '多云', icon: '/src/assets/weather/duoyun.svg' },
+      { weather_name: '大雪', icon: '/src/assets/weather/daxue.svg' },
+      { weather_name: '大雨', icon: '/src/assets/weather/dayu.svg' },
+      { weather_name: '阵风', icon: '/src/assets/weather/feng.svg' },
+      { weather_name: '雷雨', icon: '/src/assets/weather/leiyujiaojia.svg' },
+      { weather_name: '雾霾', icon: '/src/assets/weather/wu.svg' },
+      { weather_name: '夜晚', icon: '/src/assets/weather/yueliang.svg' }
     ];
     const weatherIds = [];
     for (const weather of weathers) {
