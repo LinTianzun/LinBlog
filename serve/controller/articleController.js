@@ -69,7 +69,7 @@ async function createArticle(req, res) {
 async function getArticles(req, res) {
     try {
         const { userId, userType } = req.user
-        const { state, classify, subsetId, keyword, uncategorized } = req.query
+        const { state, classify, subsetId, keyword, uncategorized, label } = req.query
 
         //  分页参数校验
         const paginationResult = formatPaginationParams(req.query, {
@@ -95,6 +95,7 @@ async function getArticles(req, res) {
             classify,       // 可选筛选：article/image
             subsetId: subsetId && !isNaN(subsetId) ? subsetId : null, // 分类ID筛选
             uncategorized: uncategorized === 'true' || uncategorized === true,
+            label: typeof label === 'string' ? label.trim() : undefined,
             keyword: normalizedKeyword,
             userId,
             userType

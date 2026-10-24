@@ -64,8 +64,8 @@
 
 <script lang="ts" setup>
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
-import { mklabel } from '../../mock/data.ts'
 import { useSubsetStore } from '../../store/subset.ts'
+import { useLabelStore } from '../../store/label.ts'
 import '@wangeditor/editor/dist/css/style.css'
 
 type FormData = {
@@ -123,6 +123,7 @@ type MessageProxy = {
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 const subsetStore = useSubsetStore()
+const labelStore = useLabelStore()
 
 const formData = ref<FormData>({
     title: '',
@@ -245,7 +246,7 @@ const labelArr = ref<string[]>([])
 const inputLabel = ref<string>('')
 
 const getTags = () => {
-    tags.value = mklabel.data.list.map((item: { id: string | number; name: string }) => ({
+    tags.value = labelStore.data.map((item: { id: string | number; name: string | number }) => ({
         id: Number(item.id),
         name: String(item.name),
     }))
@@ -339,7 +340,12 @@ onMounted(() => {
     } else {
         getSubset()
     }
-    getTags()
+    //  标签建议来自数据库字典表
+    if (labelStore.data.length === 0) {
+        void labelStore.fetchLabels().then(() => getTags())
+    } else {
+        getTags()
+    }
     emitFormData()
 })
 </script>

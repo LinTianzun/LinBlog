@@ -47,6 +47,7 @@ type Props = {
     pageSize?: number
     subsetId?: number
     uncategorized?: boolean
+    labelName?: string
     serchTerm?: string
     state?: ArticleState | ''
 }
@@ -55,6 +56,7 @@ const props = withDefaults(defineProps<Props>(), {
     pageSize: 6,
     subsetId: -1,
     uncategorized: false,
+    labelName: '',
     serchTerm: '',
     state: '',
 })
@@ -124,6 +126,7 @@ const fetchArticles = async (): Promise<void> => {
             classify: 'article',
             subsetId: props.subsetId > 0 ? props.subsetId : undefined,
             uncategorized: props.uncategorized || undefined,
+            label: props.labelName.trim() || undefined,
             keyword: props.serchTerm.trim() || undefined,
         })
 
@@ -198,7 +201,7 @@ const updateState = async (event: StateUpdateEvent): Promise<void> => {
 }
 
 watch(
-    () => [props.subsetId, props.uncategorized, props.serchTerm, props.state],
+    () => [props.subsetId, props.uncategorized, props.labelName, props.serchTerm, props.state],
     () => {
         page.value = 1
         void fetchArticles()

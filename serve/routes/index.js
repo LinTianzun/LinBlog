@@ -12,4 +12,6 @@ module.exports = (app) => {
     require('./upload')(app)
     //  引入分类相关路由
     require('./subset')(app)
+    //  引入标签相关路由
+    require('./label')(app)
 }

@@ -37,6 +37,7 @@ export interface ArticleListParams {
   classify?: ArticleClassify;
   subsetId?: number;
   uncategorized?: boolean;
+  label?: string;
   keyword?: string;
 }
 

@@ -21,7 +21,7 @@
             </yk-space>
         </div>
         <yk-space wrap size="s">
-            <yk-tag v-for="(item, index) in label" :key="index" @click="changeSeleted(item.id,'label')"
+            <yk-tag v-for="(item, index) in labelStore.data" :key="index" @click="changeSeleted(item.id,'label')"
                 :class="{'label-menu-seledted':selected==item.id+'label'}">
                 {{item.name}}
             </yk-tag>
@@ -30,7 +30,7 @@
 
     <!-- 管理标签对话框 -->
     <yk-modal v-model="visible" title="管理标签">
-        <labelManage :label="label" />
+        <labelManage @changed="rawLabel" />
         <template #footer>
             <yk-button @click="showModal">确定</yk-button>
         </template>
@@ -40,7 +40,8 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
-import { mklabel } from '../../mock/data.ts'
+import { createLabel } from '../../api/label.ts'
+import { useLabelStore } from '../../store/label.ts'
 import type { LabelData } from '../../utils/interface.ts'
 import labelManage from './labelManage.vue'
 
@@ -54,6 +55,7 @@ type MessageInstance = ComponentPublicInstance & {
 }
 
 const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
+const labelStore = useLabelStore()
 
 // 新建标签内容
 const inputValue = ref('')
@@ -75,10 +77,8 @@ const changeSeleted = (id: LabelData['id'], type: 'label'): void => {
 }
 
 // 获取标签
-const label = ref<LabelData[]>([])
-
-const rawLabel = (): void => {
-    label.value = [...mklabel.data.list]
+const rawLabel = async (): Promise<void> => {
+    await labelStore.fetchLabels()
 }
 
 // 取消新建
@@ -87,24 +87,28 @@ const cancel = (): void => {
 }
 
 // 新建标签
-const confirm = (): void => {
+const confirm = async (): Promise<void> => {
     const name = inputValue.value.trim()
 
     if (name) {
-        const nextId = label.value.reduce(
-            (max, item) => Math.max(max, Number(item.id) || 0),
-            0
-        ) + 1
-
-        const newLabel: LabelData = {
-            id: nextId,
-            name,
-            moment: new Date().toLocaleString()
+        if (name.length > 30) {
+            proxy?.$message?.({ type: 'warning', message: '标签名称不能超过30字' })
+            return
         }
 
-        label.value.push(newLabel)
-        proxy?.$message?.({ type: 'primary', message: '插入完成' })
-        inputValue.value = ''
+        try {
+            const result = await createLabel({ name })
+            if (result.code !== 200) {
+                throw new Error(result.message || '创建失败')
+            }
+            await rawLabel()
+            proxy?.$message?.({ type: 'primary', message: '标签创建成功' })
+            inputValue.value = ''
+        } catch (error) {
+            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                || (error instanceof Error ? error.message : '创建失败，请稍后重试')
+            proxy?.$message?.({ type: 'error', message })
+        }
     } else {
         proxy?.$message?.({ type: 'warning', message: '内容不能为空' })
     }
@@ -118,7 +122,7 @@ const showModal = (): void => {
 }
 
 onMounted(() => {
-    rawLabel()
+    void rawLabel()
 })
 </script>
 

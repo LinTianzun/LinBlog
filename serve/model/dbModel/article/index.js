@@ -1,4 +1,5 @@
 const { query } = require('../../db/dbnew')
+const labelModel = require('../label/index')
 
 /**
  * 校验文章是否存在（仅查ID和状态）
@@ -30,6 +31,8 @@ async function insertArticle(articleInfo) {
     const result = await query(sql, [
         userId, title, subsetId, classify, label, introduce, content, cover
     ])
+    //  文章使用的标签同步进字典表，便于标签管理与筛选
+    await labelModel.ensureLabels(label)
     return { articleId: result.insertId }
 }
 
@@ -41,7 +44,7 @@ async function insertArticle(articleInfo) {
 async function findArticlesByPage(params) {
     const {
         page, pageSize, offset, state, classify, subsetId,
-        uncategorized, keyword, userId, userType
+        uncategorized, label, keyword, userId, userType
     } = params
     let whereClause = 'a.state != ?'  //  排除已删除文章
     const whereParams = ['deleted']
@@ -78,6 +81,12 @@ async function findArticlesByPage(params) {
     //  筛选条件：未分类
     if (uncategorized) {
         whereClause += ' AND a.subset_id IS NULL'
+    }
+
+    //  筛选条件：标签（FIND_IN_SET 精确匹配逗号分隔中的某一项）
+    if (label) {
+        whereClause += ' AND FIND_IN_SET(?, a.label)'
+        whereParams.push(label)
     }
 
     //  筛选条件：标题、简介、标签或正文关键词
@@ -337,6 +346,10 @@ async function updateArticle(articleId, updateData, userId, userType) {
 
     // 关键修复：参数顺序 = SET参数 + WHERE参数（和 SQL 中的 ? 顺序完全对应）
     const result = await query(sql, [...setParams, ...whereParams])
+    if (result.affectedRows > 0 && updateData.label !== undefined) {
+        //  标签变更时同步字典表
+        await labelModel.ensureLabels(updateData.label)
+    }
     return result.affectedRows
 }
 

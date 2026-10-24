@@ -3,6 +3,8 @@ const Module = require('node:module')
 const path = require('node:path')
 const test = require('node:test')
 
+process.env.LINBLOG_JWT_SECRET = 'test-secret-that-is-at-least-32-characters-long'
+
 const calls = []
 let mutationAccessRows = []
 let updateAffectedRows = 1

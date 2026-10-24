@@ -7,7 +7,7 @@
             </div>
             <div class="subset-menu" v-for="(item, index) in subsetStore.stateTabs" :key="index"
                 :class="{'subset-menu-seledted':selected==item.id+'state'}" @click="changeSeleted(item.id,'state')">
-                {{ item.name }}{{ item.value }}
+                {{ item.name }} {{ item.value }}
             </div>
             <div class="subset-menu" :class="{'subset-menu-seledted':selected==subsetStore.exclude.id+'exclude'}"
                 @click="changeSeleted(subsetStore.exclude.id,'exclude')">
