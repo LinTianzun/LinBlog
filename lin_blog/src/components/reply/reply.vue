@@ -57,13 +57,13 @@ const handleClick = () => {
         cursor: pointer;
 
         &-main {
+            position: relative;
             width: 100%;
             padding-bottom: @space-l;
             border-bottom: 1px solid @line-color-s;
 
             &-name {
                 display: flex;
-                position: relative;
                 flex: 1;
                 flex-direction: column;
             }
