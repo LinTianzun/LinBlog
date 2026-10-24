@@ -14,6 +14,7 @@ async function getCommentsByPage(page, pageSize, offset) {
             c.id,
             c.user_id,
             u.username AS user_name,  
+            u.imgurl AS user_avatar,
             c.article_id,
             a.title AS article_title, 
             c.parent_id,              
@@ -36,6 +37,7 @@ async function getCommentsByPage(page, pageSize, offset) {
         id: item.id,
         userId: item.user_id,
         userName: item.user_name,
+        userAvatar: item.user_avatar,
         article: {
             id: item.article_id,
             title: item.article_title || '文章已删除'  // 文章删除时的兼容处理
@@ -117,6 +119,7 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
             c.id,
             c.user_id,
             u.username AS user_name,
+            u.imgurl AS user_avatar,
             c.article_id,
             a.title AS article_title,
             c.parent_id,
@@ -142,6 +145,7 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
         id: item.id,
         userId: item.user_id,
         userName: item.user_name,
+        userAvatar: item.user_avatar,
         article: {
             id: item.article_id,
             title: item.article_title || '文章已删除'
