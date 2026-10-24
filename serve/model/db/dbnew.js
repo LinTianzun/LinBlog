@@ -127,7 +127,7 @@ const tablesSql = {
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_subset_classify (subset_name, classify),
+    INDEX idx_subset_classify (subset_name, classify),
     INDEX idx_classify (classify),
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源分类表';`,
@@ -823,6 +823,33 @@ async function ensureImageStorageSchema(exec = query) {
   await importLegacyImageFiles(exec)
 }
 
+async function ensureSubsetSoftDeleteSchema(exec = query) {
+  // 软删分类仍占用唯一键会导致同名分类无法重建，唯一性改由应用层保证。
+  const [uniqueIndex] = await exec(`
+    SELECT NON_UNIQUE
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'subset'
+      AND INDEX_NAME = 'uk_subset_classify'
+    LIMIT 1
+  `);
+  if (uniqueIndex && Number(uniqueIndex.NON_UNIQUE) === 0) {
+    await exec('ALTER TABLE subset DROP INDEX uk_subset_classify');
+  }
+
+  const [normalIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'subset'
+      AND INDEX_NAME = 'idx_subset_classify'
+    LIMIT 1
+  `);
+  if (!normalIndex) {
+    await exec('ALTER TABLE subset ADD INDEX idx_subset_classify (subset_name, classify)');
+  }
+}
+
 async function importLegacyImageFiles(exec = query) {
   // 历史封面保存在 serve/data/img，迁移时一次性导入 image 表，保持 /api/uploads URL 可用。
   const legacyDir = path.join(__dirname, '..', '..', 'data', 'img')
@@ -882,6 +909,10 @@ const migrations = [
   {
     version: '20261024_image_storage',
     up: ensureImageStorageSchema
+  },
+  {
+    version: '20261024_subset_soft_delete',
+    up: ensureSubsetSoftDeleteSchema
   }
 ];
 

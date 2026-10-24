@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { SubsetData } from '../utils/interface'
+import { getSubsets } from '../api/subset'
 
 export const useSubsetStore = defineStore('subsets', {
     // 为了完整类型推理，推荐使用箭头函数
@@ -23,6 +24,23 @@ export const useSubsetStore = defineStore('subsets', {
         }
     },
     actions: {
+        // 从数据库加载文章分类，写入 count 和 data
+        async fetchSubsets() {
+            try {
+                const result = await getSubsets('article')
+                if (result.code === 200 && result.data) {
+                    this.count = result.data.count
+                    this.data = result.data.list.map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        value: item.value ?? 0,
+                        moment: item.moment,
+                    }))
+                }
+            } catch {
+                // 请求失败时保留现有数据，由调用方提示错误
+            }
+        },
         subsetName(e?: number) {
             for (let i = 0; i < this.$state.data.length; i++) {
                 if (this.$state.data[i].id === e) {

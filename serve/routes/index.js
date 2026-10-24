@@ -10,4 +10,6 @@ module.exports = (app) => {
     require('./message')(app)
     //  引入图片上传相关路由
     require('./upload')(app)
+    //  引入分类相关路由
+    require('./subset')(app)
 }

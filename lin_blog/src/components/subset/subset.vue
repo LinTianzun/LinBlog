@@ -15,7 +15,7 @@
             </div>
             <div class="subset-menu" v-for="(item, index) in subsetStore.data" :key="index"
                 @click="changeSeleted(item.id,'subset')" :class="{'subset-menu-seledted':selected==item.id+'subset'}">
-                {{item.name}}{{item.value}}
+                {{item.name}} {{item.value}}
             </div>
         </yk-space>
         <yk-space style="flex:none">
@@ -34,7 +34,7 @@
                 <IconSettingsOutline style="margin-right: 4px;" /> 管理分组
             </yk-text>
             <!-- 管理分组对话框 -->
-            <yk-modal v-model="visible" title="管理分组">
+            <yk-modal :model-value="visible" title="管理分组" @update:model-value="handleModalChange">
                 <subsetManage />
                 <template #footer>
                     <yk-button @click="showModal">确定</yk-button>
@@ -46,7 +46,8 @@
 
 <script lang="ts" setup>
     import { ref, onMounted, getCurrentInstance } from 'vue'
-    import { subset, state } from '../../mock/data.ts'
+    import { state } from '../../mock/data.ts'
+    import { createSubset } from '../../api/subset'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
 
@@ -72,33 +73,41 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
     }
 
     //  获取分组
-    const rawSubset = () => {
-        subsetStore.count = subset.data.count
-        subsetStore.data = subset.data.list
-        // console.log(subsetStore.data)
+    const rawSubset = async () => {
+        await subsetStore.fetchSubsets()
     }
 
     //  新建分组
-    const proxy = getCurrentInstance()?.proxy
+    const proxy = getCurrentInstance()?.proxy as {
+        $message: (options: { type: 'primary' | 'warning' | 'error' | 'success'; message: string }) => void
+    } | null | undefined
     //  取消
     function cancel() {
         inputValue.value = ''
     }
     //  插入
-   function confirm() {
+   async function confirm() {
     const name = String(inputValue.value ?? '').trim()
 
     if (name) {
-        const obj = {
-            id: -2,
-            name,
-            value: 0,
-            moment: new Date().toLocaleDateString()
+        if (name.length > 50) {
+            proxy?.$message({ type: 'warning', message: '分类名称不能超过50字' })
+            return
         }
 
-        subsetStore.data.push(obj)
-        proxy?.$message({ type: 'primary', message: '插入完成' })
-        inputValue.value = ''
+        try {
+            const result = await createSubset({ name, classify: 'article' })
+            if (result.code !== 200) {
+                throw new Error(result.message || '创建失败')
+            }
+            await subsetStore.fetchSubsets()
+            proxy?.$message({ type: 'primary', message: '分类创建成功' })
+            inputValue.value = ''
+        } catch (error) {
+            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                || (error instanceof Error ? error.message : '创建失败，请稍后重试')
+            proxy?.$message({ type: 'error', message })
+        }
     } else {
         proxy?.$message({ type: 'warning', message: '内容不能为空' })
     }
@@ -110,8 +119,16 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
         visible.value = !visible.value
     }
 
+    // 管理弹窗关闭后刷新分类计数
+    const handleModalChange = (value: boolean) => {
+        visible.value = value
+        if (!value) {
+            void subsetStore.fetchSubsets()
+        }
+    }
+
     onMounted(() => {
-        rawSubset()
+        void rawSubset()
     })
 </script>
 

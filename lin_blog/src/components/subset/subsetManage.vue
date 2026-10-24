@@ -16,7 +16,7 @@
                     {{ item.moment }}
                 </td>
                 <td class="yk-table__cell text-right">
-                    <yk-text type="primary" @click="deleteSubset(item.id)" style="cursor: pointer">删除</yk-text>
+                <yk-text type="primary" @click="removeSubset(item.id)" style="cursor: pointer">删除</yk-text>
                 </td>
             </tr>
         </template>
@@ -26,14 +26,19 @@
 <script lang="ts" setup>
 import { getCurrentInstance } from 'vue'
 import { useSubsetStore } from '../../store/subset.ts'
+import { deleteSubset, updateSubset } from '../../api/subset'
 
 const proxy = getCurrentInstance()?.proxy
+
+const messageProxy = proxy as {
+    $message: (options: { type: 'primary' | 'warning' | 'error'; message: string }) => void
+} | null | undefined
 
 const subsetStore = useSubsetStore()
 
 type SubsetItem = (typeof subsetStore.data)[number]
 
-let nowName: SubsetItem['name'] | undefined
+let nowName: SubsetItem['name'] = ''
 
 // 聚焦名称
 const focusSubset = (id: SubsetItem['id']) => {
@@ -44,25 +49,49 @@ const focusSubset = (id: SubsetItem['id']) => {
 }
 
 // 失焦
-const blurSubset = (id: SubsetItem['id']) => {
+const blurSubset = async (id: SubsetItem['id']) => {
     const result = subsetStore.data.find((item) => item.id === id)
 
     if (result && nowName !== result.name) {
-        // 提交后端处理
-        proxy?.$message({ type: 'primary', message: '修改成功' })
+        const name = String(result.name).trim()
+        if (!name) {
+                messageProxy?.$message?.({ type: 'warning', message: '分类名称不能为空' })
+            result.name = nowName
+            return
+        }
+
+        try {
+            const res = await updateSubset(Number(id), { name })
+            if (res.code !== 200) {
+                throw new Error(res.message || '修改失败')
+            }
+            await subsetStore.fetchSubsets()
+            messageProxy?.$message?.({ type: 'primary', message: '修改成功' })
+        } catch (error) {
+            if (nowName !== undefined) {
+                result.name = nowName
+            }
+            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                || (error instanceof Error ? error.message : '修改失败，请稍后重试')
+            messageProxy?.$message?.({ type: 'error', message })
+        }
     }
 }
 
 // 删除
-const deleteSubset = (id: SubsetItem['id']) => {
-    subsetStore.data = subsetStore.data.filter((item) => {
-        if (item.id === id) {
-            subsetStore.exclude.value += item.value
+const removeSubset = async (id: SubsetItem['id']) => {
+    try {
+        const res = await deleteSubset(Number(id))
+        if (res.code !== 200) {
+            throw new Error(res.message || '删除失败')
         }
-        return item.id !== id
-    })
-
-    proxy?.$message({ type: 'primary', message: '删除成功' })
+        await subsetStore.fetchSubsets()
+        messageProxy?.$message?.({ type: 'primary', message: '删除成功' })
+    } catch (error) {
+        const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+            || (error instanceof Error ? error.message : '删除失败，请稍后重试')
+        messageProxy?.$message?.({ type: 'error', message })
+    }
 }
 </script>
 

@@ -14,7 +14,8 @@ test('applied migrations are not executed twice', async () => {
         if (sql === 'SELECT version FROM schema_migrations') {
             return [
                 { version: '20261023_article_owner' },
-                { version: '20261024_image_storage' }
+                { version: '20261024_image_storage' },
+                { version: '20261024_subset_soft_delete' }
             ]
         }
 
