@@ -1,6 +1,9 @@
 const mysql = require('mysql2');
 const config = require('../../config/default');
 const bcrypt = require('bcrypt');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // 初始化状态标记与锁
 let isInited = false;
@@ -128,6 +131,25 @@ const tablesSql = {
     INDEX idx_classify (classify),
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源分类表';`,
+
+  image: `CREATE TABLE IF NOT EXISTS image(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '图片ID',
+    filename VARCHAR(100) NOT NULL COMMENT '图片文件名（访问路径唯一标识）',
+    mime_type VARCHAR(32) NOT NULL COMMENT '图片 MIME 类型',
+    size INT UNSIGNED NOT NULL COMMENT '图片大小（字节）',
+    checksum CHAR(64) NOT NULL COMMENT 'SHA-256 内容哈希',
+    data MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）',
+    user_id BIGINT UNSIGNED NULL COMMENT '上传用户ID',
+    status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_filename (filename),
+    INDEX idx_checksum (checksum),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_image_user (user_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='图片存储表';`,
 
   file: `CREATE TABLE IF NOT EXISTS file(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '文件ID',
@@ -569,7 +591,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record'];
+    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -662,10 +684,204 @@ async function ensureArticleOwnerSchema(exec = query) {
   }
 }
 
+async function ensureImageStorageSchema(exec = query) {
+  const [tableExists] = await exec(`
+    SELECT TABLE_NAME
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+  `)
+
+  if (!tableExists) {
+    await exec(tablesSql.image)
+    return
+  }
+
+  const columns = await exec(`
+    SELECT COLUMN_NAME, COLUMN_TYPE
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+  `)
+  const columnTypes = new Map(
+    columns.map((column) => [column.COLUMN_NAME, column.COLUMN_TYPE])
+  )
+
+  if (!columnTypes.has('id')) {
+    await exec(`
+      ALTER TABLE image
+      ADD COLUMN id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY
+    `)
+  }
+
+  const requiredColumns = [
+    ['filename', "VARCHAR(100) NOT NULL COMMENT '图片文件名（访问路径唯一标识）'"],
+    ['mime_type', "VARCHAR(32) NOT NULL COMMENT '图片 MIME 类型'"],
+    ['size', "INT UNSIGNED NOT NULL COMMENT '图片大小（字节）'"],
+    ['checksum', "CHAR(64) NOT NULL COMMENT 'SHA-256 内容哈希'"],
+    ['data', "MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）'"],
+    ['user_id', "BIGINT UNSIGNED NULL COMMENT '上传用户ID'"],
+    ['status', "TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除'"],
+    ['created_at', "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间'"]
+  ]
+
+  for (const [name, definition] of requiredColumns) {
+    if (!columnTypes.has(name)) {
+      await exec(`ALTER TABLE image ADD COLUMN ${name} ${definition}`)
+    }
+  }
+
+  if (columnTypes.has('data') && columnTypes.get('data') !== 'mediumblob') {
+    await exec(`
+      ALTER TABLE image
+      MODIFY COLUMN data MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）'
+    `)
+  }
+
+  const [filenameIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND INDEX_NAME = 'uk_filename'
+      AND COLUMN_NAME = 'filename'
+      AND SEQ_IN_INDEX = 1
+  `)
+  if (!filenameIndex) {
+    await exec('ALTER TABLE image ADD UNIQUE KEY uk_filename (filename)')
+  }
+
+  const [checksumIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND INDEX_NAME = 'idx_checksum'
+      AND COLUMN_NAME = 'checksum'
+      AND SEQ_IN_INDEX = 1
+  `)
+  if (!checksumIndex) {
+    await exec('ALTER TABLE image ADD INDEX idx_checksum (checksum)')
+  }
+
+  const [statusIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND INDEX_NAME = 'idx_status'
+      AND COLUMN_NAME = 'status'
+      AND SEQ_IN_INDEX = 1
+  `)
+  if (!statusIndex) {
+    await exec('ALTER TABLE image ADD INDEX idx_status (status)')
+  }
+
+  const [createdAtIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND INDEX_NAME = 'idx_created_at'
+      AND COLUMN_NAME = 'created_at'
+      AND SEQ_IN_INDEX = 1
+  `)
+  if (!createdAtIndex) {
+    await exec('ALTER TABLE image ADD INDEX idx_created_at (created_at)')
+  }
+
+  const [userConstraint] = await exec(`
+    SELECT CONSTRAINT_NAME
+    FROM information_schema.KEY_COLUMN_USAGE
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND COLUMN_NAME = 'user_id'
+      AND REFERENCED_TABLE_NAME = 'users'
+      AND REFERENCED_COLUMN_NAME = 'id'
+  `)
+  if (!userConstraint) {
+    await exec(`
+      ALTER TABLE image
+      ADD CONSTRAINT fk_image_user
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    `)
+  }
+
+  const [userIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'image'
+      AND INDEX_NAME = 'idx_image_user'
+      AND COLUMN_NAME = 'user_id'
+      AND SEQ_IN_INDEX = 1
+  `)
+  if (!userIndex) {
+    await exec('ALTER TABLE image ADD INDEX idx_image_user (user_id)')
+  }
+
+  await importLegacyImageFiles(exec)
+}
+
+async function importLegacyImageFiles(exec = query) {
+  // 历史封面保存在 serve/data/img，迁移时一次性导入 image 表，保持 /api/uploads URL 可用。
+  const legacyDir = path.join(__dirname, '..', '..', 'data', 'img')
+  const mimeByExtension = new Map([
+    ['.jpg', 'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.png', 'image/png'],
+    ['.webp', 'image/webp'],
+    ['.gif', 'image/gif']
+  ])
+
+  let entries
+  try {
+    entries = fs.readdirSync(legacyDir)
+  } catch {
+    return
+  }
+
+  for (const filename of entries) {
+    const mimeType = mimeByExtension.get(path.extname(filename).toLowerCase())
+    if (!mimeType) {
+      continue
+    }
+
+    const existingRows = await exec(
+      'SELECT id FROM image WHERE filename = ? LIMIT 1',
+      [filename]
+    )
+    if (existingRows && existingRows.length > 0) {
+      continue
+    }
+
+    let buffer
+    try {
+      buffer = fs.readFileSync(path.join(legacyDir, filename))
+    } catch (err) {
+      console.warn(`[DB] 读取历史图片失败，跳过 ${filename}：`, err.message)
+      continue
+    }
+
+    const checksum = crypto.createHash('sha256').update(buffer).digest('hex')
+    await exec(
+      `INSERT INTO image
+          (filename, mime_type, size, checksum, data, user_id)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+      [filename, mimeType, buffer.length, checksum, buffer]
+    )
+    console.log(`[DB] 已导入历史图片 ${filename}`)
+  }
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
     up: ensureArticleOwnerSchema
+  },
+  {
+    version: '20261024_image_storage',
+    up: ensureImageStorageSchema
   }
 ];
 

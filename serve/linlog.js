@@ -25,7 +25,6 @@ app.use(express.json({ limit: config.jsonLimit }))
 app.use(normalizeJsonBody)
 
 // 3. 托管静态文件
-app.use('/api/uploads', express.static(path.join(__dirname, 'data', 'img')))
 app.use(express.static(path.join(__dirname, 'data')))
 
 // 4. 自定义响应头（仅保留必要的）

@@ -12,7 +12,10 @@ test('applied migrations are not executed twice', async () => {
         calls.push({ sql, values })
 
         if (sql === 'SELECT version FROM schema_migrations') {
-            return [{ version: '20261023_article_owner' }]
+            return [
+                { version: '20261023_article_owner' },
+                { version: '20261024_image_storage' }
+            ]
         }
 
         return []
