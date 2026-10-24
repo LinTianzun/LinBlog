@@ -14,5 +14,5 @@ export type ReplyProps = {
 
 export type InformationProps = {
     active: boolean;
-    pageSize: number;
+    pageSize?: number;
 }

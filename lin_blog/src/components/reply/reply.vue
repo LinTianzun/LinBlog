@@ -5,7 +5,7 @@
             <div class="reply-main-name">
                 <yk-text strong>{{content.user.name}}</yk-text>
                 <yk-text type="third" style="font-size: 12px;">{{content.moment}}</yk-text>
-                <!-- 未读红点：显示在条目右上角 -->
+                <!-- 未读红点：与删除图标同一定位基准，位于其左侧 8px -->
                 <span v-if="isUnread" class="reply-main-dot"></span>
             </div>
             <yk-text type="secondary">
@@ -26,6 +26,7 @@
 </template>
 
 <script lang="ts" setup>
+import { computed } from 'vue'
 import type { ReplyProps } from './reply.ts'
 
 const props = withDefaults(defineProps<ReplyProps>(), {
@@ -37,8 +38,8 @@ const emits = defineEmits<{
     (e: 'click', id: string | number): void
 }>()
 
-// 未读私信显示红点
-const isUnread = props.content.isUnread === true
+// 未读私信显示红点（响应式，标记已读后立即消失）
+const isUnread = computed(() => props.content.isUnread === true)
 
 // 删除回复
 const deleteReply = (id: string | number) => {
@@ -70,7 +71,7 @@ const handleClick = () => {
 
             &-dot {
                 position: absolute;
-                right: 24px;
+                right: 24px; /* 删除图标宽16px + 间距8px */
                 top: 4px;
                 width: 8px;
                 height: 8px;
