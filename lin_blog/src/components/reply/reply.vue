@@ -5,7 +5,7 @@
             <div class="reply-main-name">
                 <yk-text strong>{{content.user.name}}</yk-text>
                 <yk-text type="third" style="font-size: 12px;">{{content.moment}}</yk-text>
-                <!-- 未读红点：与删除图标同一定位基准，位于其左侧 8px -->
+                <!-- 未读红点：显示在私信名称左上方 -->
                 <span v-if="isUnread" class="reply-main-dot"></span>
             </div>
             <yk-text type="secondary">
@@ -65,14 +65,15 @@ const handleClick = () => {
 
             &-name {
                 display: flex;
+                position: relative;
                 flex: 1;
                 flex-direction: column;
             }
 
             &-dot {
                 position: absolute;
-                right: 24px; /* 删除图标宽16px + 间距8px */
-                top: 4px;
+                left: -14px;
+                top: 0;
                 width: 8px;
                 height: 8px;
                 border-radius: 50%;
