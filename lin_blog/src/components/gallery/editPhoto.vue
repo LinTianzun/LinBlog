@@ -1,8 +1,8 @@
 <template>
     <div class="edit_photo">
         <div class="edit_photo-uploader">
-            <yk-upload :file-list="fileList" :upload-url="uploadUrl" :multiple="true" desc="上传图片"
-                accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
+            <yk-upload :file-list="fileList" :upload-url="uploadUrl" :draggable="true" :multiple="true"
+                desc="支持 JPG / PNG / WebP / GIF，单张不超过 8MB"
                 @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                 @handle-delete="handleUploadDelete">
             </yk-upload>
@@ -167,11 +167,8 @@ watch(
     }
 
     &-uploader {
-        :deep(.yk-upload__picture),
-        :deep(.yk-upload-picture),
-        :deep(.yk-upload__picture-button) {
-            width: 120px;
-            height: 120px;
+        :deep(.yk-upload-draggle) {
+            margin-bottom: @space-l;
         }
     }
 }
