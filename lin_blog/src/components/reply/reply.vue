@@ -72,8 +72,8 @@ const handleClick = () => {
 
             &-dot {
                 position: absolute;
-                left: -14px;
-                top: 0;
+                left: -8px;
+                top: -8px;
                 width: 8px;
                 height: 8px;
                 border-radius: 50%;
