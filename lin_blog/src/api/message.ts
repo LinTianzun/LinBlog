@@ -58,6 +58,13 @@ export function getUnreadCount(type?: MessageType) {
   );
 }
 
+// 标记消息已读（支持单个 ID 或 ID 数组）
+export function markMessagesRead(messageIds: number | number[]) {
+  return request.patch<ApiResult<{ markedCount: number }>>("/message/read", {
+    messageIds,
+  });
+}
+
 // 删除消息（后端校验：仅收件人或管理员）
 export function deleteMessage(id: number) {
   return request.delete<ApiResult<never>>(`/message/${id}`);

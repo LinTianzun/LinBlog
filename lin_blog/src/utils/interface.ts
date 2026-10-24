@@ -14,6 +14,7 @@ export type ReplyDat =
         comment: string;//内容
         moment: string;//时间
         complaint: number;//举报数
+        isUnread?: boolean;//未读标记（私信用）
     }
 
 

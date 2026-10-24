@@ -22,7 +22,7 @@
             <yk-button @click="quit">退出</yk-button>
         </yk-space>
 
-        <information :active="active" :page-size="6" @close="changeActive(false)" />
+        <information :active="active" :page-size="6" @close="changeActive(false)" @read="fetchUnread" />
     </div>
 
 </template>

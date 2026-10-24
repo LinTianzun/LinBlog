@@ -1,6 +1,14 @@
 <template>
     <yk-drawer placement="right" :show="active" @close="closes" :title="'私信 ' + count">
 
+        <div class="information-toolbar" v-if="messages.length > 0">
+            <yk-button type="secondary" size="s" :loading="markingAll" :disabled="unreadCount === 0"
+                @click="markAllRead">
+                一键已读
+            </yk-button>
+            <yk-text type="third">未读 {{ unreadCount }} 条</yk-text>
+        </div>
+
         <div v-if="loading" class="information-state">
             <yk-spinner size="m" />
             <yk-text type="secondary">正在加载私信...</yk-text>
@@ -10,7 +18,7 @@
 
         <yk-space v-else dir="vertical">
             <reply v-for="item in messages" :key="item.id" :isComment="false" :content="formatMessage(item)"
-                @delete="removeMessage" />
+                @delete="removeMessage" @click="handleMessageClick" />
         </yk-space>
 
         <template #footer>
@@ -20,11 +28,12 @@
 </template>
 
 <script lang="ts" setup>
-import { toRefs, ref, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { toRefs, ref, computed, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import type { InformationProps } from './reply.ts'
 import type { ReplyDat } from '../../utils/interface'
 import reply from './reply.vue'
 import {
+    markMessagesRead,
     deleteMessage as deleteMessageApi,
     getInboxMessages,
     getRequestErrorMessage,
@@ -47,6 +56,7 @@ const props = withDefaults(defineProps<InformationProps>(), {
 
 const emits = defineEmits<{
     (e: 'close', value: boolean): void
+    (e: 'read'): void
 }>()
 
 const { active } = toRefs(props)
@@ -62,6 +72,10 @@ const count = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const messages = ref<MessageItem[]>([])
+const markingAll = ref(false)
+
+// 当前页未读数
+const unreadCount = computed(() => messages.value.filter(item => item.isRead === 0).length)
 
 // 获取收件箱（私信）
 const fetchMessages = async (): Promise<void> => {
@@ -105,7 +119,47 @@ const formatMessage = (item: MessageItem): ReplyDat => ({
     comment: item.content,
     moment: formatMoment(item.createdAt),
     complaint: 0,
+    isUnread: item.isRead === 0,
 })
+
+// 一键已读：把当前页所有未读私信标记为已读
+const markAllRead = async (): Promise<void> => {
+    const unreadIds = messages.value
+        .filter(item => item.isRead === 0)
+        .map(item => item.id)
+
+    if (unreadIds.length === 0) return
+
+    markingAll.value = true
+    try {
+        const result = await markMessagesRead(unreadIds)
+        if (result.code !== 200) throw new Error(result.message || '标记失败')
+
+        proxy?.$message?.({ type: 'primary', message: result.message || '已全部标记为已读' })
+        await fetchMessages()
+        emits('read')
+    } catch (error) {
+        proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记失败，请稍后重试') })
+    } finally {
+        markingAll.value = false
+    }
+}
+
+// 点击单条私信：未读的标记为已读，红点消失
+const handleMessageClick = async (id: string | number): Promise<void> => {
+    const target = messages.value.find(item => item.id === Number(id))
+    if (!target || target.isRead !== 0) return
+
+    try {
+        const result = await markMessagesRead(target.id)
+        if (result.code !== 200) throw new Error(result.message || '标记失败')
+
+        target.isRead = 1
+        emits('read')
+    } catch (error) {
+        proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记失败，请稍后重试') })
+    }
+}
 
 const formatMoment = (value: string): string => {
     const date = new Date(value)
@@ -156,6 +210,15 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
+.information-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: @space-m;
+    border-bottom: 1px solid @line-color-s;
+    margin-bottom: @space-m;
+}
+
 .information-state {
     min-height: 200px;
     display: flex;
