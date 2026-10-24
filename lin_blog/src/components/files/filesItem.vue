@@ -1,10 +1,19 @@
 <template>
     <div class="file-item">
         <div class="file-item-img" :class="{ 'file-item-selected': props.data?.selected }">
-            <yk-image :src="props.data.url" fit="contain" width="200" height="200" :preview="true" :is-lazy="true">
+            <yk-image v-if="isPreviewable" :src="props.data.url" fit="contain" width="200" height="200"
+                :preview="true" :is-lazy="true">
             </yk-image>
+            <div v-else class="file-item-img-placeholder">
+                <IconFileFill />
+                <yk-text type="third">{{ props.data.format }}</yk-text>
+            </div>
             <yk-space class="file-item-img-tool" size="s">
-                <IconDeleteOutline class="files-tool-delete" @click="deleteFile" />
+                <IconDownloadOutline class="files-tool-download" @click="downloadFile" />
+                <yk-popconfirm title="确认删除该文件？删除后不可恢复" trigger="click" placement="topRight"
+                    @confirm="deleteFile">
+                    <IconDeleteOutline class="files-tool-delete" />
+                </yk-popconfirm>
                 <yk-popconfirm title="选择分组" trigger="click" placement="bottomRight" @cancel="cancel" @confirm="confirm">
                     <IconSwitchOutline class="files-tool-switch" />
                     <template #content>
@@ -30,7 +39,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { FileData } from '../../utils/interface.ts'
 import { useSubsetStore } from '../../store/subset.ts'
 import './files.less'
@@ -41,7 +50,14 @@ const emits = defineEmits<{
     changeSubsetId: [data: { id: number; subsetId: number | undefined }]
     delete: [id: number]
     selected: [id: number]
+    download: [id: number]
 }>()
+
+// 仅图片类文件做缩略图预览，其余格式显示文件类型占位
+const previewFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+const isPreviewable = computed(() =>
+    previewFormats.includes(String(props.data.format || '').toLowerCase())
+)
 
 type FileItemProps = {
     data: FileData
@@ -98,6 +114,11 @@ const deleteFile = () => {
 // 选择文件
 const checkFile = () => {
     emits('selected', props.data.id)
+}
+
+// 下载文件
+const downloadFile = () => {
+    emits('download', props.data.id)
 }
 </script>
 
@@ -203,6 +224,24 @@ const checkFile = () => {
             -webkit-line-clamp: 1;
             -webkit-box-orient: vertical;
             text-overflow: ellipsis;
+        }
+    }
+
+    // 非图片文件的类型占位
+    &-img-placeholder {
+        width: 200px;
+        height: 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: @space-s;
+        background: @bg-color-m;
+        cursor: pointer;
+
+        .yk-icon {
+            font-size: 56px;
+            color: @font-color-s;
         }
     }
 }

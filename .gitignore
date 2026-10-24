@@ -37,3 +37,7 @@ Thumbs.db
 # Local editor files
 .vscode/
 .idea/
+
+# Runtime file uploads
+serve/data/files/*
+!serve/data/files/.gitkeep

@@ -32,6 +32,7 @@ export interface FileData {
     url: string;
     fileName: string;
     format: string;
+    size?: number;
     subsetId?: number;
     selected?: boolean;
 }
