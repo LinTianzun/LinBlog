@@ -1,5 +1,5 @@
 //  时间格式化函数，返回 YYYY.MM.DD 格式的字符串
-export const momentm = (date: Date): string => {
+export const momentm = (date: Date | string): string => {
     const dateNew = new Date(date)
     // 获取年份
     const year = dateNew.getFullYear();
@@ -13,7 +13,7 @@ export const momentm = (date: Date): string => {
 }
 
 // 时间格式化函数，返回 YYYY-MM-DD HH:MM:SS 格式的字符串
-export const momentl = (date: Date): string => {
+export const momentl = (date: Date | string): string => {
     const dateNew = new Date(date);
     // 获取年份
     const year = dateNew.getFullYear();
@@ -33,7 +33,7 @@ export const momentl = (date: Date): string => {
 };
 
 // 时间格式化函数，返回 HH:MM:SS 格式的字符串
-export const momentDay = (date: Date): string => {
+export const momentDay = (date: Date | string): string => {
     const dateNew = new Date(date);
 
     // 获取小时（24小时制）

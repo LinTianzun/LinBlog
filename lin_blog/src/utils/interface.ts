@@ -63,8 +63,9 @@ export interface ArticleData {
 export interface DiaryData {
     id: number;
     title: string;
-    moment: Date;//时间
+    moment: Date | string;//时间
     weatherId: number;//天气
+    weatherName?: string;//天气名称（用于匹配前端图标）
     content: string;
     picture?: string[];
 }

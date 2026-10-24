@@ -8,6 +8,8 @@ module.exports = (app) => {
     require('./article')(app)
     //  引入消息相关路由
     require('./message')(app)
+    //  引入日记相关路由
+    require('./diary')(app)
     //  引入图片上传相关路由
     require('./upload')(app)
     //  引入分类相关路由

@@ -5,7 +5,7 @@
                 <yk-space dir="vertical" :size="4">
                     <p class="diary-item-top-title">
                         {{props.data.title}}
-                        <img :src="weathers[props.data.weatherId].iconUrl" alt="">
+                        <img :src="weatherIcon" alt="">
                     </p>
                     <yk-text type="third">{{momentl(props.data.moment)}}</yk-text>
                 </yk-space>
@@ -42,6 +42,10 @@ const props = defineProps<DiaryItemProps>()
 const emits = defineEmits<{
     (event: 'delete', id: number): void
 }>()
+
+// 按天气名称匹配前端图标，避免与数据库自增 ID 错位
+const weather = weathers.find(item => item.name === props.data.weatherName)
+const weatherIcon = weather?.iconUrl ?? weathers[0].iconUrl
 
 // 删除日记
 const deleteDiary = (): void => {

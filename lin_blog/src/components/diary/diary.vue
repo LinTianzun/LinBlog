@@ -1,23 +1,34 @@
 <template>
     <div class="diary">
         <yk-scrollbar ref="scrollbar" style="padding: 0 20px;">
-            <yk-space dir="vertical" size="xl">
+            <div v-if="loading" class="diary-state">
+                <yk-spinner size="m" />
+                <yk-text type="secondary">正在加载日记...</yk-text>
+            </div>
+
+            <yk-empty v-else-if="diaryList.length === 0" description="暂无日记" />
+
+            <yk-space v-else dir="vertical" size="xl">
                 <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary">
                 </diaryItem>
             </yk-space>
         </yk-scrollbar>
         <div class="diary-pagination">
-            <yk-pagination @change="changePage" :total="count" size="m" />
+            <yk-pagination @change="changePage" :current="page" :total="count" :page-size="pageSize" size="m" />
         </div>
     </div>
 </template>
 
 
 <script lang="ts" setup>
-import { ref, onMounted, getCurrentInstance } from 'vue'
+import { ref, onMounted, getCurrentInstance, watch } from 'vue'
 import diaryItem from './diaryItem.vue'
 import type { DiaryData } from '../../utils/interface'
-import { mkdiary } from '../../mock/data'
+import {
+    getDiaries,
+    deleteDiary as deleteDiaryApi,
+    getRequestErrorMessage,
+} from '../../api/diary'
 
 const props = defineProps({
     pageSize: {
@@ -31,7 +42,7 @@ const props = defineProps({
 })
 
 type MessageOptions = {
-    type: 'primary'
+    type: 'primary' | 'error'
     message: string
 }
 
@@ -42,18 +53,11 @@ type MessageProxy = {
 const proxy = getCurrentInstance()?.proxy as unknown as
     MessageProxy | null | undefined
 
-const showMessage = (message: string): void => {
+const showMessage = (type: MessageOptions['type'], message: string): void => {
     proxy?.$message?.({
-        type: 'primary',
+        type,
         message,
     })
-}
-
-const request = {
-    pageSize: props.pageSize,
-    nowPage: 1,
-    serchTerm: props.serchTerm,
-    count: true,
 }
 
 // 日记列表
@@ -61,34 +65,83 @@ const diaryList = ref<DiaryData[]>([])
 
 // 日记总数
 const count = ref(0)
+const page = ref(1)
+const loading = ref(false)
 
 // 获取日记
-const getDiaryData = (): void => {
-    if (request.nowPage === 1) {
-        count.value = mkdiary.count
-    }
+const fetchDiaries = async (): Promise<void> => {
+    loading.value = true
 
-    diaryList.value = mkdiary.list.slice(
-        (request.nowPage - 1) * request.pageSize,
-        request.nowPage * request.pageSize
-    )
+    try {
+        const result = await getDiaries({
+            page: page.value,
+            pageSize: props.pageSize,
+            keyword: props.serchTerm.trim() || undefined,
+        })
+
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '日记加载失败')
+        }
+
+        diaryList.value = result.data.list.map(item => ({
+            id: item.id,
+            title: item.title,
+            moment: item.createdAt,
+            weatherId: item.weatherId ?? 0,
+            weatherName: item.weatherName ?? undefined,
+            content: item.content,
+            picture: item.picture,
+        }))
+        count.value = result.data.total
+
+        if (result.data.list.length === 0 && page.value > 1) {
+            page.value = 1
+            await fetchDiaries()
+        }
+    } catch (error) {
+        diaryList.value = []
+        count.value = 0
+        showMessage('error', getRequestErrorMessage(error, '日记加载失败，请稍后重试'))
+    } finally {
+        loading.value = false
+    }
 }
 
 // 分页
-const changePage = (page: number): void => {
-    request.nowPage = page
-    getDiaryData()
+const changePage = (nextPage: number): void => {
+    if (nextPage === page.value) return
+    page.value = nextPage
+    void fetchDiaries()
 }
 
 // 删除日记
-const deleteDiary = (id: number): void => {
-    diaryList.value = diaryList.value.filter(item => item.id !== id)
-    count.value = Math.max(0, count.value - 1)
-    showMessage('删除完成')
+const deleteDiary = async (id: number): Promise<void> => {
+    try {
+        const result = await deleteDiaryApi(id)
+        if (result.code !== 200) throw new Error(result.message || '删除失败')
+
+        showMessage('primary', '删除完成')
+
+        if (diaryList.value.length === 1 && page.value > 1) {
+            page.value -= 1
+        }
+
+        await fetchDiaries()
+    } catch (error) {
+        showMessage('error', getRequestErrorMessage(error, '删除失败，请稍后重试'))
+    }
 }
 
+// 搜索词变化时回到第一页重新查询
+watch(() => props.serchTerm, () => {
+    page.value = 1
+    void fetchDiaries()
+})
+
+defineExpose({ refresh: fetchDiaries })
+
 onMounted(() => {
-    getDiaryData()
+    void fetchDiaries()
 })
 </script>
 
@@ -110,6 +163,15 @@ onMounted(() => {
             padding-top: 24px;
             align-items: center;
             justify-content: flex-end;
+        }
+
+        &-state {
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: @space-m;
         }
     }
 </style>
