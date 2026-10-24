@@ -1,9 +1,10 @@
 <template>
     <div class="edit_photo">
-        <div style="z-index: 2;height: 240px;">
-            <yk-upload :file-list="fileList" :upload-url="uploadUrl" :draggable="true" :multiple="true"
+        <div class="edit_photo-uploader">
+            <yk-upload :file-list="fileList" :upload-url="uploadUrl" :multiple="true" desc="上传图片"
                 accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
-                @handle-success="handleUploadSuccess" @handle-error="handleUploadError">
+                @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
+                @handle-delete="handleUploadDelete">
             </yk-upload>
         </div>
 
@@ -110,6 +111,21 @@ const handleUploadError = (error: unknown): void => {
     proxy?.$message?.({ type: 'error', message })
 }
 
+const handleUploadDelete = (payload: unknown): void => {
+    // yk-upload 删除时回传 [被删项, 剩余列表]，同步本地瀑布流数据
+    const [, remainList] = Array.isArray(payload) ? payload : []
+    const remainUrls = (remainList as { url?: string; raw?: File }[] | undefined)
+        ?.map(item => item.url)
+        .filter((url): url is string => Boolean(url)) ?? []
+
+    photos.value = photos.value.filter(url => remainUrls.includes(url))
+    if (cover.value && !photos.value.includes(cover.value)) {
+        cover.value = photos.value[0] || ''
+    }
+    fileList.value = fileList.value.filter(item => remainUrls.includes(item.url))
+    emitChange()
+}
+
 // 设为封面
 const changeCover = (url: string): void => {
     cover.value = url
@@ -148,6 +164,15 @@ watch(
         color: #d84a3a;
         font-size: @size-s;
         padding-top: @space-s;
+    }
+
+    &-uploader {
+        :deep(.yk-upload__picture),
+        :deep(.yk-upload-picture),
+        :deep(.yk-upload__picture-button) {
+            width: 120px;
+            height: 120px;
+        }
     }
 }
 
