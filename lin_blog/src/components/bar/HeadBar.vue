@@ -5,8 +5,8 @@
             <span class="name">林知雨博客后台</span>
         </yk-space>
         <yk-space align="center" size="xl">
-            <yk-badge is-dot>
-                <IconMailOutline @click="changeActive(true)" style="font-size: 20px;" />
+            <yk-badge :is-dot="hasUnread">
+                <IconMailOutline @click="openInbox" style="font-size: 20px;" />
             </yk-badge>
 
             <yk-avatar :img-url="userInfo?.imgurl || defaultAvatar"></yk-avatar>
@@ -33,6 +33,7 @@ import { useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
 import { information } from '../reply/index.ts'
+import { getUnreadCount } from '../../api/message'
 
 let swBg = ref(true)
 
@@ -67,6 +68,28 @@ const active = ref(false)
 
 const changeActive = (e: any) => {
     active.value = e
+    // 抽屉关闭时可能已读完/删掉未读消息，刷新红点状态
+    if (!e) {
+        void fetchUnread()
+    }
+}
+
+//  未读私信数：0 时不显示红点
+const hasUnread = ref(false)
+
+const fetchUnread = async () => {
+    try {
+        const result = await getUnreadCount('private')
+        if (result.code === 200 && result.data) {
+            hasUnread.value = Number(result.data.unreadCount) > 0
+        }
+    } catch {
+        // 查询失败时保持现状，不打扰用户
+    }
+}
+
+const openInbox = () => {
+    changeActive(true)
 }
 
 onMounted(() => {
@@ -80,6 +103,8 @@ onMounted(() => {
             userInfo.value = {}
         }
     }
+
+    void fetchUnread()
 })
 
 

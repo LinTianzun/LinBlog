@@ -571,6 +571,175 @@ const migrationTableSql = `CREATE TABLE IF NOT EXISTS schema_migrations(
   PRIMARY KEY (version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库迁移记录';`;
 
+// -------------------------- 补充演示数据（可重复执行） --------------------------
+// 为评论/私信/图库/文章补足演示量；达到目标量则跳过，便于在已有数据的库上执行。
+async function seedRichDemoData() {
+  return withTransaction(async (connection) => {
+    const baseQuery = (sql, values = []) => execute(connection, sql, values);
+    const pic = (id) => `https://picsum.photos/id/${id}/800`;
+
+    const userRows = await baseQuery('SELECT id, username, user_type FROM users ORDER BY id ASC');
+    if (userRows.length === 0) {
+      throw new Error('users 表为空，请先执行 npm run db:seed 插入基础演示数据');
+    }
+    const admin = userRows.find(u => u.user_type === 'admin') || userRows[0];
+    const others = userRows.filter(u => u.id !== admin.id);
+    const pickUser = (i) => (others.length > 0 ? others[i % others.length] : admin).id;
+
+    const articleRows = await baseQuery(
+      "SELECT id, classify FROM article WHERE state != 'deleted' ORDER BY id ASC"
+    );
+    const articleIds = articleRows.filter(a => a.classify === 'article').map(a => a.id);
+    const galleryCount = articleRows.filter(a => a.classify === 'image').length;
+
+    const result = { comments: 0, messages: 0, galleries: 0, articles: 0 };
+
+    // 1. 评论：带举报数、已读/未读，挂在现有文章上
+    if (articleIds.length > 0) {
+      const existingComments = await baseQuery('SELECT COUNT(*) AS total FROM comment');
+      if (Number(existingComments[0].total) < 15) {
+        const commentSeeds = [
+          { content: '这篇教程太及时了，正好项目中要用到！', complaint: 0, isRead: 1 },
+          { content: '请问后续会出进阶篇吗？想看状态管理的部分。', complaint: 0, isRead: 1 },
+          { content: '收藏了，写得很系统。', complaint: 0, isRead: 0 },
+          { content: '图片挂了，能补一下吗？', complaint: 0, isRead: 0 },
+          { content: '广告贴，举报了。', complaint: 3, isRead: 1 },
+          { content: '跟着做了一遍，一步都没问题，感谢博主！', complaint: 0, isRead: 1 },
+          { content: '求源码，已经私信博主了。', complaint: 1, isRead: 0 },
+          { content: '写得很清楚，比官方文档还易懂。', complaint: 0, isRead: 0 },
+          { content: '这个方案在生产环境验证过吗？', complaint: 0, isRead: 1 },
+          { content: '内容空洞，纯凑字数的。', complaint: 5, isRead: 1 },
+          { content: '排版很舒服，学到了不少。', complaint: 0, isRead: 0 },
+          { content: '请问移动端适配有什么建议？', complaint: 0, isRead: 0 },
+          { content: '已经推荐给同事了。', complaint: 0, isRead: 1 },
+          { content: '博主可以加个友链吗？', complaint: 0, isRead: 0 },
+          { content: '违规引流内容，已举报。', complaint: 8, isRead: 1 }
+        ];
+
+        for (let i = 0; i < commentSeeds.length; i++) {
+          const seed = commentSeeds[i];
+          const articleId = articleIds[i % articleIds.length];
+          await baseQuery(
+            `INSERT INTO comment (user_id, article_id, parent_id, content, complaint, is_read, created_at)
+             VALUES (?, ?, 0, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+            [pickUser(i), articleId, seed.content, seed.complaint, seed.isRead, i * 5 + 1]
+          );
+          result.comments++;
+
+          await baseQuery(
+            'UPDATE article SET comments = comments + 1 WHERE id = ?',
+            [articleId]
+          );
+        }
+      }
+    }
+
+    // 2. 私信：发给管理员（大部分未读，红点由此而来）
+    const existingPrivate = await baseQuery(
+      'SELECT COUNT(*) AS total FROM message WHERE receiver_id = ? AND type = ?',
+      [admin.id, 'private']
+    );
+    if (Number(existingPrivate[0].total) < 10) {
+      const messageSeeds = [
+        { content: '博主你好，想转载你那篇 Vue3 的文章，会注明出处～', isRead: 0 },
+        { content: '请问网站主题是自己写的吗？很好看！', isRead: 0 },
+        { content: '你好，想和你交换友情链接，我的站是摄影主题的。', isRead: 0 },
+        { content: '上次的建议采纳了，评论功能好用多了！', isRead: 1 },
+        { content: '你们网站的加载速度优化是怎么做的？', isRead: 0 },
+        { content: '周末有个技术沙龙，想邀请你参加分享～', isRead: 0 },
+        { content: '看到你图库里的照片了，拍得真美，用什么相机？', isRead: 1 },
+        { content: '博主，网站地图页面好像打不开了。', isRead: 0 },
+        { content: '感谢你的教程，帮了大忙！', isRead: 1 },
+        { content: '想请教一下你的博客部署架构。', isRead: 0 },
+        { content: '下个月一起搞个联名活动怎么样？', isRead: 0 },
+        { content: '已经把你的博客推荐给整个部门了。', isRead: 1 }
+      ];
+
+      for (let i = 0; i < messageSeeds.length; i++) {
+        const seed = messageSeeds[i];
+        await baseQuery(
+          `INSERT INTO message (sender_id, receiver_id, type, content, is_read, created_at)
+           VALUES (?, ?, 'private', ?, ?, DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+          [pickUser(i), admin.id, seed.content, seed.isRead, i * 3 + 1]
+        );
+        result.messages++;
+      }
+    }
+
+    // 3. 图库作品：classify=image，content 存图片 URL 数组 JSON
+    if (galleryCount < 12) {
+      const gallerySeeds = [
+        { title: '城市黄昏漫步', ids: [1011, 1015, 1016], intro: '傍晚的城市天际线，随手拍都有味道。' },
+        { title: '山间清晨', ids: [1018, 1019, 1020], intro: '凌晨五点上山，等一场云海日出。' },
+        { title: '咖啡与书桌', ids: [1060, 1062, 1063], intro: '安静的午后，一杯手冲的时间。' },
+        { title: '海边日落合集', ids: [1069, 1070, 1071], intro: '海边除了风浪，还有温柔的落日。' },
+        { title: '老街烟火气', ids: [1074, 1075, 1076], intro: '老街的招牌、叫卖与炊烟。' },
+        { title: '雨后玻璃窗', ids: [1077, 1078, 1079], intro: '雨滴在玻璃上画出的抽象画。' },
+        { title: '夜市光影', ids: [1080, 1081, 1082], intro: '霓虹灯下的夜市，人间烟火。' },
+        { title: '森系野餐', ids: [1084, 1083], intro: '树荫、野餐垫和微风。' },
+        { title: '冬日暖阳', ids: [1085, 1086, 1087], intro: '冬天里最珍贵的一缕阳光。' },
+        { title: '街角咖啡馆', ids: [1088, 1089, 1090], intro: '转角遇到的那家小店。' },
+        { title: '列车窗外的风景', ids: [1011, 1013, 1014], intro: '旅途中的窗外即景。' },
+        { title: '猫咪的午后', ids: [40, 41, 42], intro: '打盹的猫和移动的光斑。' }
+      ];
+
+      for (let i = 0; i < gallerySeeds.length; i++) {
+        const seed = gallerySeeds[i];
+        const photos = seed.ids.map(pic);
+        await baseQuery(
+          `INSERT INTO article (user_id, title, subset_id, classify, label, introduce, content, cover, views, likes, comments, state, published_at, created_at)
+           VALUES (?, ?, NULL, 'image', ?, ?, ?, ?, ?, ?, 0, 'published', NOW(), DATE_SUB(NOW(), INTERVAL ? DAY))`,
+          [
+            pickUser(i), seed.title,
+            i % 3 === 0 ? '摄影,风景' : i % 3 === 1 ? '记录,生活' : '光影',
+            seed.intro, JSON.stringify(photos), photos[0],
+            100 + i * 37, 8 + i * 3, i + 1, i + 1
+          ]
+        );
+        result.galleries++;
+      }
+    }
+
+    // 4. 博客文章：classify=article，补充到 10 篇以上
+    if (articleIds.length > 0 && articleIds.length < 10) {
+      const articleSeeds = [
+        { title: '从零搭建一个组件库：工程化篇', intro: '目录结构、构建工具、按需加载与文档站，一步步搭起组件库的骨架。', label: '工程化,组件库' },
+        { title: 'MySQL 索引失效的那些坑', intro: '隐式转换、函数包裹、最左匹配……整理了索引失效的常见场景与规避方法。', label: 'MySQL,数据库' },
+        { title: '前端监控：从错误捕获到上报', intro: 'window.onerror、unhandledrejection 与 Performance API 的组合拳。', label: '监控,前端' },
+        { title: '一次接口慢查询的排查记录', intro: '从慢日志到 EXPLAIN，定位一条 12 秒 SQL 的全过程。', label: 'MySQL,性能' },
+        { title: 'CSS 容器查询实战', intro: '告别媒体查询的组件级响应式方案，附三个实用例子。', label: 'CSS,前端' },
+        { title: '写好 Commit Message 的五个原则', intro: '约定式提交不只是格式，更是团队协作的沟通语言。', label: '规范,协作' },
+        { title: 'Node.js 流式处理大文件', intro: '用 Stream 处理 2GB 日志文件，内存占用从 4GB 降到 80MB。', label: 'Node.js,后端' },
+        { title: '自动化部署：从手动到一条命令', intro: 'GitHub Actions + SSH 的轻量级前端部署方案。', label: 'DevOps,部署' },
+        { title: 'TypeScript 类型体操入门', intro: '从 Partial 到条件类型，慢慢看懂那些开源库的类型定义。', label: 'TypeScript,前端' },
+        { title: '组件设计：Table 的通用化之路', intro: '插槽、渲染器与配置化，平衡灵活性和易用性。', label: '组件设计,前端' }
+      ];
+
+      for (let i = 0; i < articleSeeds.length; i++) {
+        const seed = articleSeeds[i];
+        const isDraft = i % 4 === 3;
+        await baseQuery(
+          `INSERT INTO article (user_id, title, subset_id, classify, label, introduce, content, cover, views, likes, comments, state, published_at, created_at)
+           VALUES (?, ?, NULL, 'article', ?, ?, ?, ?, ?, ?, 0, ?, ${isDraft ? 'NULL' : 'NOW()'}, DATE_SUB(NOW(), INTERVAL ? DAY))`,
+          [
+            pickUser(i + 1), seed.title,
+            seed.label,
+            seed.intro,
+            `<h3>${seed.title}</h3><p>${seed.intro}</p><p>本文先讲清原理，再给出可落地的示例代码，最后总结常见的踩坑点，希望能帮你少走弯路。</p><h3>小结</h3><p>实践出真知，欢迎在评论区交流讨论。</p>`,
+            pic(180 + i),
+            200 + i * 53, 12 + i * 5,
+            isDraft ? 'draft' : 'published',
+            i + 1
+          ]
+        );
+        result.articles++;
+      }
+    }
+
+    return result;
+  });
+}
+
 async function initializeSchema() {
   const connection = mysql.createConnection({
     host: config.database.HOST,
@@ -995,5 +1164,6 @@ module.exports = {
   runMigrations,
   withTransaction,
   closeDatabase,
+  seedRichDemoData,
   isInited: () => isInited, // 检查是否已初始化（可选）
 };

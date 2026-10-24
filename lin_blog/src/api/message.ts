@@ -50,6 +50,14 @@ export function getInboxMessages(
   return request.get<ApiResult<MessagePageData>>("/message/inbox", { params });
 }
 
+// 未读消息数量（type 传 private 即未读私信）
+export function getUnreadCount(type?: MessageType) {
+  return request.get<ApiResult<{ unreadCount: number; type: string }>>(
+    "/message/unread/count",
+    { params: type ? { type } : undefined }
+  );
+}
+
 // 删除消息（后端校验：仅收件人或管理员）
 export function deleteMessage(id: number) {
   return request.delete<ApiResult<never>>(`/message/${id}`);
