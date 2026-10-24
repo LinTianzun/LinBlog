@@ -1,7 +1,7 @@
 <template>
     <div class="file-item">
         <div class="file-item-img" :class="{ 'file-item-selected': props.data?.selected }">
-            <yk-image v-if="isPreviewable" :src="props.data.url" fit="contain" width="200" height="200"
+            <yk-image v-if="isPreviewable" :src="previewUrl" fit="contain" width="200" height="200"
                 :preview="true" :is-lazy="true">
             </yk-image>
             <div v-else class="file-item-img-placeholder">
@@ -58,6 +58,13 @@ const previewFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
 const isPreviewable = computed(() =>
     previewFormats.includes(String(props.data.format || '').toLowerCase())
 )
+
+// 下载接口默认 attachment + octet-stream，缩略图需要 inline 才能拿到正确 MIME
+const previewUrl = computed(() => {
+    const url = String(props.data.url || '')
+    if (!url.startsWith('/api/file/')) return url
+    return url.includes('?') ? `${url}&inline=true` : `${url}?inline=true`
+})
 
 // 数据库存的是完整文件名，下方已单独展示后缀，这里去掉尾部扩展名避免「a.mp4 .mp4」
 const displayName = computed(() => {
