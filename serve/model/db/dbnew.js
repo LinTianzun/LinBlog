@@ -238,7 +238,7 @@ const tablesSql = {
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日记ID',
     title VARCHAR(100) NOT NULL COMMENT '日记标题',
     content TEXT NOT NULL COMMENT '日记内容',
-    picture VARCHAR(512) COMMENT '图片地址（多个用逗号分隔）',
+    picture VARCHAR(2000) COMMENT '图片地址（多个用逗号分隔）',
     weather_id INT UNSIGNED COMMENT '天气ID',
     mood ENUM('happy', 'sad', 'angry', 'calm', 'excited', 'tired') DEFAULT 'calm' COMMENT '心情状态',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',

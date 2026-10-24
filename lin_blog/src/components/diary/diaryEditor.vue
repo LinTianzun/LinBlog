@@ -26,7 +26,7 @@
             </yk-text-area>
 
             <div class="diary-editor-top-picture">
-                <yk-upload :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
+                <yk-upload v-if="uploaderVisible" :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
                     accept="image/*" multiple
                     @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                     @handle-delete="handleUploadDelete"></yk-upload>
@@ -44,7 +44,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, getCurrentInstance } from 'vue'
+import { ref, computed, nextTick, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
 import { createDiary, getRequestErrorMessage } from '../../api/diary'
 
@@ -149,7 +149,10 @@ const handleUploadDelete = (payload: unknown): void => {
 }
 
 // 图片数量上限（与后端校验一致）
-const maxPhotoCount = 9
+const maxPhotoCount = 6
+
+// 通过重挂载清空 yk-upload 内部的缩略图列表
+const uploaderVisible = ref(true)
 
 // 新建日记
 const submitting = ref(false)
@@ -196,6 +199,10 @@ const submitDiary = async (): Promise<void> => {
 const resetForm = (): void => {
     diaryForm.value = { weatherId: swWeatherId.value, picture: [] }
     photos.value = []
+    uploaderVisible.value = false
+    void nextTick(() => {
+        uploaderVisible.value = true
+    })
     const defaultWeather = weathers.find(item => item.id === 0)
     if (defaultWeather) {
         selectWeather(defaultWeather)

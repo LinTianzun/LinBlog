@@ -87,16 +87,19 @@ async function createDiary(req, res) {
             weatherId = rows.id
         }
 
-        // picture 支持数组或逗号分隔字符串，最多9张
+        // picture 支持数组或逗号分隔字符串，最多6张（两种形式统一校验）
         let pictureField = null
-        if (Array.isArray(picture)) {
-            const urls = picture.map(url => String(url).trim()).filter(Boolean)
-            if (urls.length > 9) {
-                return res.status(400).json({ code: 400, message: '图片最多9张' })
+        if (Array.isArray(picture) || typeof picture === 'string') {
+            const urls = (Array.isArray(picture) ? picture : String(picture).split(','))
+                .map(url => String(url).trim())
+                .filter(Boolean)
+            if (urls.length > 6) {
+                return res.status(400).json({ code: 400, message: '图片最多6张' })
             }
-            pictureField = urls.join(',')
-        } else if (typeof picture === 'string' && picture.trim()) {
-            pictureField = picture.trim()
+            pictureField = urls.length > 0 ? urls.join(',') : null
+            if (pictureField && pictureField.length > 2000) {
+                return res.status(400).json({ code: 400, message: '图片地址总长度超出限制' })
+            }
         }
 
         const result = await diaryModel.insertDiary({
