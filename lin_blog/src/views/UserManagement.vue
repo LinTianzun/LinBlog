@@ -12,8 +12,12 @@
         <!-- 用户统计 -->
         <yk-space class="statistics" size="m">
             <stat-card name="用户总数" :total="allTotal" />
-            <stat-card name="管理员" :total="roleCounts.admin" />
-            <stat-card name="编辑与普通用户" :total="allTotal - roleCounts.admin" />
+            <stat-card name="管理员" :total="activeRoleCounts.admin" :active="statusFilter === 'active'"
+                clickable @click="handleFilterActive" />
+            <stat-card name="编辑与普通用户" :total="editorAndNormal" :active="statusFilter === 'active'"
+                clickable @click="handleFilterActive" />
+            <stat-card name="封禁用户" :total="bannedTotal" :active="statusFilter === 'banned'"
+                clickable @click="handleFilterBanned" />
         </yk-space>
 
         <!-- 用户列表 -->
@@ -224,12 +228,33 @@ const deletingUserId = ref<number | null>(null)
 // 全局统计数据，不随搜索条件变化
 const allTotal = ref(0)
 
+// 封禁用户总数
+const bannedTotal = ref(0)
+
 const roleCounts = ref({
     admin: 0,
     editor: 0,
     normal: 0,
     visitor: 0
 })
+
+// 各角色启用数（排除封禁），用于「管理员」「编辑与普通用户」卡片
+const activeRoleCounts = ref({
+    admin: 0,
+    editor: 0,
+    normal: 0,
+    visitor: 0
+})
+
+// 卡片筛选状态：all=全部，active=未封禁，banned=仅封禁
+const statusFilter = ref<'all' | 'active' | 'banned'>('all')
+
+// 编辑与普通用户 = 全部启用用户 - 启用管理员（游客计入，维持原口径）
+const editorAndNormal = computed(() =>
+    activeRoleCounts.value.admin + activeRoleCounts.value.editor +
+    activeRoleCounts.value.normal + activeRoleCounts.value.visitor -
+    activeRoleCounts.value.admin
+)
 
 const addUserModalVisible = ref(false)
 const submitting = ref(false)
@@ -456,6 +481,9 @@ async function handleStatusChange(
         // 服务端确认成功后才更新状态
         user.status = newStatus
 
+        // 状态变化影响统计与筛选视图，重新拉取（含全局计数与当前筛选列表）
+        await fetchUsers(currentPage.value)
+
         proxy?.$message({
             type: 'success',
             message: newStatus === 1 ? '用户已启用' : '用户已禁用'
@@ -621,6 +649,15 @@ const fetchUsers = async (
     size = pageSize.value,
     search = searchKeyword.value
 ) => {
+    if (statusFilter.value === 'banned') {
+        await fetchUsersByStatus(page, size, search, 0)
+        return
+    }
+    if (statusFilter.value === 'active') {
+        await fetchUsersByStatus(page, size, search, 1)
+        return
+    }
+
     loading.value = true
     errorMessage.value = ''
 
@@ -634,12 +671,20 @@ const fetchUsers = async (
 
             // 更新全局统计数据
             allTotal.value = result.data.allTotal
+            bannedTotal.value = result.data.bannedTotal ?? 0
 
             roleCounts.value = {
                 admin: result.data.roleCounts?.admin ?? 0,
                 editor: result.data.roleCounts?.editor ?? 0,
                 normal: result.data.roleCounts?.normal ?? 0,
                 visitor: result.data.roleCounts?.visitor ?? 0
+            }
+
+            activeRoleCounts.value = {
+                admin: result.data.activeRoleCounts?.admin ?? 0,
+                editor: result.data.activeRoleCounts?.editor ?? 0,
+                normal: result.data.activeRoleCounts?.normal ?? 0,
+                visitor: result.data.activeRoleCounts?.visitor ?? 0
             }
         } else {
             errorMessage.value =
@@ -648,6 +693,36 @@ const fetchUsers = async (
     } catch (error: any) {
         console.error('获取用户列表失败：', error)
 
+        errorMessage.value =
+            error.response?.data?.message ||
+            error.message ||
+            '获取用户列表失败，请检查后端服务'
+    } finally {
+        loading.value = false
+    }
+}
+
+// 按状态筛选（卡片点击）：仅拉取对应状态的用户，统计仍取全局值
+const fetchUsersByStatus = async (
+    page: number,
+    size: number,
+    search: string,
+    status: 0 | 1
+) => {
+    loading.value = true
+    errorMessage.value = ''
+
+    try {
+        const result = await getAllUsers(page, size, search, status)
+        if (result.code === 200) {
+            users.value = result.data.list
+            total.value = result.data.total
+            currentPage.value = result.data.page
+            return
+        }
+        errorMessage.value = result.message || '获取用户列表失败'
+    } catch (error: any) {
+        console.error('获取用户列表失败：', error)
         errorMessage.value =
             error.response?.data?.message ||
             error.message ||
@@ -683,6 +758,17 @@ const handleSearch = (value: string) => {
 
 // 当前页内搜索
 const filteredUsers = computed(() => users.value);
+
+// 卡片筛选：点击切换启用/封禁视角，再点一次取消回到全部
+const handleFilterActive = () => {
+    statusFilter.value = statusFilter.value === 'active' ? 'all' : 'active'
+    void fetchUsers(1)
+}
+
+const handleFilterBanned = () => {
+    statusFilter.value = statusFilter.value === 'banned' ? 'all' : 'banned'
+    void fetchUsers(1)
+}
 
 // 角色名称映射
 const roleName = (role: string) => {

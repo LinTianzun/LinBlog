@@ -16,6 +16,10 @@ export interface UserListResponse {
   message: string;
   data: {
     total: number;
+    allTotal: number;
+    roleCounts: Record<string, number>;
+    bannedTotal: number;
+    activeRoleCounts: Record<string, number>;
     page: number;
     pageSize: number;
     totalPage: number;
@@ -24,12 +28,13 @@ export interface UserListResponse {
 }
 
 // 分页查询所有用户
-export function getAllUsers(page = 1, pageSize = 5, keyword = "") {
+export function getAllUsers(page = 1, pageSize = 5, keyword = "", status?: 0 | 1) {
   return request.post("/user/allUser", null, {
     params: {
       page,
       pageSize,
       keyword,
+      status,
     },
   });
 }

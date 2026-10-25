@@ -126,8 +126,16 @@ async function updateUserStatus(userId, status, exec = query) {
 }
 
 // 分页查询用户，支持关键词搜索和全局角色统计
-async function findUsersByPage(page, pageSize, offset, keyword = '') {
+async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilter = null) {
     const searchKeyword = keyword.trim();
+
+    // 状态筛选（仅接受 0/1）：与关键词搜索可叠加
+    let statusSql = '';
+    const statusParams = [];
+    if (statusFilter === 0 || statusFilter === 1) {
+        statusSql = 'status = ?';
+        statusParams.push(statusFilter);
+    }
 
     // 搜索条件：用户 ID、用户名、邮箱、角色
     const whereSql = searchKeyword
@@ -141,18 +149,32 @@ async function findUsersByPage(page, pageSize, offset, keyword = '') {
         ? Array(4).fill(`%${searchKeyword}%`)
         : [];
 
+    // 组合 WHERE：状态 + 关键词（若同时存在）
+    let combinedWhere = '';
+    const combinedParams = [];
+    if (statusSql && whereSql) {
+        combinedWhere = `WHERE ${statusSql} AND (${whereSql.slice(6)})`;
+        combinedParams.push(...statusParams, ...searchParams);
+    } else if (statusSql) {
+        combinedWhere = `WHERE ${statusSql}`;
+        combinedParams.push(...statusParams);
+    } else {
+        combinedWhere = whereSql;
+        combinedParams.push(...searchParams);
+    }
+
     // 1. 查询当前页用户（不返回密码）
     const userSql = `
         SELECT id, username, mail, imgurl, user_type,
                status, created_at, last_login_at
         FROM users
-        ${whereSql}
+        ${combinedWhere}
         ORDER BY created_at ASC
         LIMIT ? OFFSET ?
     `;
 
     const users = await query(userSql, [
-        ...searchParams,
+        ...combinedParams,
         pageSize,
         offset
     ]);
@@ -161,10 +183,10 @@ async function findUsersByPage(page, pageSize, offset, keyword = '') {
     const totalSql = `
         SELECT COUNT(*) AS total
         FROM users
-        ${whereSql}
+        ${combinedWhere}
     `;
 
-    const [totalResult] = await query(totalSql, searchParams);
+    const [totalResult] = await query(totalSql, combinedParams);
     const total = Number(totalResult.total);
 
     // 3. 统计全部用户的角色分布，不受搜索关键词影响
@@ -181,6 +203,20 @@ async function findUsersByPage(page, pageSize, offset, keyword = '') {
         roleCounts[row.user_type] = Number(row.count);
     }
 
+    // 封禁（禁用）用户数与各角色启用数，供卡片展示和「非封禁口径」统计
+    const [bannedResult] = await query(
+        'SELECT COUNT(*) AS total FROM users WHERE status = 0'
+    );
+    const bannedTotal = Number(bannedResult.total);
+
+    const activeRoleRows = await query(
+        'SELECT user_type, COUNT(*) AS count FROM users WHERE status = 1 GROUP BY user_type'
+    );
+    const activeRoleCounts = {};
+    for (const row of activeRoleRows) {
+        activeRoleCounts[row.user_type] = Number(row.count);
+    }
+
     // 4. 查询全部用户总数
     const [allTotalResult] = await query(
         'SELECT COUNT(*) AS total FROM users'
@@ -193,6 +229,8 @@ async function findUsersByPage(page, pageSize, offset, keyword = '') {
         total,
         allTotal,
         roleCounts,
+        bannedTotal,
+        activeRoleCounts,
         page,
         pageSize,
         totalPage: Math.ceil(total / pageSize)

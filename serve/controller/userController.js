@@ -657,11 +657,16 @@ async function getAllUsers(req, res) {
                 ? req.query.keyword.trim()
                 : '';
 
+        // 状态筛选（卡片点击）：仅接受 0/1，其余值视为不过滤
+        const rawStatus = Number(req.query.status)
+        const statusFilter = rawStatus === 0 || rawStatus === 1 ? rawStatus : null
+
         const result = await userModel.findUsersByPage(
             page,
             pageSize,
             offset,
-            keyword
+            keyword,
+            statusFilter
         );
 
         return res.json({
@@ -671,6 +676,8 @@ async function getAllUsers(req, res) {
                 total: result.total,       // 当前搜索结果总数
                 allTotal: result.allTotal, // 全部用户总数
                 roleCounts: result.roleCounts,
+                bannedTotal: result.bannedTotal, // 封禁用户总数
+                activeRoleCounts: result.activeRoleCounts, // 各角色启用数（排除封禁）
                 page: result.page,  // 当前页码
                 pageSize: result.pageSize,  // 每页条数
                 totalPage: result.totalPage,// 总页数

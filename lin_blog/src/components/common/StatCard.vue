@@ -1,6 +1,6 @@
 <template>
-    <div class="stat-card" :class="{ 'stat-card-clickable': clickable }" :style="bgColor"
-        @click="handleClick">
+    <div class="stat-card" :class="{ 'stat-card-clickable': clickable, 'stat-card-active': active }"
+        :style="bgColor" @click="emit('click')">
         <yk-space dir="vertical" size="s">
             <yk-text type="secondary">{{ name }}</yk-text>
             <yk-title :level="2" class="stat-card-value">
@@ -30,15 +30,25 @@ const props = withDefaults(defineProps<{
     icon?: unknown
     // 跳转路径：传了则整卡可点击
     to?: string
+    // 选中态：卡片作为筛选入口时高亮当前筛选
+    active?: boolean
+    // 可点击（无 to 时由父级监听 click 事件实现筛选等自定义行为）
+    clickable?: boolean
 }>(), {
     bgColor: '',
     icon: undefined,
     to: '',
+    active: false,
+    clickable: false,
 })
+
+const emit = defineEmits<{
+    (e: 'click'): void
+}>()
 
 const router = useRouter()
 
-const clickable = computed(() => Boolean(props.to))
+const clickable = computed(() => Boolean(props.to) || props.clickable)
 
 const handleClick = (): void => {
     if (props.to) {
@@ -78,6 +88,11 @@ const handleClick = (): void => {
                 transform: translateY(-2px);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
             }
+        }
+
+        &-active {
+            border-color: #2b5aed;
+            box-shadow: 0 0 0 2px rgba(43, 90, 237, 0.18);
         }
     }
 </style>
