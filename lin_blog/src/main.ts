@@ -11,6 +11,11 @@ import { YkMessage, YkNotification } from '@yike-design/ui'
 import Icon from '@yike-design/ui/es/components/svg-icon'
 
 import './style.less'
+import './style/theme-presets.less'
+import { initThemePreset } from './utils/themePreset'
+
+// 启动时恢复用户选择的主题预设（设置 data-theme 与 data-theme-preset）
+initThemePreset()
 
 //  路由
 import router from './router'

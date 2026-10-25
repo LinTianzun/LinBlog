@@ -83,6 +83,19 @@
             <yk-title :level="4" class="card-title">
                 其它功能
             </yk-title>
+            <div class="feature-section">
+                <yk-text type="secondary">主题风格</yk-text>
+                <div class="theme-grid">
+                    <button v-for="preset in themePresets" :key="preset.id" type="button" class="theme-card"
+                        :class="{ 'theme-card-active': preset.id === activePresetId }" @click="selectTheme(preset.id)">
+                        <span class="theme-preview" :style="{ background: preset.background }">
+                            <span class="theme-preview-dot" :style="{ background: preset.primary }"></span>
+                        </span>
+                        <span class="theme-name">{{ preset.name }}</span>
+                        <IconTickOutline v-if="preset.id === activePresetId" class="theme-check" />
+                    </button>
+                </div>
+            </div>
             <div class="about-grid">
                 <div class="about-item">
                     <yk-text type="secondary">系统名称</yk-text>
@@ -102,12 +115,29 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
+import { themePresets } from '../utils/themes'
+import { applyThemePreset, getStoredPresetId } from '../utils/themePreset'
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
+
+const activePresetId = ref(getStoredPresetId())
+
+// 顶栏快捷明暗切换会回落到默认主题，这里同步卡片选中态
+const onPresetChange = (event: Event) => {
+    const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
+    if (presetId) activePresetId.value = presetId
+}
+
+// 切换主题预设：同时更新 data-theme（yike 明暗）与 data-theme-preset（品牌变量层）
+const selectTheme = (presetId: string) => {
+    if (presetId === activePresetId.value) return
+    applyThemePreset(presetId)
+    activePresetId.value = presetId
+}
 
 const profile = ref<UserInfo | null>(null)
 const isAdmin = ref(false)
@@ -287,6 +317,9 @@ const submitPassword = async () => {
 }
 
 onMounted(loadProfile)
+
+onMounted(() => window.addEventListener('theme:preset-change', onPresetChange))
+onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChange))
 </script>
 
 <style lang="less" scoped>
@@ -391,6 +424,73 @@ onMounted(loadProfile)
     }
 
     /* 第二行：其它功能 */
+    .feature-section {
+        display: flex;
+        flex-direction: column;
+        gap: @space-m;
+        margin-bottom: @space-l;
+    }
+
+    .theme-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: @space-m;
+    }
+
+    .theme-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: @space-s;
+        padding: @space-m;
+        border: 2px solid transparent;
+        border-radius: 10px;
+        background: @bg-color-m;
+        cursor: pointer;
+        transition: transform @animatb, border-color @animatb;
+
+        &:hover {
+            transform: translateY(-2px);
+        }
+
+        &-active {
+            border-color: @pcolor;
+        }
+    }
+
+    .theme-preview {
+        display: block;
+        height: 48px;
+        border-radius: 6px;
+        border: 1px solid @line-color-s;
+        position: relative;
+        overflow: hidden;
+
+        .theme-preview-dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 18px;
+            height: 18px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35);
+        }
+    }
+
+    .theme-name {
+        font-size: @size-s;
+        color: @font-color-l;
+        text-align: center;
+    }
+
+    .theme-check {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        color: @pcolor;
+    }
+
     .about-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
