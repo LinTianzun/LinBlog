@@ -1,7 +1,7 @@
 import { createWebHistory, createRouter } from 'vue-router'
 
 import IndexView from '../views/IndexView.vue'
-import hello from '../components/HelloWorld.vue'
+import NotFound from '../components/NotFound.vue'
 
 const routes = [
     {
@@ -52,8 +52,9 @@ const routes = [
                 component: () => import('../views/DiaryView.vue'),
             },
             {
-                path: 'hello',
-                component: hello,
+                // catch-all：未匹配的路径统一渲染 404 页面
+                path: '/:pathMatch(.*)*',
+                component: NotFound,
             }
         ],
     },
