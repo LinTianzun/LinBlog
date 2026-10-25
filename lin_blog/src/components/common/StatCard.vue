@@ -1,5 +1,8 @@
 <template>
-    <div class="stat-card" :class="{ 'stat-card-clickable': clickable, 'stat-card-active': active }"
+    <div class="stat-card" :class="[tone ? `stat-card-${tone}` : '', {
+        'stat-card-clickable': clickable,
+        'stat-card-active': active,
+    }]"
         :style="bgColor" @click="emit('click')">
         <yk-space dir="vertical" size="s">
             <yk-text type="secondary">{{ name }}</yk-text>
@@ -24,8 +27,10 @@ import { useRouter } from 'vue-router'
 const props = withDefaults(defineProps<{
     name: string
     total: string | number
-    // 卡片背景，总览页传渐变色；不传时用用户管理页的白底描边样式
+    // 卡片背景，总览页传渐变色；不传时可用 tone 选择功能色浅底
     bgColor?: string
+    // 功能色调：primary 蓝 / success 青 / warning 橙 / error 红，配套浅色底与选中描边
+    tone?: '' | 'primary' | 'success' | 'warning' | 'error'
     // 右侧展示的图标组件（yike 图标）
     icon?: unknown
     // 跳转路径：传了则整卡可点击
@@ -36,6 +41,7 @@ const props = withDefaults(defineProps<{
     clickable?: boolean
 }>(), {
     bgColor: '',
+    tone: '',
     icon: undefined,
     to: '',
     active: false,
@@ -91,8 +97,40 @@ const handleClick = (): void => {
         }
 
         &-active {
-            border-color: #2b5aed;
-            box-shadow: 0 0 0 2px rgba(43, 90, 237, 0.18);
+            border-color: var(--card-accent);
+            box-shadow: 0 0 0 2px var(--card-accent-soft);
+        }
+
+        // 各功能色调：浅色底 + 选中态描边与光圈颜色
+        &-primary {
+            --card-accent: @pcolor-light;
+            --card-accent-soft: rgba(43, 90, 237, 0.18);
+            background: rgba(43, 90, 237, 0.08);
+        }
+
+        &-success {
+            --card-accent: @scolor-light;
+            --card-accent-soft: rgba(31, 180, 162, 0.2);
+            background: rgba(31, 180, 162, 0.1);
+        }
+
+        &-warning {
+            --card-accent: @wcolor-light;
+            --card-accent-soft: rgba(255, 170, 26, 0.22);
+            background: rgba(255, 170, 26, 0.12);
+        }
+
+        &-error {
+            --card-accent: @ecolor-light;
+            --card-accent-soft: rgba(250, 82, 71, 0.2);
+            background: rgba(250, 82, 71, 0.1);
+        }
+
+        &-primary &-icon,
+        &-success &-icon,
+        &-warning &-icon,
+        &-error &-icon {
+            color: var(--card-accent);
         }
     }
 </style>

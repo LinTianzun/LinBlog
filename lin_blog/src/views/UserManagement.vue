@@ -11,12 +11,15 @@
         </yk-text>
         <!-- 用户统计 -->
         <yk-space class="statistics" size="m">
-            <stat-card name="用户总数" :total="allTotal" />
-            <stat-card name="管理员" :total="activeRoleCounts.admin" :active="statusFilter === 'admin'"
+            <stat-card name="用户总数" :total="allTotal" tone="primary" clickable
+                :active="statusFilter === 'all'" @click="handleFilterAll" />
+            <stat-card name="管理员" :total="activeRoleCounts.admin" tone="success"
+                :active="statusFilter === 'admin'"
                 clickable @click="handleFilterRole('admin')" />
-            <stat-card name="编辑与普通用户" :total="editorAndNormal" :active="statusFilter === 'staff'"
+            <stat-card name="编辑与普通用户" :total="editorAndNormal" tone="warning"
+                :active="statusFilter === 'staff'"
                 clickable @click="handleFilterRole('staff')" />
-            <stat-card name="封禁用户" :total="bannedTotal" :active="statusFilter === 'banned'"
+            <stat-card name="封禁用户" :total="bannedTotal" tone="error" :active="statusFilter === 'banned'"
                 clickable @click="handleFilterBanned" />
         </yk-space>
 
@@ -797,6 +800,11 @@ const handleSearch = (value: string) => {
 const filteredUsers = computed(() => users.value);
 
 // 卡片筛选：点击切换对应视角，再点一次取消回到全部
+const handleFilterAll = () => {
+    statusFilter.value = 'all'
+    void fetchUsers(1)
+}
+
 const handleFilterBanned = () => {
     statusFilter.value = statusFilter.value === 'banned' ? 'all' : 'banned'
     void fetchUsers(1)
