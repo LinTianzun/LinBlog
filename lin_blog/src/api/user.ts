@@ -28,13 +28,14 @@ export interface UserListResponse {
 }
 
 // 分页查询所有用户
-export function getAllUsers(page = 1, pageSize = 5, keyword = "", status?: 0 | 1) {
+export function getAllUsers(page = 1, pageSize = 5, keyword = "", status?: 0 | 1, role?: 'admin' | 'staff') {
   return request.post("/user/allUser", null, {
     params: {
       page,
       pageSize,
       keyword,
       status,
+      role,
     },
   });
 }

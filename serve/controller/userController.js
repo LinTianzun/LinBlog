@@ -661,12 +661,17 @@ async function getAllUsers(req, res) {
         const rawStatus = Number(req.query.status)
         const statusFilter = rawStatus === 0 || rawStatus === 1 ? rawStatus : null
 
+        // 角色组筛选（卡片点击）：admin=仅管理员，staff=编辑+普通用户+游客
+        const roleRaw = typeof req.query.role === 'string' ? req.query.role : ''
+        const roleFilter = ['admin', 'staff'].includes(roleRaw) ? roleRaw : null
+
         const result = await userModel.findUsersByPage(
             page,
             pageSize,
             offset,
             keyword,
-            statusFilter
+            statusFilter,
+            roleFilter
         );
 
         return res.json({

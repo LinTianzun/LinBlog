@@ -66,8 +66,8 @@ const handleClick = (): void => {
         justify-content: space-between;
         padding: @space-xl;
         border-radius: @radius-m;
-        background: var(--yk-color-surface, #fff);
-        border: 1px solid var(--yk-color-border, #eee);
+        background: @bg-color-l;
+        border: 1px solid @gray-1;
         transition: transform @animatb, box-shadow @animatb;
 
         // 浅色渐变卡上的文字保持默认色；深色卡（如总览第一张）由父级覆盖为白色
@@ -86,7 +86,7 @@ const handleClick = (): void => {
 
             &:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                box-shadow: @shadow-s;
             }
         }
 

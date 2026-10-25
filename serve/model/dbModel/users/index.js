@@ -126,7 +126,7 @@ async function updateUserStatus(userId, status, exec = query) {
 }
 
 // 分页查询用户，支持关键词搜索和全局角色统计
-async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilter = null) {
+async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilter = null, roleFilter = null) {
     const searchKeyword = keyword.trim();
 
     // 状态筛选（仅接受 0/1）：与关键词搜索可叠加
@@ -135,6 +135,16 @@ async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilte
     if (statusFilter === 0 || statusFilter === 1) {
         statusSql = 'status = ?';
         statusParams.push(statusFilter);
+    }
+
+    // 角色组筛选：admin=仅管理员，staff=编辑+普通用户+游客
+    let roleSql = '';
+    const roleParams = [];
+    if (roleFilter === 'admin') {
+        roleSql = 'user_type = ?';
+        roleParams.push('admin');
+    } else if (roleFilter === 'staff') {
+        roleSql = `user_type IN ('editor', 'normal', 'visitor')`;
     }
 
     // 搜索条件：用户 ID、用户名、邮箱、角色
@@ -152,12 +162,15 @@ async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilte
     // 组合 WHERE：状态 + 关键词（若同时存在）
     let combinedWhere = '';
     const combinedParams = [];
-    if (statusSql && whereSql) {
-        combinedWhere = `WHERE ${statusSql} AND (${whereSql.slice(6)})`;
-        combinedParams.push(...statusParams, ...searchParams);
-    } else if (statusSql) {
-        combinedWhere = `WHERE ${statusSql}`;
-        combinedParams.push(...statusParams);
+    const filterParts = [statusSql, roleSql].filter(Boolean);
+    const filterParams = [...statusParams, ...roleParams];
+
+    if (filterParts.length > 0 && whereSql) {
+        combinedWhere = `WHERE ${filterParts.join(' AND ')} AND (${whereSql.slice(6)})`;
+        combinedParams.push(...filterParams, ...searchParams);
+    } else if (filterParts.length > 0) {
+        combinedWhere = `WHERE ${filterParts.join(' AND ')}`;
+        combinedParams.push(...filterParams);
     } else {
         combinedWhere = whereSql;
         combinedParams.push(...searchParams);

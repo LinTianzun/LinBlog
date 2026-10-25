@@ -12,10 +12,10 @@
         <!-- 用户统计 -->
         <yk-space class="statistics" size="m">
             <stat-card name="用户总数" :total="allTotal" />
-            <stat-card name="管理员" :total="activeRoleCounts.admin" :active="statusFilter === 'active'"
-                clickable @click="handleFilterActive" />
-            <stat-card name="编辑与普通用户" :total="editorAndNormal" :active="statusFilter === 'active'"
-                clickable @click="handleFilterActive" />
+            <stat-card name="管理员" :total="activeRoleCounts.admin" :active="statusFilter === 'admin'"
+                clickable @click="handleFilterRole('admin')" />
+            <stat-card name="编辑与普通用户" :total="editorAndNormal" :active="statusFilter === 'staff'"
+                clickable @click="handleFilterRole('staff')" />
             <stat-card name="封禁用户" :total="bannedTotal" :active="statusFilter === 'banned'"
                 clickable @click="handleFilterBanned" />
         </yk-space>
@@ -246,8 +246,8 @@ const activeRoleCounts = ref({
     visitor: 0
 })
 
-// 卡片筛选状态：all=全部，active=未封禁，banned=仅封禁
-const statusFilter = ref<'all' | 'active' | 'banned'>('all')
+// 卡片筛选状态：all=全部，admin=仅管理员，staff=编辑+普通用户+游客，banned=仅封禁
+const statusFilter = ref<'all' | 'admin' | 'staff' | 'banned'>('all')
 
 // 编辑与普通用户 = 全部启用用户 - 启用管理员（游客计入，维持原口径）
 const editorAndNormal = computed(() =>
@@ -653,8 +653,14 @@ const fetchUsers = async (
         await fetchUsersByStatus(page, size, search, 0)
         return
     }
-    if (statusFilter.value === 'active') {
-        await fetchUsersByStatus(page, size, search, 1)
+
+    // 管理员/编辑与普通用户卡片：按角色过滤（staff = 编辑+普通用户+游客）
+    const roleFilter =
+        statusFilter.value === 'admin' ? 'admin'
+            : statusFilter.value === 'staff' ? 'staff'
+                : ''
+    if (roleFilter) {
+        await fetchUsersByRole(page, size, search, roleFilter)
         return
     }
 
@@ -732,6 +738,37 @@ const fetchUsersByStatus = async (
     }
 }
 
+// 按角色组筛选（卡片点击）：admin=仅管理员，staff=编辑+普通用户+游客
+const fetchUsersByRole = async (
+    page: number,
+    size: number,
+    search: string,
+    role: 'admin' | 'staff'
+) => {
+    loading.value = true
+    errorMessage.value = ''
+
+    try {
+        // 与卡片统计口径一致：只列出启用的该角色用户，封禁账号由封禁卡片负责
+        const result = await getAllUsers(page, size, search, 1, role)
+        if (result.code === 200) {
+            users.value = result.data.list
+            total.value = result.data.total
+            currentPage.value = result.data.page
+            return
+        }
+        errorMessage.value = result.message || '获取用户列表失败'
+    } catch (error: any) {
+        console.error('获取用户列表失败：', error)
+        errorMessage.value =
+            error.response?.data?.message ||
+            error.message ||
+            '获取用户列表失败，请检查后端服务'
+    } finally {
+        loading.value = false
+    }
+}
+
 // 切换页码，包括通过 jumper 跳转
 const changePage = (page: number) => {
     if (page === currentPage.value || loading.value) return
@@ -759,14 +796,14 @@ const handleSearch = (value: string) => {
 // 当前页内搜索
 const filteredUsers = computed(() => users.value);
 
-// 卡片筛选：点击切换启用/封禁视角，再点一次取消回到全部
-const handleFilterActive = () => {
-    statusFilter.value = statusFilter.value === 'active' ? 'all' : 'active'
+// 卡片筛选：点击切换对应视角，再点一次取消回到全部
+const handleFilterBanned = () => {
+    statusFilter.value = statusFilter.value === 'banned' ? 'all' : 'banned'
     void fetchUsers(1)
 }
 
-const handleFilterBanned = () => {
-    statusFilter.value = statusFilter.value === 'banned' ? 'all' : 'banned'
+const handleFilterRole = (role: 'admin' | 'staff') => {
+    statusFilter.value = statusFilter.value === role ? 'all' : role
     void fetchUsers(1)
 }
 
