@@ -29,6 +29,7 @@ async function getOverviewSummary(req, res) {
             data: {
                 article: articleSummary.all,
                 gallery: gallerySummary.all,
+                //  本地文件卡片展示文件数量（非体积），与前端 gather 口径一致
                 file: fileSummary.total,
                 diary: diaryResult.total,
                 comment: commentResult.total,
