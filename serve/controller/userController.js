@@ -734,6 +734,40 @@ async function changePassword(req, res) {
         return res.status(500).json({ code: 500, message: '密码修改失败：' + err.message })
     }
 }
+
+// 当前登录用户更新自己的头像（仅接受站内 /api/uploads 图片）
+async function updateAvatar(req, res) {
+    try {
+        const { userId } = req.user
+        const { imgurl } = req.body
+
+        if (typeof imgurl !== 'string' || !/^\/api\/uploads\/[A-Za-z0-9._-]+$/.test(imgurl.trim())) {
+            return res.status(400).json({ code: 400, message: '头像地址不合法' })
+        }
+
+        const result = await userModel.findUserById(userId)
+        if (!result || result.length === 0) {
+            return res.status(404).json({ code: 404, message: '用户不存在' })
+        }
+
+        await userModel.updateUserAvatar(userId, imgurl.trim())
+
+        writeSystemLog({
+            userId,
+            action: 'update',
+            module: 'user',
+            targetType: 'user',
+            targetId: userId,
+            detail: '用户更新了自己的头像',
+            ip: req.ip || null,
+        })
+
+        return res.json({ code: 200, message: '头像更新成功', data: { imgurl: imgurl.trim() } })
+    } catch (err) {
+        return res.status(500).json({ code: 500, message: '头像更新失败：' + err.message })
+    }
+}
+
 //  分页查询全部用户（仅管理员可访问）
 async function getAllUsers(req, res) {
     try {
@@ -804,6 +838,7 @@ async function getAllUsers(req, res) {
 module.exports = {
     getUserInfo,
     changePassword,
+    updateAvatar,
     isRegistered,
     register,
     createUser,

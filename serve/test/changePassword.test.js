@@ -23,7 +23,7 @@ Module._load = function (request, parent, isMain) {
     return originalLoad.call(this, request, parent, isMain)
 }
 
-const { changePassword } = require(controllerPath)
+const { changePassword, updateAvatar } = require(controllerPath)
 Module._load = originalLoad
 
 function response() {
@@ -68,4 +68,48 @@ test('updates password with a fresh bcrypt hash', async () => {
     assert.equal(res.body.code, 200)
     assert.ok(updatedHash && updatedHash !== storedPasswordHash)
     assert.ok(updatedHash.startsWith('$2'))
+})
+
+test('updateAvatar accepts only site-internal uploads URLs', async () => {
+    let savedAvatar = null
+    Module._load = function (request, parent, isMain) {
+        if (parent && parent.filename === controllerPath && request === '../model/dbModel/users/index') {
+            return {
+                findUserById: async () => [{ id: 7, username: 'tester', password: storedPasswordHash }],
+                updateUserPassword: async () => {},
+                updateUserAvatar: async (_userId, imgurl) => { savedAvatar = imgurl }
+            }
+        }
+        if (parent && parent.filename === controllerPath && request === '../utils/logHelper') {
+            return { writeSystemLog: () => {} }
+        }
+        return originalLoad.call(this, request, parent, isMain)
+    }
+    const patched = require.cache[controllerPath]
+    delete require.cache[controllerPath]
+    const freshController = require(controllerPath)
+    if (patched) require.cache[controllerPath] = patched
+
+    try {
+        const bad = response()
+        await freshController.updateAvatar({
+            body: { imgurl: 'https://evil.example.com/a.jpg' },
+            user: { userId: 7, user_type: 'normal' },
+            ip: '127.0.0.1'
+        }, bad)
+        assert.equal(bad.statusCode, 400)
+        assert.equal(savedAvatar, null)
+
+        const good = response()
+        await freshController.updateAvatar({
+            body: { imgurl: '/api/uploads/1792855300690-d500c6ec-1e5b-4c2c-886e-a6bcdd19d91f.jpg' },
+            user: { userId: 7, user_type: 'normal' },
+            ip: '127.0.0.1'
+        }, good)
+        assert.equal(good.body.code, 200)
+        assert.equal(savedAvatar, good.body.data.imgurl)
+    } finally {
+        Module._load = originalLoad
+        delete require.cache[controllerPath]
+    }
 })

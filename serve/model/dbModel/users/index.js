@@ -142,6 +142,17 @@ async function updateUserPassword(userId, passwordHash, exec = query) {
     return exec(sql, [passwordHash, userId]);
 }
 
+// 用户自助更新头像
+async function updateUserAvatar(userId, imgurl, exec = query) {
+    const sql = `
+        UPDATE users
+        SET imgurl = ?
+        WHERE id = ?
+    `;
+
+    return exec(sql, [imgurl, userId]);
+}
+
 // 分页查询用户，支持关键词搜索和全局角色统计
 async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilter = null, roleFilter = null) {
     const searchKeyword = keyword.trim();
@@ -392,6 +403,7 @@ module.exports = {
     updateUserByAdminGuarded,
     updateUserStatusGuarded,
     updateUserPassword,
+    updateUserAvatar,
     findUsersByPage,
     countAdminUsers,
     deleteUserByAdmin,

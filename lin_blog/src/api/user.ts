@@ -85,3 +85,8 @@ export function changePassword(oldPassword: string, newPassword: string) {
 export function getUserInfo() {
   return request.post('/user/userInfo');
 }
+
+// 当前登录用户更新自己的头像（imgurl 需为 /api/uploads/... 站内图片地址）
+export function updateUserAvatar(imgurl: string) {
+  return request.put('/user/avatar', { imgurl });
+}

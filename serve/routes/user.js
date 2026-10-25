@@ -20,6 +20,9 @@ module.exports = (app) => {
     // 当前登录用户修改自己的密码（PUT）
     app.put('/api/user/password', authMiddleware, userController.changePassword)
 
+    // 当前登录用户更新自己的头像（PUT）
+    app.put('/api/user/avatar', authMiddleware, userController.updateAvatar)
+
     //  获取所有的用户信息 用作用户管理（POST）
     app.post('/api/user/allUser', authMiddleware, userController.getAllUsers)
 
