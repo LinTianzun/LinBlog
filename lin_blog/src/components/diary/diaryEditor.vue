@@ -289,8 +289,13 @@ defineExpose({ startEdit, resetForm })
         background: @bg-color-l;
         border-radius: @radius-m;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
 
         &-top {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
             padding: @space-xl;
 
             &-form {
@@ -338,6 +343,8 @@ defineExpose({ startEdit, resetForm })
                 position: relative;
                 width: 80px;
                 height: 80px;
+                border-radius: 8px;
+                overflow: hidden;
 
                 img {
                     width: 100%;
@@ -345,16 +352,17 @@ defineExpose({ startEdit, resetForm })
                     border-radius: 8px;
                     object-fit: cover;
                     display: block;
+                    margin: 0;
                 }
 
                 &-delete {
                     position: absolute;
                     top: 4px;
                     right: 4px;
-                    width: 20px;
-                    height: 20px;
-                    padding: 2px;
-                    border-radius: 4px;
+                    width: 24px;
+                    height: 24px;
+                    padding: 3px;
+                    border-radius: 6px;
                     background: rgba(255, 255, 255, 0.85);
                     color: @font-color-s;
                     cursor: pointer;
@@ -362,6 +370,7 @@ defineExpose({ startEdit, resetForm })
 
                     &:hover {
                         color: @ecolor;
+                        background: rgba(255, 255, 255, 0.95);
                     }
                 }
             }
@@ -381,21 +390,19 @@ defineExpose({ startEdit, resetForm })
             }
 
 
-            img {
+            // 天气小图标（表单触发图 + 弹层选择网格）；不要波及图片缩略图与上传组件
+            &-form img {
                 width: 20px;
                 margin-left: @space-s;
             }
         }
 
         &-foot {
-            width: 100%;
-            position: absolute;
-            right: 12px;
-            bottom: 8px;
             display: flex;
             justify-content: end;
             padding: @space-m;
             border-top: 1px solid @line-color-m;
+            flex: none;
         }
 
         input {
