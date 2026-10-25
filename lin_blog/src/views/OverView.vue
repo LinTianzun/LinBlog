@@ -1,6 +1,6 @@
 <template>
     <yk-space dir="vertical" size="xl" >
-        <top-title name="总览" :is-search="false" />
+        <top-title name="系统总览" :is-search="false" />
         <gather />
 
         <yk-space style=" width: 100%;" size="xl">

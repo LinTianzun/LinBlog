@@ -9,7 +9,7 @@ export interface MenuItem {
 export const navLinks: MenuItem[] = [
     {
         path: 'overView',
-        name: '总览',
+        name: '系统总览',
         icon: 'IconHomepageFill'
     },
     {
@@ -44,7 +44,7 @@ export const navLinks: MenuItem[] = [
     },
     {
         path: 'setting',
-        name: '设置',
+        name: '系统设置',
         icon: 'IconSettingsFill'
     }
 ]

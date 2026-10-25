@@ -52,6 +52,10 @@ const routes = [
                 component: () => import('../views/DiaryView.vue'),
             },
             {
+                path: 'setting',
+                component: () => import('../views/SettingView.vue'),
+            },
+            {
                 // catch-all：未匹配的路径统一渲染 404 页面
                 path: '/:pathMatch(.*)*',
                 component: NotFound,

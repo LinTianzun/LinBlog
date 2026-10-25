@@ -29,7 +29,7 @@
         name: string,
         isSearch: boolean,
     } > (), {
-        name: '总览',
+        name: '系统总览',
         isSearch: true,
     })
     // console.log(props)

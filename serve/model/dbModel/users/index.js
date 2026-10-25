@@ -131,6 +131,17 @@ async function updateUserStatus(userId, status, exec = query) {
     return exec(sql, [status, userId]);
 }
 
+// 用户自助修改密码（仅更新密码哈希，不改其他字段）
+async function updateUserPassword(userId, passwordHash, exec = query) {
+    const sql = `
+        UPDATE users
+        SET password = ?
+        WHERE id = ?
+    `;
+
+    return exec(sql, [passwordHash, userId]);
+}
+
 // 分页查询用户，支持关键词搜索和全局角色统计
 async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilter = null, roleFilter = null) {
     const searchKeyword = keyword.trim();
@@ -380,6 +391,7 @@ module.exports = {
     updateUserStatus,
     updateUserByAdminGuarded,
     updateUserStatusGuarded,
+    updateUserPassword,
     findUsersByPage,
     countAdminUsers,
     deleteUserByAdmin,

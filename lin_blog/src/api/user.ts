@@ -75,3 +75,13 @@ export function deleteUser(id: number) {
 export function updateUserStatus(id: number, status: 0 | 1) {
   return request.put(`/user/updateUserStatus/${id}`, { status });
 }
+
+// 当前登录用户修改自己的密码（成功后需重新登录）
+export function changePassword(oldPassword: string, newPassword: string) {
+  return request.put('/user/password', { oldPassword, newPassword });
+}
+
+// 获取当前登录用户信息
+export function getUserInfo() {
+  return request.post('/user/userInfo');
+}

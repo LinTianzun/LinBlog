@@ -688,6 +688,52 @@ async function getUserInfo(req, res) {
     }
 }
 
+// 当前登录用户修改自己的密码（需验证旧密码，改成功后需重新登录）
+async function changePassword(req, res) {
+    try {
+        const { userId } = req.user
+        const { oldPassword, newPassword } = req.body
+
+        if (typeof oldPassword !== 'string' || oldPassword.length === 0) {
+            return res.status(400).json({ code: 400, message: '请输入当前密码' })
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 72) {
+            return res.status(400).json({ code: 400, message: '新密码长度需在 6 到 72 位之间' })
+        }
+        if (newPassword === oldPassword) {
+            return res.status(400).json({ code: 400, message: '新密码不能与当前密码相同' })
+        }
+
+        const result = await userModel.findUserById(userId)
+        if (!result || result.length === 0) {
+            return res.status(404).json({ code: 404, message: '用户不存在' })
+        }
+
+        const user = result[0]
+        const oldPasswordValid = await bcrypt.compare(oldPassword, user.password)
+        if (!oldPasswordValid) {
+            return res.status(400).json({ code: 400, message: '当前密码不正确' })
+        }
+
+        const salt = await bcrypt.genSalt(10)
+        const hashedNewPassword = await bcrypt.hash(newPassword, salt)
+        await userModel.updateUserPassword(userId, hashedNewPassword)
+
+        writeSystemLog({
+            userId,
+            action: 'update',
+            module: 'user',
+            targetType: 'user',
+            targetId: userId,
+            detail: '用户修改了自己的登录密码',
+            ip: req.ip || null,
+        })
+
+        return res.json({ code: 200, message: '密码修改成功，请重新登录' })
+    } catch (err) {
+        return res.status(500).json({ code: 500, message: '密码修改失败：' + err.message })
+    }
+}
 //  分页查询全部用户（仅管理员可访问）
 async function getAllUsers(req, res) {
     try {
@@ -757,6 +803,7 @@ async function getAllUsers(req, res) {
 
 module.exports = {
     getUserInfo,
+    changePassword,
     isRegistered,
     register,
     createUser,

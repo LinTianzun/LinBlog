@@ -17,6 +17,9 @@ module.exports = (app) => {
     //  获取用户信息根据id（POST）
     app.post('/api/user/userInfo', authMiddleware, userController.getUserInfo)
 
+    // 当前登录用户修改自己的密码（PUT）
+    app.put('/api/user/password', authMiddleware, userController.changePassword)
+
     //  获取所有的用户信息 用作用户管理（POST）
     app.post('/api/user/allUser', authMiddleware, userController.getAllUsers)
 
