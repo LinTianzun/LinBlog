@@ -55,30 +55,31 @@ npm start
 | 图片上传 | `POST /api/upload/image?token=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
-| 日记 | `GET/POST /api/diary`、`DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
+| 日记 | `GET/POST /api/diary`、`GET/PUT/DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
 | 文件 | `GET /api/file`、`GET /api/file/summary`、`POST /api/file/upload?token=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（query token）；下载公开，缩略图加 `?inline=true`。 |
 | 分类 | `GET /api/subset?classify=...`、`POST /api/subset`、`PUT /api/subset/:id`、`DELETE /api/subset/:id` | 需要认证；图库（`classify=image`）复用文章分组，仅计数口径不同。 |
 | 标签 | `GET/POST /api/label`、`DELETE /api/label/:id` | 需要认证；标签被文章引用时禁止删除。 |
 | 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
+| 系统日志 | `GET /api/systemLog` | 仅管理员；记录登录与各模块写操作（创建/更新/删除、目标类型与 IP），支持分页与关键词搜索。 |
 
 用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，文章列表、编辑器和详情弹窗已调用真实接口。
 
-上传图片不会以 BLOB 形式写入 MySQL：后端 `multer` 将文件保存到 `serve/data/img/`，数据库只保存 `/api/uploads/<filename>` URL。`yk-upload` 通过查询参数携带 Token，因为其上传请求不能附加自定义认证头；上传失败也以 HTTP 200 返回，并通过 `error` 字段传递原因。运行时上传文件已被 `.gitignore` 忽略。
+图片以二进制保存于数据库 `image` 表（MEDIUMBLOB，单张上限 8 MB），`GET /api/uploads/:filename` 直接从数据库读取并返回；历史磁盘图片已通过迁移 `20261024_image_storage` 一次性导入。文章封面被替换或文章被删除时，后端会检查旧封面图片的引用（文章封面/正文、日记图片、用户头像），无引用则软删对应 `image` 行，`/api/uploads` 访问随之失效。`yk-upload` 通过查询参数携带 Token，因为其上传请求不能附加自定义认证头；上传失败也以 HTTP 200 返回，并通过 `error` 字段传递原因。
 
 ### 当前限制与待办
 
-* 用户管理 CRUD 和账号启停用已联调；统计卡除“用户总数”外只统计启用用户（游客计入“编辑与普通用户”口径）。公开注册已同时检查邮箱与用户名重复（重复返回 400），并发唯一键冲突仍落入通用 500 待补测。
+* 用户管理 CRUD 和账号启停用已联调；统计卡除“用户总数”外只统计启用用户，“编辑与普通用户”不含游客（后端 `staff` 过滤口径一致）。公开注册已同时检查邮箱与用户名重复（重复返回 400），并发唯一键冲突仍落入通用 500 待补测。
 * 前端构建目前通过，MockJS `eval` 警告已消失，但 OverView / EditArticle 等 chunk 仍超过 500 KB；需评估按页面或编辑器拆包，不应只提高警告阈值。
 * 文章、图库、文件、日记、评论/消息、分类/标签和总览统计（含访问量/数据监测图表）已完成真实 API 联调。访问数据由中间件从功能上线起写入 `record` 表，历史数据为空；`position` 字段暂未接 IP 地理解析，饼图来源维度使用操作系统分布。
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 图片目前保存在服务器本地磁盘，没有云存储、备份或孤儿文件清理机制；删除文章不会自动删除已上传封面。部署时应将 `serve/data/img/` 纳入备份并配置独立静态资源域名/存储。
-* 后端 `npm test` 当前 `72/72` 通过，覆盖文章、评论、用户权限、消息角色、认证故障、迁移幂等、请求体归一化、文件控制器、天气字典联动、访问统计聚合、访问记录中间件和注册用户名冲突；测试使用模块替身，不替代真实 MySQL 集成测试（访问统计聚合 SQL 已在隔离验证库实测）。
+* 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后保留以便恢复，暂无定期清理、备份或云存储同步机制。
+* 后端 `npm test` 当前 `95/95` 通过，覆盖配置校验、文章、评论（安全与两级边界）、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
-* 2026-10-25：前端 `vue-tsc` 类型检查和 Vite 生产构建通过，后端测试 `72/72` 通过。
+* 2026-10-25：前端 `vue-tsc` 类型检查和 Vite 生产构建通过，后端测试 `95/95` 通过；另在隔离 MySQL 验证库完成 8 项真实集成测试（迁移幂等、角色过滤、文章权限、图片二进制读写、封面引用清理、评论边界、账号启停用），验证库用后即删。
 * 文章、图库、文件、日记、评论/消息、总览统计卡片、访问量/数据监测图表均已在本地环境完成端到端验证；图库与文章分组的共用关系已实测（分组计数按内容类型隔离，删除保护生效）。
 * 天气字典已与前端 8 种图标对齐，旧字典行（晴/阴/雨/雪）已清理，日记引用无悬挂。
 
@@ -102,7 +103,7 @@ npm start
 
 ### 表结构总览
 
-系统共设计 11 张数据表，按业务模块分类如下：
+系统共设计 12 张数据表，按业务模块分类如下：
 
 - 用户模块：`users`（用户表）
 - 资源分类模块：`subset`（资源分类表）
@@ -111,7 +112,7 @@ npm start
 - 字典模块：`label`（标签字典表）、`weather`（天气字典表）
 - 个人模块：`diary`（个人日记表）
 - 通知模块：`message`（消息表）
-- 统计模块：`record`（访问记录表）
+- 统计模块：`record`（访问记录表）、`system_log`（系统日志表）
 
 ### 表结构详情
 
