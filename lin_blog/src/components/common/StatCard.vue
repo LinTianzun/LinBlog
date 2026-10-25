@@ -3,7 +3,7 @@
         'stat-card-clickable': clickable,
         'stat-card-active': active,
     }]"
-        :style="bgColor" @click="emit('click')">
+        :style="bgColor" @click="handleClick">
         <yk-space dir="vertical" size="s">
             <yk-text type="secondary">{{ name }}</yk-text>
             <yk-title :level="2" class="stat-card-value">
@@ -60,6 +60,8 @@ const handleClick = (): void => {
     if (props.to) {
         router.push(props.to)
     }
+    // 用户管理页等父级监听 click 实现卡片筛选
+    emit('click')
 }
 </script>
 
