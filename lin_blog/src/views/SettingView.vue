@@ -1,44 +1,44 @@
-<template>
+ <template>
     <yk-space dir="vertical" size="xl">
         <top-title name="系统设置" :is-search="false" />
 
-        <yk-space size="xl" style="width: 100%" align="flex-start">
-            <yk-space dir="vertical" size="l" style="flex: 1;">
+        <div class="setting-layout">
+            <div class="setting-main">
 
-                <!-- 个人信息 -->
-                <div class="setting-card">
-                    <yk-title :level="4" style="margin: 0 0 16px">
-                        个人信息
-                    </yk-title>
-                    <div class="profile-layout">
+                <!-- 第一行：个人信息 -->
+                <div class="setting-card profile-card">
+                    <div class="profile-cover"></div>
+                    <div class="profile-body">
                         <div class="profile-avatar-box">
                             <img v-if="avatarUrl" class="setting-avatar" :src="avatarUrl" alt="头像" />
-                            <yk-empty v-else description="暂无头像" style="padding: 24px 0" />
+                            <div v-else class="setting-avatar setting-avatar-empty">未设置</div>
                             <yk-upload class="avatar-upload" :file-list="avatarFileList" :upload-url="uploadUrl"
                                 :limit="1" :multiple="false" accept="image/jpeg,image/png,image/webp,image/gif"
-                                :max-size="8 * 1024 * 1024" desc="上传头像"
+                                :max-size="8 * 1024 * 1024" desc="更换头像"
                                 @handle-success="handleAvatarSuccess" @handle-error="handleAvatarError"
                                 @handle-delete="handleAvatarDelete" />
                         </div>
-                        <yk-space dir="vertical" size="s" align="flex-start">
-                            <yk-space size="m">
-                                <yk-text style="font-weight: 600">{{ profile?.username || '-' }}</yk-text>
+                        <div class="profile-info">
+                            <yk-space size="m" wrap>
+                                <yk-title :level="3" style="margin: 0">
+                                    {{ profile?.username || '-' }}
+                                </yk-title>
                                 <yk-tag v-if="roleName" type="info">{{ roleName }}</yk-tag>
                             </yk-space>
                             <yk-text type="secondary">{{ profile?.mail || '-' }}</yk-text>
                             <yk-text v-if="avatarMessage" :type="avatarSuccess ? 'success' : 'danger'">
                                 {{ avatarMessage }}
                             </yk-text>
-                        </yk-space>
+                        </div>
                     </div>
                 </div>
 
-                <!-- 修改密码 -->
+                <!-- 第一行：修改密码 -->
                 <div class="setting-card">
-                    <yk-title :level="4" style="margin: 0 0 16px">
+                    <yk-title :level="4" class="card-title">
                         修改密码
                     </yk-title>
-                    <yk-space dir="vertical" size="m" style="max-width: 360px">
+                    <yk-space dir="vertical" size="m" style="width: 100%">
                         <input class="setting-input" type="password" v-model="passwordForm.oldPassword"
                             placeholder="当前密码" autocomplete="current-password" />
                         <input class="setting-input" type="password" v-model="passwordForm.newPassword"
@@ -55,26 +55,9 @@
                     </yk-space>
                 </div>
 
-                <!-- 关于系统 -->
-                <div class="setting-card">
-                    <yk-title :level="4" style="margin: 0 0 16px">
-                        关于系统
-                    </yk-title>
-                    <yk-space dir="vertical" size="s">
-                        <yk-space size="l">
-                            <yk-text type="secondary" style="width: 88px">系统名称</yk-text>
-                            <yk-text>LinBlog 个人博客系统</yk-text>
-                        </yk-space>
-                        <yk-space size="l">
-                            <yk-text type="secondary" style="width: 88px">技术栈</yk-text>
-                            <yk-text>Vue 3 + Yike Design / Express + MySQL</yk-text>
-                        </yk-space>
-                    </yk-space>
-                </div>
+            </div>
 
-            </yk-space>
-
-            <!-- 管理员快捷入口 -->
+            <!-- 右侧：管理员快捷入口（位置不变） -->
             <div v-if="isAdmin" class="setting-card setting-aside">
                 <yk-title :level="4" style="margin: 0 0 16px">
                     快捷入口
@@ -94,7 +77,28 @@
                     </yk-button>
                 </yk-space>
             </div>
-        </yk-space>
+        </div>
+
+        <!-- 第二行：其它功能（关于系统等内容置于此行） -->
+        <div class="setting-card">
+            <yk-title :level="4" class="card-title">
+                其它功能
+            </yk-title>
+            <div class="about-grid">
+                <div class="about-item">
+                    <yk-text type="secondary">系统名称</yk-text>
+                    <yk-text>LinBlog 个人博客系统</yk-text>
+                </div>
+                <div class="about-item">
+                    <yk-text type="secondary">技术栈</yk-text>
+                    <yk-text>Vue 3 + Yike Design / Express + MySQL</yk-text>
+                </div>
+                <div class="about-item">
+                    <yk-text type="secondary">当前角色</yk-text>
+                    <yk-text>{{ roleName || '-' }}</yk-text>
+                </div>
+            </div>
+        </div>
     </yk-space>
 </template>
 
@@ -256,31 +260,89 @@ onMounted(loadProfile)
 </script>
 
 <style lang="less" scoped>
+    .setting-layout {
+        display: flex;
+        align-items: stretch;
+        gap: @space-xl;
+        width: 100%;
+    }
+
+    .setting-main {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: @space-xl;
+        align-items: stretch;
+    }
+
     .setting-card {
         width: 100%;
         padding: 24px 28px;
         border-radius: 12px;
-            background: @bg-color-l;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        background: @bg-color-l;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        box-sizing: border-box;
+    }
+
+    .card-title {
+        margin: 0 0 16px;
+    }
+
+    /* 个人信息卡：渐变横幅 + 大头像压边 */
+    .profile-card {
+        padding: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+
+        .profile-cover {
+            height: 72px;
+            background: linear-gradient(120deg, #2b5aed 0%, #4d86f7 55%, #19b89b 100%);
+            flex-shrink: 0;
+        }
+
+        .profile-body {
+            display: flex;
+            align-items: flex-end;
+            gap: @space-xl;
+            padding: 0 28px 24px;
+            margin-top: -36px;
+        }
+
+        .profile-info {
+            flex: 1;
+            min-width: 0;
+            padding-bottom: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: @space-s;
+            align-items: flex-start;
+        }
     }
 
     .setting-avatar {
         width: 96px;
         height: 96px;
-        border-radius: 12px;
+        border-radius: 16px;
         object-fit: cover;
+        border: 3px solid @bg-color-l;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
     }
 
-    .profile-layout {
+    .setting-avatar-empty {
         display: flex;
         align-items: center;
-        gap: @space-xl;
+        justify-content: center;
+        font-size: @size-s;
+        color: @font-color-s;
+        background: @bg-color-m;
     }
 
     .profile-avatar-box {
         display: flex;
         flex-direction: column;
-        gap: @space-s;
+        gap: @space-m;
         flex-shrink: 0;
 
         .avatar-upload :deep(.yk-upload__picture),
@@ -288,18 +350,19 @@ onMounted(loadProfile)
         .avatar-upload :deep(.yk-upload__picture-button) {
             width: 96px;
             height: 96px;
+            border-radius: 16px;
         }
     }
 
     .setting-input {
         width: 100%;
-        max-width: 360px;
         height: 40px;
         padding: 0 12px;
         border: 1px solid @line-color-m;
         border-radius: 8px;
         outline: none;
         font-size: 14px;
+        box-sizing: border-box;
         background: @bg-color-l;
         color: @font-color-l;
 
@@ -309,9 +372,26 @@ onMounted(loadProfile)
         }
     }
 
+    /* 第二行：其它功能 */
+    .about-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: @space-l;
+    }
+
+    .about-item {
+        display: flex;
+        flex-direction: column;
+        gap: @space-ss;
+        padding: @space-l;
+        border-radius: 8px;
+        background: @bg-color-m;
+    }
+
     .setting-aside {
         width: 220px;
         flex-shrink: 0;
+        align-self: stretch;
 
         .yk-button {
             width: 100%;
@@ -319,6 +399,23 @@ onMounted(loadProfile)
 
         .yk-icon {
             margin-right: 8px;
+        }
+    }
+
+    @media (max-width: 1100px) {
+        .setting-layout {
+            flex-direction: column;
+        }
+
+        .setting-aside {
+            width: 100%;
+            align-self: auto;
+        }
+    }
+
+    @media (max-width: 900px) {
+        .setting-main {
+            grid-template-columns: 1fr;
         }
     }
 </style>
