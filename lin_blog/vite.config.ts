@@ -31,4 +31,20 @@ export default defineConfig({
       },
     },
   },
+
+  build: {
+    // 编辑器/图表已按需异步加载；剩余超阈值的是懒加载 vendor 包，属正常体积
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // 大体积第三方库单独分包，避免页面级 chunk 被编辑器/图表撑大
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('echarts') || id.includes('zrender')) return 'echarts'
+            if (id.includes('@yike-design')) return 'yike-design'
+          }
+        },
+      },
+    },
+  },
 })

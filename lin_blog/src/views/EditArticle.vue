@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, getCurrentInstance, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type {
     ArticleItem,
@@ -68,7 +68,8 @@ import {
     updateArticle,
     updateArticleStatus,
 } from '../api/article'
-import editor from '../components/editor/editor.vue'
+// 富文本编辑器体积大，进入编辑页时再加载
+const editor = defineAsyncComponent(() => import('../components/editor/editor.vue'))
 import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
 

@@ -31,7 +31,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, getCurrentInstance, ref, watch } from 'vue'
 import type { ArticleItem, ArticleState } from '../../api/article'
 import {
     deleteArticle,
@@ -40,7 +40,8 @@ import {
     updateArticleStatus,
 } from '../../api/article'
 import artcleItem from './artcleItem.vue'
-import ArticleDetailView from '../../views/ArticleDetailView.vue'
+// 详情弹窗包含正文渲染与 DOMPurify，打开时再加载
+const ArticleDetailView = defineAsyncComponent(() => import('../../views/ArticleDetailView.vue'))
 import { useSubsetStore } from '../../store/subset'
 
 type Props = {

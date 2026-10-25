@@ -66,7 +66,6 @@
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
 import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
-import '@wangeditor/editor/dist/css/style.css'
 
 type FormData = {
     title: string
