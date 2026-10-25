@@ -1,8 +1,8 @@
 <template>
     <yk-space class="gather">
         <stat-card v-for="(item, index) in gathers" :key="item.name" :name="item.name"
-            :total="item.total" :bg-color="item.bgColor" :icon="item.icon" :to="item.viewTo"
-            :class="{ 'gather-dark': index === 0 }" />
+            :total="item.total" :bg-color="item.bgColor" :icon="item.icon"
+            :to="item.path || item.viewTo" :class="{ 'gather-dark': index === 0 }" />
     </yk-space>
 </template>
 
