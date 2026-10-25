@@ -73,11 +73,15 @@ async function createComment(req, res) {
         // 回复必须属于同一篇文章，防止跨文章构造评论树。
         if (parsedParentId > 0) {
             const [parentComment] = await query(
-                'SELECT id FROM comment WHERE id = ? AND article_id = ? AND status = 1',
+                'SELECT id, parent_id FROM comment WHERE id = ? AND article_id = ? AND status = 1',
                 [parsedParentId, parsedArticleId]
             )
             if (!parentComment) {
                 return res.status(404).json({ code: 404, message: '父评论不存在、已删除或不属于当前文章' })
+            }
+            // 仅支持两级评论：不能回复二级评论（parent_id > 0 的评论）
+            if (Number(parentComment.parent_id) > 0) {
+                return res.status(400).json({ code: 400, message: '只能回复一级评论' })
             }
         }
 
