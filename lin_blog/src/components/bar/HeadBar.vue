@@ -15,8 +15,10 @@
                 {{ userInfo?.username || '用户' }}
             </span>
 
-            <!-- yk-theme 自带明暗切换与持久化，logo 颜色跟随 isDark -->
-            <yk-theme />
+            <!-- yk-theme 自带 width:100%，需要固定尺寸容器，否则会撑满并把用户名挤没 -->
+            <div class="theme-switch">
+                <yk-theme />
+            </div>
             
             <yk-button @click="quit">退出</yk-button>
         </yk-space>
@@ -147,6 +149,14 @@ onMounted(() => {
         font-size: @size-m;
         font-weight: 500;
         color: @font-color-l;
+    }
+
+    .theme-switch {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 }
 </style>
