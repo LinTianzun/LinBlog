@@ -19,4 +19,32 @@ function findActiveImageByFilename(filename) {
     )
 }
 
-module.exports = { createImage, findActiveImageByFilename }
+// 统计一张图片仍被业务数据引用的数量：文章封面/内容、日记图片、用户头像。
+function countImageReferences(filename, exec = db.query) {
+    const pattern = `%${filename}%`
+    return exec(
+        `SELECT
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND cover LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND content LIKE ?) +
+            (SELECT COUNT(*) FROM diary WHERE status = 1 AND picture LIKE ?) +
+            (SELECT COUNT(*) FROM users WHERE imgurl LIKE ?) AS referenceCount`,
+        [pattern, pattern, pattern, pattern]
+    )
+}
+
+// 无引用的图片行软删，有引用的保留（例如用户换回旧封面的场景）。
+async function deactivateImageIfUnreferenced(filename, exec = db.query) {
+    const rows = await countImageReferences(filename, exec)
+    const referenceCount = Number(rows?.[0]?.referenceCount ?? 0)
+    if (referenceCount > 0) {
+        return { referenceCount, deactivated: false }
+    }
+
+    await exec(
+        'UPDATE image SET status = 0 WHERE filename = ? AND status = 1',
+        [filename]
+    )
+    return { referenceCount: 0, deactivated: true }
+}
+
+module.exports = { createImage, findActiveImageByFilename, deactivateImageIfUnreferenced }

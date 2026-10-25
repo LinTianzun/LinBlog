@@ -1,6 +1,30 @@
 const articleModel = require('../model/dbModel/article/index')
+const imageModel = require('../model/dbModel/image/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
+
+const uploadsUrlPattern = /^\/api\/uploads\/([A-Za-z0-9._-]+)$/
+
+function extractUploadsFilename(coverUrl) {
+    if (typeof coverUrl !== 'string') return null
+    const match = coverUrl.trim().match(uploadsUrlPattern)
+    return match ? match[1] : null
+}
+
+// 封面被替换/删除后，若数据库中的图片行已无任何业务引用则软删，避免孤儿图片。
+// 清理失败只记录日志，不影响主流程。
+async function cleanupCover(coverUrl) {
+    const filename = extractUploadsFilename(coverUrl)
+    if (!filename) return
+    try {
+        const result = await imageModel.deactivateImageIfUnreferenced(filename)
+        if (result.deactivated) {
+            console.log(`[Article] 已清理无引用封面图片 ${filename}`)
+        }
+    } catch (err) {
+        console.warn('[Article] 清理封面图片失败：', err.message)
+    }
+}
 
 /**
  * 新增文章
@@ -289,6 +313,8 @@ async function updateArticle(req, res) {
             return res.status(403).json({ code: 403, message: '无权限更新该文章' })
         }
 
+        const previousCover = access.article.cover
+
         //  调用模型更新
         const affectedRows = await articleModel.updateArticle(
             articleId,
@@ -313,6 +339,15 @@ async function updateArticle(req, res) {
             if (!latestAccess.allowed) {
                 return res.status(403).json({ code: 403, message: '无权限更新该文章' })
             }
+        }
+
+        // 封面确实被替换时才清理旧图（值未变时 MySQL 返回 0 行也跳过）
+        if (
+            updateData.cover !== undefined &&
+            previousCover &&
+            previousCover !== updateData.cover
+        ) {
+            await cleanupCover(previousCover)
         }
 
         writeSystemLog({
@@ -353,11 +388,16 @@ async function deleteArticle(req, res) {
             return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
         }
 
+        const access = await articleModel.findArticleMutationAccess(articleId, userId, userType, 'delete')
+        const oldCover = access.exists ? access.article.cover : null
+
         //  调用模型删除
         const affectedRows = await articleModel.deleteArticle(articleId, userId, userType)
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该文章或文章不存在' })
         }
+
+        await cleanupCover(oldCover)
 
         writeSystemLog({
             userId,
