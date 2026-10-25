@@ -21,6 +21,7 @@
                 <yk-theme />
             </div>
             
+            <yk-button type="secondary" @click="goPortal">我的博客</yk-button>
             <yk-button @click="quit">退出</yk-button>
         </yk-space>
 
@@ -53,6 +54,11 @@ const backHome = () => {
 // 头像直达系统设置页的个人信息卡
 const goSetting = () => {
     router.push('/setting')
+}
+
+// 后台一键直达访客门户
+const goPortal = () => {
+    router.push('/portal')
 }
 
 // 退出登录
