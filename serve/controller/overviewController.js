@@ -29,8 +29,8 @@ async function getOverviewSummary(req, res) {
             data: {
                 article: articleSummary.all,
                 gallery: gallerySummary.all,
-                //  本地文件卡片展示文件数量（非体积），与前端 gather 口径一致
-                file: fileSummary.total,
+                //  本地文件卡片展示磁盘文件总大小（字节），前端再格式化成可读体积
+                file: fileSummary.totalSize,
                 diary: diaryResult.total,
                 comment: commentResult.total,
                 messageUnread,

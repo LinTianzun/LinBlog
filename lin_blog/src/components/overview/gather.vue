@@ -22,10 +22,18 @@
     //  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
     const gathers = ref(overLink)
 
+    //  字节数转可读体积；无文件或字段缺失时显示 0
+    const formatFileSize = (bytes: number): string => {
+        if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+        return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+    }
+
     //  将聚合统计回填到卡片（顺序与 overLink 一致：本地文件/博客文章/摄影图库/随笔随记）
     const applySummary = (data: OverviewSummary): void => {
-        //  本地文件卡片展示文件数量，与其他卡片口径一致
-        gathers.value[0].total = data.file
+        //  本地文件卡片展示总大小，其余卡片展示数量
+        gathers.value[0].total = formatFileSize(data.file)
         gathers.value[1].total = data.article
         gathers.value[2].total = data.gallery
         gathers.value[3].total = data.diary

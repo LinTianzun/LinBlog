@@ -4,6 +4,7 @@ import request from "../utils/request";
 export interface OverviewSummary {
   article: number;
   gallery: number;
+  // 本地文件总大小（字节），前端格式化成 KB/MB/GB
   file: number;
   diary: number;
   comment: number;

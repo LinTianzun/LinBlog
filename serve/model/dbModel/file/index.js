@@ -47,11 +47,13 @@ async function getFilesByPage({ subsetId, uncategorized, keyword, pageSize, offs
 }
 
 /**
- * 文件总数与未分类数（用于分组栏统计）
+ * 文件总数、总大小与未分类数（用于分组栏统计与总览卡片）
+ * SUM(size) 对空表返回 NULL，需归一为 0
  */
 async function countFilesSummary() {
     const rows = await query(
         `SELECT COUNT(*) AS total,
+                COALESCE(SUM(f.size), 0) AS totalSize,
                 SUM(CASE WHEN s.classify = 'resource' AND s.status = 1 THEN 1 ELSE 0 END) AS categorized
          FROM file f
          LEFT JOIN subset s ON f.subset_id = s.id
@@ -62,6 +64,7 @@ async function countFilesSummary() {
     const categorized = Number(row.categorized || 0)
     return {
         total,
+        totalSize: Number(row.totalSize || 0),
         uncategorized: Math.max(total - categorized, 0)
     }
 }
