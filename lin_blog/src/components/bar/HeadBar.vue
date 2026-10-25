@@ -9,7 +9,8 @@
                 <IconMailOutline @click="openInbox" style="font-size: 20px;" />
             </yk-badge>
 
-            <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar" />
+            <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar"
+                style="cursor: pointer;" @click="goSetting" />
 
             <span class="user-name">
                 {{ userInfo?.username || '用户' }}
@@ -47,6 +48,11 @@ const router = useRouter();
 //  返回总览
 const backHome = () => {
     router.push('/')
+}
+
+// 头像直达系统设置页的个人信息卡
+const goSetting = () => {
+    router.push('/setting')
 }
 
 // 退出登录

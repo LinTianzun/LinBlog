@@ -8,6 +8,9 @@ export interface UserInfo {
   user_type: string;
   imgurl?: string | null;
   status: 0 | 1;
+  created_at?: string;
+  updated_at?: string;
+  last_login_at?: string | null;
 }
 
 // 分页用户列表响应类型

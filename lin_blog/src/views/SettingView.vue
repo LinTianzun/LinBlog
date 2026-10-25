@@ -7,7 +7,9 @@
 
                 <!-- 第一行：个人信息 -->
                 <div class="setting-card profile-card">
-                    <div class="profile-cover"></div>
+                    <div class="profile-cover">
+                        <yk-title :level="4" class="profile-card-title">个人信息</yk-title>
+                    </div>
                     <div class="profile-body">
                         <!-- avatar 模式由 yk-upload 渲染圆形头像（悬停编辑/删除，上传前裁剪）；外层占位 div 负责定位 -->
                         <div class="avatar-box">
@@ -23,8 +25,27 @@
                                     {{ profile?.username || '-' }}
                                 </yk-title>
                                 <yk-tag v-if="roleName" type="info">{{ roleName }}</yk-tag>
+                                <yk-tag v-if="profile?.status === 1" type="success">正常</yk-tag>
+                                <yk-tag v-else type="danger">已禁用</yk-tag>
                             </yk-space>
-                            <yk-text type="secondary">{{ profile?.mail || '-' }}</yk-text>
+                            <div class="profile-detail">
+                                <div class="profile-detail-item">
+                                    <span class="profile-label">邮箱</span>
+                                    <span class="profile-value">{{ profile?.mail || '-' }}</span>
+                                </div>
+                                <div class="profile-detail-item">
+                                    <span class="profile-label">用户ID</span>
+                                    <span class="profile-value">{{ profile?.id ?? '-' }}</span>
+                                </div>
+                                <div class="profile-detail-item">
+                                    <span class="profile-label">注册时间</span>
+                                    <span class="profile-value">{{ formatDate(profile?.created_at) }}</span>
+                                </div>
+                                <div class="profile-detail-item">
+                                    <span class="profile-label">最后登录</span>
+                                    <span class="profile-value">{{ formatDate(profile?.last_login_at) }}</span>
+                                </div>
+                            </div>
                             <yk-text v-if="avatarMessage" :type="avatarSuccess ? 'success' : 'danger'">
                                 {{ avatarMessage }}
                             </yk-text>
@@ -260,6 +281,20 @@ const roleMap: Record<string, string> = {
 }
 const roleName = computed(() => roleMap[profile.value?.user_type ?? ''] || '')
 
+// 数据库时间为 UTC 字符串，转为本地时间展示
+const formatDate = (value?: string | null) => {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    })
+}
+
 const go = (path: string) => {
     router.push(path)
 }
@@ -360,7 +395,15 @@ onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChan
 
         .profile-cover {
             height: 72px;
+            padding: 0 28px;
+            box-sizing: border-box;
             background: linear-gradient(120deg, #2b5aed 0%, #4d86f7 55%, #19b89b 100%);
+
+            .profile-card-title {
+                margin: 0;
+                color: #ffffff;
+                line-height: 72px;
+            }
         }
 
         // 头像独立定位压在横幅与内容区交界；占位 div 承担定位，内部组件 100% 宽度不再影响布局
@@ -402,6 +445,35 @@ onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChan
             flex-direction: column;
             gap: @space-s;
             align-items: flex-start;
+        }
+
+        .profile-detail {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: @space-s @space-l;
+        }
+
+        .profile-detail-item {
+            min-width: 0;
+            display: flex;
+            align-items: baseline;
+            gap: @space-s;
+        }
+
+        .profile-label {
+            flex-shrink: 0;
+            font-size: @size-s;
+            color: @font-color-s;
+        }
+
+        .profile-value {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: @size-s;
+            color: @font-color-l;
         }
     }
 
