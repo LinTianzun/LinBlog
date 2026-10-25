@@ -17,6 +17,7 @@ const messageModel = {
 Module._load = function (request, parent, isMain) {
     if (parent && parent.filename === controllerPath) {
         if (request === '../model/dbModel/message/index') return messageModel
+        if (request === '../utils/logHelper') return { writeSystemLog: () => {} }
     }
     return originalLoad.call(this, request, parent, isMain)
 }

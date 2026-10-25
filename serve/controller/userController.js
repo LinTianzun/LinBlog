@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt') // 统一为 bcryptjs（与数据库初始化�
 const config = require('../config/default')
 const { generateToken } = require('../utils/jwtutil')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
+const { writeSystemLog } = require('../utils/logHelper')
 
 // 判断用户是否已注册（按邮箱校验）
 async function isRegistered(req, res) {
@@ -175,6 +176,16 @@ async function createUser(req, res) {
         });
 
         // 10. 返回创建结果，不返回密码
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'create',
+            module: 'user',
+            targetType: 'user',
+            targetId: insertResult.insertId,
+            detail: `管理员创建用户「${cleanUsername}」（角色：${user_type}）`,
+            ip: req.ip || null,
+        })
+
         return res.status(201).json({
             code: 200,
             message: '用户创建成功',
@@ -351,6 +362,16 @@ async function updateUser(req, res) {
         }
 
         // 7. 返回结果
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'user',
+            targetType: 'user',
+            targetId: userId,
+            detail: `管理员编辑用户「${cleanUsername}」（角色：${user_type}）`,
+            ip: req.ip || null,
+        })
+
         return res.status(200).json({
             code: 200,
             message: '用户资料更新成功',
@@ -460,6 +481,18 @@ async function updateUserStatus(req, res) {
             });
         }
 
+        const targetUser = existingUser[0]
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'status',
+            module: 'user',
+            targetType: 'user',
+            targetId: userId,
+            detail: `管理员${status === 1 ? '启用' : '禁用'}用户「${targetUser?.username || userId}」`,
+            ip: req.ip || null,
+        })
+
         return res.json({
             code: 200,
             message: status === 1 ? '用户已启用' : '用户已禁用',
@@ -541,6 +574,16 @@ async function deleteUser(req, res) {
             });
         }
 
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'user',
+            targetType: 'user',
+            targetId: userId,
+            detail: `管理员删除用户「${existingUser[0]?.username || userId}」`,
+            ip: req.ip || null,
+        })
+
         return res.status(200).json({
             code: 200,
             message: '用户删除成功',
@@ -604,6 +647,17 @@ async function login(req, res) {
 
         // 剔除密码，返回完整用户信息（含 user_type 等字段）
         const { password: _, ...userInfo } = user
+
+        writeSystemLog({
+            userId: user.id,
+            action: 'login',
+            module: 'user',
+            targetType: 'user',
+            targetId: user.id,
+            detail: `用户「${user.username}」登录成功`,
+            ip: req.ip || null,
+        })
+
         res.json({
             code: 200,
             message: '登录成功',

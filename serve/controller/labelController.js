@@ -1,4 +1,5 @@
 const labelModel = require('../model/dbModel/label/index')
+const { writeSystemLog } = require('../utils/logHelper')
 
 async function getLabels(req, res) {
     try {
@@ -43,6 +44,16 @@ async function createLabel(req, res) {
         }
 
         const result = await labelModel.insertLabel(normalizedName)
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'create',
+            module: 'label',
+            targetType: 'label',
+            targetId: result.labelId,
+            detail: `创建标签「${normalizedName}」`,
+            ip: req.ip || null,
+        })
+
         res.status(201).json({
             code: 200,
             message: '标签创建成功',
@@ -85,6 +96,16 @@ async function deleteLabel(req, res) {
         if (affectedRows === 0) {
             return res.status(404).json({ code: 404, message: '标签不存在' })
         }
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'label',
+            targetType: 'label',
+            targetId: Number(id) || null,
+            detail: `删除标签「${target.name}」`,
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '标签删除成功' })
     } catch (err) {

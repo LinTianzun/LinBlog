@@ -24,6 +24,14 @@ const routes = [
     }
 },
             {
+                path: 'systemLog',
+                component: () => import('../views/SystemLogView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    roles: ['admin']
+                }
+            },
+            {
                 path: 'localfile',
                 component: () => import('../views/FileView.vue'),
             },

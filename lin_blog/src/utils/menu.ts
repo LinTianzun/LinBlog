@@ -18,6 +18,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconAvatarFill'
     },
     {
+        path: 'systemLog',
+        name: '系统日志',
+        icon: 'IconStatisticsFill'
+    },
+    {
         path: 'localfile',
         name: '本地文件',
         icon: 'IconFolderCloseFill'
@@ -47,9 +52,9 @@ export const navLinks: MenuItem[] = [
 // 编辑、普通用户可见的菜单
 export const contentLinks: MenuItem[] = [
     navLinks[0],
-    navLinks[3],
     navLinks[4],
-    navLinks[5]
+    navLinks[5],
+    navLinks[6]
 ]
 
 // 游客可见的菜单

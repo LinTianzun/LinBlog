@@ -1,5 +1,6 @@
 const messageModel = require('../model/dbModel/message/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
+const { writeSystemLog } = require('../utils/logHelper')
 
 /**
  * 发送消息
@@ -39,6 +40,16 @@ async function sendMessage(req, res) {
             type,
             content: normalizedContent
         }, userId)
+
+        writeSystemLog({
+            userId,
+            action: 'create',
+            module: 'message',
+            targetType: 'message',
+            targetId: result.messageId,
+            detail: type === 'private' ? `发送私信给用户 #${normalizedReceiverId}` : `发送${type === 'system' ? '系统消息' : '通知'}给用户 #${normalizedReceiverId}`,
+            ip: req.ip || null,
+        })
 
         res.status(201).json({
             code: 200,
@@ -194,6 +205,16 @@ async function deleteMessage(req, res) {
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该消息或消息不存在' })
         }
+
+        writeSystemLog({
+            userId,
+            action: 'delete',
+            module: 'message',
+            targetType: 'message',
+            targetId: Number(messageId) || null,
+            detail: '删除消息',
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '消息删除成功' })
     } catch (err) {

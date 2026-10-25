@@ -1,4 +1,5 @@
 const subsetModel = require('../model/dbModel/subset/index')
+const { writeSystemLog } = require('../utils/logHelper')
 
 function canManageSubsets(userType) {
     return ['admin', 'editor'].includes(userType)
@@ -80,6 +81,16 @@ async function createSubset(req, res) {
             sort: Number.isFinite(Number(sort)) ? Number(sort) : 0
         })
 
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'create',
+            module: 'subset',
+            targetType: 'subset',
+            targetId: result.subsetId,
+            detail: `创建分类「${normalizedName}」（${classify}）`,
+            ip: req.ip || null,
+        })
+
         res.status(201).json({
             code: 200,
             message: '分类创建成功',
@@ -138,6 +149,16 @@ async function updateSubset(req, res) {
             sort: sort !== undefined ? (Number.isFinite(Number(sort)) ? Number(sort) : 0) : undefined
         })
 
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'subset',
+            targetType: 'subset',
+            targetId: Number(id) || null,
+            detail: `更新分类「${subset.subset_name}」`,
+            ip: req.ip || null,
+        })
+
         res.json({ code: 200, message: '分类更新成功' })
     } catch (err) {
         if (err && err.code === 'ER_DUP_ENTRY') {
@@ -175,6 +196,16 @@ async function deleteSubset(req, res) {
         if (affectedRows === 0) {
             return res.status(404).json({ code: 404, message: '分类不存在' })
         }
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'subset',
+            targetType: 'subset',
+            targetId: Number(id) || null,
+            detail: `删除分类「${subset.subset_name}」`,
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '分类删除成功' })
     } catch (err) {

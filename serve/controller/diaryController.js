@@ -1,5 +1,6 @@
 const diaryModel = require('../model/dbModel/diary/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
+const { writeSystemLog } = require('../utils/logHelper')
 
 /**
  * 将图片字段解析为数组（数据库以逗号分隔存储）
@@ -124,6 +125,16 @@ async function createDiary(req, res) {
 
         const result = await diaryModel.insertDiary(normalized.data)
 
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'create',
+            module: 'diary',
+            targetType: 'diary',
+            targetId: result.diaryId,
+            detail: `创建日记「${normalized.data.title}」`,
+            ip: req.ip || null,
+        })
+
         res.status(201).json({
             code: 200,
             message: '日记创建成功',
@@ -150,6 +161,17 @@ async function deleteDiary(req, res) {
         }
 
         await diaryModel.deleteDiary(diaryId)
+
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'delete',
+            module: 'diary',
+            targetType: 'diary',
+            targetId: diaryId,
+            detail: `删除日记「${diary.title}」`,
+            ip: req.ip || null,
+        })
+
         res.json({ code: 200, message: '日记删除成功' })
     } catch (err) {
         res.status(500).json({ code: 500, message: '日记删除失败：' + err.message })
@@ -177,6 +199,16 @@ async function updateDiary(req, res) {
         }
 
         await diaryModel.updateDiary({ id: diaryId, ...normalized.data })
+
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'diary',
+            targetType: 'diary',
+            targetId: diaryId,
+            detail: `编辑日记「${normalized.data.title}」`,
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '日记更新成功' })
     } catch (err) {

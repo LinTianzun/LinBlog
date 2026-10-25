@@ -20,4 +20,6 @@ module.exports = (app) => {
     require('./label')(app)
     //  引入总览统计聚合路由
     require('./overview')(app)
+    //  引入系统日志路由
+    require('./systemLog')(app)
 }

@@ -34,6 +34,7 @@ Module._load = function (request, parent, isMain) {
         if (request === '../model/dbModel/comment/index') return commentModel
         if (request === '../model/dbModel/article/index') return articleModel
         if (request === '../model/db/dbnew') return { query }
+        if (request === '../utils/logHelper') return { writeSystemLog: () => {} }
     }
     return originalLoad.call(this, request, parent, isMain)
 }

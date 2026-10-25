@@ -5,7 +5,7 @@
 	"scripts": {
 		"start": "node linlog.js",
 		"dev": "node --watch linlog.js",
-    "test": "node --test test/articleModel.test.js test/commentSecurity.test.js test/userSecurity.test.js test/userModelAdminGuard.test.js test/messageController.test.js test/authMiddleware.test.js test/dbMigration.test.js test/normalizeBody.test.js test/imageStorage.test.js test/subsetController.test.js test/labelController.test.js test/fileController.test.js test/diaryController.test.js test/diaryUpdate.test.js test/visitStats.test.js test/registerUsername.test.js",
+    "test": "node --test test/articleModel.test.js test/commentSecurity.test.js test/userSecurity.test.js test/userModelAdminGuard.test.js test/messageController.test.js test/authMiddleware.test.js test/dbMigration.test.js test/normalizeBody.test.js test/imageStorage.test.js test/subsetController.test.js test/labelController.test.js test/fileController.test.js test/diaryController.test.js test/diaryUpdate.test.js test/visitStats.test.js test/registerUsername.test.js test/systemLog.test.js",
 		"db:migrate": "node scripts/migrate.js",
 		"db:seed": "node scripts/seed-demo.js"
 	},

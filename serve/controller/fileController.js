@@ -4,6 +4,7 @@ const crypto = require('node:crypto')
 const multer = require('multer')
 const fileModel = require('../model/dbModel/file/index')
 const subsetModel = require('../model/dbModel/subset/index')
+const { writeSystemLog } = require('../utils/logHelper')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 
 const uploadDir = path.join(__dirname, '..', 'data', 'files')
@@ -167,6 +168,16 @@ async function uploadFile(req, res) {
             })
 
             // yk-upload 只处理 HTTP 200，成功也必须用 200 返回
+            writeSystemLog({
+                userId: req.user?.userId ?? null,
+                action: 'create',
+                module: 'file',
+                targetType: 'file',
+                targetId: fileId,
+                detail: `上传文件「${originalName}」`,
+                ip: req.ip || null,
+            })
+
             res.status(200).json({
                 code: 200,
                 message: '上传成功',
@@ -262,6 +273,16 @@ async function moveFiles(req, res) {
             await fileModel.updateFileSubset(id, subsetId)
         }
 
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'file',
+            targetType: 'file',
+            targetId: null,
+            detail: `移动 ${existing.length} 个文件到${subsetId ? `分组 ${subsetId}` : '未分类'}`,
+            ip: req.ip || null,
+        })
+
         res.json({
             code: 200,
             message: subsetId ? '移动成功' : '已移入未分类',
@@ -286,6 +307,16 @@ async function deleteFiles(req, res) {
         if (deleted === 0) {
             return res.status(404).json({ code: 404, message: '文件不存在或已删除' })
         }
+
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'delete',
+            module: 'file',
+            targetType: 'file',
+            targetId: null,
+            detail: `删除 ${deleted} 个文件`,
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '删除成功', data: { deletedCount: deleted } })
     } catch (err) {

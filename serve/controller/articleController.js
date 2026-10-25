@@ -1,5 +1,6 @@
 const articleModel = require('../model/dbModel/article/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
+const { writeSystemLog } = require('../utils/logHelper')
 
 /**
  * 新增文章
@@ -48,6 +49,16 @@ async function createArticle(req, res) {
             introduce: introduce || '',
             cover: cover || '',
             userId
+        })
+
+        writeSystemLog({
+            userId,
+            action: 'create',
+            module: classify === 'image' ? 'gallery' : 'article',
+            targetType: 'article',
+            targetId: result.articleId,
+            detail: `创建${classify === 'image' ? '图库' : '文章'}「${title}」`,
+            ip: req.ip || null,
         })
 
         res.status(201).json({
@@ -304,6 +315,16 @@ async function updateArticle(req, res) {
             }
         }
 
+        writeSystemLog({
+            userId,
+            action: 'update',
+            module: 'article',
+            targetType: 'article',
+            targetId: articleId,
+            detail: '更新文章内容',
+            ip: req.ip || null,
+        })
+
         res.json({
             code: 200,
             message: '文章更新成功',
@@ -337,6 +358,16 @@ async function deleteArticle(req, res) {
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该文章或文章不存在' })
         }
+
+        writeSystemLog({
+            userId,
+            action: 'delete',
+            module: 'article',
+            targetType: 'article',
+            targetId: articleId,
+            detail: '删除文章（逻辑删除）',
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '文章删除成功' })
     } catch (err) {
@@ -415,6 +446,16 @@ async function updateArticleStatus(req, res) {
             published: '已发布',
             rejected: '已驳回'
         }
+
+        writeSystemLog({
+            userId,
+            action: state === 'published' ? 'publish' : state === 'rejected' ? 'revoke' : 'status',
+            module: 'article',
+            targetType: 'article',
+            targetId: articleId,
+            detail: `文章状态变更为「${stateMap[state]}」`,
+            ip: req.ip || null,
+        })
 
         res.json({
             code: 200,

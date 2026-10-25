@@ -292,6 +292,23 @@ const tablesSql = {
     INDEX idx_ip (ip),
     INDEX idx_path (path)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='访问记录表';`
+
+  ,system_log: `CREATE TABLE IF NOT EXISTS system_log(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日志ID',
+    user_id BIGINT UNSIGNED COMMENT '操作用户ID（系统操作为NULL）',
+    action VARCHAR(50) NOT NULL COMMENT '动作（login/logout/create/update/delete/publish/revoke/status）',
+    module VARCHAR(50) NOT NULL COMMENT '模块（user/article/gallery/diary/file/comment/message/subset/label/system）',
+    target_type VARCHAR(50) COMMENT '目标类型（article/diary/user/file等）',
+    target_id BIGINT UNSIGNED COMMENT '目标ID',
+    detail VARCHAR(500) COMMENT '操作详情（动作描述或关键参数）',
+    ip VARCHAR(64) COMMENT '操作IP',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    PRIMARY KEY (id),
+    INDEX idx_system_log_user (user_id),
+    INDEX idx_system_log_created (created_at),
+    INDEX idx_system_log_module (module),
+    INDEX idx_system_log_action (action)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统操作日志表';`
 };
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -770,7 +787,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record'];
+    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1092,6 +1109,12 @@ const migrations = [
   {
     version: '20261024_subset_soft_delete',
     up: ensureSubsetSoftDeleteSchema
+  },
+  {
+    version: '20261025_system_log',
+    up: async (exec = query) => {
+      await exec(tablesSql.system_log);
+    }
   }
 ];
 

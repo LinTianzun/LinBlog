@@ -2,6 +2,7 @@ const commentModel = require('../model/dbModel/comment/index')
 const articleModel = require('../model/dbModel/article/index') // 用于校验文章是否存在
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { query } = require('../model/db/dbnew')
+const { writeSystemLog } = require('../utils/logHelper')
 /**
  * 分页查询评论（支持一级/二级评论，关联文章信息）
  */
@@ -88,6 +89,16 @@ async function createComment(req, res) {
             parentId: parsedParentId
         })
 
+        writeSystemLog({
+            userId,
+            action: 'create',
+            module: 'comment',
+            targetType: 'comment',
+            targetId: result.commentId,
+            detail: parsedParentId > 0 ? `回复评论 #${parsedParentId}` : '发表评论',
+            ip: req.ip || null,
+        })
+
         res.status(201).json({
             code: 200,
             message: '评论成功',
@@ -119,6 +130,16 @@ async function deleteComment(req, res) {
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该评论（评论不存在/已删除/非本人评论）' })
         }
+
+        writeSystemLog({
+            userId,
+            action: 'delete',
+            module: 'comment',
+            targetType: 'comment',
+            targetId: Number(commentId) || null,
+            detail: '删除评论',
+            ip: req.ip || null,
+        })
 
         res.json({ code: 200, message: '评论删除成功' })
     } catch (err) {
