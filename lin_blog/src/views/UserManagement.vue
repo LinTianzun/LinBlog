@@ -249,14 +249,12 @@ const activeRoleCounts = ref({
     visitor: 0
 })
 
-// 卡片筛选状态：all=全部，admin=仅管理员，staff=编辑+普通用户+游客，banned=仅封禁
+// 卡片筛选状态：all=全部，admin=仅管理员，staff=编辑+普通用户（不含游客），banned=仅封禁
 const statusFilter = ref<'all' | 'admin' | 'staff' | 'banned'>('all')
 
-// 编辑与普通用户 = 全部启用用户 - 启用管理员（游客计入，维持原口径）
+// 编辑与普通用户 = 启用的编辑 + 启用的普通用户（不含游客）
 const editorAndNormal = computed(() =>
-    activeRoleCounts.value.admin + activeRoleCounts.value.editor +
-    activeRoleCounts.value.normal + activeRoleCounts.value.visitor -
-    activeRoleCounts.value.admin
+    activeRoleCounts.value.editor + activeRoleCounts.value.normal
 )
 
 const addUserModalVisible = ref(false)
@@ -657,7 +655,7 @@ const fetchUsers = async (
         return
     }
 
-    // 管理员/编辑与普通用户卡片：按角色过滤（staff = 编辑+普通用户+游客）
+    // 管理员/编辑与普通用户卡片：按角色过滤（staff = 编辑+普通用户）
     const roleFilter =
         statusFilter.value === 'admin' ? 'admin'
             : statusFilter.value === 'staff' ? 'staff'
@@ -741,7 +739,7 @@ const fetchUsersByStatus = async (
     }
 }
 
-// 按角色组筛选（卡片点击）：admin=仅管理员，staff=编辑+普通用户+游客
+// 按角色组筛选（卡片点击）：admin=仅管理员，staff=编辑+普通用户
 const fetchUsersByRole = async (
     page: number,
     size: number,

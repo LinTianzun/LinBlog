@@ -143,14 +143,14 @@ async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilte
         statusParams.push(statusFilter);
     }
 
-    // 角色组筛选：admin=仅管理员，staff=编辑+普通用户+游客
+    // 角色组筛选：admin=仅管理员，staff=编辑+普通用户（不含游客）
     let roleSql = '';
     const roleParams = [];
     if (roleFilter === 'admin') {
         roleSql = 'user_type = ?';
         roleParams.push('admin');
     } else if (roleFilter === 'staff') {
-        roleSql = `user_type IN ('editor', 'normal', 'visitor')`;
+        roleSql = `user_type IN ('editor', 'normal')`;
     }
 
     // 搜索条件：用户 ID、用户名、邮箱、角色
