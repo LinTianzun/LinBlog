@@ -104,9 +104,8 @@ const subsetScopeId = ref<number | undefined>(undefined)
 // 本次弹窗内的上传结果，用于预览
 const uploadedFiles = ref<UploadedFile[]>([])
 // 多选时组件按文件逐个回调，用「静默期」判断本轮是否结束（被 limit/大小拦截的文件不会再回调）
-const successCount = ref(0)
-const errorCount = ref(0)
-let autoCloseTimer: number | undefined
+// 仅用于合并刷新，不再自动关闭弹窗
+let refreshTimer: number | undefined
 
 const uploadUrl = computed(() => getFileUploadUrl(subsetScopeId.value))
 
@@ -157,11 +156,9 @@ const remountUploader = async (): Promise<void> => {
 
 const resetUploadState = (): void => {
     uploadedFiles.value = []
-    successCount.value = 0
-    errorCount.value = 0
-    if (autoCloseTimer !== undefined) {
-        window.clearTimeout(autoCloseTimer)
-        autoCloseTimer = undefined
+    if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer)
+        refreshTimer = undefined
     }
 }
 
@@ -189,26 +186,17 @@ const handleModalChange = (value: boolean): void => {
     }
 }
 
-// 本轮上传结束（一段时间内不再有回调）后自动关闭弹窗，避免停留在原地让人以为没成功；
-// 存在失败时保留弹窗，方便看清错误后重新选择文件
-const scheduleAutoClose = (): void => {
-    if (autoCloseTimer !== undefined) window.clearTimeout(autoCloseTimer)
+// 多选时每个文件都会触发一次回调，合并成静默期后的一次刷新，避免连续请求
+const scheduleRefresh = (): void => {
+    if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
 
-    autoCloseTimer = window.setTimeout(() => {
-        autoCloseTimer = undefined
-        if (successCount.value === 0) return
-
-        // 多选时合并为一次刷新，避免每个回调都请求
+    refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined
         void refreshAll()
-        if (errorCount.value === 0) {
-            closeModal()
-        }
-    }, 1500)
+    }, 1200)
 }
 
 const handleUploadSuccess = (response: UploadResponse): void => {
-    successCount.value += 1
-
     const data = response?.data
     if (data?.fileId && data.url) {
         uploadedFiles.value = [...uploadedFiles.value, {
@@ -221,12 +209,10 @@ const handleUploadSuccess = (response: UploadResponse): void => {
         proxy?.$message?.({ type: 'primary', message: `${data.fileName || '文件'} 上传成功` })
     }
 
-    scheduleAutoClose()
+    scheduleRefresh()
 }
 
 const handleUploadError = (error: unknown): void => {
-    errorCount.value += 1
-
     let message = '文件上传失败，请稍后重试'
     if (typeof error === 'string' && error.trim()) {
         message = error
@@ -237,7 +223,7 @@ const handleUploadError = (error: unknown): void => {
     }
     proxy?.$message?.({ type: 'error', message })
 
-    scheduleAutoClose()
+    scheduleRefresh()
 }
 </script>
 
