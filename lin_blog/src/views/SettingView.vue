@@ -9,12 +9,14 @@
                 <div class="setting-card profile-card">
                     <div class="profile-cover"></div>
                     <div class="profile-body">
-                        <!-- avatar 模式由 yk-upload 自行渲染圆形头像（悬停可编辑/删除，上传前可裁剪），避免与自绘头像重复 -->
-                        <yk-upload class="avatar-upload" avatar :file-list="avatarFileList" :upload-url="uploadUrl"
-                            :limit="1" :multiple="false" accept="image/jpeg,image/png,image/webp,image/gif"
-                            :max-size="8 * 1024 * 1024" desc="更换头像"
-                            @handle-success="handleAvatarSuccess" @handle-error="handleAvatarError"
-                            @handle-delete="handleAvatarDelete" />
+                        <!-- avatar 模式由 yk-upload 渲染圆形头像（悬停编辑/删除，上传前裁剪）；外层占位 div 负责定位 -->
+                        <div class="avatar-box">
+                            <yk-upload avatar shape="circle" :file-list="avatarFileList" :upload-url="uploadUrl"
+                                :limit="1" :multiple="false" accept="image/jpeg,image/png,image/webp,image/gif"
+                                :max-size="8 * 1024 * 1024" desc="更换头像"
+                                @handle-success="handleAvatarSuccess" @handle-error="handleAvatarError"
+                                @handle-delete="handleAvatarDelete" />
+                        </div>
                         <div class="profile-info">
                             <yk-space size="m" wrap>
                                 <yk-title :level="3" style="margin: 0">
@@ -290,21 +292,42 @@ onMounted(loadProfile)
     .profile-card {
         padding: 0;
         overflow: hidden;
-        display: flex;
-        flex-direction: column;
+        position: relative;
 
         .profile-cover {
             height: 72px;
             background: linear-gradient(120deg, #2b5aed 0%, #4d86f7 55%, #19b89b 100%);
-            flex-shrink: 0;
+        }
+
+        // 头像独立定位压在横幅与内容区交界；占位 div 承担定位，内部组件 100% 宽度不再影响布局
+        .avatar-box {
+            position: absolute;
+            top: 40px;
+            left: 28px;
+            z-index: 1;
+            width: 96px;
+
+            :deep(.yk-upload-picture) {
+                width: 96px;
+                height: 96px;
+                border: 3px solid @bg-color-l;
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+            }
+
+            :deep(.yk-upload-picture img) {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
         }
 
         .profile-body {
+            // 左侧为头像预留空间：left 28px + 头像 96px + 间距 24px
+            padding: 16px 28px 24px 148px;
+            min-height: 136px;
             display: flex;
-            align-items: flex-end;
-            gap: @space-xl;
-            padding: 0 28px 24px;
-            margin-top: -36px;
+            flex-direction: column;
+            justify-content: flex-end;
         }
 
         .profile-info {
@@ -315,26 +338,6 @@ onMounted(loadProfile)
             flex-direction: column;
             gap: @space-s;
             align-items: flex-start;
-        }
-    }
-
-    .avatar-upload {
-        // yk-upload 根元素默认 width:100%，会占满整行把右侧信息挤乱
-        width: 96px;
-        flex-shrink: 0;
-
-        :deep(.yk-upload__picture),
-        :deep(.yk-upload-picture),
-        :deep(.yk-upload__picture-button),
-        :deep(.yk-upload-picture-button) {
-            width: 96px;
-            height: 96px;
-        }
-
-        // 头像压在渐变横幅上，加一圈卡片底色描边
-        :deep(.yk-upload-picture) {
-            border: 3px solid @bg-color-l;
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
         }
     }
 
