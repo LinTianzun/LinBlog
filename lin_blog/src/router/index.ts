@@ -5,6 +5,11 @@ import NotFound from '../components/NotFound.vue'
 
 const routes = [
     {
+        path: '/portal',
+        component: () => import('../views/PortalHome.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         path: '/',
         redirect: '/loginRegister',
         component: IndexView,
@@ -89,9 +94,10 @@ const router = createRouter({
 // 全局路由守卫：未登录时禁止访问业务页面
 router.beforeEach((to) => {
     const token = localStorage.getItem('token')
+    const allowsAnonymous = to.meta.requiresAuth === false
 
     // 没有 Token，且目标页面不是登录页
-    if (to.path !== '/loginRegister' && !token) {
+    if (!allowsAnonymous && to.path !== '/loginRegister' && !token) {
         return '/loginRegister'
     }
 

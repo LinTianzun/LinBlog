@@ -29,4 +29,6 @@ app
     .use(pinia)
     .use(router)
     .use(Icon)
-    .mount('#app')
+
+// 等路由解析完成后再挂载，避免占位路由导致顶栏在匿名页短暂渲染并发出 401 请求
+router.isReady().then(() => app.mount('#app'))
