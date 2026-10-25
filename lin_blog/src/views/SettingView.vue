@@ -9,15 +9,12 @@
                 <div class="setting-card profile-card">
                     <div class="profile-cover"></div>
                     <div class="profile-body">
-                        <div class="profile-avatar-box">
-                            <img v-if="avatarUrl" class="setting-avatar" :src="avatarUrl" alt="头像" />
-                            <div v-else class="setting-avatar setting-avatar-empty">未设置</div>
-                            <yk-upload class="avatar-upload" :file-list="avatarFileList" :upload-url="uploadUrl"
-                                :limit="1" :multiple="false" accept="image/jpeg,image/png,image/webp,image/gif"
-                                :max-size="8 * 1024 * 1024" desc="更换头像"
-                                @handle-success="handleAvatarSuccess" @handle-error="handleAvatarError"
-                                @handle-delete="handleAvatarDelete" />
-                        </div>
+                        <!-- avatar 模式由 yk-upload 自行渲染圆形头像（悬停可编辑/删除，上传前可裁剪），避免与自绘头像重复 -->
+                        <yk-upload class="avatar-upload" avatar :file-list="avatarFileList" :upload-url="uploadUrl"
+                            :limit="1" :multiple="false" accept="image/jpeg,image/png,image/webp,image/gif"
+                            :max-size="8 * 1024 * 1024" desc="更换头像"
+                            @handle-success="handleAvatarSuccess" @handle-error="handleAvatarError"
+                            @handle-delete="handleAvatarDelete" />
                         <div class="profile-info">
                             <yk-space size="m" wrap>
                                 <yk-title :level="3" style="margin: 0">
@@ -321,36 +318,15 @@ onMounted(loadProfile)
         }
     }
 
-    .setting-avatar {
-        width: 96px;
-        height: 96px;
-        border-radius: 16px;
-        object-fit: cover;
-        border: 3px solid @bg-color-l;
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
-    }
-
-    .setting-avatar-empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: @size-s;
-        color: @font-color-s;
-        background: @bg-color-m;
-    }
-
-    .profile-avatar-box {
-        display: flex;
-        flex-direction: column;
-        gap: @space-m;
+    .avatar-upload {
         flex-shrink: 0;
 
-        .avatar-upload :deep(.yk-upload__picture),
-        .avatar-upload :deep(.yk-upload-picture),
-        .avatar-upload :deep(.yk-upload__picture-button) {
+        :deep(.yk-upload__picture),
+        :deep(.yk-upload-picture),
+        :deep(.yk-upload__picture-button),
+        :deep(.yk-upload-picture-button) {
             width: 96px;
             height: 96px;
-            border-radius: 16px;
         }
     }
 
