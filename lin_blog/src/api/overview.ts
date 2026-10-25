@@ -20,3 +20,27 @@ export interface ApiResult<T> {
 export function getOverviewSummary() {
   return request.get<ApiResult<OverviewSummary>>("/overview/summary");
 }
+
+// 近一周/近一月访问趋势与设备/系统分布
+export interface VisitPoint {
+  date: string;
+  count: number;
+}
+
+export interface PieItem {
+  key: string;
+  name: string;
+  value: number;
+}
+
+export interface VisitStats {
+  visit: VisitPoint[];
+  device: PieItem[];
+  website: PieItem[];
+}
+
+export function getVisitStats(period: "week" | "moon") {
+  return request.get<ApiResult<VisitStats>>("/overview/visitStats", {
+    params: { period },
+  });
+}

@@ -42,6 +42,11 @@ async function register(req, res) {
         if (userExists.length > 0) {
             return res.status(400).json({ code: 400, message: '该邮箱已被注册' })
         }
+        // 用户名同样有唯一约束，提前给出明确冲突提示而不是 500
+        const nameExists = await userModel.findUserByUsername(username)
+        if (nameExists.length > 0) {
+            return res.status(400).json({ code: 400, message: '该用户名已被注册' })
+        }
         // 密码加密（与数据库初始化一致，盐值强度10）
         const salt = await bcrypt.genSalt(10)
         const hashedPassword = await bcrypt.hash(password, salt)

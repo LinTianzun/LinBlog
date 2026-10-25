@@ -3,6 +3,7 @@ const fileModel = require('../model/dbModel/file/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const commentModel = require('../model/dbModel/comment/index')
 const messageModel = require('../model/dbModel/message/index')
+const recordModel = require('../model/dbModel/record/index')
 
 /**
  * 总览统计聚合接口
@@ -41,6 +42,45 @@ async function getOverviewSummary(req, res) {
     }
 }
 
+// 近一周/近一月访问趋势与设备/来源分布
+async function getVisitStats(req, res) {
+    try {
+        const days = req.query.period === 'moon' ? 30 : 7
+
+        const [dayRows, deviceRows, osRows] = await Promise.all([
+            recordModel.countRecordsByDay(days),
+            recordModel.countRecordsByField('device', days),
+            recordModel.countRecordsByField('os', days),
+        ])
+
+        // 补全连续日期轴，无访问的天记 0
+        const byDate = new Map(dayRows.map((row) => [row.date, row.count]))
+        const visit = []
+        const now = new Date()
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+            const label = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+            visit.push({ date: label, count: byDate.get(label) ?? 0 })
+        }
+
+        const device = deviceRows.map((row) => ({
+            key: row.label,
+            name: row.label === 'mobile' ? '移动端' : row.label === 'pc' ? '桌面端' : row.label,
+            value: row.value,
+        }))
+        const website = osRows.map((row) => ({ key: row.label, name: row.label, value: row.value }))
+
+        return res.json({
+            code: 200,
+            message: '查询成功',
+            data: { visit, device, website },
+        })
+    } catch (err) {
+        return res.status(500).json({ code: 500, message: '访问统计查询失败：' + err.message })
+    }
+}
+
 module.exports = {
     getOverviewSummary,
+    getVisitStats,
 }

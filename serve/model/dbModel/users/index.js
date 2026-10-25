@@ -49,6 +49,12 @@ async function findUserByMail(mail) {
     return query(sql, [mail]);
 }
 
+// 公开注册时检查用户名是否已被占用
+async function findUserByUsername(username) {
+    const sql = 'SELECT id, username, mail FROM users WHERE username = ?';
+    return query(sql, [username]);
+}
+
 // 编辑用户时检查用户名或邮箱是否被其他用户占用
 async function findUserConflictForUpdate(username, mail, userId) {
     const sql = `
@@ -365,6 +371,7 @@ async function deleteUserByAdminGuarded(userId, currentUserId) {
 module.exports = {
     findUserByAccount, // 新增：支持双登录查询
     findUserByMail,
+    findUserByUsername,
     findUserConflictForUpdate,
     findUserById,
     insertUser,

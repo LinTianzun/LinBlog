@@ -9,6 +9,7 @@ const app = express()
 const config = require('./config/default')
 const db = require('./model/db/dbnew')
 const { normalizeJsonBody } = require('./middleware/normalizeBody')
+const recordMiddleware = require('./middleware/record')
 
 // 1. 配置跨域
 app.use(cors({
@@ -24,16 +25,19 @@ app.use(cors({
 app.use(express.json({ limit: config.jsonLimit }))
 app.use(normalizeJsonBody)
 
-// 3. 托管静态文件
+// 4. 记录 API 访问（登录后接口与公开接口，异步写入不阻塞请求）
+app.use(recordMiddleware)
+
+// 5. 托管静态文件
 app.use(express.static(path.join(__dirname, 'data')))
 
-// 4. 自定义响应头（仅保留必要的）
+// 6. 自定义响应头（仅保留必要的）
 app.use((req, res, next) => {
     res.header("X-Powered-By", "3.2.1") // 可选，可删除
     next()
 })
 
-// 5. 引入路由
+// 7. 引入路由
 require('./routes/index')(app)
 
 // 错误处理中间件（放在所有路由之后）
