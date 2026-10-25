@@ -1,7 +1,7 @@
 <template>
     <div class="head-bar">
         <yk-space align="center" size="m" style="cursor: pointer;" @click="backHome">
-            <img :src="swBg ? unity : unityW" class="logo" alt="">
+            <img :src="isDark ? unityW : unity" class="logo" alt="">
             <span class="name">林知雨博客后台</span>
         </yk-space>
         <yk-space align="center" size="xl">
@@ -15,9 +15,8 @@
                 {{ userInfo?.username || '用户' }}
             </span>
 
-            <div>
-                <yk-theme @click="switchBg" />
-            </div>
+            <!-- yk-theme 自带明暗切换与持久化，logo 颜色跟随 isDark -->
+            <yk-theme />
             
             <yk-button @click="quit">退出</yk-button>
         </yk-space>
@@ -34,15 +33,14 @@ import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
 import { information } from '../reply/index.ts'
 import { getUnreadCount } from '../../api/message'
+import { useDark } from '@vueuse/core'
 
-let swBg = ref(true)
+const isDark = useDark({
+    attribute: 'data-theme',
+    storageKey: 'YIKE_THEME'
+})
 
 const router = useRouter();
-
-//  切换背景
-const switchBg = () => {
-    swBg.value = !swBg.value
-}
 
 //  返回总览
 const backHome = () => {

@@ -78,4 +78,11 @@ const goHome = () => {
             margin-top: 32px;
         }
     }
+
+    :global([data-theme='dark']) & {
+        .not-found-card {
+            background: linear-gradient(160deg, #232c40 0%, #1e2025 55%, #1d2a2f 100%);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        }
+    }
 </style>

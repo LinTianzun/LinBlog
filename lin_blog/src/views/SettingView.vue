@@ -177,8 +177,8 @@ onMounted(loadProfile)
         width: 100%;
         padding: 24px 28px;
         border-radius: 12px;
-        background: @bg-color-l;
-        box-shadow: 0 4px 16px rgba(31, 56, 88, 0.05);
+            background: @bg-color-l;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
 
     .setting-avatar {
@@ -193,13 +193,15 @@ onMounted(loadProfile)
         max-width: 360px;
         height: 40px;
         padding: 0 12px;
-        border: 1px solid #d8dee9;
+        border: 1px solid @line-color-m;
         border-radius: 8px;
         outline: none;
         font-size: 14px;
+        background: @bg-color-l;
+        color: @font-color-l;
 
         &:focus {
-            border-color: #2b5aed;
+            border-color: @pcolor;
             box-shadow: 0 0 0 3px rgba(43, 90, 237, 0.12);
         }
     }

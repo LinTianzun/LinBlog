@@ -87,7 +87,7 @@
         .card {
             width: 100%;
             height: 50%;
-            background-color: @white;
+            background-color: @bg-color-l;
             border-radius: @radius-m;
             padding: @space-xl;
         }

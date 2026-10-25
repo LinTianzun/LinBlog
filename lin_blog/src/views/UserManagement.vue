@@ -845,9 +845,9 @@ onMounted(() => {
     width: 100%;
     min-width: 0;
     padding: @space-xl;
-    border: 1px solid var(--yk-color-border, #eee);
+    border: 1px solid @line-color-s;
     border-radius: @radius-m;
-    background: var(--yk-color-surface, #fff);
+    background: @bg-color-l;
 }
 
 .table-wrapper {
@@ -864,50 +864,50 @@ table {
 th,
 td {
     padding: 14px 16px;
-    border-bottom: 1px solid var(--yk-color-border, #eee);
+    border-bottom: 1px solid @line-color-s;
     white-space: nowrap;
 }
 
 th {
-    color: var(--yk-color-text-secondary, #888);
+    color: @font-color-s;
     font-weight: 500;
 }
 
 td {
-    color: var(--yk-color-text-primary, #333);
+    color: @font-color-l;
 }
 
 .role-tag {
     display: inline-block;
     padding: 4px 10px;
     border-radius: @radius-s;
-    background: #f0f0f0;
+    background: @bg-color-s;
     font-size: 12px;
 }
 
 .role-admin {
-    color: #315fcb;
-    background: #e8efff;
+    color: @pcolor;
+    background: @pcolor-1;
 }
 
 .role-editor {
-    color: #218653;
-    background: #e5f7ed;
+    color: @scolor;
+    background: @scolor-1;
 }
 
 .role-normal {
-    color: #a56512;
-    background: #fff2df;
+    color: @wcolor;
+    background: @wcolor-1;
 }
 
 .role-visitor {
-    color: #7651ba;
-    background: #f0eaff;
+    color: @font-color-m;
+    background: @bg-color-ss;
 }
 
 .empty-state {
     padding: 32px;
-    color: #999;
+    color: @font-color-s;
     text-align: center;
 }
 
@@ -935,7 +935,7 @@ td {
 .add-user-btn,
 .cancel-btn {
     padding: 9px 16px;
-    border: 1px solid var(--yk-color-border, #ddd);
+    border: 1px solid @line-color-m;
     border-radius: @radius-s;
     cursor: pointer;
     font-size: 14px;
@@ -943,8 +943,8 @@ td {
 
 .add-user-btn {
     color: #fff;
-    background: #315fcb;
-    border-color: #315fcb;
+    background: @pcolor;
+    border-color: @pcolor;
 }
 
 .add-user-btn:disabled {
@@ -953,8 +953,8 @@ td {
 }
 
 .cancel-btn {
-    color: var(--yk-color-text-primary, #333);
-    background: var(--yk-color-surface, #fff);
+    color: @font-color-l;
+    background: @bg-color-l;
 }
 
 .modal-mask {
@@ -973,7 +973,7 @@ td {
     max-width: 460px;
     padding: 24px;
     border-radius: @radius-m;
-    background: var(--yk-color-surface, #fff);
+    background: @bg-color-l;
     box-shadow: 0 12px 40px rgb(0 0 0 / 15%);
 }
 
@@ -1005,7 +1005,7 @@ td {
 
 .form-item label {
     font-size: 14px;
-    color: var(--yk-color-text-secondary, #666);
+    color: @font-color-s;
 }
 
 .form-item input,
@@ -1014,10 +1014,10 @@ td {
     width: 100%;
     min-height: 40px;
     padding: 9px 12px;
-    border: 1px solid var(--yk-color-border, #ddd);
+    border: 1px solid @line-color-m;
     border-radius: @radius-s;
-    background: var(--yk-color-surface, #fff);
-    color: var(--yk-color-text-primary, #333);
+    background: @bg-color-l;
+    color: @font-color-l;
 }
 
 .modal-actions {
@@ -1048,16 +1048,16 @@ td {
 }
 
 .message-success {
-    color: #218653;
+    color: @scolor;
 }
 
 .message-error {
-    color: #d9363e;
+    color: @ecolor;
 }
 
 .edit-user-btn {
     padding: 5px 12px;
-    border: 1px solid #d9d9d9;
+    border: 1px solid @line-color-m;
     border-radius: 6px;
     background: transparent;
     color: inherit;
@@ -1066,7 +1066,7 @@ td {
 }
 
 .edit-user-btn:hover {
-    background: rgba(128, 128, 128, 0.12);
+    background: @gray-1;
 }
 
 .action-buttons {
