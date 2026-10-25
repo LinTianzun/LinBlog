@@ -15,31 +15,45 @@
 <script lang="ts" setup>
     import { ref, onMounted } from 'vue'
     import { overLink } from '../../utils/menu.ts'
-    import { overview } from '../../mock/data.ts'
+    import { getOverviewSummary, type OverviewSummary } from '../../api/overview'
     import { useRouter } from 'vue-router'
 
     const router = useRouter()
-
+    //  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
     const gathers = ref(overLink)
 
-    //  获取数据量
-    const drawGatherData = () => {
-        let data = overview.data;
-        gathers.value[0].total = data.file
-        gathers.value[1].total = data.atricle
+    //  文件大小格式化：字节数转可读单位
+    const formatFileSize = (bytes: number): string => {
+        if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+        if (bytes < 1024) return `${bytes} B`
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+        return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+    }
+
+    //  将聚合统计回填到卡片（顺序与 overLink 一致：本地文件/博客文章/摄影图库/随笔随记）
+    const applySummary = (data: OverviewSummary): void => {
+        gathers.value[0].total = formatFileSize(data.file)
+        gathers.value[1].total = data.article
         gathers.value[2].total = data.gallery
         gathers.value[3].total = data.diary
     }
 
     //  跳转指定页面
     const editPage = (path: string) => {
-    router.push(path)
-}
+        router.push(path)
+    }
 
-    onMounted(() => {
-        drawGatherData()
+    onMounted(async () => {
+        try {
+            const res = await getOverviewSummary()
+            if (res.code === 200 && res.data) {
+                applySummary(res.data)
+            }
+        } catch {
+            //  加载失败时保留占位 0，不阻塞页面
+        }
     })
-
 </script>
 
 <style lang="less" scoped>

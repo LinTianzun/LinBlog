@@ -18,4 +18,6 @@ module.exports = (app) => {
     require('./subset')(app)
     //  引入标签相关路由
     require('./label')(app)
+    //  引入总览统计聚合路由
+    require('./overview')(app)
 }
