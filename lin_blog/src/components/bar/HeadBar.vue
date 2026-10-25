@@ -9,7 +9,7 @@
                 <IconMailOutline @click="openInbox" style="font-size: 20px;" />
             </yk-badge>
 
-            <yk-avatar :img-url="userInfo?.imgurl || defaultAvatar"></yk-avatar>
+            <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar" />
 
             <span class="user-name">
                 {{ userInfo?.username || '用户' }}
@@ -133,6 +133,20 @@ onMounted(() => {
     .name {
         font-size: 20px;
         font-weight: 600;
+    }
+
+    .user-avatar {
+        flex-shrink: 0;
+    }
+
+    .user-name {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: @size-m;
+        font-weight: 500;
+        color: @font-color-l;
     }
 }
 </style>
