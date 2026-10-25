@@ -1,7 +1,9 @@
 <template>
     <div class="edit_photo">
         <div class="edit_photo-uploader">
-            <yk-upload :file-list="fileList" :upload-url="uploadUrl" :draggable="true" :multiple="true"
+            <!-- 不绑定 :file-list：yk-upload 内部 watch 会用 generateListUid 整体重建列表并刷新 uid，
+                 回传后删除单张会让组件用旧 uid 找不到项，导致全列表错乱 -->
+            <yk-upload v-if="uploaderVisible" :key="uploaderKey" :upload-url="uploadUrl" :draggable="true" :multiple="true"
                 desc="支持 JPG / PNG / WebP / GIF，单张不超过 8MB"
                 @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                 @handle-delete="handleUploadDelete">
@@ -66,7 +68,10 @@ const uploadUrl = computed(() => {
     const token = (localStorage.getItem('token') || '').trim()
     return `/api/upload/image?token=${encodeURIComponent(token)}`
 })
-const fileList = ref<{ name: string; url: string }[]>([])
+
+// 重挂载上传组件以清空其内部列表（删除后保持与本地 photos 一致）
+const uploaderVisible = ref(true)
+const uploaderKey = ref(0)
 
 const emitChange = (): void => {
     emits('change', {
@@ -75,7 +80,7 @@ const emitChange = (): void => {
     })
 }
 
-const handleUploadSuccess = (response: UploadResponse, file?: { name?: string }): void => {
+const handleUploadSuccess = (response: UploadResponse): void => {
     const url = response.data?.url || response.url
     if (!url) {
         uploadError.value = '上传成功但未返回图片地址'
@@ -86,9 +91,6 @@ const handleUploadSuccess = (response: UploadResponse, file?: { name?: string })
     photos.value.push(url)
     if (!cover.value) {
         cover.value = url
-    }
-    if (file?.name) {
-        fileList.value = [...fileList.value, { name: file.name, url }]
     }
     emitChange()
     proxy?.$message?.({ type: 'primary', message: '图片上传成功' })
@@ -112,7 +114,7 @@ const handleUploadError = (error: unknown): void => {
 }
 
 const handleUploadDelete = (payload: unknown): void => {
-    // yk-upload 删除时回传 [被删项, 剩余列表]，同步本地瀑布流数据
+    // yk-upload 删除时回传 [被删项, 剩余列表]，只同步本地瀑布流，不写回 :file-list
     const [, remainList] = Array.isArray(payload) ? payload : []
     const remainUrls = (remainList as { url?: string; raw?: File }[] | undefined)
         ?.map(item => item.url)
@@ -122,7 +124,6 @@ const handleUploadDelete = (payload: unknown): void => {
     if (cover.value && !photos.value.includes(cover.value)) {
         cover.value = photos.value[0] || ''
     }
-    fileList.value = fileList.value.filter(item => remainUrls.includes(item.url))
     emitChange()
 }
 
@@ -140,7 +141,12 @@ const deletePhoto = (url: string): void => {
         cover.value = photos.value[0] || ''
     }
 
-    fileList.value = fileList.value.filter(item => item.url !== url)
+    // 瀑布流删除后重挂载上传组件，清掉组件内已不存在的缩略图
+    uploaderVisible.value = false
+    void Promise.resolve().then(() => {
+        uploaderKey.value += 1
+        uploaderVisible.value = true
+    })
     emitChange()
 }
 
@@ -149,6 +155,12 @@ watch(
     value => {
         photos.value = [...value]
         cover.value = props.initialCover || value[0] || ''
+        // 初值变化时同步重置上传组件内部列表
+        uploaderVisible.value = false
+        void Promise.resolve().then(() => {
+            uploaderKey.value += 1
+            uploaderVisible.value = true
+        })
     }
 )
 </script>
