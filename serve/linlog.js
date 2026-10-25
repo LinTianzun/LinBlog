@@ -11,15 +11,16 @@ const db = require('./model/db/dbnew')
 const { normalizeJsonBody } = require('./middleware/normalizeBody')
 const recordMiddleware = require('./middleware/record')
 
-// 1. 配置跨域
-app.use(cors({
+// 1. 配置跨域（OPTIONS 预检在进入 API 路由前由 cors 中间件处理）
+const corsOptions = {
     origin: config.allowedOrigins, // 从配置文件获取允许的域名
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
     credentials: true, // 仅在需要携带认证信息时保留
-    methods: ['PUT', 'PATCH', 'POST', 'GET', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     preflightContinue: false,
-    optionsSuccessStatus: 200
-}))
+    optionsSuccessStatus: 204
+}
+app.use(cors(corsOptions))
 
 // 2. 解析请求体
 app.use(express.json({ limit: config.jsonLimit }))

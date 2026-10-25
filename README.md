@@ -38,6 +38,10 @@ npm start
 
 `serve/.env.example` 提供 JWT、数据库连接、CORS 和 JSON 请求体限制的配置模板；`serve/linlog.js` 会通过 Node.js 的 `loadEnvFile` 加载 `.env`。`LINBLOG_JWT_SECRET` 至少需要 32 个字符。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
 
+#### CORS 跨域配置
+
+`LINBLOG_ALLOWED_ORIGINS` 必须列出实际访问前端的完整来源（协议、域名和可选端口），多个来源用英文逗号分隔，例如 `http://localhost:5173,https://blog.example.com`。不要配置路径、尾部斜杠或通配符；来源格式无效或变量缺失时，服务会在启动配置阶段给出明确错误并退出。后端允许 `Authorization` 请求头以及 `GET/POST/PUT/PATCH/DELETE` 等实际使用的方法，`OPTIONS` 预检由 CORS 中间件在路由前处理。生产部署应只填写可信前端来源，并通过部署平台的环境变量管理密钥。
+
 **数据库安全提示：** 后端启动会幂等创建数据库和表，并执行 `schema_migrations` 中尚未应用的增量迁移，但不会自动插入演示数据。需要演示数据时显式执行 `npm run db:seed`；该脚本在 `users` 表已有数据时跳过。对有价值的数据仍应先备份并在隔离环境验证迁移。
 
 ### 已注册的后端 API
