@@ -11,32 +11,9 @@
         </yk-text>
         <!-- 用户统计 -->
         <yk-space class="statistics" size="m">
-            <div class="stat-card">
-                <yk-space dir="vertical" size="s">
-                    <yk-text type="secondary">用户总数</yk-text>
-                    <yk-title :level="2" class="stat-number">
-                        {{ allTotal }}
-                    </yk-title>
-                </yk-space>
-            </div>
-
-            <div class="stat-card">
-                <yk-space dir="vertical" size="s">
-                    <yk-text type="secondary">管理员</yk-text>
-                    <yk-title :level="2" class="stat-number">
-                        {{ roleCounts.admin }}
-                    </yk-title>
-                </yk-space>
-            </div>
-
-            <div class="stat-card">
-                <yk-space dir="vertical" size="s">
-                    <yk-text type="secondary">编辑与普通用户</yk-text>
-                    <yk-title :level="2" class="stat-number">
-                        {{ allTotal - roleCounts.admin }}
-                    </yk-title>
-                </yk-space>
-            </div>
+            <stat-card name="用户总数" :total="allTotal" />
+            <stat-card name="管理员" :total="roleCounts.admin" />
+            <stat-card name="编辑与普通用户" :total="allTotal - roleCounts.admin" />
         </yk-space>
 
         <!-- 用户列表 -->
@@ -227,6 +204,7 @@
 <script lang="ts" setup>
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
+import StatCard from '../components/common/StatCard.vue'
 import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
 
 const proxy: any = getCurrentInstance()?.proxy
@@ -734,19 +712,6 @@ onMounted(() => {
     align-items: stretch;
 }
 
-.stat-card {
-    flex: 1;
-    min-width: 0;
-    padding: @space-xl;
-    border: 1px solid var(--yk-color-border, #eee);
-    border-radius: @radius-m;
-    background: var(--yk-color-surface, #fff);
-}
-
-.stat-number {
-    margin: 0;
-}
-
 .user-list {
     width: 100%;
     min-width: 0;
@@ -822,7 +787,7 @@ td {
         flex-wrap: wrap;
     }
 
-    .stat-card {
+    :deep(.stat-card) {
         flex: 1 1 40%;
     }
 

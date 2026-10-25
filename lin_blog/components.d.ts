@@ -52,6 +52,7 @@ declare module 'vue' {
     Reply: typeof import('./src/components/reply/reply.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatCard: typeof import('./src/components/common/StatCard.vue')['default']
     Subset: typeof import('./src/components/subset/subset.vue')['default']
     SubsetManage: typeof import('./src/components/subset/subsetManage.vue')['default']
     TopTitle: typeof import('./src/components/bar/TopTitle.vue')['default']
