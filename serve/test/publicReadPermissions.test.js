@@ -51,7 +51,7 @@ test('article model scopes anonymous visitors to published content only', async 
 
     Module._load = function (request, parent, isMain) {
         if (parent && parent.filename === articleModelPath && request === '../../db/dbnew') {
-            return { query: async (sql, values) => { calls.push({ sql, values }); return [] } }
+            return { query: async (sql, values) => { calls.push({ sql, values }); return [{ total: 0 }] } }
         }
         return originalLoad.call(this, request, parent, isMain)
     }
@@ -69,4 +69,29 @@ test('article model scopes anonymous visitors to published content only', async 
     await articleModel.findAtricleById(123, null, 'visitor')
     assert.match(calls[0].sql, /a\.state = \?/)
     assert.equal(calls[0].values[2], 'published')
+})
+
+test('public subset and label routes mount optional auth', () => {
+    const express = require('express')
+    const app = express()
+    const routes = []
+    app.get = (path, ...handlers) => {
+        routes.push({ method: 'get', path, handlers })
+        return app
+    }
+
+    require('../routes/subset')(app)
+    require('../routes/label')(app)
+
+    const subsetRoute = routes.find(route => route.path === '/api/public/subset')
+    const labelRoute = routes.find(route => route.path === '/api/public/label')
+    assert.ok(subsetRoute, 'missing public subset route')
+    assert.ok(labelRoute, 'missing public label route')
+    assert.equal(subsetRoute.handlers[0].name, 'optionalAuthMiddleware')
+    assert.equal(labelRoute.handlers[0].name, 'optionalAuthMiddleware')
+
+    const privateSubset = routes.find(route => route.path === '/api/subset')
+    const privateLabel = routes.find(route => route.path === '/api/label')
+    assert.equal(privateSubset.handlers[0].name, 'authMiddleware')
+    assert.equal(privateLabel.handlers[0].name, 'authMiddleware')
 })

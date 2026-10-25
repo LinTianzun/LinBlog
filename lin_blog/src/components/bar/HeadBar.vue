@@ -84,6 +84,11 @@ const changeActive = (e: any) => {
 const hasUnread = ref(false)
 
 const fetchUnread = async () => {
+    // 匿名访问门户等公开页时不请求未读数，避免 401 触发登录跳转
+    if (!localStorage.getItem('token')) {
+        hasUnread.value = false
+        return
+    }
     try {
         const result = await getUnreadCount('private')
         if (result.code === 200 && result.data) {
