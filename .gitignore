@@ -38,6 +38,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Temporary scratch dirs (headless Chrome profiles, one-off scripts/logs)
+.tmp-*/
+
 # Runtime file uploads
 serve/data/files/*
 !serve/data/files/.gitkeep
