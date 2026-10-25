@@ -12,6 +12,7 @@ const createCalls = []
 
 const commentModel = {
     async getCommentsByPage() { return { total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] } },
+    async getPublicCommentsByArticle() { return { total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] } },
     async createComment(data) {
         createCalls.push(data)
         return { commentId: 99 }

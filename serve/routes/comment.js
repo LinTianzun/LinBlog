@@ -1,9 +1,12 @@
 const commentController = require('../controller/commentController')
-const { authMiddleware } = require('../middleware/auth')
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 
 module.exports = (app) => {
     // 分页查询评论（需登录，如需公开可移除authMiddleware）
     app.get('/api/comment', authMiddleware, commentController.getComments)
+
+    // 公开只读：文章详情页展示已发布文章的正常评论
+    app.get('/api/public/comment', optionalAuthMiddleware, commentController.getPublicComments)
 
     // 新增评论（需登录）
     app.post('/api/comment', authMiddleware, commentController.createComment)

@@ -38,6 +38,46 @@ async function getComments(req, res) {
 }
 
 /**
+ * 公开文章评论列表（仅已发布文章的正常评论，不带后台管理字段）
+ */
+async function getPublicComments(req, res) {
+    try {
+        const { articleId } = req.query
+        const parsedArticleId = Number(articleId)
+        if (!Number.isSafeInteger(parsedArticleId) || parsedArticleId <= 0) {
+            return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
+        }
+
+        const paginationResult = formatPaginationParams(req.query)
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
+        }
+        const { page, pageSize, offset } = paginationResult.data
+
+        const result = await commentModel.getPublicCommentsByArticle(
+            parsedArticleId,
+            page,
+            pageSize,
+            offset
+        )
+
+        res.json({
+            code: 200,
+            message: result.total > 0 ? '查询成功' : '暂无评论',
+            data: {
+                total: result.total,
+                page: result.page,
+                pageSize: result.pageSize,
+                totalPage: result.totalPage,
+                list: result.list
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '查询公开评论失败：' + err.message })
+    }
+}
+
+/**
  * 新增评论（支持一级评论/二级回复）
  */
 async function createComment(req, res) {
@@ -192,6 +232,7 @@ async function getMyComments(req, res) {
 
 module.exports = {
     getComments,
+    getPublicComments,
     createComment,
     deleteComment,
     getMyComments

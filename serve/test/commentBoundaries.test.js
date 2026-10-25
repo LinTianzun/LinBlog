@@ -14,6 +14,7 @@ Module._load = function (request, parent, isMain) {
             createComment: async () => { createCalls++; return { commentId: 99 } },
             deleteComment: async () => 1,
             getCommentsByPage: async () => ({ total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }),
+            getPublicCommentsByArticle: async () => ({ total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }),
             findMyCommentsByPage: async () => ({ total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] })
         }
     }

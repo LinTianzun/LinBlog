@@ -63,6 +63,61 @@ async function getCommentsByPage(page, pageSize, offset) {
 }
 
 /**
+ * 公开文章详情页的评论列表：仅已发布文章下的正常评论
+ * @param {number} articleId - 文章 ID（必须已发布）
+ */
+async function getPublicCommentsByArticle(articleId, page, pageSize, offset) {
+    const baseWhere = `
+        c.status = 1
+        AND a.state = 'published'
+        AND a.id IS NOT NULL
+        AND c.article_id = ?
+    `
+
+    const listSql = `
+        SELECT
+            c.id,
+            c.user_id,
+            u.username AS user_name,
+            u.imgurl AS user_avatar,
+            c.parent_id,
+            c.content,
+            c.created_at
+        FROM comment c
+        INNER JOIN article a ON c.article_id = a.id
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE ${baseWhere}
+        ORDER BY c.created_at DESC
+        LIMIT ? OFFSET ?
+    `
+    const list = await query(listSql, [articleId, pageSize, offset])
+
+    const totalSql = `
+        SELECT COUNT(*) AS total
+        FROM comment c
+        INNER JOIN article a ON c.article_id = a.id
+        WHERE ${baseWhere}
+    `
+    const [totalResult] = await query(totalSql, [articleId])
+
+    return {
+        list: list.map(item => ({
+            id: item.id,
+            userId: item.user_id,
+            userName: item.user_name,
+            userAvatar: item.user_avatar,
+            parentId: item.parent_id,
+            content: item.content,
+            createdAt: item.created_at
+        })),
+        total: totalResult.total,
+        page,
+        pageSize,
+        totalPage: Math.ceil(totalResult.total / pageSize)
+    }
+}
+
+/**
  * 新增评论（支持一级评论/二级回复）
  * @param {Object} commentInfo - 评论信息
  * @returns {Promise<Object>} 新增评论ID
@@ -177,6 +232,7 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
 
 module.exports = {
     getCommentsByPage,
+    getPublicCommentsByArticle,
     createComment,
     deleteComment,
     findMyCommentsByPage

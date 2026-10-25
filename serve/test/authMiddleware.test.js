@@ -23,7 +23,7 @@ Module._load = function (request, parent, isMain) {
     }
     return originalLoad.call(this, request, parent, isMain)
 }
-const { authMiddleware } = require(authPath)
+const { authMiddleware, optionalAuthMiddleware } = require(authPath)
 Module._load = originalLoad
 
 function makeResponse() {
@@ -43,6 +43,26 @@ test('missing or empty token is rejected with 401', async () => {
     await authMiddleware({ headers: {} }, res, () => { nextCalled = true })
     assert.equal(res.statusCode, 401)
     assert.equal(nextCalled, false)
+})
+
+test('optional auth falls back to visitor when token is missing', async () => {
+    const req = { headers: {} }
+    const res = makeResponse()
+    let nextCalled = false
+    await optionalAuthMiddleware(req, res, () => { nextCalled = true })
+    assert.equal(nextCalled, true)
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(req.user, { userId: null, user_type: 'visitor', userType: 'visitor' })
+})
+
+test('optional auth still rejects disabled accounts', async () => {
+    accountStatus = 0
+    const req = { headers: { authorization: 'Bearer valid-token' } }
+    const res = makeResponse()
+    let nextCalled = false
+    await optionalAuthMiddleware(req, res, () => { nextCalled = true })
+    assert.equal(nextCalled, false)
+    assert.equal(res.statusCode, 401)
 })
 
 test('database failures during authentication return 503 instead of 401', async () => {

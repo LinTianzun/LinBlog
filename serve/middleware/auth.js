@@ -2,80 +2,68 @@ const { verifyToken } = require('../utils/jwtutil')
 const userModel = require('../model/dbModel/users/index')
 
 /**
+ * 从请求中解析并校验 Token；失败返回 null 原因，供强制/可选认证复用。
+ */
+async function resolveAuthUser(req) {
+    const authHeader = req.headers.authorization
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return { user: null, reason: '请求头未携带 Token，请先登录', status: 401 }
+    }
+
+    const token = authHeader.slice('Bearer '.length).trim()
+    if (!token) {
+        return { user: null, reason: 'Token 不能为空，请先登录', status: 401 }
+    }
+
+    let decoded
+    try {
+        decoded = verifyToken(token)
+    } catch (err) {
+        return { user: null, reason: err.message || 'Token 无效或已过期', status: 401 }
+    }
+
+    if (!decoded || !decoded.userId) {
+        return { user: null, reason: 'Token 无效或已过期', status: 401 }
+    }
+
+    try {
+        const userResult = await userModel.findUserById(decoded.userId)
+        if (!userResult || userResult.length === 0) {
+            return { user: null, reason: '用户不存在，请重新登录', status: 401 }
+        }
+
+        const user = userResult[0]
+        if (Number(user.status) !== 1) {
+            return { user: null, reason: '该账号已被禁用，请重新登录或联系管理员', status: 401 }
+        }
+
+        return {
+            user: {
+                userId: decoded.userId,
+                user_type: user.user_type,
+                userType: user.user_type
+            },
+            reason: null,
+            status: 200
+        }
+    } catch (err) {
+        console.error('[Auth] 查询用户失败：', err)
+        return { user: null, reason: '认证服务暂时不可用，请稍后重试', status: 503 }
+    }
+}
+
+/**
  * 校验请求中的 Token、用户存在性与账号状态
  */
 async function authMiddleware(req, res, next) {
     try {
-        const authHeader = req.headers.authorization
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                code: 401,
-                message: '请求头未携带 Token，请先登录'
-            })
+        const { user, reason, status } = await resolveAuthUser(req)
+        if (!user) {
+            return res.status(status).json({ code: status, message: reason })
         }
 
-        const token = authHeader.slice('Bearer '.length).trim()
-
-        if (!token) {
-            return res.status(401).json({
-                code: 401,
-                message: 'Token 不能为空，请先登录'
-            })
-        }
-
-        let decoded
-
-        try {
-            decoded = verifyToken(token)
-        } catch (err) {
-            return res.status(401).json({
-                code: 401,
-                message: err.message || 'Token 无效或已过期'
-            })
-        }
-
-        if (!decoded || !decoded.userId) {
-            return res.status(401).json({
-                code: 401,
-                message: 'Token 无效或已过期'
-            })
-        }
-
-        let userResult
-
-        try {
-            userResult = await userModel.findUserById(decoded.userId)
-        } catch (err) {
-            console.error('[Auth] 查询用户失败：', err)
-            return res.status(503).json({
-                code: 503,
-                message: '认证服务暂时不可用，请稍后重试'
-            })
-        }
-
-        if (!userResult || userResult.length === 0) {
-            return res.status(401).json({
-                code: 401,
-                message: '用户不存在，请重新登录'
-            })
-        }
-
-        const user = userResult[0]
-
-        if (Number(user.status) !== 1) {
-            return res.status(401).json({
-                code: 401,
-                message: '该账号已被禁用，请重新登录或联系管理员'
-            })
-        }
-
-        req.user = {
-            userId: decoded.userId,
-            user_type: user.user_type,
-            userType: user.user_type
-        }
-
+        req.user = user
         return next()
     } catch (err) {
         console.error('[Auth] 认证中间件异常：', err)
@@ -83,6 +71,31 @@ async function authMiddleware(req, res, next) {
             code: 500,
             message: '认证服务内部错误'
         })
+    }
+}
+
+/**
+ * 公开只读接口的可选认证：无 Token 按游客处理；携带 Token 时校验并挂载用户，
+ * 数据层据此决定是否放宽到「自己的草稿/已发布」可见范围。
+ */
+async function optionalAuthMiddleware(req, res, next) {
+    try {
+        const { user, reason, status } = await resolveAuthUser(req)
+        // 无 Token 按游客放行；但携带了无效 Token 或禁用账号时明确拒绝，
+        // 避免前端误以为游客态而隐藏登录态功能
+        if (!user && !req.headers.authorization) {
+            req.user = { userId: null, user_type: 'visitor', userType: 'visitor' }
+            return next()
+        }
+        if (!user) {
+            return res.status(status).json({ code: status, message: reason })
+        }
+
+        req.user = user
+        return next()
+    } catch (err) {
+        console.error('[Auth] 可选认证中间件异常：', err)
+        return res.status(500).json({ code: 500, message: '认证服务内部错误' })
     }
 }
 
@@ -123,4 +136,4 @@ function authMiddlewareFromQuery(req, res, next) {
     return authMiddleware(req, uploadResponse, next)
 }
 
-module.exports = { authMiddleware, authMiddlewareFromQuery }
+module.exports = { authMiddleware, authMiddlewareFromQuery, optionalAuthMiddleware }
