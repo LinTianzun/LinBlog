@@ -10,16 +10,13 @@
                     <yk-text type="third">{{momentl(props.data.moment)}}</yk-text>
                 </yk-space>
 
-                <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
-                    @confirm="deleteDiary()">
-                    <yk-space size="s">
-                        <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
-                        <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
-                            @confirm="deleteDiary()">
-                            <IconDeleteOutline class="diary-item-top-delete" />
-                        </yk-popconfirm>
-                    </yk-space>
-                </yk-popconfirm>
+                <yk-space size="s">
+                    <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
+                    <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
+                        @confirm="deleteDiary()">
+                        <IconDeleteOutline class="diary-item-top-delete" />
+                    </yk-popconfirm>
+                </yk-space>
             </div>
 
             <yk-text> {{props.data.content}} </yk-text>
