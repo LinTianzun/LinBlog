@@ -319,6 +319,8 @@ onMounted(loadProfile)
     }
 
     .avatar-upload {
+        // yk-upload 根元素默认 width:100%，会占满整行把右侧信息挤乱
+        width: 96px;
         flex-shrink: 0;
 
         :deep(.yk-upload__picture),
@@ -327,6 +329,12 @@ onMounted(loadProfile)
         :deep(.yk-upload-picture-button) {
             width: 96px;
             height: 96px;
+        }
+
+        // 头像压在渐变横幅上，加一圈卡片底色描边
+        :deep(.yk-upload-picture) {
+            border: 3px solid @bg-color-l;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
         }
     }
 
