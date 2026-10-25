@@ -8,6 +8,8 @@ export interface ThemePreset {
     // 预览色：主题主色与页面底色
     primary: string
     background: string
+    // CSS background 值；渐变主题用 linear-gradient，预览卡与横幅共用
+    preview?: string
 }
 
 /*
@@ -49,6 +51,38 @@ export const themePresets: ThemePreset[] = [
         base: 'light',
         primary: '#d6558a',
         background: '#fdf0f5'
+    },
+    {
+        id: 'aurora',
+        name: '极光绿',
+        base: 'light',
+        primary: '#10a37f',
+        background: '#eef7f4',
+        preview: 'linear-gradient(135deg, #d9f8e3 0%, #a5f3d0 45%, #6ee7c8 100%)'
+    },
+    {
+        id: 'sunset',
+        name: '落日橙',
+        base: 'light',
+        primary: '#e8590c',
+        background: '#fdf3ec',
+        preview: 'linear-gradient(135deg, #ffedd5 0%, #ffc078 50%, #ff922b 100%)'
+    },
+    {
+        id: 'nebula',
+        name: '星云紫',
+        base: 'dark',
+        primary: '#a78bfa',
+        background: '#171426',
+        preview: 'linear-gradient(135deg, #2b2255 0%, #4c3a8f 50%, #a78bfa 100%)'
+    },
+    {
+        id: 'obsidian',
+        name: '黑曜石',
+        base: 'dark',
+        primary: '#22c3a6',
+        background: '#101314',
+        preview: 'linear-gradient(135deg, #0f1512 0%, #123f38 55%, #22c3a6 100%)'
     },
     {
         id: 'midnight',

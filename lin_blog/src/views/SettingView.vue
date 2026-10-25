@@ -109,7 +109,7 @@
                 <div class="theme-grid">
                     <button v-for="preset in themePresets" :key="preset.id" type="button" class="theme-card"
                         :class="{ 'theme-card-active': preset.id === activePresetId }" @click="selectTheme(preset.id)">
-                        <span class="theme-preview" :style="{ background: preset.background }">
+                        <span class="theme-preview" :style="{ background: preset.preview || preset.background }">
                             <span class="theme-preview-dot" :style="{ background: preset.primary }"></span>
                         </span>
                         <span class="theme-name">{{ preset.name }}</span>
