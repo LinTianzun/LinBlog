@@ -70,8 +70,8 @@ test('updates password with a fresh bcrypt hash', async () => {
     assert.ok(updatedHash.startsWith('$2'))
 })
 
-test('updateAvatar accepts only site-internal uploads URLs', async () => {
-    let savedAvatar = null
+test('updateAvatar accepts only site-internal uploads URLs and null clears it', async () => {
+    let savedAvatar = 'unchanged'
     Module._load = function (request, parent, isMain) {
         if (parent && parent.filename === controllerPath && request === '../model/dbModel/users/index') {
             return {
@@ -91,6 +91,18 @@ test('updateAvatar accepts only site-internal uploads URLs', async () => {
     if (patched) require.cache[controllerPath] = patched
 
     try {
+        // null 语义：删除头像
+        const remove = response()
+        await freshController.updateAvatar({
+            body: { imgurl: null },
+            user: { userId: 7, user_type: 'normal' },
+            ip: '127.0.0.1'
+        }, remove)
+        assert.equal(remove.body.code, 200)
+        assert.equal(savedAvatar, null)
+
+        savedAvatar = 'unchanged'
+
         const bad = response()
         await freshController.updateAvatar({
             body: { imgurl: 'https://evil.example.com/a.jpg' },
@@ -98,7 +110,7 @@ test('updateAvatar accepts only site-internal uploads URLs', async () => {
             ip: '127.0.0.1'
         }, bad)
         assert.equal(bad.statusCode, 400)
-        assert.equal(savedAvatar, null)
+        assert.equal(savedAvatar, 'unchanged')
 
         const good = response()
         await freshController.updateAvatar({

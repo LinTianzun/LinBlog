@@ -6,7 +6,7 @@ export interface UserInfo {
   username: string;
   mail: string;
   user_type: string;
-  imgurl?: string;
+  imgurl?: string | null;
   status: 0 | 1;
 }
 
@@ -86,7 +86,7 @@ export function getUserInfo() {
   return request.post('/user/userInfo');
 }
 
-// 当前登录用户更新自己的头像（imgurl 需为 /api/uploads/... 站内图片地址）
-export function updateUserAvatar(imgurl: string) {
+// 当前登录用户更新自己的头像（imgurl 需为 /api/uploads/... 站内图片地址；传 null 删除头像）
+export function updateUserAvatar(imgurl: string | null) {
   return request.put('/user/avatar', { imgurl });
 }

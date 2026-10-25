@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
@@ -92,6 +92,16 @@ const openInbox = () => {
     changeActive(true)
 }
 
+// 设置页更新/删除头像后实时同步顶栏，无需刷新页面
+const onAvatarChange = (event: Event) => {
+    const detail = (event as CustomEvent<{ imgurl: string | null }>).detail
+    if (detail?.imgurl === null || detail?.imgurl === undefined) {
+        delete userInfo.value.imgurl
+    } else if (typeof detail?.imgurl === 'string') {
+        userInfo.value.imgurl = detail.imgurl
+    }
+}
+
 onMounted(() => {
     const savedUserInfo = localStorage.getItem('userInfo')
 
@@ -105,6 +115,12 @@ onMounted(() => {
     }
 
     void fetchUnread()
+
+    window.addEventListener('user:avatar-change', onAvatarChange)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('user:avatar-change', onAvatarChange)
 })
 
 

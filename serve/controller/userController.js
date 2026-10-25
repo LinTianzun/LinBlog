@@ -735,13 +735,28 @@ async function changePassword(req, res) {
     }
 }
 
-// 当前登录用户更新自己的头像（仅接受站内 /api/uploads 图片）
+// 当前登录用户更新自己的头像（仅接受站内 /api/uploads 图片；传空字符串或 null 表示删除头像）
 async function updateAvatar(req, res) {
     try {
         const { userId } = req.user
-        const { imgurl } = req.body
+        const { imgurl: rawImgurl } = req.body
+        const imgurl = typeof rawImgurl === 'string' ? rawImgurl.trim() : ''
 
-        if (typeof imgurl !== 'string' || !/^\/api\/uploads\/[A-Za-z0-9._-]+$/.test(imgurl.trim())) {
+        if (imgurl === '') {
+            await userModel.updateUserAvatar(userId, null)
+            writeSystemLog({
+                userId,
+                action: 'delete',
+                module: 'user',
+                targetType: 'user',
+                targetId: userId,
+                detail: '用户删除了自己的头像',
+                ip: req.ip || null,
+            })
+            return res.json({ code: 200, message: '头像已删除', data: { imgurl: null } })
+        }
+
+        if (!/^\/api\/uploads\/[A-Za-z0-9._-]+$/.test(imgurl)) {
             return res.status(400).json({ code: 400, message: '头像地址不合法' })
         }
 
@@ -750,7 +765,7 @@ async function updateAvatar(req, res) {
             return res.status(404).json({ code: 404, message: '用户不存在' })
         }
 
-        await userModel.updateUserAvatar(userId, imgurl.trim())
+        await userModel.updateUserAvatar(userId, imgurl)
 
         writeSystemLog({
             userId,
@@ -762,7 +777,7 @@ async function updateAvatar(req, res) {
             ip: req.ip || null,
         })
 
-        return res.json({ code: 200, message: '头像更新成功', data: { imgurl: imgurl.trim() } })
+        return res.json({ code: 200, message: '头像更新成功', data: { imgurl } })
     } catch (err) {
         return res.status(500).json({ code: 500, message: '头像更新失败：' + err.message })
     }

@@ -131,6 +131,26 @@ const uploadUrl = computed(() => {
     return `/api/upload/image?token=${encodeURIComponent(token)}`
 })
 
+// 广播头像变更，顶栏等已挂载组件实时同步
+const broadcastAvatarChange = (imgurl: string | null) => {
+    window.dispatchEvent(new CustomEvent('user:avatar-change', { detail: { imgurl } }))
+}
+
+// 更新本地缓存的头像字段
+const updateCachedUserInfo = (imgurl: string | null) => {
+    try {
+        const saved = localStorage.getItem('userInfo')
+        if (saved) {
+            const info = JSON.parse(saved)
+            if (imgurl === null) delete info.imgurl
+            else info.imgurl = imgurl
+            localStorage.setItem('userInfo', JSON.stringify(info))
+        }
+    } catch {
+        // 缓存解析失败不影响头像已保存的结果
+    }
+}
+
 const syncAvatarFileList = () => {
     avatarFileList.value = avatarUrl.value
         ? [{ name: '头像', url: avatarUrl.value }]
@@ -149,17 +169,8 @@ const handleAvatarSuccess = async (response: unknown): Promise<void> => {
             avatarMessage.value = '头像更新成功'
             profile.value = profile.value ? { ...profile.value, imgurl: url } : null
             syncAvatarFileList()
-            // 顶栏与本地缓存的头像同步更新
-            try {
-                const saved = localStorage.getItem('userInfo')
-                if (saved) {
-                    const info = JSON.parse(saved)
-                    info.imgurl = url
-                    localStorage.setItem('userInfo', JSON.stringify(info))
-                }
-            } catch {
-                // 缓存解析失败不影响头像已保存的结果
-            }
+            updateCachedUserInfo(url)
+            broadcastAvatarChange(url)
             proxy?.$message?.({ type: 'success', message: '头像更新成功' })
         } else {
             avatarSuccess.value = false
@@ -186,9 +197,29 @@ const handleAvatarError = (error: unknown): void => {
     avatarMessage.value = message
 }
 
-const handleAvatarDelete = (): void => {
-    avatarMessage.value = ''
+// 删除头像：同步清掉数据库中的 imgurl，而不只是前端列表
+const handleAvatarDelete = async (): Promise<void> => {
     avatarFileList.value = []
+    try {
+        const result = await updateUserAvatar(null)
+        if (result.code === 200) {
+            avatarSuccess.value = true
+            avatarMessage.value = '头像已删除'
+            profile.value = profile.value ? { ...profile.value, imgurl: null } : null
+            syncAvatarFileList()
+            updateCachedUserInfo(null)
+            broadcastAvatarChange(null)
+            proxy?.$message?.({ type: 'success', message: '头像已删除' })
+        } else {
+            avatarSuccess.value = false
+            avatarMessage.value = result.message || '头像删除失败'
+            syncAvatarFileList()
+        }
+    } catch (error: any) {
+        avatarSuccess.value = false
+        avatarMessage.value = error.response?.data?.message || '头像删除失败，请稍后重试'
+        syncAvatarFileList()
+    }
 }
 
 const roleMap: Record<string, string> = {
