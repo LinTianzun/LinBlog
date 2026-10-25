@@ -39,30 +39,40 @@
     const deviceData = ref<PieItem[]>([])
     const websiteData = ref<PieItem[]>([])
 
-    const getVisit = (period: string) => {
-        visitRadio.value = period
-        loadStats()
+    const getVisit = () => {
+        loadVisit()
     }
 
     //  数据监测的周/月切换（两张饼图共用一个时段）
     const changeCheck = () => {
-        loadStats()
+        loadSurvey()
     }
 
-    const loadStats = async () => {
+    //  访问量折线图与数据监测饼图时段互相独立，分别拉取
+    const loadVisit = async () => {
         try {
             const res = await getVisitStats(visitRadio.value === 'moon' ? 'moon' : 'week')
             if (res.code !== 200 || !res.data) return
             visitData.value = res.data.visit
+        } catch (error) {
+            console.error('访问量加载失败：', error)
+        }
+    }
+
+    const loadSurvey = async () => {
+        try {
+            const res = await getVisitStats(checkRadio.value === 'moon' ? 'moon' : 'week')
+            if (res.code !== 200 || !res.data) return
             deviceData.value = res.data.device
             websiteData.value = res.data.website
         } catch (error) {
-            console.error('访问统计加载失败：', error)
+            console.error('数据监测加载失败：', error)
         }
     }
 
     onMounted(() => {
-        loadStats()
+        loadVisit()
+        loadSurvey()
     })
 </script>
 
