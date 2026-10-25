@@ -55,6 +55,19 @@ export function createDiary(payload: {
   return request.post<ApiResult<{ diaryId: number }>>("/diary", payload);
 }
 
+// 编辑日记（标题/内容/图片/天气全量更新）
+export function updateDiary(
+  id: number,
+  payload: {
+    title: string;
+    content: string;
+    picture?: string[];
+    weatherName?: string;
+  }
+) {
+  return request.put<ApiResult<never>>(`/diary/${id}`, payload);
+}
+
 // 删除日记
 export function deleteDiary(id: number) {
   return request.delete<ApiResult<never>>(`/diary/${id}`);

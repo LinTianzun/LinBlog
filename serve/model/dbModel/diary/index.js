@@ -62,10 +62,22 @@ async function insertDiary({ title, content, picture, weatherId }) {
  */
 async function findDiaryById(id) {
     const rows = await query(
-        `SELECT id FROM diary WHERE id = ? AND status = 1`,
+        `SELECT id, title, content, picture, weather_id FROM diary WHERE id = ? AND status = 1`,
         [id]
     )
     return rows[0] || null
+}
+
+/**
+ * 更新日记（标题/内容/图片/天气）
+ * @param {Object} payload - { id, title, content, picture, weatherId }
+ */
+async function updateDiary({ id, title, content, picture, weatherId }) {
+    const result = await query(
+        `UPDATE diary SET title = ?, content = ?, picture = ?, weather_id = ? WHERE id = ? AND status = 1`,
+        [title, content, picture, weatherId, id]
+    )
+    return { affectedRows: result.affectedRows }
 }
 
 /**
@@ -80,5 +92,6 @@ module.exports = {
     findWeatherByName,
     insertDiary,
     findDiaryById,
+    updateDiary,
     deleteDiary
 }

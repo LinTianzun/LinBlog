@@ -26,7 +26,15 @@
             </yk-text-area>
 
             <div class="diary-editor-top-picture">
-                <yk-upload v-if="uploaderVisible" :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
+                <!-- 已有图片瀑布流（编辑模式可单张删除） -->
+                <div class="diary-editor-top-existing" v-if="photos.length > 0">
+                    <div class="diary-editor-top-photo" v-for="url in photos" :key="url">
+                        <img :src="url" alt="">
+                        <IconDeleteOutline class="diary-editor-top-photo-delete" @click="removePhoto(url)" />
+                    </div>
+                </div>
+
+                <yk-upload v-if="uploaderVisible && photos.length < maxPhotoCount" :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
                     accept="image/*" multiple
                     @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                     @handle-delete="handleUploadDelete"></yk-upload>
@@ -36,8 +44,9 @@
 
         <div class="diary-editor-foot">
             <yk-space size="s">
-                <yk-button type="secondary" @click="resetForm">取消</yk-button>
-                <yk-button :loading="submitting" @click="submitDiary">新建笔记</yk-button>
+                <yk-button type="secondary" @click="cancelEdit" v-if="editingId">取消</yk-button>
+                <yk-button type="secondary" @click="resetForm" v-else>取消</yk-button>
+                <yk-button :loading="submitting" @click="submitDiary">{{ editingId ? '保存修改' : '新建笔记' }}</yk-button>
             </yk-space>
         </div>
     </div>
@@ -46,7 +55,8 @@
 <script lang="ts" setup>
 import { ref, computed, nextTick, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
-import { createDiary, getRequestErrorMessage } from '../../api/diary'
+import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diary'
+import type { DiaryData } from '../../utils/interface'
 
 type DiaryForm = {
     title?: string
@@ -80,6 +90,7 @@ type MessageProxy = {
 
 const emits = defineEmits<{
     (e: 'created'): void
+    (e: 'updated'): void
 }>()
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
@@ -105,6 +116,20 @@ const selectWeather = (item: WeatherItem): void => {
 // 图片上传（photos 为唯一数据源，不把 fileList 回传给 yk-upload，
 // 否则其内部会整体重建列表导致 uid 失配、删除一张时数据错乱）
 const photos = ref<string[]>([])
+
+// 编辑中的日记 ID：为空表示新建模式
+const editingId = ref<number | null>(null)
+
+// 删除已有图片（新建/编辑模式通用）
+const removePhoto = (url: string): void => {
+    photos.value = photos.value.filter(item => item !== url)
+    diaryForm.value.picture = [...photos.value]
+    // 已有图片变化后重挂载上传组件，保持内部列表一致
+    uploaderVisible.value = false
+    void nextTick(() => {
+        uploaderVisible.value = true
+    })
+}
 const uploadUrl = computed(() => {
     const token = (localStorage.getItem('token') || '').trim()
     return `/api/upload/image?token=${encodeURIComponent(token)}`
@@ -154,7 +179,7 @@ const maxPhotoCount = 6
 // 通过重挂载清空 yk-upload 内部的缩略图列表
 const uploaderVisible = ref(true)
 
-// 新建日记
+// 新建/保存日记
 const submitting = ref(false)
 
 const submitDiary = async (): Promise<void> => {
@@ -176,18 +201,31 @@ const submitDiary = async (): Promise<void> => {
 
     submitting.value = true
     try {
-        const result = await createDiary({
-            title,
-            content,
-            picture: photos.value,
-            weatherName: selectedWeatherName.value || undefined,
-        })
+        if (editingId.value) {
+            const result = await updateDiary(editingId.value, {
+                title,
+                content,
+                picture: photos.value,
+                weatherName: selectedWeatherName.value || undefined,
+            })
+            if (result.code !== 200) throw new Error(result.message || '日记保存失败')
 
-        if (result.code !== 200) throw new Error(result.message || '日记创建失败')
+            proxy?.$message?.({ type: 'primary', message: '日记已保存' })
+            resetForm()
+            emits('updated')
+        } else {
+            const result = await createDiary({
+                title,
+                content,
+                picture: photos.value,
+                weatherName: selectedWeatherName.value || undefined,
+            })
+            if (result.code !== 200) throw new Error(result.message || '日记创建失败')
 
-        proxy?.$message?.({ type: 'primary', message: '日记创建成功' })
-        resetForm()
-        emits('created')
+            proxy?.$message?.({ type: 'primary', message: '日记创建成功' })
+            resetForm()
+            emits('created')
+        }
     } catch (error) {
         proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '日记创建失败，请稍后重试') })
     } finally {
@@ -195,8 +233,14 @@ const submitDiary = async (): Promise<void> => {
     }
 }
 
-// 重置表单
+// 取消编辑，回到新建模式
+const cancelEdit = (): void => {
+    resetForm()
+}
+
+// 重置表单并退出编辑模式
 const resetForm = (): void => {
+    editingId.value = null
     diaryForm.value = { weatherId: swWeatherId.value, picture: [] }
     photos.value = []
     uploaderVisible.value = false
@@ -216,6 +260,26 @@ onMounted(() => {
         selectWeather(defaultWeather)
     }
 })
+
+// 编辑日记：回显标题/内容/天气/图片
+const startEdit = (diary: DiaryData): void => {
+    editingId.value = diary.id
+    diaryForm.value = {
+        title: diary.title,
+        content: diary.content,
+        weatherId: diary.weatherId,
+        picture: [...(diary.picture || [])],
+    }
+    photos.value = [...(diary.picture || [])]
+
+    // 按天气名称匹配前端字典；未知名称回退晴天
+    const matched = weathers.find(item => item.name === diary.weatherName) || weathers.find(item => item.id === 0)
+    if (matched) {
+        selectWeather(matched)
+    }
+}
+
+defineExpose({ startEdit, resetForm })
 </script>
 
 <style lang="less" scoped>
@@ -261,6 +325,45 @@ onMounted(() => {
                 /* width: 100%; */
                 /* height: 20px; */
                 /* background-color: green; */
+            }
+
+            &-existing {
+                display: flex;
+                flex-wrap: wrap;
+                gap: @space-s;
+                padding-bottom: @space-s;
+            }
+
+            &-photo {
+                position: relative;
+                width: 80px;
+                height: 80px;
+
+                img {
+                    width: 100%;
+                    height: 100%;
+                    border-radius: 8px;
+                    object-fit: cover;
+                    display: block;
+                }
+
+                &-delete {
+                    position: absolute;
+                    top: 4px;
+                    right: 4px;
+                    width: 20px;
+                    height: 20px;
+                    padding: 2px;
+                    border-radius: 4px;
+                    background: rgba(255, 255, 255, 0.85);
+                    color: @font-color-s;
+                    cursor: pointer;
+                    transition: color @animatb;
+
+                    &:hover {
+                        color: @ecolor;
+                    }
+                }
             }
 
             .selected {

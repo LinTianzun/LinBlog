@@ -9,7 +9,8 @@
             <yk-empty v-else-if="diaryList.length === 0" description="暂无日记" />
 
             <yk-space v-else dir="vertical" size="xl">
-                <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary">
+                <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary"
+                    @edit="editDiary">
                 </diaryItem>
             </yk-space>
         </yk-scrollbar>
@@ -40,6 +41,10 @@ const props = defineProps({
         default: '',
     },
 })
+
+const emits = defineEmits<{
+    (event: 'edit', diary: DiaryData): void
+}>()
 
 type MessageOptions = {
     type: 'primary' | 'error'
@@ -130,6 +135,11 @@ const deleteDiary = async (id: number): Promise<void> => {
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '删除失败，请稍后重试'))
     }
+}
+
+// 编辑日记：把整条数据交给编辑器回显，滚动到编辑器
+const editDiary = (diary: DiaryData): void => {
+    emits('edit', diary)
 }
 
 // 搜索词变化时回到第一页重新查询

@@ -55,59 +55,74 @@ async function getDiaries(req, res) {
 }
 
 /**
- * 新建日记
+ * 校验并归一化日记表单字段（新建/编辑共用）
+ * @returns {Object} { error: 响应对象 } 或 { data: { title, content, picture, weatherId } }
  */
-async function createDiary(req, res) {
-    try {
-        const { title, content, picture, weatherName } = req.body
+async function normalizeDiaryPayload(body) {
+    const { title, content, picture, weatherName } = body
 
-        if (typeof title !== 'string' || !title.trim()) {
-            return res.status(400).json({ code: 400, message: '日记标题不能为空' })
-        }
-        if (typeof content !== 'string' || !content.trim()) {
-            return res.status(400).json({ code: 400, message: '日记内容不能为空' })
-        }
+    if (typeof title !== 'string' || !title.trim()) {
+        return { error: { code: 400, message: '日记标题不能为空' } }
+    }
+    if (typeof content !== 'string' || !content.trim()) {
+        return { error: { code: 400, message: '日记内容不能为空' } }
+    }
 
-        const normalizedTitle = title.trim()
-        const normalizedContent = content.trim()
-        if (normalizedTitle.length > 100) {
-            return res.status(400).json({ code: 400, message: '日记标题不能超过100字' })
-        }
-        if (normalizedContent.length > 1600) {
-            return res.status(400).json({ code: 400, message: '日记内容不能超过1600字' })
-        }
+    const normalizedTitle = title.trim()
+    const normalizedContent = content.trim()
+    if (normalizedTitle.length > 100) {
+        return { error: { code: 400, message: '日记标题不能超过100字' } }
+    }
+    if (normalizedContent.length > 1600) {
+        return { error: { code: 400, message: '日记内容不能超过1600字' } }
+    }
 
-        // 天气按名称查询，避免前端图标序号与数据库自增 ID 不一致
-        let weatherId = null
-        if (typeof weatherName === 'string' && weatherName.trim()) {
-            const rows = await diaryModel.findWeatherByName(weatherName.trim())
-            if (!rows) {
-                return res.status(400).json({ code: 400, message: '天气类型不存在' })
-            }
-            weatherId = rows.id
+    // 天气按名称查询，避免前端图标序号与数据库自增 ID 不一致
+    let weatherId = null
+    if (typeof weatherName === 'string' && weatherName.trim()) {
+        const rows = await diaryModel.findWeatherByName(weatherName.trim())
+        if (!rows) {
+            return { error: { code: 400, message: '天气类型不存在' } }
         }
+        weatherId = rows.id
+    }
 
-        // picture 支持数组或逗号分隔字符串，最多6张（两种形式统一校验）
-        let pictureField = null
-        if (Array.isArray(picture) || typeof picture === 'string') {
-            const urls = (Array.isArray(picture) ? picture : String(picture).split(','))
-                .map(url => String(url).trim())
-                .filter(Boolean)
-            if (urls.length > 6) {
-                return res.status(400).json({ code: 400, message: '图片最多6张' })
-            }
-            pictureField = urls.length > 0 ? urls.join(',') : null
-            if (pictureField && pictureField.length > 2000) {
-                return res.status(400).json({ code: 400, message: '图片地址总长度超出限制' })
-            }
+    // picture 支持数组或逗号分隔字符串，最多6张（两种形式统一校验）
+    let pictureField = null
+    if (Array.isArray(picture) || typeof picture === 'string') {
+        const urls = (Array.isArray(picture) ? picture : String(picture).split(','))
+            .map(url => String(url).trim())
+            .filter(Boolean)
+        if (urls.length > 6) {
+            return { error: { code: 400, message: '图片最多6张' } }
         }
+        pictureField = urls.length > 0 ? urls.join(',') : null
+        if (pictureField && pictureField.length > 2000) {
+            return { error: { code: 400, message: '图片地址总长度超出限制' } }
+        }
+    }
 
-        const result = await diaryModel.insertDiary({
+    return {
+        data: {
             title: normalizedTitle,
             content: normalizedContent,
             picture: pictureField,
             weatherId
-        })
+        }
+    }
+}
+
+/**
+ * 新建日记
+ */
+async function createDiary(req, res) {
+    try {
+        const normalized = await normalizeDiaryPayload(req.body)
+        if (normalized.error) {
+            return res.status(normalized.error.code).json({ code: normalized.error.code, message: normalized.error.message })
+        }
+
+        const result = await diaryModel.insertDiary(normalized.data)
 
         res.status(201).json({
             code: 200,
@@ -141,4 +156,32 @@ async function deleteDiary(req, res) {
     }
 }
 
-module.exports = { getDiaries, createDiary, deleteDiary }
+/**
+ * 编辑日记（标题/内容/图片/天气全量更新）
+ */
+async function updateDiary(req, res) {
+    try {
+        const diaryId = Number(req.params.id)
+        if (!Number.isSafeInteger(diaryId) || diaryId <= 0) {
+            return res.status(400).json({ code: 400, message: '日记ID必须是有效数字' })
+        }
+
+        const diary = await diaryModel.findDiaryById(diaryId)
+        if (!diary) {
+            return res.status(404).json({ code: 404, message: '日记不存在或已删除' })
+        }
+
+        const normalized = await normalizeDiaryPayload(req.body)
+        if (normalized.error) {
+            return res.status(normalized.error.code).json({ code: normalized.error.code, message: normalized.error.message })
+        }
+
+        await diaryModel.updateDiary({ id: diaryId, ...normalized.data })
+
+        res.json({ code: 200, message: '日记更新成功' })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '日记更新失败：' + err.message })
+    }
+}
+
+module.exports = { getDiaries, createDiary, updateDiary, deleteDiary }

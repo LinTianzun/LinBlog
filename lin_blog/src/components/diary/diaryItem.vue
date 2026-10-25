@@ -12,7 +12,13 @@
 
                 <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
                     @confirm="deleteDiary()">
-                    <IconDeleteOutline class="diary-item-top-delete" />
+                    <yk-space size="s">
+                        <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
+                        <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
+                            @confirm="deleteDiary()">
+                            <IconDeleteOutline class="diary-item-top-delete" />
+                        </yk-popconfirm>
+                    </yk-space>
                 </yk-popconfirm>
             </div>
 
@@ -41,6 +47,7 @@ const props = defineProps<DiaryItemProps>()
 
 const emits = defineEmits<{
     (event: 'delete', id: number): void
+    (event: 'edit', diary: DiaryData): void
 }>()
 
 // 按天气名称匹配前端图标，避免与数据库自增 ID 错位
@@ -50,6 +57,11 @@ const weatherIcon = weather?.iconUrl ?? weathers[0].iconUrl
 // 删除日记
 const deleteDiary = (): void => {
     emits('delete', props.data.id)
+}
+
+// 编辑日记
+const editDiary = (): void => {
+    emits('edit', props.data)
 }
 </script>
 

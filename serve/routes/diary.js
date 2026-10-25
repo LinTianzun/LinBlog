@@ -8,6 +8,9 @@ module.exports = (app) => {
     // 新建日记
     app.post('/api/diary', authMiddleware, diaryController.createDiary)
 
+    // 编辑日记（标题/内容/图片/天气）
+    app.put('/api/diary/:id', authMiddleware, diaryController.updateDiary)
+
     // 删除日记（逻辑删除）
     app.delete('/api/diary/:id', authMiddleware, diaryController.deleteDiary)
 }
