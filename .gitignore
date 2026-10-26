@@ -41,6 +41,9 @@ Thumbs.db
 # Temporary scratch dirs (headless Chrome profiles, one-off scripts/logs)
 .tmp-*/
 
+# Design exploration scratch output (direction sheets from design tooling)
+.taste-skill/
+
 # Runtime file uploads
 serve/data/files/*
 !serve/data/files/.gitkeep
