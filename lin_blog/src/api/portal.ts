@@ -121,13 +121,32 @@ export interface PortalDiary {
   createdAt: string;
 }
 
+// 天气分面：后端按全量统计，切换天气时数量不随分页变化
+export interface PortalWeatherFacet {
+  weatherName: string;
+  count: number;
+}
+
+export interface PortalDiaryPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+  weatherFacet: PortalWeatherFacet[];
+  facetTotal: number;
+  list: PortalDiary[];
+}
+
 export function getPublicDiaries(
-  params: { page?: number; pageSize?: number; sort?: PortalSort } = {}
+  params: {
+    page?: number;
+    pageSize?: number;
+    sort?: PortalSort;
+    weather?: string;
+    keyword?: string;
+  } = {}
 ) {
-  return request.get<ApiResult<{ total: number; list: PortalDiary[] }>>(
-    "/public/diary",
-    { params }
-  );
+  return request.get<ApiResult<PortalDiaryPage>>("/public/diary", { params });
 }
 
 export interface ViewRecordResult {

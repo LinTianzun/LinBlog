@@ -14,7 +14,8 @@ function parsePictures(picture) {
 }
 
 /**
- * 日记分页查询（支持标题/内容关键词搜索）
+ * 日记分页查询（支持标题/内容关键词搜索、天气筛选、热度排序）
+ * 后台与门户共用：后端过滤口径一致，门户不再在前端按当前页做二次筛选。
  */
 async function getDiaries(req, res) {
     try {
@@ -28,9 +29,15 @@ async function getDiaries(req, res) {
 
         const { page, pageSize, offset } = params.data
         const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
+        const weather = typeof req.query.weather === 'string' ? req.query.weather.trim() : ''
         const sort = req.query.sort === 'hot' ? 'hot' : 'latest'
 
-        const { list, total } = await diaryModel.getDiariesByPage({ keyword, pageSize, offset, sort })
+        const [pageResult, facetResult] = await Promise.all([
+            diaryModel.getDiariesByPage({ keyword, weather, pageSize, offset, sort }),
+            // 分面计数跟随关键词但不受天气筛选影响，保证标签数量恒定
+            diaryModel.countDiariesByWeather({ keyword })
+        ])
+        const { list, total } = pageResult
 
         res.json({
             code: 200,
@@ -40,6 +47,9 @@ async function getDiaries(req, res) {
                 page,
                 pageSize,
                 totalPage: Math.ceil(total / pageSize),
+                // 天气分面与「全部」总数：由后端全量统计，不随当前页内容变化
+                weatherFacet: facetResult.facet,
+                facetTotal: facetResult.total,
                 list: list.map(item => ({
                     id: item.id,
                     title: item.title,
