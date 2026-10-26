@@ -71,10 +71,11 @@ export function getFileSummary() {
   return request.get<ApiResult<FileSummaryData>>("/file/summary");
 }
 
-// 上传地址：yk-upload 无法附加请求头，token 走 query
-export function getFileUploadUrl(subsetId?: number): string {
-  const token = (localStorage.getItem("token") || "").trim();
-  const query = new URLSearchParams({ token });
+// 上传地址：yk-upload 内部自己发 XHR，无法附加请求头，
+// 因此凭证只能走 query。这里用一次性短期票据代替登录 token，
+// 避免长期 JWT 出现在 URL 与服务器访问日志中。
+export function getFileUploadUrl(ticket: string, subsetId?: number): string {
+  const query = new URLSearchParams({ ticket });
   if (subsetId && subsetId > 0) query.set("subsetId", String(subsetId));
   return `/api/file/upload?${query.toString()}`;
 }

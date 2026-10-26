@@ -66,6 +66,8 @@
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
 import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
+import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
+import { getRequestErrorMessage } from '../../api/file.ts'
 
 type FormData = {
     title: string
@@ -164,10 +166,23 @@ const subsetList = ref<SubsetOption[]>([])
 // 封面上传
 const coverFileList = ref<CoverFile[]>([])
 const coverUploadError = ref('')
-const uploadUrl = computed(() => {
-    const token = (localStorage.getItem('token') || '').trim()
-    return `/api/upload/image?token=${encodeURIComponent(token)}`
-})
+// 每次上传前换取一次性票据：URL 里流通的是 5 分钟失效的短期票据，
+// 不再是长期有效的登录 token（避免进入访问日志与浏览器历史）
+const uploadUrl = ref('')
+const ticketBusy = ref(false)
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (ticketBusy.value) return
+    ticketBusy.value = true
+    try {
+        uploadUrl.value = await buildImageUploadUrl()
+        coverUploadError.value = ''
+    } catch (error) {
+        coverUploadError.value = getRequestErrorMessage(error)
+    } finally {
+        ticketBusy.value = false
+    }
+}
 
 const syncCoverFileList = () => {
     coverFileList.value = formData.value.cover
@@ -182,6 +197,8 @@ const handleCoverSuccess = (response: UploadResponse): void => {
     coverUploadError.value = ''
     formData.value.cover = url
     coverFileList.value = [{ name: '文章封面', url }]
+    // 票据按次消费，上传成功后换一张，避免下次上传拿到已用尽的票据
+    void refreshUploadUrl()
 }
 
 const handleCoverError = (error: unknown): void => {
@@ -208,6 +225,7 @@ const handleCoverDelete = (): void => {
     coverUploadError.value = ''
     formData.value.cover = ''
     coverFileList.value = []
+    void refreshUploadUrl()
 }
 
 const getSubset = () => {
@@ -342,6 +360,7 @@ onMounted(() => {
         getTags()
     }
     emitFormData()
+    void refreshUploadUrl()
 })
 </script>
 

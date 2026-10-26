@@ -31,7 +31,8 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { ref, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 
 type UploadResponse = {
     data?: {
@@ -64,10 +65,22 @@ const cover = ref(props.initialCover || props.initialPhotos[0] || '')
 const uploadError = ref('')
 
 // 上传配置
-const uploadUrl = computed(() => {
-    const token = (localStorage.getItem('token') || '').trim()
-    return `/api/upload/image?token=${encodeURIComponent(token)}`
-})
+// 上传地址改用短期票据：yk-upload 只能把凭证拼在 URL 上，
+// 用按次消费的短期票据代替长期 JWT，避免凭证进入访问日志与浏览器历史
+const uploadUrl = ref('')
+const ticketBusy = ref(false)
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (ticketBusy.value) return
+    ticketBusy.value = true
+    try {
+        uploadUrl.value = await buildImageUploadUrl()
+    } catch {
+        uploadError.value = '上传凭证获取失败，请重新登录后再试'
+    } finally {
+        ticketBusy.value = false
+    }
+}
 
 // 重挂载上传组件以清空其内部列表（删除后保持与本地 photos 一致）
 const uploaderVisible = ref(true)
@@ -93,6 +106,8 @@ const handleUploadSuccess = (response: UploadResponse): void => {
         cover.value = url
     }
     emitChange()
+    // 票据按次消费，每次成功后换新票据
+    void refreshUploadUrl()
     proxy?.$message?.({ type: 'primary', message: '图片上传成功' })
 }
 
@@ -148,6 +163,7 @@ const deletePhoto = (url: string): void => {
         uploaderVisible.value = true
     })
     emitChange()
+    void refreshUploadUrl()
 }
 
 watch(
@@ -163,6 +179,8 @@ watch(
         })
     }
 )
+
+void refreshUploadUrl()
 </script>
 
 <style lang="less" scoped>

@@ -12,7 +12,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | 目录/模块 | 当前实现 |
 | --- | --- |
 | `lin_blog/` | Vue 3、TypeScript、Vite、Pinia、Vue Router、Yike Design；包含总览、用户管理、文章、图库、文件、日记及编辑页面。文章封面使用 `yk-upload`，详情 HTML 使用 DOMPurify 清洗。 |
-| `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；路由覆盖用户、文章、评论、消息、日记、文件、图片上传、分类、标签和总览统计。 |
+| `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；路由覆盖用户、文章、评论、消息、日记、文件、图片上传、上传票据、分类、标签和总览统计。 |
 | `Documentation/` | 开发进度及数据库设计文档。 |
 | 门户（访客前台） | 拆成四个独立页面：`/portal` 首页、`/portal/articles` 文章归档、`/portal/gallery` 摄影图库、`/portal/diary` 随笔，均匿名可访问。共用 `PortalLayout`（顶栏、页脚、`#app` 顶栏补偿）与 `PortalPhotoWall`（12 栏错落照片墙）；详情统一为当前页弹窗（`PortalArticleDetail` / `PortalGalleryDetail` / `PortalDiaryDetail`）。见 `lin_blog/src/views/Portal*.vue`、`lin_blog/src/components/portal/`、`lin_blog/src/style/portal.less`。 |
 | 门户浏览量与热度 | 文章、摄影图库、随笔均支持真实浏览量统计：打开详情弹窗即计一次浏览，`view_log` 表按「登录用户 / 游客 IP」做 30 分钟去重后自增 `article.views` / `diary.views`，计数回写列表卡片；三个归档页均提供「最新 / 最热」排序切换，`sort=hot` 走 SQL 排序而非前端重排。见 `serve/controller/viewController.js`、`serve/model/dbModel/view/index.js`、`lin_blog/src/api/portal.ts`。 |
@@ -65,11 +65,11 @@ npm start
 | 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary`（支持 `weather` 按天气名过滤、`sort=hot` 按浏览量排序，并回传 weatherFacet 分面计数） | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
 | 门户互动（需登录） | `POST /api/public/comment`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论与点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级。 |
 | 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
-| 图片上传 | `POST /api/upload/image?token=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
+| 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 | 日记 | `GET/POST /api/diary`、`GET/PUT/DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
-| 文件 | `GET /api/file`、`GET /api/file/summary`、`POST /api/file/upload?token=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（query token）；下载公开，缩略图加 `?inline=true`。 |
+| 文件 | `GET /api/file`、`GET /api/file/summary`、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；下载公开，缩略图加 `?inline=true`。 |
 | 分类 | `GET /api/subset?classify=...`、`POST /api/subset`、`PUT /api/subset/:id`、`DELETE /api/subset/:id` | 需要认证；图库（`classify=image`）复用文章分组，仅计数口径不同。 |
 | 标签 | `GET/POST /api/label`、`DELETE /api/label/:id` | 需要认证；标签被文章引用时禁止删除。 |
 | 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
@@ -77,7 +77,9 @@ npm start
 
 用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，文章列表、编辑器和详情弹窗已调用真实接口。
 
-图片以二进制保存于数据库 `image` 表（MEDIUMBLOB，单张上限 8 MB），`GET /api/uploads/:filename` 直接从数据库读取并返回；历史磁盘图片已通过迁移 `20261024_image_storage` 一次性导入。文章封面被替换或文章被删除时，后端会检查旧封面图片的引用（文章封面/正文、日记图片、用户头像），无引用则软删对应 `image` 行，`/api/uploads` 访问随之失效。`yk-upload` 通过查询参数携带 Token，因为其上传请求不能附加自定义认证头；上传失败也以 HTTP 200 返回，并通过 `error` 字段传递原因。
+图片以二进制保存于数据库 `image` 表（MEDIUMBLOB，单张上限 8 MB），`GET /api/uploads/:filename` 直接从数据库读取并返回；历史磁盘图片已通过迁移 `20261024_image_storage` 一次性导入。文章封面被替换或文章被删除时，后端会检查旧封面图片的引用（文章封面/正文、日记图片、用户头像），无引用则软删对应 `image` 行，`/api/uploads` 访问随之失效。
+
+**上传凭证使用短期票据**：`yk-upload` 自带 XHR 且无法附加自定义请求头，凭证只能拼在 URL 上。为避免长期 JWT 进入访问日志与浏览器历史，前端先调 `POST /api/upload/ticket`（需登录）换取票据，再把票据拼到上传地址上。票据绑定用户 ID 与来源 IP，5 分钟过期、按次消费（默认 50 次，覆盖一次性批量选择），服务端只存 SHA-256 哈希；票据校验通过后仍查库确认账号存在且未被禁用。上传失败同样以 HTTP 200 返回，并通过 `error` 字段传递原因——`yk-upload` 不处理非 200 响应。
 
 ### 当前限制与待办
 
@@ -88,7 +90,7 @@ npm start
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
 * 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后保留以便恢复，暂无定期清理、备份或云存储同步机制。
-* 后端 `npm test` 当前 `149/149` 通过，覆盖配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `163/163` 通过，覆盖配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障，以及上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
@@ -100,7 +102,7 @@ npm start
 * 门户互动（2026-10-26）：匿名访问文章弹窗时评论框禁用并显示登录入口，点赞提示登录；登录后点赞 12→13、列表同步为 13，再点取消恢复 12；发表评论后详情与列表评论数 1→2，评论立即回显、输入清空、字数回到 `0/512`，浏览器控制台无报错。同时修复登录普通用户访问门户时只看到自己文章的权限串用问题；公开接口现始终只返回已发布内容。
 * 天气字典已与前端 8 种图标对齐，旧字典行（晴/阴/雨/雪）已清理，日记引用无悬挂。
 * 门户浏览量与热度排序（2026-10-26）：新增 `view_log` 去重表与 article/diary 的 views 计数列，迁移 `20261026_view_stats` 已在本地测试库验证（表与列均建立、迁移登记成功、计数后还原原值）。浏览器实测：三个归档页「最新 / 最热」切换即时重排，打开详情后列表浏览量即时回写，匿名/登录态分别按 IP 与用户ID 去重（30 分钟窗口）。已通过后端 137 项测试与前端 `vue-tsc` + Vite 生产构建。
-* 门户随笔天气筛选（2026-10-26）：`/api/public/diary` 新增 `weather` 参数走 SQL 过滤，翻页后筛选不再失效；天气标签数量改由后端全量统计并随列表回传（`weatherFacet` / `facetTotal`），不再因只有当前页数据而跳变。本地测试库实测 7 种天气的列表数与分面数完全一致，浏览器实测 `?weather=晴天` 卡片全部为晴天且与 `sort=hot` 可叠加。已通过后端 149 项测试与前端 `vue-tsc` + Vite 生产构建。
+* 门户随笔天气筛选（2026-10-26）：`/api/public/diary` 新增 `weather` 参数走 SQL 过滤，翻页后筛选不再失效；天气标签数量改由后端全量统计并随列表回传（`weatherFacet` / `facetTotal`），不再因只有当前页数据而跳变。本地测试库实测 7 种天气的列表数与分面数完全一致，浏览器实测 `?weather=晴天` 卡片全部为晴天且与 `sort=hot` 可叠加。已通过后端 163 项测试与前端 `vue-tsc` + Vite 生产构建。
 
 # LinBlog数据库
 

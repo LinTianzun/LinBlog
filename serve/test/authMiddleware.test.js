@@ -23,8 +23,9 @@ Module._load = function (request, parent, isMain) {
     }
     return originalLoad.call(this, request, parent, isMain)
 }
-const { authMiddleware, optionalAuthMiddleware } = require(authPath)
+const { authMiddleware, optionalAuthMiddleware, authMiddlewareFromQuery } = require(authPath)
 Module._load = originalLoad
+const { issueUploadTicket, _reset, _size } = require(path.resolve(__dirname, '../utils/uploadTicket.js'))
 
 function makeResponse() {
     return {
@@ -103,4 +104,74 @@ test('enabled account can continue through authentication', async () => {
     assert.equal(nextCalled, true)
     assert.equal(req.user.userId, 7)
     assert.equal(req.user.userType, 'normal')
+})
+
+// ---- 上传接口的 query 认证：凭证必须走短期票据，而不是长期 JWT ----
+
+test.beforeEach(() => { _reset() })
+
+test('upload auth rejects a request with no ticket', async () => {
+    const res = makeResponse()
+    let nextCalled = false
+    await authMiddlewareFromQuery({ headers: {}, query: {} }, res, () => { nextCalled = true })
+    assert.equal(nextCalled, false)
+    assert.equal(res.body.code, 401)
+    // yk-upload 只处理 200，失败也要用 200 + error 字段回传
+    assert.equal(res.statusCode, 200)
+})
+
+test('upload auth rejects a long-lived JWT passed instead of a ticket', async () => {
+    // 旧客户端把登录 token 拼在 URL 上；现在只认票据，长期 JWT 一律不收
+    const res = makeResponse()
+    let nextCalled = false
+    await authMiddlewareFromQuery(
+        { headers: {}, query: { token: 'legacy-long-lived-jwt' } },
+        res,
+        () => { nextCalled = true }
+    )
+    assert.equal(nextCalled, false)
+    assert.equal(res.body.code, 401)
+})
+
+test('upload auth authenticates from the ticket alone, with no Authorization header', async () => {
+    // yk-upload 的 XHR 不带请求头，票据必须自带身份
+    const { ticket } = issueUploadTicket(7)
+    const req = { headers: {}, query: { ticket } }
+    const res = makeResponse()
+    let nextCalled = false
+    await authMiddlewareFromQuery(req, res, () => { nextCalled = true })
+    assert.equal(nextCalled, true)
+    assert.equal(req.user.userId, 7)
+    assert.equal(req.user.userType, 'normal')
+})
+
+test('upload auth rejects a disabled account even with a valid ticket', async () => {
+    accountStatus = 0
+    const { ticket } = issueUploadTicket(7)
+    const res = makeResponse()
+    let nextCalled = false
+    await authMiddlewareFromQuery(
+        { headers: {}, query: { ticket } },
+        res,
+        () => { nextCalled = true }
+    )
+    assert.equal(nextCalled, false)
+    assert.equal(res.body.code, 401)
+})
+
+test('upload auth rejects a replayed ticket that was already consumed', async () => {
+    const { ticket } = issueUploadTicket(7, { uses: 1 })
+    const first = makeResponse()
+    await authMiddlewareFromQuery({ headers: {}, query: { ticket } }, first, () => {})
+
+    const replay = makeResponse()
+    let nextCalled = false
+    await authMiddlewareFromQuery(
+        { headers: {}, query: { ticket } },
+        replay,
+        () => { nextCalled = true }
+    )
+    assert.equal(nextCalled, false)
+    assert.equal(replay.body.code, 401)
+    assert.equal(_size(), 0, '用尽的票据不应留在池里')
 })
