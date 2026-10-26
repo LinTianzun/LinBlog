@@ -5,7 +5,7 @@
             <div class="detail-meta">
                 <span v-if="item.subsetName" class="meta-chip">{{ item.subsetName }}</span>
                 <time>{{ formatDate(item.publishedAt || item.createdAt) }}</time>
-                <span><IconEyeOutline />{{ item.views }}</span>
+                <span><IconEyeOutline />{{ views }}</span>
                 <span><IconLikeOutline />{{ item.likes }}</span>
                 <span><IconCameraOutline />{{ images.length }} 张</span>
             </div>
@@ -18,17 +18,24 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { parseGalleryContent, type ArticleItem } from '../../api/article'
+import { recordView } from '../../api/portal'
 
 const props = defineProps<{
     open: boolean
     item: ArticleItem | null
 }>()
 
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{
+    (e: 'close'): void
+    (e: 'view-counted', payload: { id: number; views: number }): void
+}>()
 
 const images = computed(() => (props.item ? parseGalleryContent(props.item.content) : []))
+
+// 浏览量本地副本：接口回读后立即刷新
+const views = ref(0)
 
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
@@ -38,6 +45,29 @@ const formatDate = (value?: string | null) => {
     const date = new Date(value || '')
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
+
+// 打开图库即计一次浏览；后端按访客去重，失败不影响图片展示
+const countView = async (galleryId: number) => {
+    try {
+        const result = await recordView('image', galleryId)
+        if (result.code === 200 && result.data) {
+            views.value = result.data.views
+            emit('view-counted', { id: galleryId, views: result.data.views })
+        }
+    } catch {
+        // 浏览计数失败时保持列表原有数字
+    }
+}
+
+watch(
+    () => [props.open, props.item?.id] as const,
+    ([open, galleryId]) => {
+        views.value = props.item?.views ?? 0
+        if (!open || !galleryId) return
+        void countView(galleryId)
+    },
+    { immediate: true }
+)
 </script>
 
 <style lang="less" scoped>

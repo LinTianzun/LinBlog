@@ -188,7 +188,7 @@ async function getArticleById(req, res) {
  */
 async function getPublicArticles(req, res) {
     try {
-        const { classify, subsetId, keyword, label } = req.query
+        const { classify, subsetId, keyword, label, sort } = req.query
 
         const paginationResult = formatPaginationParams(req.query, {
             defaultPageSize: 10,
@@ -213,6 +213,8 @@ async function getPublicArticles(req, res) {
             subsetId: subsetId && !isNaN(subsetId) ? subsetId : null,
             label: typeof label === 'string' ? label.trim() : undefined,
             keyword: normalizedKeyword,
+            // sort=hot 按浏览量排序，门户「最热」切换使用
+            sort: sort === 'hot' ? 'hot' : 'latest',
             userId: null,
             userType: 'visitor'
         })

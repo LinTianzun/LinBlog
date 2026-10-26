@@ -5,6 +5,17 @@
             <p class="page-lead">
                 共 {{ total }} 组照片。点开任意一组，可以在当前页放大查看每一张。
             </p>
+
+            <div class="sort-bar">
+                <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
+                    @click="setSort('latest')">
+                    最新
+                </button>
+                <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
+                    @click="setSort('hot')">
+                    最热
+                </button>
+            </div>
         </section>
 
         <section class="gallery-area">
@@ -41,7 +52,8 @@
             </div>
         </section>
 
-        <PortalGalleryDetail :open="detailVisible" :item="activeGallery" @close="closeGallery" />
+        <PortalGalleryDetail :open="detailVisible" :item="activeGallery" @close="closeGallery"
+            @view-counted="handleViewCounted" />
     </PortalLayout>
 </template>
 
@@ -51,6 +63,7 @@ import { useRoute } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
 import { getPublicArticles } from '../api/portal'
+import type { PortalSort } from '../api/portal'
 import { parseGalleryContent, type ArticleItem } from '../api/article'
 
 const route = useRoute()
@@ -61,6 +74,7 @@ const page = ref(1)
 const pageSize = 12
 const loading = ref(false)
 const brokenIds = ref(new Set<number>())
+const sort = ref<PortalSort>('latest')
 
 const detailVisible = ref(false)
 const activeGallery = ref<ArticleItem | null>(null)
@@ -88,7 +102,8 @@ const loadGallery = async () => {
         const result = await getPublicArticles({
             page: page.value,
             pageSize,
-            classify: 'image'
+            classify: 'image',
+            sort: sort.value
         })
         if (result.code === 200) {
             galleryList.value = result.data?.list || []
@@ -109,6 +124,14 @@ const changePage = (next: number) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+// 排序切换：最新按发布时间，最热按浏览量
+const setSort = (next: PortalSort) => {
+    if (sort.value === next) return
+    sort.value = next
+    page.value = 1
+    void loadGallery()
+}
+
 const openGallery = (item: ArticleItem) => {
     activeGallery.value = item
     detailVisible.value = true
@@ -117,6 +140,12 @@ const openGallery = (item: ArticleItem) => {
 const closeGallery = () => {
     detailVisible.value = false
     activeGallery.value = null
+}
+
+// 详情回读的真实浏览量写回卡片计数
+const handleViewCounted = (payload: { id: number; views: number }) => {
+    const target = galleryList.value.find(item => item.id === payload.id)
+    if (target) target.views = payload.views
 }
 
 onMounted(async () => {
@@ -151,6 +180,36 @@ onMounted(async () => {
     font-size: 16px;
     line-height: 1.85;
     color: @font-color-s;
+}
+
+.sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 24px;
+}
+
+.sort-btn {
+    padding: 5px 14px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 13px;
+    color: @font-color-m;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.active {
+        border-color: @pcolor;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-weight: 500;
+    }
 }
 
 .gallery-area {

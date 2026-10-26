@@ -33,6 +33,9 @@ export interface PortalSubset {
   moment: string;
 }
 
+// 排序方式：latest 按时间倒序，hot 按浏览量倒序
+export type PortalSort = "latest" | "hot";
+
 export interface PortalLabel {
   id: number;
   name: string;
@@ -114,12 +117,30 @@ export interface PortalDiary {
   picture: string[];
   weatherId: number | null;
   weatherName: string | null;
+  views: number;
   createdAt: string;
 }
 
-export function getPublicDiaries(params: { page?: number; pageSize?: number } = {}) {
+export function getPublicDiaries(
+  params: { page?: number; pageSize?: number; sort?: PortalSort } = {}
+) {
   return request.get<ApiResult<{ total: number; list: PortalDiary[] }>>(
     "/public/diary",
     { params }
   );
+}
+
+export interface ViewRecordResult {
+  targetType: string;
+  targetId: number;
+  counted: boolean;
+  views: number;
+}
+
+// 门户浏览计数：匿名可调用，后端按访客做去重，返回最新浏览量
+export function recordView(targetType: "article" | "image" | "diary", targetId: number) {
+  return request.post<ApiResult<ViewRecordResult>>("/public/view", {
+    targetType,
+    targetId,
+  });
 }

@@ -153,8 +153,9 @@
         </section>
 
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
-            @interaction-change="handleInteractionChange" />
-        <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary" />
+            @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
+        <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
+            @view-counted="handleDiaryViewCounted" />
     </PortalLayout>
 </template>
 
@@ -311,6 +312,19 @@ const handleInteractionChange = (payload: { likes: number; comments: number }) =
         target.likes = payload.likes
         target.comments = payload.comments
     }
+}
+
+// 详情回读的真实浏览量写回首页列表卡片
+const handleViewCounted = (payload: { views: number }) => {
+    if (!activeArticle.value) return
+    activeArticle.value = { ...activeArticle.value, views: payload.views }
+    const target = articleList.value.find(item => item.id === activeArticle.value?.id)
+    if (target) target.views = payload.views
+}
+
+const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
+    const target = diaryList.value.find(item => item.id === payload.id)
+    if (target) target.views = payload.views
 }
 
 const openArticle = async (id: number) => {

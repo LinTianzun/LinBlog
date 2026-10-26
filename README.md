@@ -15,6 +15,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；路由覆盖用户、文章、评论、消息、日记、文件、图片上传、分类、标签和总览统计。 |
 | `Documentation/` | 开发进度及数据库设计文档。 |
 | 门户（访客前台） | 拆成四个独立页面：`/portal` 首页、`/portal/articles` 文章归档、`/portal/gallery` 摄影图库、`/portal/diary` 随笔，均匿名可访问。共用 `PortalLayout`（顶栏、页脚、`#app` 顶栏补偿）与 `PortalPhotoWall`（12 栏错落照片墙）；详情统一为当前页弹窗（`PortalArticleDetail` / `PortalGalleryDetail` / `PortalDiaryDetail`）。见 `lin_blog/src/views/Portal*.vue`、`lin_blog/src/components/portal/`、`lin_blog/src/style/portal.less`。 |
+| 门户浏览量与热度 | 文章、摄影图库、随笔均支持真实浏览量统计：打开详情弹窗即计一次浏览，`view_log` 表按「登录用户 / 游客 IP」做 30 分钟去重后自增 `article.views` / `diary.views`，计数回写列表卡片；三个归档页均提供「最新 / 最热」排序切换，`sort=hot` 走 SQL 排序而非前端重排。见 `serve/controller/viewController.js`、`serve/model/dbModel/view/index.js`、`lin_blog/src/api/portal.ts`。 |
 | 主题系统 | 11 套可切换主题，双层变量（`data-theme` + `data-theme-preset`）驱动，选择持久化并在启动恢复，与顶栏明暗开关联动。见 `lin_blog/src/utils/themes.ts`、`lin_blog/src/utils/themePreset.ts`、`lin_blog/src/style/theme-presets.less`。 |
 | 用户管理 | 管理员用户列表/搜索/分页、创建、编辑、删除和启用/禁用已联调；统计卡（用户总数/管理员/编辑与普通用户/封禁用户）支持点击筛选与选中高亮，除总数外只统计启用用户。 |
 | 文章 | 已完成列表、筛选、搜索、新建、编辑、发布、撤回、删除及当前页详情弹窗联调；新建入口位于总览/Gather 页面。图片上传到本地目录，文章 `cover` 字段保存访问 URL。 |
@@ -62,6 +63,7 @@ npm start
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
 | 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary` | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
 | 门户互动（需登录） | `POST /api/public/comment`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论与点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级。 |
+| 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/image?token=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
@@ -85,7 +87,7 @@ npm start
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
 * 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后保留以便恢复，暂无定期清理、备份或云存储同步机制。
-* 后端 `npm test` 当前 `117/117` 通过，覆盖配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `137/137` 通过，覆盖配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
@@ -96,6 +98,7 @@ npm start
 * 文章、图库、文件、日记、评论/消息、总览统计卡片、访问量/数据监测图表均已在本地环境完成端到端验证；图库与文章分组的共用关系已实测（分组计数按内容类型隔离，删除保护生效）。
 * 门户互动（2026-10-26）：匿名访问文章弹窗时评论框禁用并显示登录入口，点赞提示登录；登录后点赞 12→13、列表同步为 13，再点取消恢复 12；发表评论后详情与列表评论数 1→2，评论立即回显、输入清空、字数回到 `0/512`，浏览器控制台无报错。同时修复登录普通用户访问门户时只看到自己文章的权限串用问题；公开接口现始终只返回已发布内容。
 * 天气字典已与前端 8 种图标对齐，旧字典行（晴/阴/雨/雪）已清理，日记引用无悬挂。
+* 门户浏览量与热度排序（2026-10-26）：新增 `view_log` 去重表与 article/diary 的 views 计数列，迁移 `20261026_view_stats` 已在本地测试库验证（表与列均建立、迁移登记成功、计数后还原原值）。浏览器实测：三个归档页「最新 / 最热」切换即时重排，打开详情后列表浏览量即时回写，匿名/登录态分别按 IP 与用户ID 去重（30 分钟窗口）。已通过后端 137 项测试与前端 `vue-tsc` + Vite 生产构建。
 
 # LinBlog数据库
 

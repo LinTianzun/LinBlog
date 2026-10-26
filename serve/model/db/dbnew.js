@@ -242,6 +242,7 @@ const tablesSql = {
     weather_id INT UNSIGNED COMMENT '天气ID',
     mood ENUM('happy', 'sad', 'angry', 'calm', 'excited', 'tired') DEFAULT 'calm' COMMENT '心情状态',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
+    views INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '查看次数',
     created_at DATE NOT NULL COMMENT '记录日期（YYYY-MM-DD）',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -292,6 +293,16 @@ const tablesSql = {
     INDEX idx_ip (ip),
     INDEX idx_path (path)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='访问记录表';`
+
+  ,view_log: `CREATE TABLE IF NOT EXISTS view_log(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '浏览记录ID',
+    target_type VARCHAR(20) NOT NULL COMMENT '目标类型（article/image/diary）',
+    target_id BIGINT UNSIGNED NOT NULL COMMENT '目标ID',
+    identifier VARCHAR(120) NOT NULL COMMENT '访客标识（登录用户 u:{id}，游客 ip:{ip}）',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '浏览时间',
+    PRIMARY KEY (id),
+    INDEX idx_view_target (target_type, target_id, identifier, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='浏览量去重记录表';`
 
   ,system_log: `CREATE TABLE IF NOT EXISTS system_log(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日志ID',
@@ -787,7 +798,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record', 'system_log'];
+    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record', 'view_log', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1097,6 +1108,40 @@ async function importLegacyImageFiles(exec = query) {
   }
 }
 
+// 列级幂等补全：不存在则 ADD COLUMN，已存在直接跳过（存量库升级用）。
+async function ensureColumn(exec, tableName, columnName, { definition, comment }) {
+  const [column] = await exec(`
+    SELECT COLUMN_NAME
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = ?
+      AND COLUMN_NAME = ?
+    LIMIT 1
+  `, [tableName, columnName]);
+  if (column) return false;
+
+  await exec(
+    `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition} COMMENT ?`,
+    [comment]
+  );
+  return true;
+}
+
+// 浏览量统计：view_log 去重记录表 + article/diary 的 views 计数列。
+// 建表语句已在 createOrder 中覆盖新库，这里只负责存量库的补全。
+async function ensureViewStatsSchema(exec = query) {
+  await exec(tablesSql.view_log);
+
+  await ensureColumn(exec, 'diary', 'views', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '查看次数'
+  });
+  await ensureColumn(exec, 'article', 'views', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '查看次数'
+  });
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1115,6 +1160,10 @@ const migrations = [
     up: async (exec = query) => {
       await exec(tablesSql.system_log);
     }
+  },
+  {
+    version: '20261026_view_stats',
+    up: ensureViewStatsSchema
   }
 ];
 

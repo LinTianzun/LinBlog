@@ -39,6 +39,8 @@ export interface ArticleListParams {
   uncategorized?: boolean;
   label?: string;
   keyword?: string;
+  // 列表排序：latest 按时间倒序（默认），hot 按浏览量倒序
+  sort?: "latest" | "hot";
 }
 
 export interface ArticlePageData {

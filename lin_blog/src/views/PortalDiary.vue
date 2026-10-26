@@ -18,6 +18,17 @@
                     <span>{{ item.count }}</span>
                 </button>
             </div>
+
+            <div class="sort-bar">
+                <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
+                    @click="setSort('latest')">
+                    最新
+                </button>
+                <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
+                    @click="setSort('hot')">
+                    最热
+                </button>
+            </div>
         </section>
 
         <section class="list-area">
@@ -53,6 +64,9 @@
                             读全文
                             <IconRightOutline />
                         </span>
+                        <span class="diary-views">
+                            <IconEyeOutline />{{ diary.views }}
+                        </span>
                     </button>
                 </article>
             </div>
@@ -69,7 +83,8 @@
             </div>
         </section>
 
-        <PortalDiaryDetail :open="detailVisible" :item="activeDiary" @close="closeDiary" />
+        <PortalDiaryDetail :open="detailVisible" :item="activeDiary" @close="closeDiary"
+            @view-counted="handleViewCounted" />
     </PortalLayout>
 </template>
 
@@ -79,6 +94,7 @@ import { useRoute } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import { getPublicDiaries, type PortalDiary } from '../api/portal'
+import type { PortalSort } from '../api/portal'
 import { weathers } from '../utils/weather'
 
 const route = useRoute()
@@ -88,6 +104,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 9
 const loading = ref(false)
+const sort = ref<PortalSort>('latest')
 
 const detailVisible = ref(false)
 const activeDiary = ref<PortalDiary | null>(null)
@@ -124,7 +141,7 @@ const formatDate = (value: string): string => {
 const loadDiaries = async () => {
     loading.value = true
     try {
-        const result = await getPublicDiaries({ page: page.value, pageSize })
+        const result = await getPublicDiaries({ page: page.value, pageSize, sort: sort.value })
         if (result.code === 200) {
             diaryList.value = result.data?.list || []
             total.value = result.data?.total || 0
@@ -147,6 +164,14 @@ const selectWeather = (name: string) => {
     activeWeather.value = name
 }
 
+// 排序切换：最新按记录日期，最热按浏览量
+const setSort = (next: PortalSort) => {
+    if (sort.value === next) return
+    sort.value = next
+    page.value = 1
+    void loadDiaries()
+}
+
 const openDiary = (item: PortalDiary) => {
     activeDiary.value = item
     detailVisible.value = true
@@ -155,6 +180,12 @@ const openDiary = (item: PortalDiary) => {
 const closeDiary = () => {
     detailVisible.value = false
     activeDiary.value = null
+}
+
+// 详情回读的真实浏览量写回卡片，避免打开后列表数字滞后
+const handleViewCounted = (payload: { id: number; views: number }) => {
+    const target = diaryList.value.find(item => item.id === payload.id)
+    if (target) target.views = payload.views
 }
 
 onMounted(async () => {
@@ -240,6 +271,36 @@ onMounted(async () => {
 
 .list-area {
     margin-top: 48px;
+}
+
+.sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 16px;
+}
+
+.sort-btn {
+    padding: 5px 14px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 13px;
+    color: @font-color-m;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.active {
+        border-color: @pcolor;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-weight: 500;
+    }
 }
 
 .list-state {
@@ -390,6 +451,15 @@ onMounted(async () => {
     font-size: 13px;
     color: @font-color-s;
     transition: gap 0.2s ease, color 0.2s ease;
+}
+
+.diary-views {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: @font-color-s;
+    font-variant-numeric: tabular-nums;
 }
 
 .list-pagination {
