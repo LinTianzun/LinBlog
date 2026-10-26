@@ -95,3 +95,24 @@ test('public subset and label routes mount optional auth', () => {
     assert.equal(privateSubset.handlers[0].name, 'authMiddleware')
     assert.equal(privateLabel.handlers[0].name, 'authMiddleware')
 })
+
+test('public diary route mounts optional auth and private diary routes stay strict', () => {
+    const express = require('express')
+    const app = express()
+    const routes = []
+    const originalGet = app.get
+    app.get = (path, ...handlers) => {
+        routes.push({ method: 'get', path, handlers })
+        return app
+    }
+
+    require('../routes/diary')(app)
+    app.get = originalGet
+
+    const publicDiary = routes.find(route => route.path === '/api/public/diary')
+    assert.ok(publicDiary, 'missing public diary route')
+    assert.equal(publicDiary.handlers[0].name, 'optionalAuthMiddleware')
+
+    const privateDiary = routes.find(route => route.path === '/api/diary')
+    assert.equal(privateDiary.handlers[0].name, 'authMiddleware')
+})

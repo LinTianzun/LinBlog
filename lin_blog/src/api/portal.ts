@@ -46,7 +46,8 @@ export function getPublicArticles(params: ArticleListParams = {}) {
     params: {
       ...params,
       state: "published",
-      classify: "article",
+      // 门户文章列表默认 article；图库橱窗传 classify=image 复用同一公开接口
+      classify: params.classify || "article",
     },
   });
 }
@@ -71,5 +72,23 @@ export function getPublicSubsets() {
 export function getPublicLabels() {
   return request.get<ApiResult<{ count: number; list: PortalLabel[] }>>(
     "/public/label"
+  );
+}
+
+// 门户公开随笔（后端 /api/public/diary，仅返回正常状态）
+export interface PortalDiary {
+  id: number;
+  title: string;
+  content: string;
+  picture: string[];
+  weatherId: number | null;
+  weatherName: string | null;
+  createdAt: string;
+}
+
+export function getPublicDiaries(params: { page?: number; pageSize?: number } = {}) {
+  return request.get<ApiResult<{ total: number; list: PortalDiary[] }>>(
+    "/public/diary",
+    { params }
   );
 }

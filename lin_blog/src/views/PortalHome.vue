@@ -107,6 +107,10 @@
                     <yk-empty description="这里还没有已发布的文章" />
                     <yk-button type="text" size="s" @click="resetFilters">清除筛选条件</yk-button>
                 </div>
+                <PortalGalleryStrip :loading="galleryLoading" :loading-more="galleryLoadingMore"
+                    :total="galleryTotal" :gallery-list="galleryList" @select="openGallery" @more="loadMoreGallery" />
+                <PortalDiaryStrip :loading="diaryLoading" :loading-more="diaryLoadingMore" :total="diaryTotal"
+                    :diary-list="diaryList" @select="openDiary" @more="loadMoreDiary" />
             </section>
         </main>
 
@@ -117,6 +121,8 @@
         </footer>
 
         <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle" />
+        <PortalGalleryDetail :open="galleryVisible" :item="activeGallery" @close="closeGallery" />
+        <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary" />
     </div>
 </template>
 
@@ -126,11 +132,17 @@ import { useRouter } from 'vue-router'
 import unityLogo from '../assets/svg/unity.svg'
 import PortalArticleCard from '../components/portal/PortalArticleCard.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
+import PortalGalleryStrip from '../components/portal/PortalGalleryStrip.vue'
+import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
+import PortalDiaryStrip from '../components/portal/PortalDiaryStrip.vue'
+import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import {
     getPublicArticles,
     getPublicArticleById,
     getPublicSubsets,
     getPublicLabels,
+    getPublicDiaries,
+    type PortalDiary,
     type PortalSubset,
     type PortalLabel
 } from '../api/portal'
@@ -145,6 +157,25 @@ const labelList = ref<PortalLabel[]>([])
 const detailVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
 const listRef = ref<HTMLElement | null>(null)
+
+// 图库/随笔橱窗：各自维护分页与详情弹窗状态
+const galleryList = ref<ArticleItem[]>([])
+const galleryTotal = ref(0)
+const galleryLoading = ref(false)
+const galleryLoadingMore = ref(false)
+const galleryPage = ref(1)
+const galleryVisible = ref(false)
+const activeGallery = ref<ArticleItem | null>(null)
+
+const diaryList = ref<PortalDiary[]>([])
+const diaryTotal = ref(0)
+const diaryLoading = ref(false)
+const diaryLoadingMore = ref(false)
+const diaryPage = ref(1)
+const diaryVisible = ref(false)
+const activeDiary = ref<PortalDiary | null>(null)
+
+const STRIP_PAGE_SIZE = 6
 // 门户挂载期间临时抵消全局顶栏预留高度
 let appEl: HTMLElement | null = null
 
@@ -249,9 +280,82 @@ const closeArticle = () => {
     activeArticle.value = null
 }
 
+// ---------- 图库 / 随笔橱窗 ----------
+const loadGallery = async (append = false) => {
+    if (append) galleryLoadingMore.value = true
+    else galleryLoading.value = true
+    try {
+        const result = await getPublicArticles({
+            page: append ? galleryPage.value + 1 : 1,
+            pageSize: STRIP_PAGE_SIZE,
+            classify: 'image'
+        })
+        if (result.code === 200) {
+            const list = result.data?.list || []
+            galleryList.value = append ? [...galleryList.value, ...list] : list
+            galleryTotal.value = result.data?.total || 0
+            galleryPage.value = append ? galleryPage.value + 1 : 1
+        }
+    } catch {
+        // 后端未提供公开图库接口时静默降级为空态
+    } finally {
+        galleryLoading.value = false
+        galleryLoadingMore.value = false
+    }
+}
+
+const loadMoreGallery = () => void loadGallery(true)
+
+const openGallery = (item: ArticleItem) => {
+    // 列表接口对 image 类型已回传 content（图片 JSON），直接展示无需二次请求
+    activeGallery.value = item
+    galleryVisible.value = true
+}
+
+const closeGallery = () => {
+    galleryVisible.value = false
+    activeGallery.value = null
+}
+
+const loadDiary = async (append = false) => {
+    if (append) diaryLoadingMore.value = true
+    else diaryLoading.value = true
+    try {
+        const result = await getPublicDiaries({
+            page: append ? diaryPage.value + 1 : 1,
+            pageSize: STRIP_PAGE_SIZE
+        })
+        if (result.code === 200) {
+            const list = result.data?.list || []
+            diaryList.value = append ? [...diaryList.value, ...list] : list
+            diaryTotal.value = result.data?.total || 0
+            diaryPage.value = append ? diaryPage.value + 1 : 1
+        }
+    } catch {
+        // 同上，随笔橱窗失败不影响主内容
+    } finally {
+        diaryLoading.value = false
+        diaryLoadingMore.value = false
+    }
+}
+
+const loadMoreDiary = () => void loadDiary(true)
+
+const openDiary = (item: PortalDiary) => {
+    activeDiary.value = item
+    diaryVisible.value = true
+}
+
+const closeDiary = () => {
+    diaryVisible.value = false
+    activeDiary.value = null
+}
+
 onMounted(() => {
     void loadArticles()
     void loadFilters()
+    void loadGallery()
+    void loadDiary()
     // 全局 #app 为后台固定顶栏预留了 64px，门户自带顶栏需抵消，否则顶部出现死区
     appEl = document.getElementById('app')
     appEl?.classList.add('is-portal')
@@ -727,6 +831,8 @@ onUnmounted(() => {
         opacity: 0.75;
     }
 }
+
+// 图库/随笔橱窗位于列表列内，跟随列表宽度，与侧栏互不干扰
 
 @keyframes hero-rise {
     from {
