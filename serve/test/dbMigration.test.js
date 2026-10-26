@@ -16,7 +16,8 @@ test('applied migrations are not executed twice', async () => {
                 { version: '20261023_article_owner' },
                 { version: '20261024_image_storage' },
                 { version: '20261024_subset_soft_delete' },
-                { version: '20261025_system_log' }
+                { version: '20261025_system_log' },
+                { version: '20261026_view_stats' }
             ]
         }
 

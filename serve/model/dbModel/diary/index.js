@@ -5,7 +5,7 @@ const { query } = require('../../db/dbnew')
  * @param {Object} options - { keyword, pageSize, offset }
  * @returns {Promise<Object>} { list, total }
  */
-async function getDiariesByPage({ keyword, pageSize, offset }) {
+async function getDiariesByPage({ keyword, pageSize, offset, sort }) {
     let whereSql = 'WHERE d.status = 1'
     const whereParams = []
 
@@ -15,17 +15,22 @@ async function getDiariesByPage({ keyword, pageSize, offset }) {
         whereParams.push(searchTerm, searchTerm)
     }
 
+    // sort=hot 按浏览量倒序（热度），默认按记录日期倒序
+    const orderBySql = sort === 'hot'
+        ? 'd.views DESC, d.created_at DESC, d.id DESC'
+        : 'd.created_at DESC, d.id DESC'
+
     const totalRows = await query(
         `SELECT COUNT(*) AS total FROM diary d ${whereSql}`,
         whereParams
     )
 
     const list = await query(
-        `SELECT d.id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood, d.created_at
+        `SELECT d.id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood, d.views, d.created_at
          FROM diary d
          LEFT JOIN weather w ON d.weather_id = w.id
          ${whereSql}
-         ORDER BY d.created_at DESC, d.id DESC
+         ORDER BY ${orderBySql}
          LIMIT ? OFFSET ?`,
         [...whereParams, pageSize, offset]
     )

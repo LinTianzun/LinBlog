@@ -28,8 +28,9 @@ async function getDiaries(req, res) {
 
         const { page, pageSize, offset } = params.data
         const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
+        const sort = req.query.sort === 'hot' ? 'hot' : 'latest'
 
-        const { list, total } = await diaryModel.getDiariesByPage({ keyword, pageSize, offset })
+        const { list, total } = await diaryModel.getDiariesByPage({ keyword, pageSize, offset, sort })
 
         res.json({
             code: 200,
@@ -46,6 +47,7 @@ async function getDiaries(req, res) {
                     picture: parsePictures(item.picture),
                     weatherId: item.weather_id,
                     weatherName: item.weather_name,
+                    views: Number(item.views || 0),
                     createdAt: item.created_at
                 }))
             }

@@ -5,7 +5,7 @@
             <div class="detail-meta">
                 <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
                 <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
-                <span><IconEyeOutline />{{ article.views }}</span>
+                <span><IconEyeOutline />{{ views }}</span>
                 <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
                     :disabled="likeBusy" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
                     @click="handleLike">
@@ -69,6 +69,7 @@ import {
     getLikeState,
     toggleLike,
     createPublicComment,
+    recordView,
     type PortalComment,
     type LikeState
 } from '../../api/portal'
@@ -81,6 +82,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'close'): void
     (e: 'interaction-change', payload: { likes: number; comments: number }): void
+    (e: 'view-counted', payload: { views: number }): void
 }>()
 const comments = ref<PortalComment[]>([])
 const commentTotal = ref(0)
@@ -90,6 +92,9 @@ const commentError = ref('')
 
 const likeState = ref<LikeState>({ liked: false, likes: 0 })
 const likeBusy = ref(false)
+
+// 浏览量本地副本：接口回读后立即刷新，避免列表与弹窗数字不一致
+const views = ref(0)
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -141,6 +146,19 @@ const loadLikeState = async (articleId: number) => {
         }
     } catch {
         // 点赞状态失败时回退到文章自带的 likes 字段
+    }
+}
+
+// 打开详情即计一次浏览；后端按访客去重，失败不影响正文展示
+const countView = async (articleId: number) => {
+    try {
+        const result = await recordView('article', articleId)
+        if (result.code === 200 && result.data) {
+            views.value = result.data.views
+            emit('view-counted', { views: result.data.views })
+        }
+    } catch {
+        // 浏览计数失败时保持列表原有数字
     }
 }
 
@@ -225,7 +243,9 @@ watch(
             liked: false,
             likes: props.article?.likes ?? 0
         }
+        views.value = props.article?.views ?? 0
         await Promise.all([loadComments(articleId), loadLikeState(articleId)])
+        await countView(articleId)
     },
     { immediate: true }
 )

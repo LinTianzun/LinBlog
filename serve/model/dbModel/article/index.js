@@ -44,7 +44,7 @@ async function insertArticle(articleInfo) {
 async function findArticlesByPage(params) {
     const {
         page, pageSize, offset, state, classify, subsetId, withContent,
-        uncategorized, label, keyword, userId, userType
+        uncategorized, label, keyword, userId, userType, sort
     } = params
     let whereClause = 'a.state != ?'  //  排除已删除文章
     const whereParams = ['deleted']
@@ -101,6 +101,11 @@ async function findArticlesByPage(params) {
         whereParams.push(searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
+    // 排序：sort=hot 按浏览量倒序（热度），默认按创建时间倒序
+    const orderBySql = sort === 'hot'
+        ? 'a.views DESC, a.created_at DESC'
+        : 'a.created_at DESC, a.id DESC'
+
     // 查询当前页文章（关联分类表获取分类名称）
     const listSql = `
         SELECT 
@@ -124,7 +129,7 @@ async function findArticlesByPage(params) {
         FROM article a
         LEFT JOIN subset s ON a.subset_id = s.id
         WHERE ${whereClause}
-        ORDER BY a.created_at DESC
+        ORDER BY ${orderBySql}
         LIMIT ? OFFSET ?
     `
     const list = await query(listSql, [...whereParams, pageSize, offset])

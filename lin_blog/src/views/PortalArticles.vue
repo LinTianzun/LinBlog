@@ -32,6 +32,17 @@
                 </div>
             </div>
 
+            <div class="sort-bar">
+                <button type="button" class="sort-btn" :class="{ active: filters.sort === 'latest' }"
+                    @click="setSort('latest')">
+                    最新
+                </button>
+                <button type="button" class="sort-btn" :class="{ active: filters.sort === 'hot' }"
+                    @click="setSort('hot')">
+                    最热
+                </button>
+            </div>
+
             <div v-if="labelList.length" class="filter-labels">
                 <button v-for="label in labelList" :key="label.id" type="button" class="label-pill"
                     :class="{ active: filters.label === label.name }" @click="selectLabel(label.name)">
@@ -86,7 +97,7 @@
         </section>
 
         <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle"
-            @interaction-change="handleInteractionChange" />
+            @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
     </PortalLayout>
 </template>
 
@@ -100,6 +111,7 @@ import {
     getPublicArticleById,
     getPublicSubsets,
     getPublicLabels,
+    type PortalSort,
     type PortalSubset,
     type PortalLabel
 } from '../api/portal'
@@ -124,7 +136,8 @@ const filters = reactive({
     pageSize: 10,
     keyword: '',
     subsetId: null as number | null,
-    label: ''
+    label: '',
+    sort: 'latest' as PortalSort
 })
 
 // 输入框独立于已生效的筛选条件，回车/点按钮才提交
@@ -158,7 +171,8 @@ const loadArticles = async () => {
             pageSize: filters.pageSize,
             keyword: filters.keyword || undefined,
             subsetId: filters.subsetId || undefined,
-            label: filters.label || undefined
+            label: filters.label || undefined,
+            sort: filters.sort
         })
         if (result.code === 200) {
             articles.value = result.data?.list || []
@@ -202,7 +216,17 @@ const syncQuery = () => {
     if (filters.label) query.label = filters.label
     if (filters.subsetId !== null) query.subset = String(filters.subsetId)
     if (filters.page > 1) query.page = String(filters.page)
+    if (filters.sort !== 'latest') query.sort = filters.sort
     void router.replace({ path: '/portal/articles', query })
+}
+
+// 排序切换：最新按发布时间，最热按浏览量
+const setSort = (sort: PortalSort) => {
+    if (filters.sort === sort) return
+    filters.sort = sort
+    filters.page = 1
+    syncQuery()
+    void loadArticles()
 }
 
 const resetFilters = () => {
@@ -281,12 +305,21 @@ const handleInteractionChange = (payload: { likes: number; comments: number }) =
     }
 }
 
+// 详情弹窗回读的真实浏览量写回列表，避免 +1 后列表与详情不一致
+const handleViewCounted = (payload: { views: number }) => {
+    if (!activeArticle.value) return
+    activeArticle.value = { ...activeArticle.value, views: payload.views }
+    const target = articles.value.find(item => item.id === activeArticle.value?.id)
+    if (target) target.views = payload.views
+}
+
 onMounted(async () => {
     // 支持从首页带参数跳转：?subset=3 / ?label=xxx / ?keyword=xxx
     const query = route.query
     if (typeof query.subset === 'string') filters.subsetId = Number(query.subset) || null
     if (typeof query.label === 'string') filters.label = query.label
     if (typeof query.keyword === 'string') filters.keyword = query.keyword
+    if (query.sort === 'hot') filters.sort = 'hot'
     keywordInput.value = filters.keyword
     if (typeof query.page === 'string') filters.page = Number(query.page) || 1
 
@@ -383,6 +416,36 @@ onMounted(async () => {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 16px;
+}
+
+.sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 16px;
+}
+
+.sort-btn {
+    padding: 5px 14px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 13px;
+    color: @font-color-m;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.active {
+        border-color: @pcolor;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-weight: 500;
+    }
 }
 
 .label-pill {

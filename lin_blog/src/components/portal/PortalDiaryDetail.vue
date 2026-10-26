@@ -8,6 +8,7 @@
                     {{ weatherName }}
                 </span>
                 <time>{{ formatDate(item.createdAt) }}</time>
+                <span><IconEyeOutline />{{ views }}</span>
             </div>
             <p class="diary-text">{{ item.content }}</p>
             <div v-if="item.picture.length" class="diary-images">
@@ -18,25 +19,55 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { weathers } from '../../utils/weather'
 import type { PortalDiary } from '../../api/portal'
+import { recordView } from '../../api/portal'
 
 const props = defineProps<{
     open: boolean
     item: PortalDiary | null
 }>()
 
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{
+    (e: 'close'): void
+    (e: 'view-counted', payload: { id: number; views: number }): void
+}>()
 
 const weatherName = computed(() => props.item?.weatherName || '')
 const weatherIcon = computed(() =>
     weathers.find(w => w.name === weatherName.value)?.iconUrl || ''
 )
 
+// 浏览量本地副本：接口回读后立即刷新
+const views = ref(0)
+
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
 }
+
+// 打开随笔即计一次浏览；后端按访客去重，失败不影响正文展示
+const countView = async (diaryId: number) => {
+    try {
+        const result = await recordView('diary', diaryId)
+        if (result.code === 200 && result.data) {
+            views.value = result.data.views
+            emit('view-counted', { id: diaryId, views: result.data.views })
+        }
+    } catch {
+        // 浏览计数失败时保持列表原有数字
+    }
+}
+
+watch(
+    () => [props.open, props.item?.id] as const,
+    ([open, diaryId]) => {
+        views.value = props.item?.views ?? 0
+        if (!open || !diaryId) return
+        void countView(diaryId)
+    },
+    { immediate: true }
+)
 
 const formatDate = (value: string) => {
     const date = new Date(value)
