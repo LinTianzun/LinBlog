@@ -10,6 +10,7 @@
                 <button type="button" class="weather-pill" :class="{ active: !activeWeather }"
                     @click="selectWeather('')">
                     全部天气
+                    <span>{{ allTotal }}</span>
                 </button>
                 <button v-for="item in weatherFilters" :key="item.name" type="button" class="weather-pill"
                     :class="{ active: activeWeather === item.name }" @click="selectWeather(item.name)">
@@ -90,14 +91,15 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
-import { getPublicDiaries, type PortalDiary } from '../api/portal'
+import { getPublicDiaries, type PortalDiary, type PortalWeatherFacet } from '../api/portal'
 import type { PortalSort } from '../api/portal'
 import { weathers } from '../utils/weather'
 
 const route = useRoute()
+const router = useRouter()
 
 const diaryList = ref<PortalDiary[]>([])
 const total = ref(0)
@@ -109,24 +111,19 @@ const sort = ref<PortalSort>('latest')
 const detailVisible = ref(false)
 const activeDiary = ref<PortalDiary | null>(null)
 
-// 天气筛选在前端完成：公开接口只返回当前页数据，按天气聚合需要全量扫描，
-// 因此这里只统计当前已加载页面的天气分布，避免多打一次接口。
+// 天气筛选交给后端 SQL 完成，翻页后筛选依然生效；
+// 标签数量由后端按全量统计（ weatherFacet ），不再由当前页内容推导。
 const activeWeather = ref('')
+const weatherFacet = ref<PortalWeatherFacet[]>([])
+const allTotal = ref(0)
 
-const weatherCounts = computed(() => {
-    const counter = new Map<string, number>()
-    diaryList.value.forEach(item => {
-        if (!item.weatherName) return
-        counter.set(item.weatherName, (counter.get(item.weatherName) || 0) + 1)
-    })
-    return counter
+// 分面按数量降序，但标签本身沿用前端图标字典的固定顺序，避免列表抖动
+const weatherFilters = computed(() => {
+    const counts = new Map(weatherFacet.value.map(item => [item.weatherName, item.count]))
+    return weathers
+        .filter(item => counts.has(item.name))
+        .map(item => ({ ...item, count: counts.get(item.name) || 0 }))
 })
-
-const weatherFilters = computed(() =>
-    weathers
-        .filter(item => weatherCounts.value.has(item.name))
-        .map(item => ({ ...item, count: weatherCounts.value.get(item.name) || 0 }))
-)
 
 const weatherIcon = (name: string | null): string => {
     if (!name) return ''
@@ -141,10 +138,17 @@ const formatDate = (value: string): string => {
 const loadDiaries = async () => {
     loading.value = true
     try {
-        const result = await getPublicDiaries({ page: page.value, pageSize, sort: sort.value })
+        const result = await getPublicDiaries({
+            page: page.value,
+            pageSize,
+            sort: sort.value,
+            weather: activeWeather.value || undefined
+        })
         if (result.code === 200) {
             diaryList.value = result.data?.list || []
             total.value = result.data?.total || 0
+            weatherFacet.value = result.data?.weatherFacet || []
+            allTotal.value = result.data?.facetTotal || 0
         }
     } catch {
         diaryList.value = []
@@ -160,8 +164,20 @@ const changePage = (next: number) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+// 筛选条件同步到地址栏，分享或刷新后上下文不丢
+const syncQuery = () => {
+    const query: Record<string, string> = {}
+    if (sort.value !== 'latest') query.sort = sort.value
+    if (activeWeather.value) query.weather = activeWeather.value
+    void router.replace({ path: '/portal/diary', query })
+}
+
 const selectWeather = (name: string) => {
+    if (activeWeather.value === name) return
     activeWeather.value = name
+    page.value = 1
+    syncQuery()
+    void loadDiaries()
 }
 
 // 排序切换：最新按记录日期，最热按浏览量
@@ -169,6 +185,7 @@ const setSort = (next: PortalSort) => {
     if (sort.value === next) return
     sort.value = next
     page.value = 1
+    syncQuery()
     void loadDiaries()
 }
 
@@ -189,6 +206,10 @@ const handleViewCounted = (payload: { id: number; views: number }) => {
 }
 
 onMounted(async () => {
+    // 支持从地址栏恢复筛选：?weather=晴天 / ?sort=hot
+    if (typeof route.query.weather === 'string') activeWeather.value = route.query.weather
+    if (route.query.sort === 'hot') sort.value = 'hot'
+
     await loadDiaries()
 
     // 支持直接打开某篇随笔：?open=12
