@@ -183,6 +183,78 @@ async function getArticleById(req, res) {
 }
 
 /**
+ * 门户公开文章列表：始终只返回已发布内容。
+ * 即使访问者已登录，也不能把后台「普通用户只看自己文章」的权限口径带入门户。
+ */
+async function getPublicArticles(req, res) {
+    try {
+        const { classify, subsetId, keyword, label } = req.query
+
+        const paginationResult = formatPaginationParams(req.query, {
+            defaultPageSize: 10,
+            maxPageSize: 50
+        })
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
+        }
+        const { page, pageSize, offset } = paginationResult.data
+        const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
+        if (normalizedKeyword.length > 100) {
+            return res.status(400).json({ code: 400, message: '搜索关键词不能超过100字' })
+        }
+
+        const result = await articleModel.findArticlesByPage({
+            page,
+            pageSize,
+            offset,
+            state: 'published',
+            classify: ['article', 'image'].includes(classify) ? classify : 'article',
+            withContent: classify === 'image',
+            subsetId: subsetId && !isNaN(subsetId) ? subsetId : null,
+            label: typeof label === 'string' ? label.trim() : undefined,
+            keyword: normalizedKeyword,
+            userId: null,
+            userType: 'visitor'
+        })
+
+        res.json({
+            code: 200,
+            message: result.total > 0 ? '查询成功' : '暂无相关文章',
+            data: {
+                total: result.total,
+                page: result.page,
+                pageSize: result.pageSize,
+                totalPage: result.totalPage,
+                list: result.list
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '公开文章查询失败：' + err.message })
+    }
+}
+
+/**
+ * 门户公开文章详情：始终只按游客权限读取已发布内容。
+ */
+async function getPublicArticleById(req, res) {
+    try {
+        const articleId = Number(req.params.id)
+        if (!Number.isSafeInteger(articleId) || articleId <= 0) {
+            return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
+        }
+
+        const article = await articleModel.findAtricleById(articleId, null, 'visitor')
+        if (!article) {
+            return res.status(404).json({ code: 404, message: '文章不存在或未发布' })
+        }
+
+        res.json({ code: 200, message: '查询成功', data: article })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '公开文章查询失败：' + err.message })
+    }
+}
+
+/**
  *  文章状态统计（供状态页签展示：全部/已发布/未发布/未分类）
  */
 async function getArticleStateSummary(req, res) {
@@ -514,8 +586,10 @@ async function updateArticleStatus(req, res) {
 module.exports = {
     createArticle,
     getArticles,
+    getPublicArticles,
     getArticleStateSummary,
     getArticleById,
+    getPublicArticleById,
     updateArticle,
     deleteArticle,
     updateArticleStatus

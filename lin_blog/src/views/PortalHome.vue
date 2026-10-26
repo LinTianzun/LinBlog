@@ -152,7 +152,8 @@
             </div>
         </section>
 
-        <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle" />
+        <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
+            @interaction-change="handleInteractionChange" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary" />
     </PortalLayout>
 </template>
@@ -296,6 +297,20 @@ const loadFilters = async () => {
 const closeArticle = () => {
     articleVisible.value = false
     activeArticle.value = null
+}
+
+const handleInteractionChange = (payload: { likes: number; comments: number }) => {
+    if (!activeArticle.value) return
+    activeArticle.value = {
+        ...activeArticle.value,
+        likes: payload.likes,
+        comments: payload.comments
+    }
+    const target = articleList.value.find(item => item.id === activeArticle.value?.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
 }
 
 const openArticle = async (id: number) => {

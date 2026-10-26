@@ -129,6 +129,8 @@ async function createComment(commentInfo) {
         VALUES (?, ?, ?, ?)
     `
     const result = await query(sql, [userId, articleId, parentId, content])
+    // 文章上的 comments 是展示用冗余计数，与评论明细同步递增
+    await query('UPDATE article SET comments = comments + 1 WHERE id = ?', [articleId])
     return { commentId: result.insertId }
 }
 
@@ -146,7 +148,7 @@ async function deleteComment(commentId, userId, userType) {
         : 'id = ? AND user_id = ? AND status = 1'
 
     const sql = `
-        UPDATE comment 
+        UPDATE comment
         SET status = 0
         WHERE ${whereClause}
     `   //   逻辑删除（0=已删除）
@@ -156,6 +158,16 @@ async function deleteComment(commentId, userId, userType) {
         : [commentId, userId]
 
     const result = await query(sql, params)
+    if (result.affectedRows > 0) {
+        // 同步回退文章评论计数；GREATEST 防止历史数据不一致时出现负数
+        await query(
+            `UPDATE article a
+             JOIN comment c ON c.article_id = a.id
+             SET a.comments = GREATEST(a.comments - 1, 0)
+             WHERE c.id = ?`,
+            [commentId]
+        )
+    }
     return result.affectedRows // 影响行数：1=成功，0=失败
 }
 

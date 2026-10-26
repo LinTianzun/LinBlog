@@ -11,9 +11,9 @@ module.exports = (app) => {
     // 文章状态统计（需放在 /:id 路由前，避免被参数路由吞掉）
     app.get('/api/article/state/summary', authMiddleware, articleController.getArticleStateSummary)
 
-    // 公开只读接口：访客仅见已发布内容，登录用户可见自己的草稿（数据层按角色过滤）
-    app.get('/api/public/article', optionalAuthMiddleware, articleController.getArticles)
-    app.get('/api/public/article/:id', optionalAuthMiddleware, articleController.getArticleById)
+    // 公开只读接口：无论是否登录，都只返回已发布内容；登录仅用于点赞/评论等写操作
+    app.get('/api/public/article', optionalAuthMiddleware, articleController.getPublicArticles)
+    app.get('/api/public/article/:id', optionalAuthMiddleware, articleController.getPublicArticleById)
 
     // 根据 ID 查询文章详情
     app.get('/api/article/:id', authMiddleware, articleController.getArticleById)

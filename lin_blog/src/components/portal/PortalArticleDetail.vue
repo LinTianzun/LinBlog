@@ -6,7 +6,13 @@
                 <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
                 <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
                 <span><IconEyeOutline />{{ article.views }}</span>
-                <span><IconLikeOutline />{{ article.likes }}</span>
+                <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
+                    :disabled="likeBusy" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                    @click="handleLike">
+                    <IconLikeFill v-if="likeState.liked" />
+                    <IconLikeOutline v-else />
+                    {{ likeState.likes }}
+                </button>
             </div>
             <img v-if="article.cover" class="detail-cover" :src="article.cover" :alt="article.cover" />
             <div class="detail-html" v-html="article.content"></div>
@@ -14,8 +20,30 @@
             <div class="comment-section">
                 <div class="section-title">
                     评论
-                    <yk-tag type="info">{{ comments.length }} 条</yk-tag>
+                    <yk-tag type="primary">{{ commentTotal }} 条</yk-tag>
                 </div>
+
+                <!-- 发表评论：登录后可用，游客点击直接引导登录 -->
+                <div class="comment-compose">
+                    <yk-text-area v-model="commentDraft" :max-length="512" show-word-limit
+                        :auto-size="{ minRows: 3, maxRows: 6 }"
+                        :placeholder="canInteract ? '说点什么…' : '登录后即可发表评论'" :disabled="!canInteract"
+                        @keydown.ctrl.enter="submitComment" />
+                    <div class="compose-actions">
+                        <span class="compose-hint">
+                            {{ canInteract ? 'Ctrl + Enter 快速发送' : '当前为访客，登录后可评论' }}
+                        </span>
+                        <yk-button v-if="canInteract" type="primary" size="s" :loading="commentSubmitting"
+                            :disabled="!commentDraft.trim()" @click="submitComment">
+                            发表评论
+                        </yk-button>
+                        <yk-button v-else type="primary" size="s" @click="goLogin">
+                            登录后评论
+                        </yk-button>
+                    </div>
+                    <p v-if="commentError" class="compose-error">{{ commentError }}</p>
+                </div>
+
                 <div v-if="!comments.length" class="empty-comments">还没有评论，来抢沙发吧。</div>
                 <div v-for="comment in comments" :key="comment.id" class="comment-item">
                     <yk-avatar :size="36" :img-url="comment.userAvatar || undefined" />
@@ -33,17 +61,54 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch } from 'vue'
+import { getCurrentInstance, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { formatArticleDate, type ArticleItem } from '../../api/article'
-import { getPublicComments, type PortalComment } from '../../api/portal'
+import {
+    getPublicComments,
+    getLikeState,
+    toggleLike,
+    createPublicComment,
+    type PortalComment,
+    type LikeState
+} from '../../api/portal'
 
 const props = defineProps<{
     open: boolean
     article: ArticleItem | null
 }>()
 
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{
+    (e: 'close'): void
+    (e: 'interaction-change', payload: { likes: number; comments: number }): void
+}>()
 const comments = ref<PortalComment[]>([])
+const commentTotal = ref(0)
+const commentDraft = ref('')
+const commentSubmitting = ref(false)
+const commentError = ref('')
+
+const likeState = ref<LikeState>({ liked: false, likes: 0 })
+const likeBusy = ref(false)
+
+const router = useRouter()
+const proxy = getCurrentInstance()?.proxy
+
+// 登录态判断：有 token 且不是 visitor 角色才允许互动。
+// 弹窗每次打开都重新读取，避免登录后返回门户仍沿用挂载时的游客状态。
+const readCanInteract = () => {
+    const token = localStorage.getItem('token')
+    if (!token) return false
+    try {
+        const saved = localStorage.getItem('userInfo')
+        const user = saved ? JSON.parse(saved) as { user_type?: string } : null
+        return user?.user_type !== 'visitor'
+    } catch {
+        return false
+    }
+}
+
+const canInteract = ref(readCanInteract())
 
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
@@ -56,17 +121,111 @@ const formatDateTime = (value: string) => {
         : date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+const loadComments = async (articleId: number) => {
+    try {
+        const result = await getPublicComments(articleId)
+        if (result.code === 200) {
+            comments.value = result.data?.list || []
+            commentTotal.value = result.data?.total || 0
+        }
+    } catch {
+        // 评论区加载失败不打断正文展示
+    }
+}
+
+const loadLikeState = async (articleId: number) => {
+    try {
+        const result = await getLikeState(articleId)
+        if (result.code === 200 && result.data) {
+            likeState.value = result.data
+        }
+    } catch {
+        // 点赞状态失败时回退到文章自带的 likes 字段
+    }
+}
+
+const goLogin = () => {
+    emit('close')
+    void router.push('/loginRegister')
+}
+
+const handleLike = async () => {
+    const articleId = props.article?.id
+    if (!articleId || likeBusy.value) return
+
+    if (!canInteract.value) {
+        proxy?.$message?.({ type: 'primary', message: '登录后可点赞' })
+        return
+    }
+
+    likeBusy.value = true
+    try {
+        const result = await toggleLike(articleId)
+        if (result.code === 200 && result.data) {
+            likeState.value = result.data
+            emit('interaction-change', {
+                likes: result.data.likes,
+                comments: commentTotal.value
+            })
+        }
+    } catch (error) {
+        const message = (error as { response?: { data?: { message?: string } } })
+            .response?.data?.message
+        proxy?.$message?.({ type: 'error', message: message || '点赞失败，请稍后重试' })
+    } finally {
+        likeBusy.value = false
+    }
+}
+
+const submitComment = async () => {
+    const articleId = props.article?.id
+    const content = commentDraft.value.trim()
+    if (!articleId || !content || commentSubmitting.value) return
+
+    if (!canInteract.value) {
+        goLogin()
+        return
+    }
+
+    commentError.value = ''
+    commentSubmitting.value = true
+    try {
+        const result = await createPublicComment({ articleId, content })
+        if (result.code === 200) {
+            commentDraft.value = ''
+            await loadComments(articleId)
+            emit('interaction-change', {
+                likes: likeState.value.likes,
+                // 列表展示的是 article.comments 冗余计数，按文章原计数递增，
+                // 不能回填只统计当前已加载评论的 commentTotal，否则会跳变。
+                comments: Math.max(commentTotal.value, (props.article?.comments ?? 0) + 1)
+            })
+            proxy?.$message?.({ type: 'success', message: '评论已发表' })
+        }
+    } catch (error) {
+        const message = (error as { response?: { data?: { message?: string } } })
+            .response?.data?.message
+        commentError.value = message || '评论失败，请稍后重试'
+    } finally {
+        commentSubmitting.value = false
+    }
+}
+
 watch(
     () => [props.open, props.article?.id] as const,
     async ([open, articleId]) => {
         comments.value = []
+        commentTotal.value = 0
+        commentDraft.value = ''
+        commentError.value = ''
         if (!open || !articleId) return
-        try {
-            const result = await getPublicComments(articleId)
-            if (result.code === 200) comments.value = result.data?.list || []
-        } catch {
-            // 评论区加载失败不打断正文展示
+        canInteract.value = readCanInteract()
+        // 先用列表里的计数兜底，避免点赞数在接口返回前闪成 0
+        likeState.value = {
+            liked: false,
+            likes: props.article?.likes ?? 0
         }
+        await Promise.all([loadComments(articleId), loadLikeState(articleId)])
     },
     { immediate: true }
 )
@@ -98,6 +257,40 @@ watch(
         display: inline-flex;
         align-items: center;
         gap: 4px;
+    }
+}
+
+// 点赞按钮：与只读 meta 并排，但保留可点击的视觉反馈
+.meta-like {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: @font-color-s;
+    font-size: @size-s;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+
+    &:hover:not(:disabled) {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.liked {
+        border-color: @pcolor;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-weight: 500;
+    }
+
+    &.busy,
+    &:disabled {
+        cursor: progress;
+        opacity: 0.7;
     }
 }
 
@@ -202,6 +395,32 @@ watch(
         color: @font-color-s;
         font-size: @size-s;
     }
+}
+
+// 发表评论
+.comment-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.compose-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.compose-hint {
+    font-size: @size-ss;
+    color: @font-color-s;
+}
+
+.compose-error {
+    margin: 0;
+    font-size: @size-ss;
+    color: @ecolor;
 }
 
 .comment-item {

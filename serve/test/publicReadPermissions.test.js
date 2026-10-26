@@ -71,6 +71,57 @@ test('article model scopes anonymous visitors to published content only', async 
     assert.equal(calls[0].values[2], 'published')
 })
 
+test('public article endpoints ignore logged-in author scoping', async () => {
+    const articleControllerPath = path.resolve(__dirname, '../controller/articleController.js')
+    const articleModelPath = path.resolve(__dirname, '../model/dbModel/article/index.js')
+    let modelCalls = []
+
+    Module._load = function (request, parent, isMain) {
+        if (parent && parent.filename === articleControllerPath && request === '../model/dbModel/article/index') {
+            return {
+                async findArticlesByPage(params) {
+                    modelCalls.push(params)
+                    return {
+                        total: 0, page: 1, pageSize: 10, totalPage: 0, list: []
+                    }
+                },
+                async findAtricleById(id, userId, userType) {
+                    modelCalls.push({ id, userId, userType })
+                    return { id, state: 'published' }
+                }
+            }
+        }
+        return originalLoad.call(this, request, parent, isMain)
+    }
+
+    delete require.cache[articleControllerPath]
+    delete require.cache[articleModelPath]
+    const articleController = require(articleControllerPath)
+    Module._load = originalLoad
+
+    const listRes = makeResponse()
+    await articleController.getPublicArticles({
+        query: { page: '1', pageSize: '10' },
+        user: { userId: 7, userType: 'normal' }
+    }, listRes)
+
+    assert.equal(listRes.statusCode, 200)
+    assert.equal(modelCalls[0].state, 'published')
+    assert.equal(modelCalls[0].classify, 'article')
+    assert.equal(modelCalls[0].userType, 'visitor')
+    assert.equal(modelCalls[0].userId, null)
+
+    modelCalls = []
+    const detailRes = makeResponse()
+    await articleController.getPublicArticleById({
+        params: { id: '123' },
+        user: { userId: 7, userType: 'normal' }
+    }, detailRes)
+
+    assert.equal(detailRes.statusCode, 200)
+    assert.deepEqual(modelCalls[0], { id: 123, userId: null, userType: 'visitor' })
+})
+
 test('public subset and label routes mount optional auth', () => {
     const express = require('express')
     const app = express()

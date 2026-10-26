@@ -8,6 +8,9 @@ module.exports = (app) => {
     // 公开只读：文章详情页展示已发布文章的正常评论
     app.get('/api/public/comment', optionalAuthMiddleware, commentController.getPublicComments)
 
+    // 门户公开评论发表（需登录；匿名返回 401 提示登录）
+    app.post('/api/public/comment', optionalAuthMiddleware, commentController.createPublicComment)
+
     // 新增评论（需登录）
     app.post('/api/comment', authMiddleware, commentController.createComment)
 
