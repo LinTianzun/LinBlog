@@ -1,6 +1,6 @@
 <template>
     <yk-modal :model-value="open" :title="article?.title || '文章详情'" size="xl" :show-footer="false" :closeable="true"
-        content-height="calc(100vh - 148px)" @update:model-value="handleVisibleChange">
+        @update:model-value="handleVisibleChange">
         <div v-if="article" class="detail-content">
             <div class="detail-meta">
                 <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
@@ -74,9 +74,8 @@ watch(
 
 <style lang="less" scoped>
 .detail-content {
-    max-height: 72vh;
-    overflow-y: auto;
-    padding-right: 8px;
+    // 滚动交给 yk-modal 自身的 scrollbar，避免嵌套双滚动条
+    padding-right: 4px;
 }
 
 .detail-meta {
@@ -116,6 +115,55 @@ watch(
     color: @font-color-l;
     word-break: break-word;
 
+    :deep(h1),
+    :deep(h2),
+    :deep(h3),
+    :deep(h4) {
+        margin: 1.6em 0 0.6em;
+        font-family: var(--portal-serif);
+        font-weight: 600;
+        line-height: 1.4;
+        color: @font-color-l;
+
+        &:first-child {
+            margin-top: 0;
+        }
+    }
+
+    :deep(h1) {
+        font-size: 24px;
+    }
+
+    :deep(h2) {
+        font-size: 21px;
+    }
+
+    :deep(h3) {
+        font-size: 18px;
+    }
+
+    :deep(p) {
+        margin: 0 0 1em;
+    }
+
+    :deep(a) {
+        color: @pcolor;
+    }
+
+    :deep(blockquote) {
+        margin: 1.2em 0;
+        padding: 4px 0 4px 16px;
+        border-left: 3px solid @pcolor;
+        color: @font-color-m;
+    }
+
+    :deep(code) {
+        padding: 2px 5px;
+        border-radius: 3px;
+        background: @bg-color-s;
+        font-size: 0.92em;
+    }
+
     :deep(img) {
         max-width: 100%;
         border-radius: 8px;
@@ -124,8 +172,13 @@ watch(
     :deep(pre) {
         padding: 12px;
         border-radius: 8px;
-        background: @bg-color-m;
+        background: @bg-color-s;
         overflow-x: auto;
+
+        code {
+            padding: 0;
+            background: transparent;
+        }
     }
 }
 

@@ -10,6 +10,21 @@ const routes = [
         meta: { requiresAuth: false, hideHeader: true },
     },
     {
+        path: '/portal/articles',
+        component: () => import('../views/PortalArticles.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
+        path: '/portal/gallery',
+        component: () => import('../views/PortalGallery.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
+        path: '/portal/diary',
+        component: () => import('../views/PortalDiary.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         path: '/',
         redirect: '/loginRegister',
         component: IndexView,

@@ -1,6 +1,6 @@
 <template>
     <yk-modal :model-value="open" :title="item?.title || '随笔详情'" size="l" :show-footer="false" :closeable="true"
-        content-height="calc(100vh - 148px)" @update:model-value="handleVisibleChange">
+        @update:model-value="handleVisibleChange">
         <div v-if="item" class="diary-detail">
             <div class="detail-meta">
                 <span v-if="weatherName" class="meta-weather">
@@ -10,8 +10,9 @@
                 <time>{{ formatDate(item.createdAt) }}</time>
             </div>
             <p class="diary-text">{{ item.content }}</p>
-            <yk-image-preview-group v-if="item.picture.length" :src-list="item.picture" width="100%" height="220"
-                fit="cover" class="diary-images" />
+            <div v-if="item.picture.length" class="diary-images">
+                <yk-image-preview-group :src-list="item.picture" width="100%" height="180" fit="cover" />
+            </div>
         </div>
     </yk-modal>
 </template>
@@ -88,12 +89,23 @@ const formatDate = (value: string) => {
 }
 
 .diary-images {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    // yk-image-preview-group 的根节点是 Fragment，外部 class 不会落到 yk-space 上，
+    // 因此这里用 wrapper + :deep 覆盖内部布局
+    :deep(.yk-space) {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        width: 100%;
+    }
 
     :deep(.yk-image) {
         width: 100% !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .diary-images :deep(.yk-space) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 </style>

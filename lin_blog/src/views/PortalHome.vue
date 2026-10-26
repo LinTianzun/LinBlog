@@ -1,140 +1,167 @@
 <template>
-    <div class="portal-home">
-        <header class="portal-header">
-            <div class="header-inner">
-                <div class="brand" @click="resetFilters">
-                    <img :src="unityLogo" alt="林知雨博客" />
-                    <div class="brand-text">
-                        <strong>林知雨</strong>
-                        <span>记录代码与生活</span>
-                    </div>
-                </div>
-                <nav class="header-actions">
-                    <button type="button" class="admin-entry" @click="goAdmin">
-                        进入后台
-                        <IconRightOutline />
-                    </button>
-                </nav>
-            </div>
-        </header>
-
+    <PortalLayout>
+        <!-- 首屏：左文右图，标题跨过照片上缘 -->
         <section class="hero">
-            <div class="hero-glow hero-glow-a" aria-hidden="true" />
-            <div class="hero-glow hero-glow-b" aria-hidden="true" />
-            <div class="hero-grid" aria-hidden="true" />
             <div class="hero-inner">
                 <div class="hero-copy">
-                    <span class="hero-kicker">LIN ZHIYU · JOURNAL</span>
-                    <h1>写字的人，<br />也在好好生活</h1>
-                    <p>这里收录技术与日常的长思考，慢慢逛，常有新得。</p>
-                    <div class="hero-actions">
-                        <yk-button type="primary" size="m" @click="scrollToList">开始阅读</yk-button>
-                        <yk-button type="secondary" size="m" @click="showAll">全部文章</yk-button>
+                    <p class="hero-eyebrow">林知雨的记录</p>
+                    <h1 class="hero-title">
+                        写字的人，<br />
+                        也在好好生活
+                    </h1>
+                    <p class="hero-lead">
+                        技术长文、摄影图库、带天气的随笔——同一个人的三种记录方式，都收在这里。
+                    </p>
+                    <div class="hero-links">
+                        <RouterLink class="hero-link" to="/portal/articles">读文章</RouterLink>
+                        <RouterLink class="hero-link" to="/portal/gallery">看照片</RouterLink>
+                        <RouterLink class="hero-link" to="/portal/diary">翻随笔</RouterLink>
                     </div>
                 </div>
-                <div class="hero-stats">
-                    <div class="stat">
-                        <strong>{{ total }}</strong>
-                        <span>篇文章</span>
-                    </div>
-                    <div class="stat">
-                        <strong>{{ subsetList.length }}</strong>
-                        <span>个分类</span>
-                    </div>
-                    <div class="stat">
-                        <strong>{{ labelList.length }}</strong>
-                        <span>个标签</span>
-                    </div>
+                <div class="hero-figure" aria-hidden="true">
+                    <div class="hero-print is-tall" />
+                    <div class="hero-print is-small" />
                 </div>
+            </div>
+            <dl class="hero-facts">
+                <div>
+                    <dt>{{ stats.articles }}</dt>
+                    <dd>篇文章</dd>
+                </div>
+                <div>
+                    <dt>{{ stats.galleries }}</dt>
+                    <dd>组图库</dd>
+                </div>
+                <div>
+                    <dt>{{ stats.diaries }}</dt>
+                    <dd>篇随笔</dd>
+                </div>
+                <div>
+                    <dt>{{ stats.categories }}</dt>
+                    <dd>个分类</dd>
+                </div>
+            </dl>
+        </section>
+
+        <!-- 分类索引：一眼看完全部分类分布 -->
+        <section class="block">
+            <h2 class="block-title">分类索引</h2>
+            <nav class="index-list" aria-label="文章分类">
+                <RouterLink v-for="subset in subsetList" :key="subset.id" class="index-item"
+                    :to="`/portal/articles?subset=${subset.id}`">
+                    <span class="index-name">{{ subset.name }}</span>
+                    <span class="index-count">{{ subset.value }}</span>
+                </RouterLink>
+                <p v-if="!subsetList.length" class="index-empty">还没有分类</p>
+            </nav>
+        </section>
+
+        <!-- 最新文章 -->
+        <section class="block">
+            <div class="block-head">
+                <h2 class="block-title">最新发布</h2>
+                <RouterLink class="block-more" to="/portal/articles">
+                    全部文章
+                    <IconRightOutline />
+                </RouterLink>
+            </div>
+
+            <div v-if="articleLoading" class="block-state">
+                <yk-spinner size="m" />
+            </div>
+            <div v-else-if="articleList.length" class="post-list">
+                <article v-for="(article, i) in articleList" :key="article.id" class="post-row"
+                    :style="{ animationDelay: `${Math.min(i, 8) * 45}ms` }">
+                    <button type="button" class="post-link" @click="openArticle(article.id)">
+                        <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
+                        <h3 class="post-title">{{ article.title }}</h3>
+                        <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
+                        <div class="post-meta">
+                            <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
+                            <span><IconEyeOutline />{{ article.views }}</span>
+                            <span><IconLikeOutline />{{ article.likes }}</span>
+                        </div>
+                    </button>
+                </article>
+            </div>
+            <div v-else class="block-state">
+                <yk-empty description="这里还没有已发布的文章" />
             </div>
         </section>
 
-        <main class="portal-main" ref="listRef">
-            <aside class="portal-aside">
-                <div class="panel">
-                    <div class="panel-title">
-                        <IconSearchOutline />搜索
-                    </div>
-                    <div class="panel-search">
-                        <yk-input-search v-model="filters.keyword" placeholder="标题或正文关键字" @search="loadArticles" />
-                    </div>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">
-                        <IconFolderOpenOutline />分类
-                    </div>
-                    <div class="filter-list">
-                        <button type="button" class="filter-item" :class="{ active: !filters.subsetId }"
-                            @click="selectSubset(null)">
-                            全部
-                            <span>{{ total }}</span>
-                        </button>
-                        <button v-for="subset in subsetList" :key="subset.id" type="button" class="filter-item"
-                            :class="{ active: filters.subsetId === subset.id }" @click="selectSubset(subset.id)">
-                            {{ subset.name }}
-                            <span>{{ subset.value }}</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="panel">
-                    <div class="panel-title">
-                        <IconTagOutline />标签
-                    </div>
-                    <div class="label-cloud">
-                        <button v-for="label in labelList" :key="label.id" type="button"
-                            :class="{ active: filters.label === label.name }" @click="selectLabel(label.name)">
-                            {{ label.name }}
-                        </button>
-                    </div>
-                </div>
-            </aside>
+        <!-- 摄影图库预览 -->
+        <section class="block">
+            <div class="block-head">
+                <h2 class="block-title">摄影图库</h2>
+                <RouterLink class="block-more" to="/portal/gallery">
+                    全部图库
+                    <IconRightOutline />
+                </RouterLink>
+            </div>
 
-            <section class="portal-list">
-                <div v-if="loading" class="state-tip"><yk-spinner size="m" /></div>
-                <template v-else-if="articles.length">
-                    <div class="list-head">
-                        <h2>{{ activeHeading }}</h2>
-                        <span>{{ total }} 篇</span>
-                    </div>
-                    <PortalArticleCard v-for="(article, i) in articles" :key="article.id" :article="article"
-                        :index="i" @select="openArticle" />
-                    <div class="pagination-row">
-                        <yk-pagination :current="filters.page" :total="total" :page-size="filters.pageSize"
-                            @change="changePage" />
-                    </div>
-                </template>
-                <div v-else class="state-tip empty">
-                    <yk-empty description="这里还没有已发布的文章" />
-                    <yk-button type="text" size="s" @click="resetFilters">清除筛选条件</yk-button>
-                </div>
-                <PortalGalleryStrip :loading="galleryLoading" :loading-more="galleryLoadingMore"
-                    :total="galleryTotal" :gallery-list="galleryList" @select="openGallery" @more="loadMoreGallery" />
-                <PortalDiaryStrip :loading="diaryLoading" :loading-more="diaryLoadingMore" :total="diaryTotal"
-                    :diary-list="diaryList" @select="openDiary" @more="loadMoreDiary" />
-            </section>
-        </main>
+            <div v-if="galleryLoading" class="block-state">
+                <yk-spinner size="m" />
+            </div>
+            <PortalPhotoWall v-else-if="galleryList.length" :items="galleryPrints" />
+            <div v-else class="block-state">
+                <yk-empty description="还没有发布摄影图库" />
+            </div>
+        </section>
 
-        <footer class="portal-footer">
-            <span class="footer-brand">林知雨</span>
-            <span>© {{ new Date().getFullYear() }} · 用心记录代码与生活</span>
-            <span class="footer-tech">Vue 3 + Yike Design</span>
-        </footer>
+        <!-- 随笔：带天气的小卡片 -->
+        <section class="block">
+            <div class="block-head">
+                <h2 class="block-title">随笔随记</h2>
+                <RouterLink class="block-more" to="/portal/diary">
+                    全部随笔
+                    <IconRightOutline />
+                </RouterLink>
+            </div>
 
-        <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle" />
-        <PortalGalleryDetail :open="galleryVisible" :item="activeGallery" @close="closeGallery" />
+            <div v-if="diaryLoading" class="block-state">
+                <yk-spinner size="m" />
+            </div>
+            <div v-else-if="diaryList.length" class="diary-grid">
+                <button v-for="diary in diaryList" :key="diary.id" type="button" class="diary-card"
+                    @click="openDiary(diary)">
+                    <span class="diary-weather">
+                        <img v-if="weatherIcon(diary.weatherName)" :src="weatherIcon(diary.weatherName)"
+                            :alt="diary.weatherName || ''" />
+                        <span>{{ diary.weatherName || '未记天气' }}</span>
+                    </span>
+                    <span class="diary-title">{{ diary.title }}</span>
+                    <span class="diary-text">{{ diary.content }}</span>
+                    <time class="diary-date">{{ formatDate(diary.createdAt) }}</time>
+                </button>
+            </div>
+            <div v-else class="block-state">
+                <yk-empty description="还没有随笔" />
+            </div>
+        </section>
+
+        <!-- 标签云 -->
+        <section class="block">
+            <h2 class="block-title">标签</h2>
+            <div class="tag-cloud">
+                <RouterLink v-for="label in labelList" :key="label.id" class="tag-item"
+                    :to="`/portal/articles?label=${encodeURIComponent(label.name)}`">
+                    {{ label.name }}
+                    <span>{{ label.value }}</span>
+                </RouterLink>
+                <p v-if="!labelList.length" class="index-empty">还没有标签</p>
+            </div>
+        </section>
+
+        <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary" />
-    </div>
+    </PortalLayout>
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import unityLogo from '../assets/svg/unity.svg'
-import PortalArticleCard from '../components/portal/PortalArticleCard.vue'
+import { computed, onMounted, ref } from 'vue'
+import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
-import PortalGalleryStrip from '../components/portal/PortalGalleryStrip.vue'
-import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
-import PortalDiaryStrip from '../components/portal/PortalDiaryStrip.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import {
     getPublicArticles,
@@ -146,84 +173,110 @@ import {
     type PortalSubset,
     type PortalLabel
 } from '../api/portal'
-import type { ArticleItem } from '../api/article'
+import { parseGalleryContent, type ArticleItem } from '../api/article'
+import { weathers } from '../utils/weather'
 
-const router = useRouter()
-const loading = ref(false)
-const articles = ref<ArticleItem[]>([])
-const total = ref(0)
+const articleList = ref<ArticleItem[]>([])
+const articleLoading = ref(false)
+const galleryList = ref<ArticleItem[]>([])
+const galleryLoading = ref(false)
+const diaryList = ref<PortalDiary[]>([])
+const diaryLoading = ref(false)
 const subsetList = ref<PortalSubset[]>([])
 const labelList = ref<PortalLabel[]>([])
-const detailVisible = ref(false)
+
+const articleVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
-const listRef = ref<HTMLElement | null>(null)
-
-// 图库/随笔橱窗：各自维护分页与详情弹窗状态
-const galleryList = ref<ArticleItem[]>([])
-const galleryTotal = ref(0)
-const galleryLoading = ref(false)
-const galleryLoadingMore = ref(false)
-const galleryPage = ref(1)
-const galleryVisible = ref(false)
-const activeGallery = ref<ArticleItem | null>(null)
-
-const diaryList = ref<PortalDiary[]>([])
-const diaryTotal = ref(0)
-const diaryLoading = ref(false)
-const diaryLoadingMore = ref(false)
-const diaryPage = ref(1)
 const diaryVisible = ref(false)
 const activeDiary = ref<PortalDiary | null>(null)
 
-const STRIP_PAGE_SIZE = 6
-// 门户挂载期间临时抵消全局顶栏预留高度
-let appEl: HTMLElement | null = null
+const totalArticles = ref(0)
+const totalDiaries = ref(0)
 
-const filters = reactive({
-    page: 1,
-    pageSize: 10,
-    keyword: '',
-    subsetId: null as number | null,
-    label: '' as string
-})
+const stats = computed(() => ({
+    articles: totalArticles.value,
+    galleries: galleryList.value.length,
+    diaries: totalDiaries.value,
+    categories: subsetList.value.length
+}))
 
-const goAdmin = () => router.push('/overView')
+// 图库橱窗的排版：大图、小图、竖图交错落位
+const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, index) => {
+    const images = parseGalleryContent(item.content)
+    const cover = item.cover || images[0] || ''
+    const pattern = [
+        { span: 'wide' as const, offset: 0 as const },
+        { span: 'portrait' as const, offset: 1 as const },
+        { span: 'small' as const, offset: 2 as const },
+        { span: 'portrait' as const, offset: 0 as const },
+        { span: 'wide' as const, offset: 1 as const },
+        { span: 'small' as const, offset: 0 as const }
+    ]
+    const slot = pattern[index % pattern.length]
+    return {
+        id: item.id,
+        title: item.title,
+        note: item.subsetName || '',
+        image: cover,
+        alt: item.title,
+        glyph: (item.title || '影').trim().charAt(0),
+        tone: Math.abs(item.id) % 4,
+        count: images.length,
+        to: `/portal/gallery?open=${item.id}`,
+        span: slot.span,
+        offset: slot.offset
+    }
+}))
 
-const scrollToList = () => {
-    listRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const weatherIcon = (name: string | null): string => {
+    if (!name) return ''
+    return weathers.find(item => item.name === name)?.iconUrl || ''
 }
 
-// 清除全部筛选条件并回到列表顶部
-const showAll = () => {
-    resetFilters()
-    scrollToList()
+const formatDate = (value: string): string => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
-
-// 列表区标题跟随当前筛选条件变化，让页面有明确的"我在看什么"反馈
-const activeHeading = computed(() => {
-    if (filters.keyword) return `“${filters.keyword}” 的搜索结果`
-    if (filters.label) return `标签 · ${filters.label}`
-    const subset = subsetList.value.find(item => item.id === filters.subsetId)
-    if (subset) return subset.name
-    return '最新发布'
-})
 
 const loadArticles = async () => {
-    loading.value = true
+    articleLoading.value = true
     try {
-        const result = await getPublicArticles({
-            page: filters.page,
-            pageSize: filters.pageSize,
-            keyword: filters.keyword || undefined,
-            subsetId: filters.subsetId || undefined,
-            label: filters.label || undefined
-        })
+        const result = await getPublicArticles({ page: 1, pageSize: 6 })
         if (result.code === 200) {
-            articles.value = result.data?.list || []
-            total.value = result.data?.total || 0
+            articleList.value = result.data?.list || []
+            totalArticles.value = result.data?.total || 0
         }
     } finally {
-        loading.value = false
+        articleLoading.value = false
+    }
+}
+
+const loadGallery = async () => {
+    galleryLoading.value = true
+    try {
+        const result = await getPublicArticles({ page: 1, pageSize: 6, classify: 'image' })
+        if (result.code === 200) {
+            galleryList.value = result.data?.list || []
+        }
+    } catch {
+        // 图库为空时不影响首页其他板块
+    } finally {
+        galleryLoading.value = false
+    }
+}
+
+const loadDiary = async () => {
+    diaryLoading.value = true
+    try {
+        const result = await getPublicDiaries({ page: 1, pageSize: 6 })
+        if (result.code === 200) {
+            diaryList.value = result.data?.list || []
+            totalDiaries.value = result.data?.total || 0
+        }
+    } catch {
+        // 同上
+    } finally {
+        diaryLoading.value = false
     }
 }
 
@@ -240,106 +293,20 @@ const loadFilters = async () => {
     }
 }
 
-const resetFilters = () => {
-    filters.keyword = ''
-    filters.subsetId = null
-    filters.label = ''
-    filters.page = 1
-    void loadArticles()
-}
-
-const selectSubset = (id: number | null) => {
-    filters.subsetId = id
-    filters.page = 1
-    void loadArticles()
-}
-
-const selectLabel = (name: string) => {
-    filters.label = filters.label === name ? '' : name
-    filters.page = 1
-    void loadArticles()
-}
-
-const changePage = (page: number) => {
-    filters.page = page
-    void loadArticles()
+const closeArticle = () => {
+    articleVisible.value = false
+    activeArticle.value = null
 }
 
 const openArticle = async (id: number) => {
-    detailVisible.value = true
+    articleVisible.value = true
     try {
         const result = await getPublicArticleById(id)
         if (result.code === 200) activeArticle.value = result.data || null
     } catch {
-        detailVisible.value = false
+        articleVisible.value = false
     }
 }
-
-const closeArticle = () => {
-    detailVisible.value = false
-    activeArticle.value = null
-}
-
-// ---------- 图库 / 随笔橱窗 ----------
-const loadGallery = async (append = false) => {
-    if (append) galleryLoadingMore.value = true
-    else galleryLoading.value = true
-    try {
-        const result = await getPublicArticles({
-            page: append ? galleryPage.value + 1 : 1,
-            pageSize: STRIP_PAGE_SIZE,
-            classify: 'image'
-        })
-        if (result.code === 200) {
-            const list = result.data?.list || []
-            galleryList.value = append ? [...galleryList.value, ...list] : list
-            galleryTotal.value = result.data?.total || 0
-            galleryPage.value = append ? galleryPage.value + 1 : 1
-        }
-    } catch {
-        // 后端未提供公开图库接口时静默降级为空态
-    } finally {
-        galleryLoading.value = false
-        galleryLoadingMore.value = false
-    }
-}
-
-const loadMoreGallery = () => void loadGallery(true)
-
-const openGallery = (item: ArticleItem) => {
-    // 列表接口对 image 类型已回传 content（图片 JSON），直接展示无需二次请求
-    activeGallery.value = item
-    galleryVisible.value = true
-}
-
-const closeGallery = () => {
-    galleryVisible.value = false
-    activeGallery.value = null
-}
-
-const loadDiary = async (append = false) => {
-    if (append) diaryLoadingMore.value = true
-    else diaryLoading.value = true
-    try {
-        const result = await getPublicDiaries({
-            page: append ? diaryPage.value + 1 : 1,
-            pageSize: STRIP_PAGE_SIZE
-        })
-        if (result.code === 200) {
-            const list = result.data?.list || []
-            diaryList.value = append ? [...diaryList.value, ...list] : list
-            diaryTotal.value = result.data?.total || 0
-            diaryPage.value = append ? diaryPage.value + 1 : 1
-        }
-    } catch {
-        // 同上，随笔橱窗失败不影响主内容
-    } finally {
-        diaryLoading.value = false
-        diaryLoadingMore.value = false
-    }
-}
-
-const loadMoreDiary = () => void loadDiary(true)
 
 const openDiary = (item: PortalDiary) => {
     activeDiary.value = item
@@ -353,491 +320,408 @@ const closeDiary = () => {
 
 onMounted(() => {
     void loadArticles()
-    void loadFilters()
     void loadGallery()
     void loadDiary()
-    // 全局 #app 为后台固定顶栏预留了 64px，门户自带顶栏需抵消，否则顶部出现死区
-    appEl = document.getElementById('app')
-    appEl?.classList.add('is-portal')
-})
-
-onUnmounted(() => {
-    appEl?.classList.remove('is-portal')
-    appEl = null
+    void loadFilters()
 })
 </script>
 
 <style lang="less" scoped>
-// 门户页字体：标题用衬线体拉开气质，正文沿用系统栈
-@portal-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, 'Times New Roman', serif;
-@portal-sans: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
-.portal-home {
-    min-height: 100vh;
-    font-family: @portal-sans;
-    background:
-        radial-gradient(820px 380px at 88% -120px, var(--pcolor1), transparent 62%),
-        radial-gradient(620px 320px at 4% 8%, var(--pcolor1), transparent 58%),
-        @bg-color-s;
-}
-
-// ---------- 顶栏 ----------
-.portal-header {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    backdrop-filter: blur(16px) saturate(160%);
-    background: var(--portal-header-bg);
-    border-bottom: 1px solid @line-color-s;
-
-    .header-inner {
-        max-width: 1180px;
-        margin: 0 auto;
-        padding: 12px 28px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        cursor: pointer;
-
-        img {
-            width: 40px;
-            height: 25px;
-            filter: var(--portal-logo-filter);
-            transition: filter 0.3s ease;
-        }
-
-        .brand-text {
-            display: flex;
-            flex-direction: column;
-            line-height: 1.2;
-
-            strong {
-                font-family: @portal-serif;
-                font-size: 18px;
-                letter-spacing: 1px;
-                color: @font-color-l;
-            }
-
-            span {
-                font-size: @size-ss;
-                color: @font-color-s;
-            }
-        }
-    }
-
-    .admin-entry {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 6px 14px;
-        border: 1px solid @line-color-m;
-        border-radius: @radius-r;
-        background: transparent;
-        color: @font-color-m;
-        font-size: @size-s;
-        cursor: pointer;
-        transition: border-color 0.2s ease, color 0.2s ease, gap 0.2s ease;
-
-        &:hover {
-            gap: 8px;
-            border-color: @pcolor;
-            color: @pcolor;
-        }
-    }
-}
-
-// ---------- Hero ----------
+// ---------- 首屏 ----------
 .hero {
-    position: relative;
-    overflow: hidden;
-    color: #fff;
-    // 主色由主题变量驱动，切换预设时 hero 自动跟随
-    background:
-        radial-gradient(120% 150% at 88% 8%, var(--pcolor6) 0%, transparent 55%),
-        linear-gradient(128deg, var(--pcolor10) 0%, var(--pcolor) 52%, var(--pcolor8) 100%);
-
-    .hero-glow,
-    .hero-grid {
-        position: absolute;
-        pointer-events: none;
-    }
-
-    .hero-glow-a {
-        width: 420px;
-        height: 420px;
-        top: -190px;
-        right: 6%;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.26), transparent 66%);
-        filter: blur(6px);
-        animation: hero-float 11s ease-in-out infinite;
-    }
-
-    .hero-glow-b {
-        width: 300px;
-        height: 300px;
-        bottom: -160px;
-        left: 12%;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 68%);
-        animation: hero-float 14s ease-in-out infinite reverse;
-    }
-
-    // 细网格纹理，避免大面积纯色显得空洞
-    .hero-grid {
-        inset: 0;
-        background-image:
-            linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-        background-size: 46px 46px;
-        mask-image: radial-gradient(120% 90% at 70% 0%, #000 20%, transparent 72%);
-    }
-
-    .hero-inner {
-        position: relative;
-        z-index: 1;
-        max-width: 1180px;
-        margin: 0 auto;
-        padding: 78px 28px 96px;
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 40px;
-    }
-
-    .hero-kicker {
-        display: inline-block;
-        margin-bottom: 16px;
-        padding: 4px 12px;
-        border: 1px solid rgba(255, 255, 255, 0.32);
-        border-radius: @radius-r;
-        font-size: 11px;
-        letter-spacing: 2.4px;
-        opacity: 0.9;
-        animation: hero-rise 0.7s ease both;
-    }
-
-    h1 {
-        margin: 0 0 14px;
-        font-family: @portal-serif;
-        font-size: clamp(32px, 4.4vw, 50px);
-        font-weight: 700;
-        line-height: 1.28;
-        letter-spacing: 2px;
-        text-shadow: 0 2px 18px rgba(12, 20, 40, 0.18);
-        animation: hero-rise 0.7s 0.08s ease both;
-    }
-
-    .hero-copy p {
-        margin: 0 0 28px;
-        max-width: 480px;
-        font-size: 15px;
-        line-height: 1.85;
-        opacity: 0.84;
-        animation: hero-rise 0.7s 0.16s ease both;
-    }
-
-    .hero-actions {
-        display: flex;
-        gap: 12px;
-        animation: hero-rise 0.7s 0.24s ease both;
-
-        :deep(.yk-button--primary) {
-            border-color: rgba(255, 255, 255, 0.5);
-            background: #fff;
-            color: var(--pcolor);
-            font-weight: 600;
-        }
-
-        :deep(.yk-button--secondary) {
-            border-color: rgba(255, 255, 255, 0.42);
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-        }
-    }
-
-    .hero-stats {
-        display: flex;
-        gap: 14px;
-        animation: hero-rise 0.7s 0.3s ease both;
-
-        .stat {
-            min-width: 104px;
-            padding: 16px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            border-radius: @radius-l;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(8px);
-            text-align: center;
-        }
-
-        strong {
-            display: block;
-            font-family: @portal-serif;
-            font-size: 30px;
-            line-height: 1.1;
-            font-variant-numeric: tabular-nums;
-        }
-
-        span {
-            display: block;
-            margin-top: 4px;
-            font-size: @size-ss;
-            opacity: 0.8;
-        }
-    }
+    padding: 72px 0 0;
 }
 
-// ---------- 主体 ----------
-.portal-main {
-    position: relative;
-    z-index: 2;
-    max-width: 1180px;
-    margin: -56px auto 0;
-    padding: 0 28px 56px;
+.hero-inner {
     display: grid;
-    grid-template-columns: 258px minmax(0, 1fr);
-    gap: 22px;
-    align-items: start;
+    grid-template-columns: repeat(12, 1fr);
+    column-gap: 24px;
+    align-items: end;
 }
 
-.portal-aside {
-    position: sticky;
-    top: 82px;
+.hero-copy {
+    grid-column: 1 / span 6;
+    padding-bottom: 8px;
+}
+
+.hero-eyebrow {
+    margin: 0 0 18px;
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: @pcolor;
+}
+
+.hero-title {
+    margin: 0;
+    font-family: var(--portal-serif);
+    font-size: clamp(38px, 4.6vw, 64px);
+    font-weight: 600;
+    line-height: 1.16;
+    letter-spacing: 0.01em;
+    color: @font-color-l;
+}
+
+.hero-lead {
+    max-width: 40ch;
+    margin: 22px 0 0;
+    font-size: 16px;
+    line-height: 1.85;
+    color: @font-color-s;
+}
+
+.hero-links {
     display: flex;
-    flex-direction: column;
-    gap: 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 30px;
+}
 
-    .panel {
-        padding: 16px;
-        border: 1px solid @line-color-s;
-        border-radius: @radius-xl;
-        background: @bg-color-l;
-        box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
-    }
+.hero-link {
+    padding: 9px 20px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    font-size: 14px;
+    color: @font-color-l;
+    text-decoration: none;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
 
-    .panel-title {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 12px;
-        font-size: @size-s;
-        font-weight: 600;
-        letter-spacing: 0.6px;
-        color: @font-color-m;
-
-        :deep(svg) {
-            color: @pcolor;
-        }
-    }
-
-    // yk-input-search 根节点是 inline-flex，且 __inner 使用 width:inherit，
-    // 与 append 按钮并排时会溢出面板；这里用自有包裹元素强制撑满并让输入区可收缩
-    .panel-search {
-        width: 100%;
-
-        :deep(.yk-input) {
-            display: flex;
-            width: 100%;
-        }
-
-        :deep(.yk-input__inner) {
-            flex: 1 1 auto;
-            width: auto;
-            min-width: 0;
-        }
-
-        :deep(.yk-input__append) {
-            flex: 0 0 auto;
-        }
-    }
-
-    .filter-list {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-
-    .filter-item {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 10px 8px 14px;
-        border: none;
-        border-radius: @radius-m;
-        background: transparent;
-        color: @font-color-m;
-        font-size: @size-s;
-        text-align: left;
-        cursor: pointer;
-        transition: background 0.2s ease, color 0.2s ease;
-
-        // 选中态左侧小圆点
-        &::after {
-            content: '';
-            position: absolute;
-            left: 4px;
-            top: 50%;
-            width: 3px;
-            height: 3px;
-            border-radius: 50%;
-            background: @pcolor;
-            opacity: 0;
-            transform: translateY(-50%);
-            transition: opacity 0.2s ease;
-        }
-
-        span {
-            min-width: 20px;
-            padding: 0 6px;
-            border-radius: @radius-r;
-            background: @bg-color-m;
-            font-size: @size-ss;
-            font-variant-numeric: tabular-nums;
-            text-align: center;
-            color: @font-color-s;
-        }
-
-        &:hover {
-            background: @bg-color-m;
-        }
-
-        &.active {
-            background: var(--pcolor1);
-            color: @pcolor;
-            font-weight: 600;
-
-            &::after {
-                opacity: 1;
-            }
-
-            span {
-                background: var(--pcolor2);
-                color: @pcolor;
-            }
-        }
-    }
-
-    .label-cloud {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-
-        button {
-            padding: 4px 11px;
-            border: 1px solid @line-color-m;
-            border-radius: @radius-r;
-            background: transparent;
-            color: @font-color-s;
-            font-size: @size-ss;
-            cursor: pointer;
-            transition: all 0.2s ease;
-
-            &:hover {
-                border-color: var(--pcolor4);
-                color: @pcolor;
-            }
-
-            &.active {
-                border-color: @pcolor;
-                background: @pcolor;
-                color: #fff;
-            }
-        }
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+        background: var(--pcolor1);
     }
 }
 
-.portal-list {
-    min-height: 360px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+.hero-figure {
+    grid-column: 8 / span 5;
+    position: relative;
+    min-height: 340px;
+}
 
-    .list-head {
-        // 与侧栏面板同款卡片外观：列表区顶部压在 hero 上时仍有一致底色，避免文字直接落在渐变上
+// 首屏的两块"照片"用主题色排印占位，不引入无意义的灰块
+.hero-print {
+    position: absolute;
+    border-radius: 2px;
+
+    &.is-tall {
+        top: 0;
+        right: 0;
+        width: 62%;
+        aspect-ratio: 4 / 5;
+        background: @pcolor;
+    }
+
+    &.is-small {
+        bottom: 6%;
+        left: 0;
+        width: 34%;
+        aspect-ratio: 1 / 1;
+        background: @pcolor-8;
+    }
+}
+
+.hero-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 44px;
+    margin: 56px 0 0;
+    padding: 26px 0 0;
+    border-top: 1px solid @line-color-s;
+
+    div {
         display: flex;
         align-items: baseline;
-        justify-content: space-between;
-        padding: 15px 20px;
-        border: 1px solid @line-color-s;
-        border-radius: @radius-xl;
-        background: @bg-color-l;
-        box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
-
-        h2 {
-            margin: 0;
-            font-family: @portal-serif;
-            font-size: 19px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            color: @font-color-l;
-        }
-
-        span {
-            font-size: @size-s;
-            font-variant-numeric: tabular-nums;
-            color: @font-color-s;
-        }
-    }
-
-    .state-tip {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
         gap: 8px;
-        min-height: 340px;
-        border: 1px solid @line-color-s;
-        border-radius: @radius-xl;
-        background: @bg-color-l;
-        box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
     }
 
-    .pagination-row {
-        display: flex;
-        justify-content: center;
-        padding: 12px 0 0;
+    dt {
+        font-family: var(--portal-serif);
+        font-size: 30px;
+        font-weight: 600;
+        line-height: 1;
+        color: @font-color-l;
+        font-variant-numeric: tabular-nums;
+    }
+
+    dd {
+        margin: 0;
+        font-size: 14px;
+        color: @font-color-s;
     }
 }
 
-.portal-footer {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 22px 28px 34px;
-    border-top: 1px solid @line-color-s;
+// ---------- 通用板块 ----------
+.block {
+    margin-top: 88px;
+}
+
+.block-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.block-title {
+    margin: 0;
+    font-family: var(--portal-serif);
+    font-size: clamp(26px, 2.6vw, 34px);
+    font-weight: 600;
+    line-height: 1.3;
+    color: @font-color-l;
+}
+
+.block-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: @font-color-s;
+    text-decoration: none;
+    transition: color 0.2s ease;
+
+    &:hover {
+        color: @pcolor;
+    }
+}
+
+.block-state {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    color: @font-color-s;
-    font-size: @size-ss;
+    justify-content: center;
+    min-height: 220px;
+}
 
-    .footer-brand {
-        font-family: @portal-serif;
-        font-size: 15px;
-        letter-spacing: 1.5px;
-        color: @font-color-m;
+// ---------- 分类索引 ----------
+.index-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.index-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px 20px;
+    border: 1px solid @line-color-s;
+    border-radius: 2px;
+    text-decoration: none;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        background: var(--pcolor1);
     }
 
-    .footer-tech {
-        opacity: 0.75;
+    .index-name {
+        font-family: var(--portal-serif);
+        font-size: 17px;
+        font-weight: 600;
+        color: @font-color-l;
+    }
+
+    .index-count {
+        font-size: 13px;
+        color: @font-color-s;
+        font-variant-numeric: tabular-nums;
     }
 }
 
-// 图库/随笔橱窗位于列表列内，跟随列表宽度，与侧栏互不干扰
+.index-empty {
+    margin: 0;
+    font-size: 14px;
+    color: @font-color-s;
+}
 
-@keyframes hero-rise {
+// ---------- 文章列表 ----------
+.post-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.post-row {
+    border-bottom: 1px solid @line-color-s;
+    animation: post-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.post-link {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    column-gap: 28px;
+    width: 100%;
+    padding: 24px 0;
+    border: none;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.2s ease;
+}
+
+.post-date {
+    grid-row: 1 / span 3;
+    font-size: 13px;
+    color: @font-color-s;
+    font-variant-numeric: tabular-nums;
+    padding-top: 4px;
+}
+
+.post-title {
+    margin: 0;
+    font-family: var(--portal-serif);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: @font-color-l;
+    transition: color 0.2s ease;
+}
+
+.post-introduce {
+    margin: 6px 0 0;
+    font-size: 14px;
+    line-height: 1.75;
+    color: @font-color-s;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.post-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: @font-color-s;
+
+    span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+}
+
+.post-chip {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--pcolor1);
+    color: @pcolor;
+    font-weight: 500;
+}
+
+.post-row:hover {
+    .post-title {
+        color: @pcolor;
+    }
+}
+
+// ---------- 随笔卡片 ----------
+.diary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+}
+
+.diary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 22px;
+    border: 1px solid @line-color-s;
+    border-radius: 2px;
+    background: @bg-color-l;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.25s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        transform: translateY(-3px);
+    }
+}
+
+.diary-weather {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: @font-color-s;
+
+    img {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+.diary-title {
+    font-family: var(--portal-serif);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: @font-color-l;
+}
+
+.diary-text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.8;
+    color: @font-color-s;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.diary-date {
+    font-size: 12px;
+    color: @font-color-s;
+    font-variant-numeric: tabular-nums;
+}
+
+// ---------- 标签云 ----------
+.tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.tag-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: @bg-color-l;
+    border: 1px solid @line-color-s;
+    font-size: 13px;
+    color: @font-color-m;
+    text-decoration: none;
+    transition: border-color 0.2s ease, color 0.2s ease;
+
+    span {
+        font-size: 11px;
+        color: @font-color-s;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+}
+
+@keyframes post-in {
     from {
         opacity: 0;
-        transform: translateY(16px);
+        transform: translateY(12px);
     }
 
     to {
@@ -846,98 +730,55 @@ onUnmounted(() => {
     }
 }
 
-@keyframes hero-float {
-
-    0%,
-    100% {
-        transform: translate3d(0, 0, 0);
-    }
-
-    50% {
-        transform: translate3d(0, -22px, 0);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-
-    .hero *,
-    .hero-glow {
-        animation: none !important;
-    }
-}
-
-@media (max-width: 1000px) {
-    .hero .hero-inner {
-        flex-direction: column;
-        align-items: flex-start;
-        padding-bottom: 84px;
-    }
-
-    .hero-stats {
-        width: 100%;
-    }
-}
-
 @media (max-width: 900px) {
-    .portal-main {
-        grid-template-columns: 1fr;
-        margin-top: -40px;
+    .hero {
+        padding-top: 44px;
     }
 
-    .portal-aside {
-        position: static;
+    .hero-copy {
+        grid-column: 1 / span 12;
+    }
+
+    .hero-figure {
+        grid-column: 1 / span 12;
+        min-height: 260px;
+        margin-top: 32px;
+    }
+
+    .hero-facts {
+        gap: 28px;
+        margin-top: 40px;
+    }
+
+    .block {
+        margin-top: 64px;
+    }
+
+    .post-link {
+        grid-template-columns: 1fr;
+        row-gap: 6px;
+    }
+
+    .post-date {
+        grid-row: auto;
     }
 }
 
 @media (max-width: 560px) {
-    .hero .hero-inner {
-        padding: 54px 20px 70px;
+    .hero-title {
+        font-size: 34px;
     }
 
-    .hero-stats {
-        gap: 10px;
+    .hero-facts {
+        gap: 20px 28px;
 
-        .stat {
-            flex: 1;
-            min-width: 0;
-            padding: 12px 8px;
-        }
-
-        strong {
+        dt {
             font-size: 24px;
         }
     }
 
-    .portal-main {
-        padding: 0 16px 40px;
+    .diary-grid {
+        grid-template-columns: 1fr;
     }
-
-    .portal-footer {
-        flex-direction: column;
-        text-align: center;
-        gap: 6px;
-    }
-}
-</style>
-
-<!-- 非 scoped：根节点 data-theme 无法命中 scoped 选择器；此处仅做明暗底色变量注入 -->
-<style lang="less">
-#app.is-portal {
-    padding-top: 0;
-}
-
-.portal-home {
-    --portal-header-bg: rgba(255, 255, 255, 0.74);
-    --portal-logo-filter: none;
-}
-
-[data-theme='dark'] .portal-home {
-    --portal-header-bg: rgba(18, 22, 30, 0.72);
-    // 深色下把黑色 logo 反白，避免与深色顶栏融为一体
-    --portal-logo-filter: brightness(0) invert(1);
-}
-
-[data-theme='dark'] .portal-home {
-    --portal-header-bg: rgba(18, 22, 30, 0.72);
 }
 </style>

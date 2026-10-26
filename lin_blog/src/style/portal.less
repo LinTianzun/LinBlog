@@ -1,0 +1,14 @@
+// 门户（访客前台）视觉基座
+// 颜色一律取自主题变量（--pcolor / --bgColor* / --gray*），
+// 保证 11 套主题预设与明暗切换时门户自动跟随，不写死任何色值。
+
+:root {
+    // 衬线字体栈：优先思源宋体族，退回系统宋体；无衬线仅用于说明性小字
+    --portal-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', Georgia, serif;
+    --portal-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+}
+
+// 门户使用自己的顶栏，抵消全局 #app 为后台固定顶栏预留的 64px
+#app.is-portal {
+    padding-top: 0;
+}

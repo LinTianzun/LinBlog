@@ -1,6 +1,6 @@
 <template>
     <yk-modal :model-value="open" :title="item?.title || '图库详情'" size="xl" :show-footer="false" :closeable="true"
-        content-height="calc(100vh - 148px)" @update:model-value="handleVisibleChange">
+        @update:model-value="handleVisibleChange">
         <div v-if="item" class="gallery-detail">
             <div class="detail-meta">
                 <span v-if="item.subsetName" class="meta-chip">{{ item.subsetName }}</span>
@@ -10,7 +10,7 @@
                 <span><IconCameraOutline />{{ images.length }} 张</span>
             </div>
             <div class="gallery-grid">
-                <yk-image-preview-group :src-list="images" width="100%" height="200" fit="cover" class="grid-inner" />
+                <yk-image-preview-group :src-list="images" width="100%" height="200" fit="cover" />
             </div>
             <p v-if="item.introduce" class="gallery-introduce">{{ item.introduce }}</p>
         </div>
@@ -72,15 +72,17 @@ const formatDate = (value?: string | null) => {
 }
 
 // yk-image-preview-group 内部是 flex 容器，这里覆盖为网格，保证缩略图等宽换行
+// 该组件根节点是 Fragment，外部 class 不会落到 yk-space 上，需用 :deep 定位
 .gallery-grid {
-    .grid-inner {
+    :deep(.yk-space) {
         display: grid !important;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
+        width: 100%;
+    }
 
-        :deep(.yk-image) {
-            width: 100% !important;
-        }
+    :deep(.yk-image) {
+        width: 100% !important;
     }
 }
 
@@ -92,10 +94,8 @@ const formatDate = (value?: string | null) => {
 }
 
 @media (max-width: 640px) {
-    .gallery-grid {
-        .grid-inner {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+    .gallery-grid :deep(.yk-space) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 </style>
