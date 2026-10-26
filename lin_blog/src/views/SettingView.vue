@@ -141,6 +141,7 @@ import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
 import { themePresets } from '../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../utils/themePreset'
+import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -177,10 +178,22 @@ const avatarUrl = computed(() => profile.value?.imgurl || '')
 const avatarFileList = ref<{ name: string; url: string }[]>([])
 const avatarMessage = ref('')
 const avatarSuccess = ref(false)
-const uploadUrl = computed(() => {
-    const token = (localStorage.getItem('token') || '').trim()
-    return `/api/upload/image?token=${encodeURIComponent(token)}`
-})
+// 上传地址改用短期票据：yk-upload 只能把凭证拼在 URL 上，
+// 用按次消费的短期票据代替长期 JWT，避免凭证进入访问日志与浏览器历史
+const uploadUrl = ref('')
+const ticketBusy = ref(false)
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (ticketBusy.value) return
+    ticketBusy.value = true
+    try {
+        uploadUrl.value = await buildImageUploadUrl()
+    } catch {
+        avatarMessage.value = '上传凭证获取失败，请重新登录后再试'
+    } finally {
+        ticketBusy.value = false
+    }
+}
 
 // 广播头像变更，顶栏等已挂载组件实时同步
 const broadcastAvatarChange = (imgurl: string | null) => {
@@ -223,6 +236,7 @@ const handleAvatarSuccess = async (response: unknown): Promise<void> => {
             updateCachedUserInfo(url)
             broadcastAvatarChange(url)
             proxy?.$message?.({ type: 'success', message: '头像更新成功' })
+            void refreshUploadUrl()
         } else {
             avatarSuccess.value = false
             avatarMessage.value = saveResult.message || '头像保存失败'
@@ -261,6 +275,7 @@ const handleAvatarDelete = async (): Promise<void> => {
             updateCachedUserInfo(null)
             broadcastAvatarChange(null)
             proxy?.$message?.({ type: 'success', message: '头像已删除' })
+            void refreshUploadUrl()
         } else {
             avatarSuccess.value = false
             avatarMessage.value = result.message || '头像删除失败'
@@ -355,6 +370,7 @@ onMounted(loadProfile)
 
 onMounted(() => window.addEventListener('theme:preset-change', onPresetChange))
 onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChange))
+onMounted(() => void refreshUploadUrl())
 </script>
 
 <style lang="less" scoped>

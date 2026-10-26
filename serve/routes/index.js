@@ -16,6 +16,8 @@ module.exports = (app) => {
     require('./file')(app)
     //  引入图片上传相关路由
     require('./upload')(app)
+    //  引入上传票据路由
+    require('./ticket')(app)
     //  引入分类相关路由
     require('./subset')(app)
     //  引入标签相关路由

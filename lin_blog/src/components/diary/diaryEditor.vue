@@ -53,9 +53,10 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, nextTick, onMounted, getCurrentInstance } from 'vue'
+import { ref, nextTick, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
 import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diary'
+import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
 
 type DiaryForm = {
@@ -129,11 +130,27 @@ const removePhoto = (url: string): void => {
     void nextTick(() => {
         uploaderVisible.value = true
     })
+    void refreshUploadUrl()
 }
-const uploadUrl = computed(() => {
-    const token = (localStorage.getItem('token') || '').trim()
-    return `/api/upload/image?token=${encodeURIComponent(token)}`
-})
+// 上传地址改用短期票据：yk-upload 只能把凭证拼在 URL 上，
+// 用一次性票据代替长期 JWT，避免凭证进入访问日志与浏览器历史
+const uploadUrl = ref('')
+const ticketBusy = ref(false)
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (ticketBusy.value) return
+    ticketBusy.value = true
+    try {
+        uploadUrl.value = await buildImageUploadUrl()
+    } catch (error) {
+        proxy?.$message?.({
+            type: 'error',
+            message: getRequestErrorMessage(error, '上传凭证获取失败，请重新登录后再试')
+        })
+    } finally {
+        ticketBusy.value = false
+    }
+}
 
 const handleUploadSuccess = (response: UploadResponse): void => {
     const url = response.data?.url || response.url
@@ -144,6 +161,8 @@ const handleUploadSuccess = (response: UploadResponse): void => {
 
     photos.value.push(url)
     diaryForm.value.picture = [...photos.value]
+    // 票据按次消费，每次成功后换新票据，保证后续上传仍可用
+    void refreshUploadUrl()
 }
 
 const handleUploadError = (error: unknown): void => {
@@ -251,6 +270,7 @@ const resetForm = (): void => {
     if (defaultWeather) {
         selectWeather(defaultWeather)
     }
+    void refreshUploadUrl()
 }
 
 onMounted(() => {
@@ -259,6 +279,7 @@ onMounted(() => {
     if (defaultWeather) {
         selectWeather(defaultWeather)
     }
+    void refreshUploadUrl()
 })
 
 // 编辑日记：回显标题/内容/天气/图片

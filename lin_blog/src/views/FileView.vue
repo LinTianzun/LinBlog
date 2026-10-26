@@ -46,12 +46,13 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, nextTick, getCurrentInstance } from 'vue'
+import { ref, nextTick, getCurrentInstance } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import subset from '../components/subset/subset.vue'
 import files from '../components/files/files.vue'
 import { useSubsetStore } from '../store/subset'
-import { getFileUploadUrl } from '../api/file'
+import { getFileUploadUrl, getRequestErrorMessage } from '../api/file'
+import { createUploadTicket } from '../utils/uploadUrl.ts'
 
 type MessageOptions = {
     type: 'primary' | 'error'
@@ -107,7 +108,26 @@ const uploadedFiles = ref<UploadedFile[]>([])
 // 仅用于合并刷新，不再自动关闭弹窗
 let refreshTimer: number | undefined
 
-const uploadUrl = computed(() => getFileUploadUrl(subsetScopeId.value))
+// 上传凭证改用短期票据：打开上传弹窗时换取一次，URL 里流通的不再是长期 JWT
+const uploadUrl = ref('')
+const ticketBusy = ref(false)
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (ticketBusy.value) return
+    ticketBusy.value = true
+    try {
+        const { ticket } = await createUploadTicket()
+        uploadUrl.value = getFileUploadUrl(ticket, subsetScopeId.value)
+    } catch (error) {
+        uploadUrl.value = ''
+        proxy?.$message?.({
+            type: 'error',
+            message: getRequestErrorMessage(error, '上传凭证获取失败，请重新登录后再试')
+        })
+    } finally {
+        ticketBusy.value = false
+    }
+}
 
 const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
 
@@ -162,9 +182,11 @@ const resetUploadState = (): void => {
     }
 }
 
-const openUpload = (): void => {
+const openUpload = async (): Promise<void> => {
     resetUploadState()
     uploadVisible.value = true
+    // 先换取票据再挂载上传组件，避免用户抢在票据返回前就选文件
+    await refreshUploadUrl()
     void remountUploader()
 }
 

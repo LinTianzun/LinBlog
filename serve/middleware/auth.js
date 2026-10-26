@@ -1,5 +1,42 @@
 const { verifyToken } = require('../utils/jwtutil')
 const userModel = require('../model/dbModel/users/index')
+const { consumeUploadTicket } = require('../utils/uploadTicket')
+
+/**
+ * 用已确认的用户 ID 加载账号并校验状态。
+ * 上传票据已经证明了身份，这里复用同一套「用户存在 + 账号启用」口径。
+ *
+ * @param {number} userId
+ * @param {object} req 挂载 req.user
+ * @param {object} res 失败响应对象
+ * @param {Function} next
+ */
+async function resolveAuthUserById(userId, req, res, next) {
+    try {
+        const userResult = await userModel.findUserById(userId)
+        if (!userResult || userResult.length === 0) {
+            return res.status(401).json({ code: 401, message: '用户不存在，请重新登录' })
+        }
+
+        const user = userResult[0]
+        if (Number(user.status) !== 1) {
+            return res.status(401).json({
+                code: 401,
+                message: '该账号已被禁用，请重新登录或联系管理员'
+            })
+        }
+
+        req.user = {
+            userId,
+            user_type: user.user_type,
+            userType: user.user_type
+        }
+        return next()
+    } catch (err) {
+        console.error('[Auth] 查询用户失败：', err)
+        return res.status(503).json({ code: 503, message: '认证服务暂时不可用，请稍后重试' })
+    }
+}
 
 /**
  * 从请求中解析并校验 Token；失败返回 null 原因，供强制/可选认证复用。
@@ -100,40 +137,49 @@ async function optionalAuthMiddleware(req, res, next) {
 }
 
 /**
- * yk-upload 使用 XMLHttpRequest 上传，无法附加自定义请求头。
- * 仅上传接口允许从 query 读取 Token，再复用统一的认证逻辑。
+ * yk-upload 使用 XMLHttpRequest 上传，无法附加自定义请求头，
+ * 因此上传接口只能从 query 携带凭证，服务端收不到 Authorization 头。
+ *
+ * 用短期票据代替登录 JWT：
+ * - 票据绑定用户 ID 与来源 IP，5 分钟过期且按次消费，
+ *   即使 URL 被写进访问日志，泄漏窗口和重放价值都远小于长期 JWT；
+ * - 票据校验通过后仍查库确认用户存在且账号未被禁用，
+ *   权限口径与普通接口保持一致。
  */
 function authMiddlewareFromQuery(req, res, next) {
-    const queryToken = typeof req.query.token === 'string'
-        ? req.query.token.trim()
+    // yk-upload 不会处理非 200 响应，认证失败也要用 200 + error 字段返回。
+    const reject = (code, message) => res.status(200).json({
+        code,
+        error: message,
+        message
+    })
+
+    const queryTicket = typeof req.query.ticket === 'string'
+        ? req.query.ticket.trim()
         : ''
 
-    if (!queryToken) {
-        return res.status(200).json({
-            code: 401,
-            error: '上传凭证不能为空，请重新登录',
-            message: '上传凭证不能为空，请重新登录'
-        })
+    if (!queryTicket) {
+        return reject(401, '上传票据不能为空，请重新打开上传窗口')
     }
 
-    req.headers.authorization = `Bearer ${queryToken}`
+    const ticketResult = consumeUploadTicket(queryTicket, { ip: req.ip || '' })
+    if (!ticketResult.valid) {
+        return reject(401, ticketResult.reason || '上传票据无效')
+    }
 
-    // yk-upload 不会处理非 200 响应，认证失败也要用 error 字段返回。
     const uploadResponse = {
         status() {
             return {
                 json(payload) {
-                    return res.status(200).json({
-                        code: payload.code,
-                        error: payload.message || '上传认证失败',
-                        message: payload.message || '上传认证失败'
-                    })
+                    return reject(payload.code, payload.message || '上传认证失败')
                 }
             }
         }
     }
 
-    return authMiddleware(req, uploadResponse, next)
+    // 票据已经证明「哪个用户在上传」，这里只补足账号状态与用户类型的查询，
+    // 让后续控制器拿到的 req.user 与普通接口完全一致。
+    return resolveAuthUserById(ticketResult.userId, req, uploadResponse, next)
 }
 
 module.exports = { authMiddleware, authMiddlewareFromQuery, optionalAuthMiddleware }
