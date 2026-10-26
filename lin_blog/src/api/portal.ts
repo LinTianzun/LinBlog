@@ -62,6 +62,37 @@ export function getPublicComments(articleId: number, page = 1, pageSize = 10) {
   });
 }
 
+export interface LikeState {
+  liked: boolean;
+  likes: number;
+}
+
+// 点赞状态：匿名可读，登录后 liked 反映自己是否已赞
+export function getLikeState(articleId: number) {
+  return request.get<ApiResult<LikeState>>(`/public/praise/${articleId}`);
+}
+
+// 切换点赞（需登录，匿名返回 401）
+export function toggleLike(articleId: number) {
+  return request.post<ApiResult<LikeState>>(`/public/praise/${articleId}`);
+}
+
+export interface CreateCommentResult {
+  commentId: number;
+  articleId: number;
+  parentId: number;
+  createdAt: string;
+}
+
+// 门户发表评论（需登录，后端复用后台同一套校验）
+export function createPublicComment(data: {
+  articleId: number;
+  content: string;
+  parentId?: number;
+}) {
+  return request.post<ApiResult<CreateCommentResult>>("/public/comment", data);
+}
+
 export function getPublicSubsets() {
   return request.get<ApiResult<{ count: number; list: PortalSubset[] }>>(
     "/public/subset",

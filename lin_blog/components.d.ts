@@ -35,6 +35,7 @@ declare module 'vue' {
     IconFileFill: typeof import('@yike-design/ui/es/components/svg-icon')['IconFileFill']
     IconFillOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconFillOutline']
     IconFolderCloseFill: typeof import('@yike-design/ui/es/components/svg-icon')['IconFolderCloseFill']
+    IconLikeFill: typeof import('@yike-design/ui/es/components/svg-icon')['IconLikeFill']
     IconLikeOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconLikeOutline']
     IconMailOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconMailOutline']
     IconModifyOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconModifyOutline']

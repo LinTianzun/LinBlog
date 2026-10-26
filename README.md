@@ -3,7 +3,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 
 ## 功能亮点
 
-* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
+* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章详情支持登录用户点赞/取消点赞与发表评论，点赞数和评论数实时回写列表；匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
 * **11 套主题**：默认浅色/深色，叠加海洋蓝、森林绿、樱花粉、极光绿、落日橙、星云紫、黑曜石、午夜蓝、摩卡棕；`data-theme` 驱动组件明暗，`data-theme-preset` 注入品牌色与背景，选择持久化并在启动时恢复。
 * **后台全模块真实联调**：文章支持列表、新建、编辑、搜索、发布、撤回、删除及详情弹窗；日记支持天气图标与最多 6 张图片；图库分组与文章分组共用同一套分类数据。总览页统计卡片、访问量折线图与设备/系统分布饼图均走真实接口。
 
@@ -60,7 +60,8 @@ npm start
 | 用户 | `GET /api/user/isRegistered`、`POST /api/user/register`、`POST /api/user/login` | 注册和登录公开。 |
 | 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
-| 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary` | 无需登录；访客仅能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，携带 Token 时按登录角色放宽可见范围。 |
+| 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary` | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
+| 门户互动（需登录） | `POST /api/public/comment`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论与点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级。 |
 | 图片上传 | `POST /api/upload/image?token=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
@@ -84,7 +85,7 @@ npm start
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
 * 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后保留以便恢复，暂无定期清理、备份或云存储同步机制。
-* 后端 `npm test` 当前 `105/105` 通过，覆盖配置校验、文章、评论（安全与两级边界）、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、公开只读权限边界（含门户分类/标签/随笔路由）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `117/117` 通过，覆盖配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、用户权限、消息角色、认证中间件（含禁用账号与数据库故障）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、天气字典、访问统计、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
@@ -93,6 +94,7 @@ npm start
 * 门户视觉优化（合并后在主仓库 dev server 复测）：Hero 与卡片改用主题变量驱动，切换 11 套预设与深浅色整体联动；无封面文章以主题色排印占位替代空灰块。修复搜索按钮被裁切、门户顶部 64px 死区（全局 `#app` 为后台固定顶栏预留）、入场动画覆盖悬停上浮、深色下 logo 不可见。实测顶栏贴顶、10 张卡片中 8 张走占位、浅色/深色/sakura 预设/390px 移动端均正常。
 * 门户重构为四页结构（2026-10-26）：原先所有内容堆在 `/portal` 一页，现拆为首页、文章、摄影、随笔四个路由；首页只保留「Hero + 分类索引 + 最新 6 篇 + 照片墙预览 + 随笔卡片 + 标签云」，其余深度内容进入各自归档页。同时移除已废弃的 `PortalGalleryStrip`/`PortalDiaryStrip`/`PortalArticleCard` 三个组件，详情弹窗改为按内容自适应高度（不再固定 `calc(100vh - 148px)` 造成大片留白）。浏览器实测：四页渲染正常、文章搜索与标签/分类筛选生效并同步 URL、三个详情弹窗打开正常、浅色/深色/摩卡棕预设联动、390px 移动端单列自适应、后台 `/loginRegister` 不受门户顶栏补偿影响。已通过后端 105 项测试与前端 `vue-tsc` + Vite 生产构建。
 * 文章、图库、文件、日记、评论/消息、总览统计卡片、访问量/数据监测图表均已在本地环境完成端到端验证；图库与文章分组的共用关系已实测（分组计数按内容类型隔离，删除保护生效）。
+* 门户互动（2026-10-26）：匿名访问文章弹窗时评论框禁用并显示登录入口，点赞提示登录；登录后点赞 12→13、列表同步为 13，再点取消恢复 12；发表评论后详情与列表评论数 1→2，评论立即回显、输入清空、字数回到 `0/512`，浏览器控制台无报错。同时修复登录普通用户访问门户时只看到自己文章的权限串用问题；公开接口现始终只返回已发布内容。
 * 天气字典已与前端 8 种图标对齐，旧字典行（晴/阴/雨/雪）已清理，日记引用无悬挂。
 
 # LinBlog数据库

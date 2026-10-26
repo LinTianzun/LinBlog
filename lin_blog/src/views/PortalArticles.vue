@@ -85,7 +85,8 @@
             </div>
         </section>
 
-        <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle" />
+        <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle"
+            @interaction-change="handleInteractionChange" />
     </PortalLayout>
 </template>
 
@@ -264,6 +265,20 @@ const openArticle = async (id: number) => {
 const closeArticle = () => {
     detailVisible.value = false
     activeArticle.value = null
+}
+
+const handleInteractionChange = (payload: { likes: number; comments: number }) => {
+    if (!activeArticle.value) return
+    activeArticle.value = {
+        ...activeArticle.value,
+        likes: payload.likes,
+        comments: payload.comments
+    }
+    const target = articles.value.find(item => item.id === activeArticle.value?.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
 }
 
 onMounted(async () => {
