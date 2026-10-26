@@ -33,8 +33,9 @@ export default defineConfig({
   },
 
   build: {
-    // 编辑器/图表已按需异步加载；剩余超阈值的是懒加载 vendor 包，属正常体积
-    chunkSizeWarningLimit: 900,
+    // 剩余超阈值的只有 editor（编辑器自身体积，且仅在编辑页按需加载）；
+    // yike-design 与 echarts 已压到阈值内，故阈值收紧到 600 以便后续回归能报警。
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         // 大体积第三方库单独分包，避免页面级 chunk 被编辑器/图表撑大

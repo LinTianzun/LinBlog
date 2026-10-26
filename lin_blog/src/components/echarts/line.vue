@@ -12,21 +12,14 @@ import {
     TitleComponent,
     TooltipComponent,
     GridComponent,
-    DatasetComponent,
-    TransformComponent,
     LegendComponent
 } from 'echarts/components'
-import { LabelLayout, UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 
 echarts.use([
     TitleComponent,
     TooltipComponent,
     GridComponent,
-    DatasetComponent,
-    TransformComponent,
-    LabelLayout,
-    UniversalTransition,
     CanvasRenderer,
     LegendComponent,
     LineChart
