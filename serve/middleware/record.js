@@ -1,5 +1,6 @@
 const recordModel = require('../model/dbModel/record/index')
 const { parseUserAgent } = require('../utils/ua')
+const { resolvePosition } = require('../utils/geoip')
 
 const PUBLIC_PREFIXES = ['/api/user/login', '/api/user/register', '/api/user/isRegistered']
 
@@ -18,18 +19,31 @@ module.exports = function recordMiddleware(req, res, next) {
     }
 
     const { device, browser, os } = parseUserAgent(req.headers['user-agent'])
+    const ip = req.ip || ''
 
-    recordModel.createRecord({
-        userId: req.user?.userId ?? null,
-        ip: req.ip || '',
-        position: null,
-        device,
-        browser,
-        os,
-        path: req.path,
-    }).catch((err) => {
-        console.error('[Record] 写入访问记录失败：', err.message)
-    })
+    // 地理位置解析是旁路逻辑：未启用或解析失败都记 NULL，写入失败同样不影响请求
+    void (async () => {
+        let position = null
+        try {
+            position = await resolvePosition(ip)
+        } catch (err) {
+            position = null
+        }
+
+        try {
+            await recordModel.createRecord({
+                userId: req.user?.userId ?? null,
+                ip,
+                position,
+                device,
+                browser,
+                os,
+                path: req.path,
+            })
+        } catch (err) {
+            console.error('[Record] 写入访问记录失败：', err.message)
+        }
+    })()
 
     next()
 }
