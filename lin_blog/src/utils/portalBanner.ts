@@ -6,6 +6,8 @@ export interface BannerSlide {
     id: string;
     // 占位用主题色渐变（明暗双态），不写死色值
     gradient: { light: string; dark: string };
+    // 柔和风景占位图（SVG，半透明暖色），叠加在主题色渐变之上
+    image: string;
     // 标题叠在照片上缘
     title: string;
     subtitle: string;
@@ -20,6 +22,7 @@ const INTERVAL_MS = 6000; // 单一共享间隔常量
 export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'dawn',
+        image: '/portal/dawn.svg',
         gradient: {
             light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 18%, var(--bgColor1)))',
             dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 32%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 22%, var(--bgColor1)))'
@@ -29,6 +32,7 @@ export const BANNER_SLIDES: BannerSlide[] = [
     },
     {
         id: 'noon',
+        image: '/portal/lake.svg',
         gradient: {
             light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 22%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 30%, var(--bgColor1)))',
             dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 34%, var(--bgColor1)))'
@@ -38,6 +42,7 @@ export const BANNER_SLIDES: BannerSlide[] = [
     },
     {
         id: 'dusk',
+        image: '/portal/dusk.svg',
         gradient: {
             light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 20%, var(--bgColor1)))',
             dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 24%, var(--bgColor1)))'
@@ -47,6 +52,7 @@ export const BANNER_SLIDES: BannerSlide[] = [
     },
     {
         id: 'night',
+        image: '/portal/trees.svg',
         gradient: {
             light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 20%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)))',
             dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 30%, var(--bgColor1)))'
@@ -56,6 +62,7 @@ export const BANNER_SLIDES: BannerSlide[] = [
     },
     {
         id: 'end',
+        image: '/portal/clouds.svg',
         gradient: {
             light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 22%, var(--bgColor1)))',
             dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 26%, var(--bgColor1)))'

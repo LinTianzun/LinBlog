@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0e6dc" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#e0d4c4" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#d4c0b0" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="water2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c8b8a0" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#b0a088" stop-opacity="0.4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky2)"/>
+  <path d="M0,500 Q400,470 800,490 T1600,485 L1600,900 L0,900 Z" fill="url(#water2)"/>
+  <path d="M0,470 L1600,465 L1600,500 L0,505 Z" fill="#d8c8b0" fill-opacity="0.35"/>
+  <path d="M200,490 Q600,485 1000,495 T1500,490" stroke="#b8a890" stroke-width="1.5" fill="none" opacity="0.3"/>
+  <path d="M300,540 Q700,535 1100,545 T1400,540" stroke="#a89880" stroke-width="1.5" fill="none" opacity="0.25"/>
+  <path d="M150,600 Q550,595 950,605 T1450,600" stroke="#988870" stroke-width="1.5" fill="none" opacity="0.2"/>
+  <circle cx="1200" cy="280" r="60" fill="#fff0d8" fill-opacity="0.4"/>
+</svg>

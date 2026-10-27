@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ece8d4" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#d4d0b8" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky4)"/>
+  <path d="M0,520 Q200,480 400,510 T800,490 Q1000,470 1200,500 T1600,485 L1600,900 L0,900 Z" fill="#b8c8a0" fill-opacity="0.4"/>
+  <path d="M120,510 q-30,-40 -10,-80 q40,-50 100,-30 q20,-60 90,-50 q60,10 70,70 q50,-20 80,30 q20,40 -20,70 q60,10 50,60 q-10,40 -60,30 q-20,50 -90,40 q-60,-10 -80,-60 q-70,20 -130,-10 Z" fill="#a8b890" fill-opacity="0.5"/>
+  <path d="M1100,540 q-40,-50 -15,-100 q50,-60 120,-35 q25,-75 110,-60 q75,15 85,85 q60,-25 100,40 q25,50 -25,85 q75,15 60,75 q-15,50 -75,35 q-25,60 -110,50 q-75,-15 -95,-75 q-85,25 -160,-10 Z" fill="#9aa880" fill-opacity="0.55"/>
+  <path d="M0,560 L1600,540 L1600,600 L0,620 Z" fill="#c8b890" fill-opacity="0.3"/>
+  <path d="M0,680 Q400,660 800,685 T1600,670 L1600,900 L0,900 Z" fill="#b8a684" fill-opacity="0.4"/>
+</svg>

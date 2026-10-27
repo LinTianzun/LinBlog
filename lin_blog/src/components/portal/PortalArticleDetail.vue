@@ -1,7 +1,10 @@
 <template>
     <yk-modal :model-value="open" :title="article?.title || '文章详情'" size="xl" :show-footer="false" :closeable="true"
         @update:model-value="handleVisibleChange">
-        <div v-if="article" class="detail-content">
+        <div v-if="article" class="detail-content" :class="{ loading: detailLoading }">
+            <div v-if="detailLoading" class="detail-loading" aria-live="polite">
+                <yk-spinner size="m" />
+            </div>
             <div class="detail-meta">
                 <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
                 <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
@@ -88,6 +91,7 @@ const comments = ref<PortalComment[]>([])
 const commentTotal = ref(0)
 const commentDraft = ref('')
 const commentSubmitting = ref(false)
+const detailLoading = ref(false)
 const commentError = ref('')
 
 const likeState = ref<LikeState>({ liked: false, likes: 0 })
@@ -232,11 +236,16 @@ const submitComment = async () => {
 watch(
     () => [props.open, props.article?.id] as const,
     async ([open, articleId]) => {
-        comments.value = []
-        commentTotal.value = 0
-        commentDraft.value = ''
-        commentError.value = ''
-        if (!open || !articleId) return
+        if (!open || !articleId) {
+            comments.value = []
+            commentTotal.value = 0
+            commentDraft.value = ''
+            commentError.value = ''
+            detailLoading.value = false
+            return
+        }
+        // modal 打开期间加载评论/点赞态，用遮罩盖住加载中的跳变
+        detailLoading.value = true
         canInteract.value = readCanInteract()
         // 先用列表里的计数兜底，避免点赞数在接口返回前闪成 0
         likeState.value = {
@@ -246,6 +255,7 @@ watch(
         views.value = props.article?.views ?? 0
         await Promise.all([loadComments(articleId), loadLikeState(articleId)])
         await countView(articleId)
+        detailLoading.value = false
     },
     { immediate: true }
 )
@@ -255,6 +265,25 @@ watch(
 .detail-content {
     // 滚动交给 yk-modal 自身的 scrollbar，避免嵌套双滚动条
     padding-right: 4px;
+}
+
+.detail-content.loading {
+    position: relative;
+    min-height: 120px;
+    // 加载期间内容半透明，遮罩居中显示 spinner
+    & > :not(.detail-loading) {
+        opacity: 0.45;
+        transition: opacity 0.15s ease;
+    }
+}
+
+.detail-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
 }
 
 .detail-meta {

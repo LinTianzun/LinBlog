@@ -8,7 +8,7 @@
                     :key="slide.id"
                     class="hero-slide"
                     :class="{ active: i === currentIndex }"
-                    :style="{ background: themeGradient(slide) }"
+                    :style="{ backgroundImage: `url(${slide.image}), ${themeGradient(slide)}` }"
                 />
             </div>
             <!-- 底部渐变遮罩：明暗双态停靠到页面底色，禁止白色断层 -->
@@ -356,13 +356,13 @@ const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
 }
 
 const openArticle = async (id: number) => {
-    // 先用列表里的数据占位，避免 modal 打开后内容空态闪一下再填充
-    const summary = articleList.value.find(item => item.id === id)
-    activeArticle.value = summary || null
-    articleVisible.value = true
+    // 先加载详情，数据就绪后再开 modal，避免 modal 先开空态再填内容造成的闪烁
     try {
         const result = await getPublicArticleById(id)
-        if (result.code === 200) activeArticle.value = result.data || activeArticle.value
+        if (result.code === 200) {
+            activeArticle.value = result.data || null
+            articleVisible.value = true
+        }
     } catch {
         articleVisible.value = false
     }
@@ -420,8 +420,8 @@ onUnmounted(() => {
     inset: 0;
     opacity: 0;
     transition: opacity var(--portal-transition-slow) ease;
-    background-size: cover;
-    background-position: center;
+    background-size: cover, cover;
+    background-position: center, center;
     &.active {
         opacity: 1;
     }

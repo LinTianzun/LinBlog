@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8e0d4" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#dcd0c4" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#c8b8a4" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky3)"/>
+  <path d="M0,200 Q400,160 800,220 T1600,180 L1600,400 L0,400 Z" fill="#f0e8d8" fill-opacity="0.5"/>
+  <path d="M0,260 Q300,220 600,280 T1200,250 Q1400,240 1600,270 L1600,420 L0,420 Z" fill="#e0d4c0" fill-opacity="0.45"/>
+  <path d="M0,340 Q500,310 1000,350 T1600,320 L1600,500 L0,500 Z" fill="#d4c4ac" fill-opacity="0.4"/>
+  <path d="M0,600 L1600,580 L1600,900 L0,900 Z" fill="#b8a690" fill-opacity="0.35"/>
+  <ellipse cx="700" cy="240" rx="180" ry="50" fill="#fff8e8" fill-opacity="0.35"/>
+  <ellipse cx="1100" cy="200" rx="220" ry="45" fill="#fff8e8" fill-opacity="0.3"/>
+</svg>

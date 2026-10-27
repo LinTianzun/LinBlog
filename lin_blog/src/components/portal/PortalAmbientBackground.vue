@@ -6,7 +6,7 @@
             :key="slide.id"
             class="portal-ambient-slide"
             :class="{ active: i === currentIndex }"
-            :style="{ background: themeGradient(slide) }"
+            :style="{ backgroundImage: `url(${slide.image}), ${themeGradient(slide)}` }"
         />
         <div class="portal-ambient-mask" />
     </div>
@@ -67,6 +67,9 @@ onUnmounted(() => {
     inset: 0;
     opacity: 0;
     transition: opacity var(--portal-transition-slow) ease;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
 
     &.active {
         opacity: 1;
