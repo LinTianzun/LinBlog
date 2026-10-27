@@ -1,6 +1,6 @@
 <template>
-    <yk-modal :model-value="open" :title="article?.title || '文章详情'" size="xl" :show-footer="false" :closeable="true"
-        @update:model-value="handleVisibleChange">
+    <yk-modal :model-value="open" title="文章阅读" size="l" :show-footer="false" :closeable="true"
+        content-height="calc(100vh - 148px)" @update:model-value="handleVisibleChange">
         <div v-if="article" class="detail-content" :class="{ loading: detailLoading }">
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
@@ -21,8 +21,17 @@
                     {{ likeState.likes }}
                 </button>
             </div>
-            <img v-if="article.cover" class="detail-cover" :src="article.cover" :alt="article.cover" />
-            <div class="detail-html" v-html="article.content"></div>
+            <!-- 头图：宽幅卡片居中，不再整条铺满弹窗 -->
+            <figure v-if="article.cover" class="detail-cover-figure">
+                <img class="detail-cover" :src="article.cover" :alt="article.cover" />
+            </figure>
+            <!-- 正文：独立阅读区，行宽收窄，图片改为居中卡片 -->
+            <article class="detail-reader">
+                <header v-if="article.introduce" class="detail-intro">
+                    <p class="detail-intro-text">{{ article.introduce }}</p>
+                </header>
+                <div class="detail-html" v-html="article.content"></div>
+            </article>
 
             <div class="comment-section">
                 <div class="section-title">
@@ -283,7 +292,7 @@ watch(loadKey, async (key, previousKey) => {
 <style lang="less" scoped>
 .detail-content {
     // 滚动交给 yk-modal 自身的 scrollbar，避免嵌套双滚动条
-    padding-right: 4px;
+    padding: 4px 4px 8px;
 }
 
 .detail-content.loading {
@@ -305,11 +314,14 @@ watch(loadKey, async (key, previousKey) => {
     z-index: 2;
 }
 
+// 元信息条：与正文阅读区同宽居中，视觉上与正文对齐
 .detail-meta {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding-bottom: 14px;
+    max-width: 720px;
+    margin: 0 auto;
+    padding-bottom: 16px;
     color: @font-color-s;
     font-size: @size-s;
 
@@ -362,18 +374,49 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
+// 头图：宽幅卡片，居中，四周留白，不再铺满弹窗
+.detail-cover-figure {
+    margin: 0 auto 30px;
+    display: flex;
+    justify-content: center;
+}
+
 .detail-cover {
+    display: block;
+    // 头图按 16:9 裁切，最大宽度收窄到阅读区，避免超宽扁平铺开
     width: 100%;
-    // 详情封面限高，避免长图撑满整个弹窗挤走正文
-    max-height: 220px;
+    max-width: 620px;
+    aspect-ratio: 16 / 9;
     object-fit: cover;
-    border-radius: 12px;
-    margin-bottom: 18px;
+    border-radius: 14px;
+    border: 1px solid @line-color-s;
+    box-shadow: @shadow-s;
+}
+
+// 阅读区：行宽收窄居中，长文阅读节奏更舒适
+.detail-reader {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+// 导语：衬线斜排的引言块，与正文拉开层次
+.detail-intro {
+    margin: 0 0 24px;
+    padding: 0 0 0 18px;
+    border-left: 3px solid var(--pcolor);
+}
+
+.detail-intro-text {
+    margin: 0;
+    font-family: var(--portal-serif);
+    font-size: 16px;
+    line-height: 1.8;
+    color: @font-color-m;
 }
 
 .detail-html {
-    font-size: 15px;
-    line-height: 1.85;
+    font-size: 15.5px;
+    line-height: 1.95;
     color: @font-color-l;
     word-break: break-word;
 
@@ -426,14 +469,69 @@ watch(loadKey, async (key, previousKey) => {
         font-size: 0.92em;
     }
 
+    // 正文图：居中卡片式，不再铺满整行
     :deep(img) {
-        max-width: 100%;
-        // 正文图限高并裁切，避免长图/大图占满整屏打断阅读流
-        max-height: 320px;
-        height: auto;
+        display: block;
+        // 编辑器保存的内联 width/height 会覆盖 CSS，这里强制兜底
+        width: auto !important;
+        height: auto !important;
+        // 再收一档宽度，让大图以“照片卡片”的形式出现，而不是铺满正文
+        max-width: min(88%, 620px) !important;
+        // 竖长图限高但不裁切，保持原始比例
+        max-height: 380px;
         object-fit: contain;
-        border-radius: 8px;
+        margin: 28px auto;
+        border-radius: 12px;
+        border: 1px solid @line-color-s;
+        box-shadow: 0 10px 28px color-mix(in srgb, @font-color-l 10%, transparent);
         cursor: zoom-in;
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: @shadow-m;
+        }
+    }
+
+    // 图床/编辑器常把图片单独包在 p 里，去掉段间距避免图片上下空档过大
+    :deep(p:has(> img:only-child)) {
+        margin: 0;
+    }
+
+    :deep(ul),
+    :deep(ol) {
+        margin: 0 0 1em;
+        padding-left: 1.6em;
+    }
+
+    :deep(li) {
+        margin: 0.3em 0;
+    }
+
+    :deep(hr) {
+        margin: 2em auto;
+        width: 40%;
+        border: none;
+        border-top: 1px solid @line-color-s;
+    }
+
+    :deep(table) {
+        width: 100%;
+        margin: 1.4em 0;
+        border-collapse: collapse;
+        font-size: 0.94em;
+
+        th,
+        td {
+            padding: 8px 12px;
+            border: 1px solid @line-color-s;
+            text-align: left;
+        }
+
+        th {
+            background: @bg-color-s;
+            font-weight: 600;
+        }
     }
 
     :deep(pre) {
@@ -449,9 +547,11 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
+// 评论区：与正文阅读区同宽居中
 .comment-section {
-    margin-top: 28px;
-    padding-top: 18px;
+    max-width: 720px;
+    margin: 32px auto 0;
+    padding-top: 22px;
     border-top: 1px solid @line-color-s;
 
     .section-title {
@@ -532,6 +632,31 @@ watch(loadKey, async (key, previousKey) => {
         color: @font-color-m;
         line-height: 1.7;
         word-break: break-word;
+    }
+}
+
+// 窄屏：阅读区放开到容器宽度，头图改为 16:10 减少留白
+@media (max-width: 640px) {
+    .detail-reader,
+    .detail-meta,
+    .comment-section {
+        max-width: 100%;
+    }
+
+    .detail-cover {
+        aspect-ratio: 16 / 10;
+        border-radius: 10px;
+    }
+
+    .detail-html :deep(img) {
+        max-width: 100% !important;
+        max-height: 340px;
+        margin: 22px auto;
+    }
+
+    .detail-html {
+        font-size: 15px;
+        line-height: 1.85;
     }
 }
 </style>
