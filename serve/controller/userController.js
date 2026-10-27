@@ -5,6 +5,24 @@ const { generateToken } = require('../utils/jwtutil')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { writeSystemLog } = require('../utils/logHelper')
 
+function getRegistrationConflictMessage(err) {
+    if (!err || !['ER_DUP_ENTRY', 'ER_DUP_KEY'].includes(err.code)) {
+        return null
+    }
+
+    const detail = `${err.sqlMessage || ''} ${err.message || ''}`
+    const mailConflict = /uk_mail|(?:key|index)\s+[`'"]?(?:[\w$]+\.)?mail[`'"]?/i.test(detail)
+    const usernameConflict = /uk_username|(?:key|index)\s+[`'"]?(?:[\w$]+\.)?username[`'"]?/i.test(detail)
+
+    if (mailConflict && !usernameConflict) {
+        return '该邮箱已被注册'
+    }
+    if (usernameConflict && !mailConflict) {
+        return '该用户名已被注册'
+    }
+    return '该用户名或邮箱已被注册'
+}
+
 // 判断用户是否已注册（按邮箱校验）
 async function isRegistered(req, res) {
     try {
@@ -70,6 +88,10 @@ async function register(req, res) {
             }
         })
     } catch (err) {
+        const conflictMessage = getRegistrationConflictMessage(err)
+        if (conflictMessage) {
+            return res.status(400).json({ code: 400, message: conflictMessage })
+        }
         res.status(500).json({ code: 500, message: '服务器错误：' + err.message })
     }
 }
