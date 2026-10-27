@@ -10,10 +10,14 @@
                 <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
                 <span><IconEyeOutline />{{ views }}</span>
                 <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
-                    :disabled="likeBusy" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                    :disabled="likeBusy || likePending"
+                    :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
                     @click="handleLike">
-                    <IconLikeFill v-if="likeState.liked" />
-                    <IconLikeOutline v-else />
+                    <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
+                    <template v-if="!likePending">
+                        <IconLikeFill v-if="likeState.liked" />
+                        <IconLikeOutline v-else />
+                    </template>
                     {{ likeState.likes }}
                 </button>
             </div>
@@ -64,7 +68,7 @@
 </template>
 
 <script lang="ts" setup>
-import { getCurrentInstance, ref, watch } from 'vue'
+import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatArticleDate, type ArticleItem } from '../../api/article'
 import {
@@ -96,6 +100,8 @@ const commentError = ref('')
 
 const likeState = ref<LikeState>({ liked: false, likes: 0 })
 const likeBusy = ref(false)
+// 点赞状态加载中：此期间不渲染图标，避免打开弹窗时图标与计数跳变
+const likePending = ref(false)
 
 // 浏览量本地副本：接口回读后立即刷新，避免列表与弹窗数字不一致
 const views = ref(0)
@@ -233,32 +239,45 @@ const submitComment = async () => {
     }
 }
 
-watch(
-    () => [props.open, props.article?.id] as const,
-    async ([open, articleId]) => {
-        if (!open || !articleId) {
-            comments.value = []
-            commentTotal.value = 0
-            commentDraft.value = ''
-            commentError.value = ''
-            detailLoading.value = false
-            return
-        }
+// 监听稳定的字符串键而非 [open, id] 数组：数组每次都是新引用，
+// 父组件任何一次重渲染（如浏览量回写）都会误触发整套加载流程，导致图标反复重建闪烁
+const loadKey = computed(() => (props.open && props.article?.id ? `${props.article.id}` : ''))
+
+watch(loadKey, async (key, previousKey) => {
+    // 同一个 key 不再重复加载，避免父组件更新引起的抖动
+    if (key === previousKey) return
+
+    if (!key) {
+        comments.value = []
+        commentTotal.value = 0
+        commentDraft.value = ''
+        commentError.value = ''
+        detailLoading.value = false
+        likePending.value = false
+        return
+    }
+
+    const articleId = Number(key)
+    if (!Number.isFinite(articleId)) return
+
+    {
         // modal 打开期间加载评论/点赞态，用遮罩盖住加载中的跳变
         detailLoading.value = true
         canInteract.value = readCanInteract()
-        // 先用列表里的计数兜底，避免点赞数在接口返回前闪成 0
+        // 计数先用列表数据兜底避免闪成 0；图标等真实状态返回后再渲染，
+        // 否则会先显示「未点赞」再跳成「已点赞」，看起来像在闪烁
+        likePending.value = true
         likeState.value = {
             liked: false,
             likes: props.article?.likes ?? 0
         }
         views.value = props.article?.views ?? 0
         await Promise.all([loadComments(articleId), loadLikeState(articleId)])
+        likePending.value = false
         await countView(articleId)
         detailLoading.value = false
-    },
-    { immediate: true }
-)
+    }
+}, { immediate: true })
 </script>
 
 <style lang="less" scoped>
@@ -345,7 +364,8 @@ watch(
 
 .detail-cover {
     width: 100%;
-    max-height: 300px;
+    // 详情封面限高，避免长图撑满整个弹窗挤走正文
+    max-height: 220px;
     object-fit: cover;
     border-radius: 12px;
     margin-bottom: 18px;
@@ -408,7 +428,12 @@ watch(
 
     :deep(img) {
         max-width: 100%;
+        // 正文图限高并裁切，避免长图/大图占满整屏打断阅读流
+        max-height: 320px;
+        height: auto;
+        object-fit: contain;
         border-radius: 8px;
+        cursor: zoom-in;
     }
 
     :deep(pre) {

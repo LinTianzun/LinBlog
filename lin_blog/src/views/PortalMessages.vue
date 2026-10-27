@@ -27,7 +27,8 @@
             </div>
             <template v-else-if="wallList.length">
                 <div class="wall-grid">
-                    <div v-for="message in wallList" :key="message.id" class="wall-card portal-glass">
+                    <div v-for="message in wallList" :key="message.id" class="wall-card portal-glass"
+                        :class="cardTone(message.id)">
                         <div class="wall-head">
                             <yk-avatar :size="32" :img-url="message.senderAvatar || undefined" />
                             <div class="wall-user">
@@ -76,6 +77,14 @@ const wallSubmitting = ref(false)
 const wallError = ref('')
 const wallPage = ref(1)
 const wallPageSize = ref(12)
+
+// 留言卡片配色：按 id 稳定分配一个色阶，避免整墙清一色白板。
+// 颜色全部由 --pcolor 与页面底色混合而来，因此明暗主题切换时自动跟随。
+const TONE_COUNT = 6
+const cardTone = (id: number): string => {
+    const tone = Math.abs(id) % TONE_COUNT
+    return `tone-${tone}`
+}
 
 const formatDateTime = (value: string): string => {
     const date = new Date(value)
@@ -245,6 +254,36 @@ onUnmounted(() => {
         box-shadow: var(--portal-shadow-hover);
         background: var(--portal-surface-hover);
     }
+}
+
+// 留言卡片色阶：同一主色的不同浓度，混回页面底色保证明暗双态都可读
+.wall-card.tone-0 {
+    background: color-mix(in srgb, var(--pcolor) 8%, var(--portal-page-bg));
+}
+
+.wall-card.tone-1 {
+    background: color-mix(in srgb, var(--pcolor) 14%, var(--portal-page-bg));
+}
+
+.wall-card.tone-2 {
+    background: color-mix(in srgb, var(--pcolor) 20%, var(--portal-page-bg));
+}
+
+.wall-card.tone-3 {
+    background: color-mix(in srgb, var(--pcolor8) 12%, var(--portal-page-bg));
+}
+
+.wall-card.tone-4 {
+    background: color-mix(in srgb, var(--pcolor8) 18%, var(--portal-page-bg));
+}
+
+.wall-card.tone-5 {
+    background: color-mix(in srgb, var(--pcolor9) 16%, var(--portal-page-bg));
+}
+
+// 卡片顶部再加一条主色细边，强化每片卡片的独立感
+.wall-card[class*='tone-'] {
+    border-top: 2px solid color-mix(in srgb, var(--pcolor) 45%, transparent);
 }
 
 .wall-head {

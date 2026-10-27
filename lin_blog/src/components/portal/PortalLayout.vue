@@ -16,9 +16,27 @@
                     </RouterLink>
                 </nav>
 
-                <button type="button" class="nav-action" @click="goAdmin">
-                    进入后台
-                </button>
+                <div class="nav-tools">
+                    <!-- 主题切换：与后台设置共用同一套预设与 applyThemePreset，切换后双向同步 -->
+                    <label class="theme-picker" :title="`当前主题：${activePresetName}`">
+                        <span class="theme-picker-icon" aria-hidden="true">
+                            <IconPaintBrushFill />
+                        </span>
+                        <select v-model="activePresetId" class="theme-select" aria-label="切换主题"
+                            @change="onPresetSelect">
+                            <option v-for="preset in themePresets" :key="preset.id" :value="preset.id">
+                                {{ preset.name }}
+                            </option>
+                        </select>
+                        <span class="theme-picker-caret" aria-hidden="true">
+                            <IconDownOutline />
+                        </span>
+                    </label>
+
+                    <button type="button" class="nav-action" @click="goAdmin">
+                        进入后台
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -50,9 +68,12 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import unityLogo from '../../assets/svg/unity.svg'
 import PortalAmbientBackground from './PortalAmbientBackground.vue'
+import { themePresets, findPreset } from '../../utils/themes'
+import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
 
 const props = withDefaults(defineProps<{
     // 导航高亮覆盖项：子页面可指定高亮哪个入口
@@ -79,6 +100,30 @@ const isActive = (path: string): boolean => {
 }
 
 const year = computed(() => new Date().getFullYear())
+
+// 主题预设：与后台设置共用同一份数据与切换函数，
+// applyThemePreset 会派发事件，后台设置页监听后可同步高亮
+const activePresetId = ref(getStoredPresetId())
+const activePresetName = computed(() => findPreset(activePresetId.value).name)
+
+// 后台改主题后同步门户下拉框的选中项
+const onPresetChange = (event: Event) => {
+    const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
+    if (presetId) activePresetId.value = presetId
+}
+
+// 下拉框变更 → 应用主题（内部同步 data-theme 与 data-theme-preset）
+const onPresetSelect = () => {
+    applyThemePreset(activePresetId.value)
+}
+
+onMounted(() => {
+    window.addEventListener('theme:preset-change', onPresetChange)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('theme:preset-change', onPresetChange)
+})
 
 const goAdmin = () => router.push('/overView')
 </script>
@@ -169,6 +214,76 @@ const goAdmin = () => router.push('/overView')
         transform: translateY(-1px);
         box-shadow: var(--portal-shadow-soft);
     }
+}
+
+// 顶栏右侧工具区：主题切换在选择「进入后台」左侧
+.nav-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+// 主题下拉：外观做成与导航一致的胶囊，原生 select 保证键盘可用
+.theme-picker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-surface-strong);
+    border: 1px solid var(--portal-surface-border);
+    color: var(--portal-text-secondary);
+    cursor: pointer;
+    transition: all var(--portal-transition-fast);
+
+    &:hover,
+    &:focus-within {
+        border-color: var(--portal-accent);
+        color: var(--portal-accent);
+    }
+
+    &:focus-within {
+        box-shadow: 0 0 0 3px var(--portal-accent-soft);
+    }
+}
+
+.theme-select {
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    padding-right: 4px;
+    max-width: 88px;
+
+    &:focus {
+        outline: none;
+    }
+
+    // 下拉展开后的选项由系统绘制，这里只保证文字色在明暗下都可读
+    option {
+        color: #333;
+        background: #fff;
+    }
+}
+
+.theme-picker-icon,
+.theme-picker-caret {
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.theme-picker-caret {
+    font-size: 12px;
+    opacity: 0.7;
 }
 
 .portal-body {
@@ -276,6 +391,26 @@ const goAdmin = () => router.push('/overView')
     .nav-action {
         padding: 7px 14px;
         font-size: 13px;
+    }
+
+    // 窄屏空间有限：主题选择器只保留图标，避免挤掉「进入后台」
+    .nav-tools {
+        gap: 8px;
+    }
+
+    .theme-picker {
+        padding: 7px 9px;
+    }
+
+    .theme-select {
+        max-width: 0;
+        width: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .theme-picker-caret {
+        display: none;
     }
 }
 </style>

@@ -65,14 +65,22 @@
                 <article v-for="(article, i) in articleList" :key="article.id" class="post-row"
                     :style="{ animationDelay: `${Math.min(i, 8) * 45}ms` }">
                     <button type="button" class="post-link" @click="openArticle(article.id)">
-                        <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
-                        <h3 class="post-title">{{ article.title }}</h3>
-                        <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
-                        <div class="post-meta">
-                            <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
-                            <span><IconEyeOutline />{{ article.views }}</span>
-                            <span><IconLikeOutline />{{ article.likes }}</span>
-                        </div>
+                        <!-- 封面：有图显示图，无图用主题色排印占位，不重复展示误导性默认图 -->
+                        <span class="post-cover portal-media-box" :class="{ 'is-empty': !articleCover(article) }">
+                            <img v-if="articleCover(article)" :src="articleCover(article)" :alt="article.title"
+                                loading="lazy" />
+                            <span v-else class="post-cover-glyph">{{ (article.title || '文').trim().charAt(0) }}</span>
+                        </span>
+                        <span class="post-body">
+                            <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
+                            <h3 class="post-title">{{ article.title }}</h3>
+                            <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
+                            <span class="post-meta">
+                                <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
+                                <span><IconEyeOutline />{{ article.views }}</span>
+                                <span><IconLikeOutline />{{ article.likes }}</span>
+                            </span>
+                        </span>
                     </button>
                 </article>
             </div>
@@ -153,7 +161,7 @@ import {
     type PortalDiary,
     type PortalSubset,
 } from '../api/portal'
-import { parseGalleryContent, type ArticleItem } from '../api/article'
+import { extractArticleCover, parseGalleryContent, type ArticleItem } from '../api/article'
 import { weathers } from '../utils/weather'
 
 const articleList = ref<ArticleItem[]>([])
@@ -205,15 +213,8 @@ const facts = computed(() => [
 const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, index) => {
     const images = parseGalleryContent(item.content)
     const cover = item.cover || images[0] || ''
-    const pattern = [
-        { span: 'wide' as const, offset: 0 as const },
-        { span: 'portrait' as const, offset: 1 as const },
-        { span: 'small' as const, offset: 2 as const },
-        { span: 'portrait' as const, offset: 0 as const },
-        { span: 'wide' as const, offset: 1 as const },
-        { span: 'small' as const, offset: 0 as const }
-    ]
-    const slot = pattern[index % pattern.length]
+    // 首图作主导大图，之后依次以方形小图落在右列，形成主次分明的三联
+    const span: WallPrint['span'] = index === 0 ? 'wide' : index % 2 === 1 ? 'portrait' : 'small'
     return {
         id: item.id,
         title: item.title,
@@ -224,8 +225,8 @@ const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, i
         tone: Math.abs(item.id) % 4,
         count: images.length,
         to: `/portal/gallery?open=${item.id}`,
-        span: slot.span,
-        offset: slot.offset
+        span,
+        offset: 0
     }
 }))
 
@@ -238,6 +239,9 @@ const formatDate = (value: string): string => {
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
+
+// 列表封面：没有真实封面时返回空，改走主题色排印占位
+const articleCover = (article: ArticleItem): string => extractArticleCover(article)
 
 const loadArticles = async () => {
     articleLoading.value = true
@@ -594,8 +598,8 @@ onUnmounted(() => {
 
 .post-link {
     display: grid;
-    grid-template-columns: 110px 1fr;
-    column-gap: 28px;
+    grid-template-columns: 168px 1fr;
+    column-gap: 24px;
     width: 100%;
     padding: 24px 0;
     border: none;
@@ -606,8 +610,45 @@ onUnmounted(() => {
     transition: background-color 0.2s ease;
 }
 
-.post-date {
+// 封面：固定 4:3 比例容器，避免原始尺寸撑破布局
+.post-cover {
     grid-row: 1 / span 3;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--portal-radius-small);
+    overflow: hidden;
+    background: var(--portal-accent-soft);
+    transition: transform var(--portal-transition-medium), box-shadow var(--portal-transition-medium);
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+}
+
+// 无封面时的排印占位：主题色渐变 + 标题首字，避免生硬灰块
+.post-cover-glyph {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    font-family: var(--portal-serif);
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--portal-accent-strong);
+    opacity: 0.55;
+}
+
+.post-body {
+    display: block;
+    min-width: 0;
+}
+
+.post-date {
     font-size: 13px;
     color: var(--portal-text-secondary);
     font-variant-numeric: tabular-nums;
@@ -661,6 +702,12 @@ onUnmounted(() => {
 .post-row:hover {
     .post-title {
         color: var(--portal-accent);
+    }
+
+    // hover 时封面轻微放大与描边，强化可点击感
+    .post-cover {
+        transform: scale(1.02);
+        box-shadow: var(--portal-shadow-hover);
     }
 }
 
@@ -753,10 +800,13 @@ onUnmounted(() => {
     }
     .post-link {
         grid-template-columns: 1fr;
-        row-gap: 6px;
+        row-gap: 12px;
     }
-    .post-date {
+
+    // 窄屏改为封面在上、16:9 全宽，阅读流更自然
+    .post-cover {
         grid-row: auto;
+        aspect-ratio: 16 / 9;
     }
 }
 

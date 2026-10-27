@@ -1,7 +1,7 @@
 <template>
     <div class="photo-wall">
         <RouterLink v-for="(item, index) in items" :key="item.id" :to="item.to" class="wall-print"
-            :class="[`is-${item.span}`, `at-${item.offset}`]"
+            :class="[`is-${item.span}`, `tone-${item.tone ?? 0}`]"
             :style="{ animationDelay: `${Math.min(index, 11) * 55}ms` }">
             <div class="print-frame">
                 <img v-if="item.image" :src="item.image" :alt="item.alt" loading="lazy" />
@@ -9,10 +9,14 @@
                     <span>{{ item.glyph }}</span>
                 </div>
                 <span class="print-count" v-if="item.count">{{ item.count }} 张</span>
+                <!-- 悬停时从底部升起的说明层，保证文字在图片上也能读清 -->
+                <div class="print-veil">
+                    <span class="print-veil-title">{{ item.title }}</span>
+                    <span v-if="item.note" class="print-veil-note">{{ item.note }}</span>
+                </div>
             </div>
             <div class="print-caption">
                 <h3>{{ item.title }}</h3>
-                <p v-if="item.note">{{ item.note }}</p>
             </div>
         </RouterLink>
     </div>
@@ -45,11 +49,12 @@ withDefaults(defineProps<{
 <style lang="less" scoped>
 .photo-wall {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    // dense：让后面的卡片自动填补前排留下的空洞，视觉更紧凑
-    grid-auto-flow: dense;
-    column-gap: 24px;
-    row-gap: 52px;
+    // 稳定三联：左侧一张大图主导，右侧两张小图叠放，
+    // 避免 12 栏 dense 在只有少量卡片时留下大片空洞
+    grid-template-columns: 1.6fr 1fr;
+    grid-auto-rows: min-content;
+    column-gap: 20px;
+    row-gap: 20px;
     align-items: start;
 }
 
@@ -67,42 +72,39 @@ withDefaults(defineProps<{
             transform: scale(1.04);
         }
 
+        .print-veil {
+            opacity: 1;
+        }
+
         .print-caption h3 {
-            color: @pcolor;
+            color: var(--portal-accent);
         }
     }
 
-    // 跨栏与错位：所有边缘都落在栏线上，偏移取自固定档位
+    // 大图占左侧整列，小图依次落在右列，整体高度由内容自然撑开
     &.is-wide {
-        grid-column: span 7;
+        grid-column: 1;
+        grid-row: 1 / span 2;
     }
 
     &.is-portrait {
-        grid-column: span 4;
+        grid-column: 2;
     }
 
     &.is-small {
-        grid-column: span 3;
-    }
-
-    &.at-0 {
-        align-self: start;
-    }
-
-    &.at-1 {
-        margin-top: 64px;
-    }
-
-    &.at-2 {
-        margin-top: 132px;
+        grid-column: 2;
     }
 }
 
 .print-frame {
     position: relative;
     overflow: hidden;
-    border-radius: 2px;
-    background: @bg-color-l;
+    border-radius: var(--portal-radius-card);
+    // 玻璃卡：与首页其它板块保持一致的质感
+    border: 1px solid var(--portal-surface-border);
+    background: var(--portal-surface);
+    box-shadow: var(--portal-shadow-soft);
+    transition: box-shadow var(--portal-transition-medium);
 
     img {
         display: block;
@@ -113,16 +115,60 @@ withDefaults(defineProps<{
     }
 }
 
+// 大图更高，小图矮一些，形成主次
 .is-wide .print-frame {
-    aspect-ratio: 16 / 10;
-}
-
-.is-portrait .print-frame {
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 4 / 5;
 }
 
 .is-small .print-frame {
     aspect-ratio: 1 / 1;
+}
+
+.is-portrait .print-frame {
+    aspect-ratio: 1 / 1;
+}
+
+// 悬停说明层：从底部升起的渐变，保证文字在任意图片上都可读
+.print-veil {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 28px 14px 12px;
+    opacity: 0;
+    transition: opacity var(--portal-transition-medium);
+    background: linear-gradient(
+        to top,
+        color-mix(in srgb, var(--portal-page-bg) 88%, transparent),
+        color-mix(in srgb, var(--portal-page-bg) 40%, transparent) 60%,
+        transparent
+    );
+}
+
+.print-veil-title {
+    font-family: var(--portal-serif);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--portal-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.print-veil-note {
+    font-size: 12px;
+    color: var(--portal-text-secondary);
+}
+
+// 不支持 color-mix 时退回纯色渐变，避免出现透明无效层
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .print-veil {
+        background: linear-gradient(to top, var(--portal-page-bg), transparent);
+    }
 }
 
 // 无封面时的排印占位：主色块 + 首字，不用图片也不用灰色空块
@@ -164,38 +210,29 @@ withDefaults(defineProps<{
     bottom: 10px;
     padding: 3px 9px;
     border-radius: 999px;
-    background: rgba(0, 0, 0, 0.5);
-    color: #fff;
+    background: var(--portal-surface-strong);
+    border: 1px solid var(--portal-surface-border);
+    color: var(--portal-text-secondary);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+    z-index: 3;
 }
 
 .print-caption {
-    padding-top: 12px;
+    padding-top: 10px;
 
     h3 {
         margin: 0;
         font-family: var(--portal-serif);
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 600;
         line-height: 1.5;
-        color: @font-color-l;
+        color: var(--portal-text-primary);
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
         transition: color 0.2s ease;
-    }
-
-    p {
-        margin: 4px 0 0;
-        font-size: 13px;
-        line-height: 1.7;
-        color: @font-color-s;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
     }
 }
 
@@ -213,55 +250,44 @@ withDefaults(defineProps<{
 
 @media (max-width: 900px) {
     .photo-wall {
-        column-gap: 16px;
-        row-gap: 36px;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 14px;
+        row-gap: 22px;
     }
 
     .wall-print {
         &.is-wide {
-            grid-column: span 12;
+            grid-column: 1 / span 2;
+            grid-row: auto;
         }
 
-        &.is-portrait {
-            grid-column: span 7;
-        }
-
+        &.is-portrait,
         &.is-small {
-            grid-column: span 5;
+            grid-column: auto;
         }
+    }
 
-        &.at-1 {
-            margin-top: 40px;
-        }
-
-        &.at-2 {
-            margin-top: 72px;
-        }
+    .is-wide .print-frame {
+        aspect-ratio: 16 / 10;
     }
 }
 
 @media (max-width: 560px) {
-    // 移动端保留错落感，但用交替宽度而非全部满宽
+    // 移动端退回单列，触屏没有 hover，说明层常驻展示
+    .photo-wall {
+        grid-template-columns: 1fr;
+    }
+
     .wall-print {
-        &.is-wide {
-            grid-column: span 12;
-        }
-
-        &.is-portrait {
-            grid-column: span 8;
-        }
-
+        &.is-wide,
+        &.is-portrait,
         &.is-small {
-            grid-column: span 7;
+            grid-column: 1;
         }
+    }
 
-        &.at-1 {
-            margin-top: 28px;
-        }
-
-        &.at-2 {
-            margin-top: 48px;
-        }
+    .print-veil {
+        opacity: 1;
     }
 }
 </style>
