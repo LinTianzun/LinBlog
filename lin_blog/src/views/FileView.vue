@@ -4,6 +4,7 @@
             <template #custom>
                 <yk-space align="center">
                     <yk-text type="third">支持多选，单个文件不超过 20MB</yk-text>
+                    <yk-button type="secondary" @click="openTrash">回收站</yk-button>
                     <yk-button @click="openUpload">上传</yk-button>
                 </yk-space>
             </template>
@@ -12,6 +13,8 @@
         <subset classify="resource" @nowSubset="handleSubset" />
 
         <files ref="filesRef" :subset-id="subsetId" :uncategorized="uncategorized" />
+
+        <fileTrash v-model:visible="trashVisible" @restored="refreshAll" />
 
         <yk-modal :model-value="uploadVisible" title="上传文件" @update:model-value="handleModalChange">
             <yk-space dir="vertical" size="m" style="width: 100%;">
@@ -50,6 +53,7 @@ import { ref, nextTick, getCurrentInstance } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import subset from '../components/subset/subset.vue'
 import files from '../components/files/files.vue'
+import fileTrash from '../components/files/fileTrash.vue'
 import { useSubsetStore } from '../store/subset'
 import { getFileUploadUrl, getRequestErrorMessage } from '../api/file'
 import { createUploadTicket } from '../utils/uploadUrl.ts'
@@ -98,6 +102,8 @@ const uncategorized = ref(false)
 const uploadVisible = ref(false)
 const uploaderVisible = ref(true)
 const uploaderKey = ref(0)
+// 回收站弹窗：删除后的文件可在此恢复
+const trashVisible = ref(false)
 const filesRef = ref<FilesExpose | null>(null)
 // 上传时归属的分组，取当前筛选中的具体分组
 const subsetScopeId = ref<number | undefined>(undefined)
@@ -188,6 +194,10 @@ const openUpload = async (): Promise<void> => {
     // 先换取票据再挂载上传组件，避免用户抢在票据返回前就选文件
     await refreshUploadUrl()
     void remountUploader()
+}
+
+const openTrash = (): void => {
+    trashVisible.value = true
 }
 
 const closeModal = (): void => {

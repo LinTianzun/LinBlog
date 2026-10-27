@@ -6,13 +6,11 @@ const fileModel = require('../model/dbModel/file/index')
 const subsetModel = require('../model/dbModel/subset/index')
 const { writeSystemLog } = require('../utils/logHelper')
 const { formatPaginationParams } = require('../utils/paginationUtil')
+const fileStorage = require('../utils/fileStorage')
+const { runFileLifecycleCleanup } = require('../utils/fileLifecycle')
 
-const uploadDir = path.join(__dirname, '..', 'data', 'files')
+const uploadDir = fileStorage.activeDir
 const maxFileSize = 20 * 1024 * 1024
-
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true })
-}
 
 // 文件落盘命名：时间戳-UUID+原扩展名，避免重名覆盖
 const storage = multer.diskStorage({
@@ -294,7 +292,7 @@ async function moveFiles(req, res) {
 }
 
 /**
- * 批量删除文件（逻辑删除，磁盘文件保留以便恢复）
+ * 批量删除文件（逻辑删除并把本地文件移入非公开备份区）
  */
 async function deleteFiles(req, res) {
     try {
@@ -303,9 +301,28 @@ async function deleteFiles(req, res) {
             return res.status(400).json({ code: 400, message: '请选择要删除的文件' })
         }
 
+        const existing = await fileModel.findFilesByIds(ids)
+        const activeFiles = existing.filter(file => Number(file.status) === 1)
         const deleted = await fileModel.softDeleteFiles(ids)
         if (deleted === 0) {
             return res.status(404).json({ code: 404, message: '文件不存在或已删除' })
+        }
+
+        let backedUpCount = 0
+        let backupFailedCount = 0
+        for (const file of activeFiles) {
+            if (fileStorage.isRemoteUrl(file.url)) continue
+            try {
+                const result = await fileStorage.moveToBackup(file.url)
+                if (result.moved || result.reason === 'already_backed_up') {
+                    backedUpCount += 1
+                } else if (result.reason !== 'missing') {
+                    backupFailedCount += 1
+                }
+            } catch (err) {
+                backupFailedCount += 1
+                console.error(`[File] 备份文件失败 ${file.url}：`, err.message)
+            }
         }
 
         writeSystemLog({
@@ -314,13 +331,168 @@ async function deleteFiles(req, res) {
             module: 'file',
             targetType: 'file',
             targetId: null,
-            detail: `删除 ${deleted} 个文件`,
+            detail: `删除 ${deleted} 个文件，备份 ${backedUpCount} 个`,
             ip: req.ip || null,
         })
 
-        res.json({ code: 200, message: '删除成功', data: { deletedCount: deleted } })
+        res.json({
+            code: 200,
+            message: '删除成功',
+            data: { deletedCount: deleted, backedUpCount, backupFailedCount }
+        })
     } catch (err) {
         res.status(500).json({ code: 500, message: '文件删除失败：' + err.message })
+    }
+}
+
+/**
+ * 回收站列表：只返回仍保留备份、可恢复的逻辑删除文件。
+ */
+async function getTrashFiles(req, res) {
+    try {
+        const params = formatPaginationParams(req.query, {
+            defaultPageSize: 8,
+            maxPageSize: 50
+        })
+        if (!params.success) {
+            return res.status(400).json({ code: 400, message: params.errorMsg })
+        }
+
+        const { page, pageSize, offset } = params.data
+        const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
+        const { list, total } = await fileModel.getDeletedFilesByPage({
+            keyword: keyword || undefined,
+            pageSize,
+            offset
+        })
+
+        const formatted = await Promise.all(list.map(async (item) => ({
+            id: item.id,
+            fileName: item.file_name,
+            format: item.format,
+            size: item.size,
+            url: toAccessUrl(item.id, item.url),
+            subsetId: item.subset_id,
+            createdAt: item.created_at,
+            deletedAt: item.deleted_at,
+            recoverable: fileStorage.isRemoteUrl(item.url)
+                || await fileStorage.backupExists(item.url)
+        })))
+
+        res.json({
+            code: 200,
+            message: '获取回收站成功',
+            data: {
+                total,
+                page,
+                pageSize,
+                totalPage: Math.ceil(total / pageSize),
+                list: formatted
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '获取回收站失败：' + err.message })
+    }
+}
+
+/**
+ * 批量恢复回收站文件。本地文件先从非公开备份区移回，再恢复数据库状态。
+ */
+async function restoreFiles(req, res) {
+    try {
+        const ids = normalizeIdList(req.body.fileIds)
+        if (ids.length === 0) {
+            return res.status(400).json({ code: 400, message: '请选择要恢复的文件' })
+        }
+
+        const files = await fileModel.findFilesByIds(ids)
+        const recoverable = files.filter(
+            file => Number(file.status) === 0 && !file.backup_deleted_at
+        )
+        if (recoverable.length === 0) {
+            return res.status(404).json({ code: 404, message: '没有可恢复的文件' })
+        }
+
+        let restoredCount = 0
+        const failed = []
+
+        for (const file of recoverable) {
+            let diskRestored = false
+            if (!fileStorage.isRemoteUrl(file.url)) {
+                try {
+                    const result = await fileStorage.restoreFromBackup(file.url)
+                    if (!result.restored && result.reason !== 'already_active') {
+                        failed.push({ id: file.id, reason: result.reason || 'restore_failed' })
+                        continue
+                    }
+                    diskRestored = result.restored
+                } catch (err) {
+                    failed.push({ id: file.id, reason: err.message })
+                    continue
+                }
+            }
+
+            const affected = await fileModel.restoreFile(file.id)
+            if (affected !== 1) {
+                if (diskRestored) {
+                    await fileStorage.moveToBackup(file.url).catch(() => {})
+                }
+                failed.push({ id: file.id, reason: 'record_not_restorable' })
+                continue
+            }
+            restoredCount += 1
+        }
+
+        if (restoredCount > 0) {
+            writeSystemLog({
+                userId: req.user?.userId ?? null,
+                action: 'update',
+                module: 'file',
+                targetType: 'file',
+                targetId: null,
+                detail: `从回收站恢复 ${restoredCount} 个文件`,
+                ip: req.ip || null,
+            })
+        }
+
+        const statusCode = restoredCount > 0 ? 200 : 409
+        res.status(statusCode).json({
+            code: restoredCount > 0 ? 200 : 409,
+            message: restoredCount > 0 ? '恢复完成' : '文件恢复失败',
+            data: { restoredCount, failedCount: failed.length, failed }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '文件恢复失败：' + err.message })
+    }
+}
+
+/**
+ * 管理员手动触发文件生命周期清理，定时任务与这里共用同一实现。
+ */
+async function cleanupFiles(req, res) {
+    try {
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({ code: 403, message: '仅管理员可以执行文件清理' })
+        }
+
+        const result = await runFileLifecycleCleanup({
+            dryRun: req.body?.dryRun === true
+        })
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'file',
+            targetType: 'file',
+            targetId: null,
+            detail: result.dryRun
+                ? '预演文件生命周期清理'
+                : `清理孤儿文件 ${result.removedOrphans} 个，过期备份 ${result.removedExpiredBackups} 个`,
+            ip: req.ip || null,
+        })
+
+        res.json({ code: 200, message: result.dryRun ? '清理预演完成' : '清理完成', data: result })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '文件清理失败：' + err.message })
     }
 }
 
@@ -330,5 +502,8 @@ module.exports = {
     uploadFile,
     downloadFile,
     moveFiles,
-    deleteFiles
+    deleteFiles,
+    getTrashFiles,
+    restoreFiles,
+    cleanupFiles
 }

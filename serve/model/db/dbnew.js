@@ -159,12 +159,15 @@ const tablesSql = {
     url VARCHAR(255) NOT NULL COMMENT '文件存储地址',
     subset_id INT UNSIGNED COMMENT '所属分类ID',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-删除',
+    deleted_at DATETIME NULL COMMENT '移入备份区的时间',
+    backup_deleted_at DATETIME NULL COMMENT '备份内容清理时间',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
     PRIMARY KEY (id),
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
     INDEX idx_subset (subset_id),
     INDEX idx_format (format),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_file_deleted_at (status, deleted_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件存储表';`,
 
   article: `CREATE TABLE IF NOT EXISTS article(
@@ -1142,6 +1145,32 @@ async function ensureViewStatsSchema(exec = query) {
   });
 }
 
+async function ensureFileLifecycleSchema(exec = query) {
+  await ensureColumn(exec, 'file', 'deleted_at', {
+    definition: 'DATETIME NULL',
+    comment: '移入备份区的时间'
+  });
+  await ensureColumn(exec, 'file', 'backup_deleted_at', {
+    definition: 'DATETIME NULL',
+    comment: '备份内容清理时间'
+  });
+
+  const [lifecycleIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'file'
+      AND INDEX_NAME = 'idx_file_deleted_at'
+      AND SEQ_IN_INDEX = 1
+  `);
+  if (!lifecycleIndex) {
+    await exec('ALTER TABLE file ADD INDEX idx_file_deleted_at (status, deleted_at)');
+  }
+
+  // 存量软删记录缺少删除时间，从升级时开始计算备份保留期。
+  await exec('UPDATE file SET deleted_at = NOW() WHERE status = 0 AND deleted_at IS NULL');
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1164,6 +1193,10 @@ const migrations = [
   {
     version: '20261026_view_stats',
     up: ensureViewStatsSchema
+  },
+  {
+    version: '20261027_file_lifecycle',
+    up: ensureFileLifecycleSchema
   }
 ];
 

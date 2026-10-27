@@ -13,7 +13,7 @@
                 </yk-text>
             </yk-space>
             <yk-space>
-                <yk-popconfirm title="确认删除所选文件？删除后不可恢复" trigger="click" placement="topRight"
+                <yk-popconfirm title="确认删除所选文件？可在回收站恢复" trigger="click" placement="topRight"
                     @confirm="deleteMultipleFile">
                     <IconDeleteOutline class="files-tool-delete" />
                 </yk-popconfirm>

@@ -19,6 +19,7 @@ declare module 'vue' {
     EditPhoto: typeof import('./src/components/gallery/editPhoto.vue')['default']
     Files: typeof import('./src/components/files/files.vue')['default']
     FilesItem: typeof import('./src/components/files/filesItem.vue')['default']
+    FileTrash: typeof import('./src/components/files/fileTrash.vue')['default']
     Forms: typeof import('./src/components/forms/forms.vue')['default']
     Gallery: typeof import('./src/components/gallery/gallery.vue')['default']
     GalleryItem: typeof import('./src/components/gallery/galleryItem.vue')['default']
