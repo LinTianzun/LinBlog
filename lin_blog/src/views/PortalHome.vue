@@ -47,19 +47,7 @@
             </div>
         </section>
 
-        <!-- 分类索引：一眼看完全部分类分布 -->
-        <section class="block portal-reveal">
-            <h2 class="portal-section-title">分类索引</h2>
-            <nav class="index-list" aria-label="文章分类">
-                <RouterLink v-for="subset in subsetList" :key="subset.id" class="index-item portal-glass"
-                    :to="`/portal/articles?subset=${subset.id}`">
-                    <span class="index-name">{{ subset.name }}</span>
-                    <span class="index-count">{{ subset.value }}</span>
-                </RouterLink>
-                <p v-if="!subsetList.length" class="index-empty">还没有分类</p>
-            </nav>
-        </section>
-
+        <!-- 分类索引已移入文章页：页面内有完整的分类/标签/搜索/排序筛选，首页不再重复 -->
         <!-- 最新文章 -->
         <section class="block portal-reveal">
             <div class="block-head">
@@ -184,19 +172,7 @@
             </div>
         </section>
 
-        <!-- 标签云 -->
-        <section class="block portal-reveal">
-            <h2 class="portal-section-title">标签</h2>
-            <div class="tag-cloud">
-                <RouterLink v-for="label in labelList" :key="label.id" class="tag-item portal-glass"
-                    :to="`/portal/articles?label=${encodeURIComponent(label.name)}`">
-                    {{ label.name }}
-                    <span>{{ label.value }}</span>
-                </RouterLink>
-                <p v-if="!labelList.length" class="index-empty">还没有标签</p>
-            </div>
-        </section>
-
+        <!-- 标签云已移入文章页，与分类筛选并列，首页不再重复 -->
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
@@ -216,14 +192,12 @@ import {
     getPublicArticles,
     getPublicArticleById,
     getPublicSubsets,
-    getPublicLabels,
     getPublicDiaries,
     getWallMessages,
     createWallMessage,
     type PortalWallMessage,
     type PortalDiary,
     type PortalSubset,
-    type PortalLabel
 } from '../api/portal'
 import { parseGalleryContent, type ArticleItem } from '../api/article'
 import { weathers } from '../utils/weather'
@@ -235,7 +209,6 @@ const galleryLoading = ref(false)
 const diaryList = ref<PortalDiary[]>([])
 const diaryLoading = ref(false)
 const subsetList = ref<PortalSubset[]>([])
-const labelList = ref<PortalLabel[]>([])
 
 const articleVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
@@ -332,7 +305,8 @@ const formatDateTime = (value: string): string => {
 const loadArticles = async () => {
     articleLoading.value = true
     try {
-        const result = await getPublicArticles({ page: 1, pageSize: 6 })
+        // 首页只做精选预览，完整列表在文章页/图库页翻阅
+        const result = await getPublicArticles({ page: 1, pageSize: 3 })
         if (result.code === 200) {
             articleList.value = result.data?.list || []
             totalArticles.value = result.data?.total || 0
@@ -345,7 +319,7 @@ const loadArticles = async () => {
 const loadGallery = async () => {
     galleryLoading.value = true
     try {
-        const result = await getPublicArticles({ page: 1, pageSize: 6, classify: 'image' })
+        const result = await getPublicArticles({ page: 1, pageSize: 3, classify: 'image' })
         if (result.code === 200) {
             galleryList.value = result.data?.list || []
         }
@@ -359,7 +333,7 @@ const loadGallery = async () => {
 const loadDiary = async () => {
     diaryLoading.value = true
     try {
-        const result = await getPublicDiaries({ page: 1, pageSize: 6 })
+        const result = await getPublicDiaries({ page: 1, pageSize: 3 })
         if (result.code === 200) {
             diaryList.value = result.data?.list || []
             totalDiaries.value = result.data?.total || 0
@@ -371,23 +345,22 @@ const loadDiary = async () => {
     }
 }
 
-const loadFilters = async () => {
-    const [subsetResult, labelResult] = await Promise.allSettled([
-        getPublicSubsets(),
-        getPublicLabels()
-    ])
-    if (subsetResult.status === 'fulfilled' && subsetResult.value.code === 200) {
-        subsetList.value = (subsetResult.value.data?.list || []).filter(item => item.value > 0)
-    }
-    if (labelResult.status === 'fulfilled' && labelResult.value.code === 200) {
-        labelList.value = (labelResult.value.data?.list || []).filter(item => item.value > 0)
+// 首页不再展示分类/标签列表，只取分类数量用于统计卡
+const loadSubsetCount = async () => {
+    try {
+        const result = await getPublicSubsets()
+        if (result.code === 200) {
+            subsetList.value = (result.data?.list || []).filter(item => item.value > 0)
+        }
+    } catch {
+        // 统计失败不影响首页其他板块
     }
 }
 
 const loadWall = async () => {
     wallLoading.value = true
     try {
-        const result = await getWallMessages({ page: 1, pageSize: 12 })
+        const result = await getWallMessages({ page: 1, pageSize: 6 })
         if (result.code === 200) {
             wallList.value = result.data?.list || []
             wallTotal.value = result.data?.total || 0
@@ -479,7 +452,7 @@ onMounted(() => {
     void loadArticles()
     void loadGallery()
     void loadDiary()
-    void loadFilters()
+    void loadSubsetCount()
     void loadWall()
     // 启动轮播：单一共享 interval，切页不重置
     currentIndex.value = deriveCurrentIndex()
@@ -702,48 +675,6 @@ onUnmounted(() => {
     align-items: center;
     justify-content: center;
     min-height: 220px;
-}
-
-// ---------- 分类索引 ----------
-.index-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.index-item {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 10px;
-    padding: 14px 22px;
-    border-radius: var(--portal-radius-pill);
-    text-decoration: none;
-    transition: all var(--portal-transition-fast);
-
-    &:hover {
-        background: var(--portal-accent-soft);
-        transform: translateY(-2px);
-        border-color: var(--portal-accent);
-    }
-
-    .index-name {
-        font-family: var(--portal-serif);
-        font-size: 17px;
-        font-weight: 600;
-        color: var(--portal-text-primary);
-    }
-
-    .index-count {
-        font-size: 13px;
-        color: var(--portal-text-secondary);
-        font-variant-numeric: tabular-nums;
-    }
-}
-
-.index-empty {
-    margin: 0;
-    font-size: 14px;
-    color: var(--portal-text-secondary);
 }
 
 // ---------- 文章列表 ----------
@@ -987,35 +918,6 @@ onUnmounted(() => {
     color: var(--portal-text-secondary);
     word-break: break-word;
     white-space: pre-wrap;
-}
-
-// ---------- 标签云 ----------
-.tag-cloud {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.tag-item {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 6px 14px;
-    font-size: 13px;
-    color: var(--portal-text-secondary);
-    text-decoration: none;
-    transition: all var(--portal-transition-fast);
-
-    span {
-        font-size: 11px;
-        color: var(--portal-text-tertiary);
-        font-variant-numeric: tabular-nums;
-    }
-
-    &:hover {
-        background: var(--portal-accent-soft);
-        color: var(--portal-accent);
-    }
 }
 
 // ---------- 响应式 ----------
