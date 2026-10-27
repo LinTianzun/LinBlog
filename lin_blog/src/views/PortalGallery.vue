@@ -1,12 +1,10 @@
 <template>
     <PortalLayout active-path="/portal/gallery">
-        <section class="page-head portal-reveal">
-            <h1 class="page-title">摄影图库</h1>
-            <p class="page-lead">
-                共 {{ total }} 组照片。点开任意一组，可以在当前页放大查看每一张。
-            </p>
-
+        <PortalPageHeader index="02" kicker="PHOTOGRAPHS" title="摄影"
+            :description="`共 ${total} 组照片。点开任意一组，可以在当前页放大查看每一张。`"
+            aside-label="VISUAL FIELD NOTES" :aside-value="`${total} 组`" aside-note="光线、街角与旅途中的停顿，组成一本持续生长的影像志。">
             <div class="sort-bar">
+                <span class="filter-caption">SORT</span>
                 <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
                     @click="setSort('latest')">
                     最新
@@ -16,7 +14,7 @@
                     最热
                 </button>
             </div>
-        </section>
+        </PortalPageHeader>
 
         <section class="gallery-area">
             <div v-if="loading" class="gallery-state">
@@ -61,6 +59,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
 import { getPublicArticles } from '../api/portal'
 import type { PortalSort } from '../api/portal'
@@ -161,32 +160,17 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
-.page-head {
-    padding: 64px 0 32px;
-}
-
-.page-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: clamp(34px, 4vw, 52px);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--portal-text-primary);
-}
-
-.page-lead {
-    max-width: 46ch;
-    margin: 16px 0 0;
-    font-size: 16px;
-    line-height: 1.85;
-    color: var(--portal-text-secondary);
-}
-
 .sort-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-top: 24px;
+    gap: 6px;
+}
+
+.filter-caption {
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
 }
 
 .sort-btn {
@@ -354,10 +338,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 560px) {
-    .page-head {
-        padding-top: 40px;
-    }
-
     .masonry {
         column-count: 1;
     }

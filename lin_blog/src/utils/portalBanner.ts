@@ -17,7 +17,7 @@ const STORAGE_KEY = 'linblog:portal-banner';
 const EVENT_NAME = 'portal-banner:change';
 const INTERVAL_MS = 6000; // 单一共享间隔常量
 
-// 5 张柔和占位幻灯片：从主题色派生的暖色渐变，禁止生硬灰块
+// 9 张刊物式幻灯片：精选自 E:\tuku 的横版画面，并压缩为门户 WebP 资源
 // 标题取自 LinBlog 固定文案（林知雨、「写字的人，也在好好生活」）
 export const BANNER_SLIDES: BannerSlide[] = [
     {
@@ -41,6 +41,16 @@ export const BANNER_SLIDES: BannerSlide[] = [
         subtitle: '长文与短札，记录思考的来路与去向'
     },
     {
+        id: 'forest-note',
+        image: '/portal/banner/forest-note-1920.webp',
+        gradient: {
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 20%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 30%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 24%, var(--bgColor1)))'
+        },
+        title: '向光而行',
+        subtitle: '在林间慢下来，听见生活的回声'
+    },
+    {
         id: 'dusk',
         image: '/portal/banner/dusk-1920.webp',
         gradient: {
@@ -51,6 +61,26 @@ export const BANNER_SLIDES: BannerSlide[] = [
         subtitle: '光与影的片段，生活被看见的瞬间'
     },
     {
+        id: 'sakura-stop',
+        image: '/portal/banner/sakura-stop-1920.webp',
+        gradient: {
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 22%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)))'
+        },
+        title: '春日停靠',
+        subtitle: '把短暂的季节，留在镜头和记忆里'
+    },
+    {
+        id: 'harbor-dusk',
+        image: '/portal/banner/harbor-dusk-1920.webp',
+        gradient: {
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 22%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 24%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 26%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 28%, var(--bgColor1)))'
+        },
+        title: '暮色靠岸',
+        subtitle: '桥、海面，以及还没有写完的句子'
+    },
+    {
         id: 'night',
         image: '/portal/banner/night-1920.webp',
         gradient: {
@@ -59,6 +89,16 @@ export const BANNER_SLIDES: BannerSlide[] = [
         },
         title: '随笔',
         subtitle: '日记式的碎片，天气与心情一同记下'
+    },
+    {
+        id: 'coastline',
+        image: '/portal/banner/coastline-1920.webp',
+        gradient: {
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor9) 20%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 32%, var(--bgColor1)), color-mix(in srgb, var(--pcolor9) 24%, var(--bgColor1)))'
+        },
+        title: '去看看海',
+        subtitle: '让远方替日常留一点空白'
     },
     {
         id: 'end',

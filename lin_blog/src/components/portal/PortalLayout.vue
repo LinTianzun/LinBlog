@@ -5,8 +5,13 @@
         <header class="portal-nav">
             <div class="nav-inner">
                 <RouterLink class="nav-brand" to="/portal">
-                    <img :src="unityLogo" alt="" aria-hidden="true" />
-                    <span class="nav-brand-name">林知雨</span>
+                    <span class="nav-brand-mark">
+                        <img :src="unityLogo" alt="" aria-hidden="true" />
+                    </span>
+                    <span class="nav-brand-copy">
+                        <span class="nav-brand-name">林知雨</span>
+                        <span class="nav-brand-sub">PERSONAL JOURNAL</span>
+                    </span>
                 </RouterLink>
 
                 <nav class="nav-links" aria-label="门户导航">
@@ -75,10 +80,13 @@
             <div class="foot-inner">
                 <div class="foot-brand">
                     <img :src="unityLogo" alt="" aria-hidden="true" />
-                    <span>林知雨</span>
+                    <span class="foot-brand-copy">
+                        <strong>林知雨</strong>
+                        <small>PERSONAL JOURNAL</small>
+                    </span>
                 </div>
                 <p class="foot-note">
-                    写下代码，也拍下天气。
+                    把代码、光线与日常，写成一封持续更新的长信。
                 </p>
                 <nav class="foot-links" aria-label="页脚导航">
                     <RouterLink v-for="item in links" :key="item.path" :to="item.path">
@@ -197,46 +205,79 @@ const goAdmin = () => router.push('/overView')
 }
 
 .nav-inner {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    gap: 20px;
+    gap: 24px;
     width: var(--portal-page-width);
     margin: 0 auto;
-    padding: 14px 0;
+    padding: 13px 0;
 }
 
 .nav-brand {
     display: inline-flex;
     align-items: center;
+    justify-self: start;
     gap: 10px;
     text-decoration: none;
 
-    img {
-        width: 28px;
-        height: 28px;
-        filter: var(--portal-logo-filter);
+    &-mark {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border: 1px solid var(--portal-surface-border);
+        border-radius: 12px;
+        background: var(--portal-surface);
+        box-shadow: var(--portal-shadow-soft);
+
+        img {
+            width: 24px;
+            height: 24px;
+            filter: var(--portal-logo-filter);
+        }
+    }
+
+    &-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
     }
 
     &-name {
         font-family: var(--portal-serif);
-        font-size: 19px;
+        font-size: 18px;
         font-weight: 600;
         letter-spacing: 0.04em;
         color: var(--portal-text-primary);
+    }
+
+    &-sub {
+        color: var(--portal-text-tertiary);
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
     }
 }
 
 .nav-links {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-right: auto;
+    justify-self: center;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--portal-surface-border);
+    border-radius: var(--portal-radius-pill);
+    background: color-mix(in srgb, var(--portal-surface) 76%, transparent);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
 }
 
 .nav-link {
-    padding: 8px 16px;
+    padding: 8px 17px;
     border-radius: var(--portal-radius-pill);
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--portal-text-secondary);
     text-decoration: none;
     transition: all var(--portal-transition-fast);
@@ -249,7 +290,7 @@ const goAdmin = () => router.push('/overView')
     &.active {
         color: var(--portal-text-on-accent);
         background: var(--portal-accent);
-        font-weight: 500;
+        box-shadow: 0 6px 18px var(--portal-accent-soft);
     }
 }
 
@@ -275,9 +316,9 @@ const goAdmin = () => router.push('/overView')
 .nav-tools {
     display: inline-flex;
     align-items: center;
+    justify-self: end;
     gap: 12px;
     flex-shrink: 0;
-    margin-left: auto;
 }
 
 // 主题下拉：与「进入后台」等高对齐，用描边式造型区分主次
@@ -541,20 +582,34 @@ const goAdmin = () => router.push('/overView')
 .foot-brand {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 
     img {
-        width: 26px;
-        height: 26px;
+        width: 30px;
+        height: 30px;
         filter: var(--portal-logo-filter);
     }
 
-    span {
+    &-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+
+    strong {
         font-family: var(--portal-serif);
         font-size: 22px;
         font-weight: 600;
         letter-spacing: 0.1em;
         color: var(--portal-text-primary);
+    }
+
+    small {
+        color: var(--portal-text-tertiary);
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
     }
 }
 
@@ -589,6 +644,25 @@ const goAdmin = () => router.push('/overView')
     color: var(--portal-text-tertiary);
 }
 
+@media (max-width: 900px) {
+    .nav-inner {
+        grid-template-columns: 1fr auto;
+        row-gap: 10px;
+    }
+
+    .nav-links {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: stretch;
+        justify-content: center;
+    }
+
+    .nav-tools {
+        grid-column: 2;
+        grid-row: 1;
+    }
+}
+
 @media (max-width: 720px) {
     .nav-inner,
     .portal-body,
@@ -598,21 +672,34 @@ const goAdmin = () => router.push('/overView')
 
     .nav-inner {
         gap: 12px;
-        padding: 12px 0;
+        padding: 10px 0;
     }
 
-    .nav-brand-name {
+    .nav-brand-sub {
         display: none;
     }
 
+    .nav-brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    .nav-brand-name {
+        font-size: 16px;
+    }
+
     .nav-links {
+        justify-content: flex-start;
         gap: 0;
         overflow-x: auto;
+        padding: 3px;
     }
 
     .nav-link {
-        padding: 6px 10px;
+        padding: 7px 11px;
         font-size: 13px;
+        white-space: nowrap;
     }
 
     .nav-action {

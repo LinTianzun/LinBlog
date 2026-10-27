@@ -1,11 +1,8 @@
 <template>
     <PortalLayout active-path="/portal/articles">
-        <section class="page-head portal-reveal">
-            <h1 class="page-title">文章</h1>
-            <p class="page-lead">
-                技术长文与生活记录，共 {{ archiveTotal }} 篇。可以按分类、标签筛选，或直接搜索关键词。
-            </p>
-
+        <PortalPageHeader index="01" kicker="ESSAYS & NOTES" title="文章"
+            :description="`技术长文与生活记录，共 ${archiveTotal} 篇。可以按分类、标签筛选，或直接搜索关键词。`"
+            aside-label="ARCHIVE INDEX" :aside-value="`${archiveTotal} 篇`" aside-note="从代码里的推敲，到生活里的停顿，都归档在这里。">
             <div class="filter-bar">
                 <div class="filter-search">
                     <!-- yk-input-search 内部自持 value 且不支持 v-model，无法回填 URL 关键词，
@@ -32,24 +29,28 @@
                 </div>
             </div>
 
-            <div class="sort-bar">
-                <button type="button" class="sort-btn" :class="{ active: filters.sort === 'latest' }"
-                    @click="setSort('latest')">
-                    最新
-                </button>
-                <button type="button" class="sort-btn" :class="{ active: filters.sort === 'hot' }"
-                    @click="setSort('hot')">
-                    最热
-                </button>
-            </div>
+            <div class="filter-foot">
+                <div class="sort-bar">
+                    <span class="filter-caption">SORT</span>
+                    <button type="button" class="sort-btn" :class="{ active: filters.sort === 'latest' }"
+                        @click="setSort('latest')">
+                        最新
+                    </button>
+                    <button type="button" class="sort-btn" :class="{ active: filters.sort === 'hot' }"
+                        @click="setSort('hot')">
+                        最热
+                    </button>
+                </div>
 
-            <div v-if="labelList.length" class="filter-labels">
-                <button v-for="label in labelList" :key="label.id" type="button" class="label-pill"
-                    :class="{ active: filters.label === label.name }" @click="selectLabel(label.name)">
-                    {{ label.name }}
-                </button>
+                <div v-if="labelList.length" class="filter-labels">
+                    <span class="filter-caption">TAGS</span>
+                    <button v-for="label in labelList" :key="label.id" type="button" class="label-pill"
+                        :class="{ active: filters.label === label.name }" @click="selectLabel(label.name)">
+                        {{ label.name }}
+                    </button>
+                </div>
             </div>
-        </section>
+        </PortalPageHeader>
 
         <section class="list-area">
             <div class="list-head">
@@ -113,6 +114,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import {
     getPublicArticles,
@@ -346,34 +348,12 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
-.page-head {
-    padding: 64px 0 32px;
-}
-
-.page-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: clamp(34px, 4vw, 52px);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--portal-text-primary);
-}
-
-.page-lead {
-    max-width: 46ch;
-    margin: 16px 0 0;
-    font-size: 16px;
-    line-height: 1.85;
-    color: var(--portal-text-secondary);
-}
-
 .filter-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 18px;
-    margin-top: 32px;
-    padding: 20px 24px;
+    padding: 16px 18px;
     border-radius: var(--portal-radius-card);
     background: var(--portal-surface);
     backdrop-filter: blur(var(--portal-blur-glass));
@@ -428,15 +408,29 @@ onMounted(async () => {
 .filter-labels {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
-    margin-top: 16px;
+}
+
+.filter-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px 24px;
+}
+
+.filter-caption {
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
 }
 
 .sort-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-top: 16px;
+    gap: 6px;
 }
 
 .sort-btn {
