@@ -138,13 +138,18 @@ test('public subset and label routes mount optional auth', () => {
     const labelRoute = routes.find(route => route.path === '/api/public/label')
     assert.ok(subsetRoute, 'missing public subset route')
     assert.ok(labelRoute, 'missing public label route')
-    assert.equal(subsetRoute.handlers[0].name, 'optionalAuthMiddleware')
-    assert.equal(labelRoute.handlers[0].name, 'optionalAuthMiddleware')
+    const handlerNames = route => route.handlers.map(handler => handler.name)
+    //  公开分类在认证前先打 publicRead 标记，让计数只统计已发布内容
+    assert.ok(handlerNames(subsetRoute).includes('optionalAuthMiddleware'))
+    assert.ok(handlerNames(labelRoute).includes('optionalAuthMiddleware'))
+    assert.ok(handlerNames(subsetRoute).includes('publicRead'))
+    assert.ok(!handlerNames(labelRoute).includes('publicRead'))
 
     const privateSubset = routes.find(route => route.path === '/api/subset')
     const privateLabel = routes.find(route => route.path === '/api/label')
     assert.equal(privateSubset.handlers[0].name, 'authMiddleware')
     assert.equal(privateLabel.handlers[0].name, 'authMiddleware')
+    assert.ok(!handlerNames(privateSubset).includes('publicRead'))
 })
 
 test('public diary route mounts optional auth and private diary routes stay strict', () => {

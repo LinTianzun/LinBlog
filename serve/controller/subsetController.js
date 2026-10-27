@@ -20,12 +20,15 @@ async function getSubsets(req, res) {
     try {
         const classify = req.query.classify
         const includeCount = req.query.withCount !== 'false'
+        //  公开接口（门户）只统计已发布内容，草稿/已驳回不计入分类计数
+        const countState = req.publicRead === true ? 'published' : undefined
         //  图库共用文章分组：展示 article 分组，但计数只统计图片集
         const queryClassify = classify === 'image' ? 'article' : classify
         const rows = await subsetModel.findSubsets({
             classify: queryClassify,
             includeCount,
-            countClassify: classify
+            countClassify: classify,
+            countState
         })
 
         res.json({

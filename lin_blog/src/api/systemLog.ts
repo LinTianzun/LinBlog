@@ -40,6 +40,8 @@ export function getRequestErrorMessage(
 }
 
 // 系统日志分页查询（仅管理员；keyword 匹配详情/目标/用户名）
+export type SystemLogSortOrder = "asc" | "desc";
+
 export function getSystemLogs(
   params: {
     page?: number;
@@ -47,6 +49,7 @@ export function getSystemLogs(
     keyword?: string;
     module?: string;
     action?: string;
+    sortOrder?: SystemLogSortOrder;
   } = {}
 ) {
   return request.get<ApiResult<SystemLogPageData>>("/systemLog", { params });
