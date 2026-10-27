@@ -46,9 +46,25 @@ export function getRequestErrorMessage(
   return typeof message === "string" && message ? message : fallback;
 }
 
-// 全局评论列表（总览评论卡片）
-export function getComments(params: { page?: number; pageSize?: number } = {}) {
+// 评论列表：总览卡片不传 articleId 看全站，后台文章详情传 articleId 只看本篇
+export function getComments(
+  params: { page?: number; pageSize?: number; articleId?: number } = {}
+) {
   return request.get<ApiResult<CommentPageData>>("/comment", { params });
+}
+
+export interface CreateCommentResult {
+  commentId: number;
+  createdAt: string;
+}
+
+// 新增评论/回复（需登录；后端只允许两级，parentId>0 表示回复一级评论）
+export function createComment(data: {
+  articleId: number;
+  content: string;
+  parentId?: number;
+}) {
+  return request.post<ApiResult<CreateCommentResult>>("/comment", data);
 }
 
 // 删除评论（后端校验：仅本人或管理员）

@@ -19,8 +19,18 @@ async function getComments(req, res) {
         // 校验通过，获取参数
         const { page, pageSize, offset } = paginationResult.data
 
+        // 可选：只看某篇文章的评论（后台文章详情）
+        let articleId = null
+        if (req.query.articleId !== undefined && req.query.articleId !== '') {
+            const parsed = Number(req.query.articleId)
+            if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+                return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
+            }
+            articleId = parsed
+        }
+
         // 调用模型分页查询（关联文章+用户信息）
-        const result = await commentModel.getCommentsByPage(page, pageSize, offset)
+        const result = await commentModel.getCommentsByPage(page, pageSize, offset, articleId)
         res.json({
             code: 200,
             message: '查询成功',

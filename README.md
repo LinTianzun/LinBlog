@@ -69,7 +69,7 @@ npm start
 | 随笔互动（公开） | `GET/POST /api/public/diary/praise/:id`、`GET/POST /api/public/diary/comment` | 点赞状态与评论可匿名读取，点赞与发表评论需登录（匿名返回 401）；点赞/取消在事务内同步 `diary.likes`，评论同步 `diary.comments`。 |
 | 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
-| 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
+| 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token；`GET /api/comment` 支持可选 `articleId` 过滤，后台文章详情用它只拉取本篇评论；回复仅支持两级。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 | 日记 | `GET/POST /api/diary`、`GET/PUT/DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
 | 文件 | `GET /api/file`、`GET /api/file/summary`、`GET /api/file/trash`、`PATCH /api/file/restore`、`DELETE /api/file/trash`（仅管理员，彻底删除）、`GET /api/file/storage/status`（仅管理员）、`POST /api/file/maintenance/cleanup`（仅管理员，支持 `dryRun`）、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；删除为软删并把本地文件移入非公开备份区，可在回收站恢复或由管理员彻底删除；下载公开，缩略图加 `?inline=true`。 |
