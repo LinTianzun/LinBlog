@@ -4,9 +4,20 @@ const { query } = require('../../db/dbnew')
  * 分页查询评论（关联用户+文章表，仅查正常状态）
  * @param {number} page - 页码（默认1）
  * @param {number} pageSize - 每页条数（默认10）
+ * @param {number} offset - 偏移量
+ * @param {number|null} articleId - 只看某篇文章下的评论（可选）
  * @returns {Promise<Object>} 分页评论数据（含文章信息）
  */
-async function getCommentsByPage(page, pageSize, offset) {
+async function getCommentsByPage(page, pageSize, offset, articleId = null) {
+
+    // 后台文章详情需要按文章过滤；总览卡片不传则看全站
+    const where = ['c.status = 1']
+    const whereParams = []
+    if (Number.isSafeInteger(articleId) && articleId > 0) {
+        where.push('c.article_id = ?')
+        whereParams.push(articleId)
+    }
+    const whereSql = where.join(' AND ')
 
     // 关联users表（查用户名）和article表（查文章标题），只查状态正常的评论
     const listSql = `
@@ -25,13 +36,13 @@ async function getCommentsByPage(page, pageSize, offset) {
         FROM comment c
         LEFT JOIN users u ON c.user_id = u.id
         LEFT JOIN article a ON c.article_id = a.id
-        WHERE c.status = 1  -- 仅查询正常状态（未删除）的评论
+        WHERE ${whereSql}  -- 仅查询正常状态（未删除）的评论
         ORDER BY c.created_at DESC  -- 按评论时间倒序（最新在前）
         LIMIT ? OFFSET ?
     `
 
     // 查询当前页评论
-    const list = await query(listSql, [pageSize, offset])
+    const list = await query(listSql, [...whereParams, pageSize, offset])
     // 格式化返回结果：封装article对象
     const formattedList = list.map(item => ({
         id: item.id,
@@ -50,8 +61,8 @@ async function getCommentsByPage(page, pageSize, offset) {
     }))
 
     // 查询总条数（用于分页计算）
-    const totalSql = 'SELECT COUNT(*) AS total FROM comment WHERE status = 1'
-    const [totalResult] = await query(totalSql)
+    const totalSql = `SELECT COUNT(*) AS total FROM comment c WHERE ${whereSql}`
+    const [totalResult] = await query(totalSql, whereParams)
 
     return {
         list: formattedList,
