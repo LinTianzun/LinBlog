@@ -239,7 +239,14 @@ const deleteFile = async (id: number): Promise<void> => {
         const result = await deleteFiles([id])
         if (result.code !== 200) throw new Error(result.message || '删除失败')
 
-        showMessage('primary', '删除成功')
+        const backupFailed = Number(result.data?.backupFailedCount ?? 0)
+        const offsiteFailed = Number(result.data?.offsiteFailedCount ?? 0)
+        showMessage(
+            backupFailed > 0 || offsiteFailed > 0 ? 'warning' : 'primary',
+            backupFailed > 0 || offsiteFailed > 0
+                ? '已移入回收站，但部分备份或异地同步失败，请检查存储配置'
+                : '删除成功'
+        )
 
         if (files.value.length === 1 && page.value > 1) {
             page.value -= 1
@@ -260,7 +267,14 @@ const deleteMultipleFile = async (): Promise<void> => {
         const result = await deleteFiles(ids)
         if (result.code !== 200) throw new Error(result.message || '删除失败')
 
-        showMessage('primary', `已删除 ${ids.length} 个文件`)
+        const backupFailed = Number(result.data?.backupFailedCount ?? 0)
+        const offsiteFailed = Number(result.data?.offsiteFailedCount ?? 0)
+        showMessage(
+            backupFailed > 0 || offsiteFailed > 0 ? 'warning' : 'primary',
+            backupFailed > 0 || offsiteFailed > 0
+                ? `已删除 ${ids.length} 个文件，但部分备份或异地同步失败`
+                : `已删除 ${ids.length} 个文件`
+        )
         await Promise.all([fetchFiles(), subsetStore.fetchFileSubsets()])
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '删除失败，请稍后重试'))

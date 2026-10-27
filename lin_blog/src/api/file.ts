@@ -39,6 +39,23 @@ export interface FileSummaryData {
   subsets: FileSubsetCount[];
 }
 
+export interface FileStorageStatus {
+  usedBytes: number;
+  maxBytes: number;
+  usedPercent: number;
+  warnPercent: number;
+  level: "ok" | "warning" | "critical";
+  local: { bytes: number; files: number };
+  mirror: { bytes: number; files: number };
+  offsite: {
+    enabled: boolean;
+    mirror: boolean;
+    s3: boolean;
+    mirrorDir: string | null;
+    s3Bucket: string | null;
+  } | null;
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -93,12 +110,24 @@ export function restoreFiles(fileIds: number[]) {
   );
 }
 
+// 彻底删除回收站文件（仅管理员），删除备份后记录不再出现在回收站
+export function purgeTrashFiles(fileIds: number[]) {
+  return request.delete<
+    ApiResult<{ purgedCount: number; failedCount: number }>
+  >("/file/trash", { data: { fileIds } });
+}
+
 // 管理员手动触发清理；dryRun 只预演不落盘
 export function runFileCleanup(dryRun: boolean) {
   return request.post<ApiResult<Record<string, unknown>>>(
     "/file/maintenance/cleanup",
     { dryRun }
   );
+}
+
+// 备份区容量、告警级别与异地副本配置（仅管理员）
+export function getFileStorageStatus() {
+  return request.get<ApiResult<FileStorageStatus>>("/file/storage/status");
 }
 
 // 上传地址：yk-upload 内部自己发 XHR，无法附加请求头，
@@ -120,7 +149,12 @@ export function moveFiles(fileIds: number[], subsetId?: number) {
 
 // 批量删除文件
 export function deleteFiles(fileIds: number[]) {
-  return request.delete<ApiResult<{ deletedCount: number }>>("/file", {
-    data: { fileIds },
-  });
+  return request.delete<
+    ApiResult<{
+      deletedCount: number;
+      backedUpCount: number;
+      backupFailedCount: number;
+      offsiteFailedCount: number;
+    }>
+  >("/file", { data: { fileIds } });
 }
