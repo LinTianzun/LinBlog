@@ -80,6 +80,54 @@ export function toggleLike(articleId: number) {
   return request.post<ApiResult<LikeState>>(`/public/praise/${articleId}`);
 }
 
+// ===== 随笔互动（diary 是独立业务表，走 /public/diary/praise|comment）=====
+
+// 随笔点赞状态：匿名可读，登录后 liked 反映自己是否已赞
+export function getDiaryLikeState(diaryId: number) {
+  return request.get<ApiResult<LikeState>>(`/public/diary/praise/${diaryId}`);
+}
+
+// 切换随笔点赞（需登录，匿名返回 401）
+export function toggleDiaryLike(diaryId: number) {
+  return request.post<ApiResult<LikeState>>(`/public/diary/praise/${diaryId}`);
+}
+
+export interface DiaryComment {
+  id: number;
+  userId: number;
+  userName: string | null;
+  userAvatar: string | null;
+  content: string;
+  createdAt: string;
+}
+
+export interface DiaryCommentPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+  list: DiaryComment[];
+}
+
+export function getDiaryComments(diaryId: number, page = 1, pageSize = 10) {
+  return request.get<ApiResult<DiaryCommentPage>>("/public/diary/comment", {
+    params: { diaryId, page, pageSize },
+  });
+}
+
+export interface CreateDiaryCommentResult {
+  commentId: number;
+  diaryId: number;
+  createdAt: string;
+}
+
+export function createDiaryComment(diaryId: number, content: string) {
+  return request.post<ApiResult<CreateDiaryCommentResult>>(
+    "/public/diary/comment",
+    { diaryId, content }
+  );
+}
+
 export interface CreateCommentResult {
   commentId: number;
   articleId: number;
@@ -118,6 +166,8 @@ export interface PortalDiary {
   weatherId: number | null;
   weatherName: string | null;
   views: number;
+  likes: number;
+  comments: number;
   createdAt: string;
 }
 
