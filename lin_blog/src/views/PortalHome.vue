@@ -175,7 +175,7 @@
             <div v-if="galleryLoading" class="block-state">
                 <yk-spinner size="m" />
             </div>
-            <PortalPhotoWall v-else-if="galleryList.length" :items="galleryPrints" />
+            <PortalPhotoWall v-else-if="galleryList.length" :items="galleryPrints" @select="openGallery" />
             <div v-else class="block-state">
                 <yk-empty description="还没有发布摄影图库" />
             </div>
@@ -233,6 +233,8 @@
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
             @view-counted="handleDiaryViewCounted" />
+        <PortalGalleryDetail :open="galleryVisible" :item="activeGallery" @close="closeGallery"
+            @view-counted="handleGalleryViewCounted" />
     </PortalLayout>
 </template>
 
@@ -242,6 +244,7 @@ import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
+import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
 import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, getSlide, startBannerRotation, subscribeBanner } from '../utils/portalBanner'
 import { useThemeDark } from '../utils/themeMode'
 import {
@@ -267,6 +270,8 @@ const articleVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
 const diaryVisible = ref(false)
 const activeDiary = ref<PortalDiary | null>(null)
+const galleryVisible = ref(false)
+const activeGallery = ref<ArticleItem | null>(null)
 
 const totalArticles = ref(0)
 const totalDiaries = ref(0)
@@ -320,7 +325,6 @@ const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, i
         glyph: (item.title || '影').trim().charAt(0),
         tone: Math.abs(item.id) % 4,
         count: images.length,
-        to: `/portal/gallery?open=${item.id}`,
         span,
         offset: 0
     }
@@ -447,6 +451,23 @@ const openDiary = (item: PortalDiary) => {
 const closeDiary = () => {
     diaryVisible.value = false
     activeDiary.value = null
+}
+
+const openGallery = (id: WallPrint['id']) => {
+    const target = galleryList.value.find(item => String(item.id) === String(id))
+    if (!target) return
+    activeGallery.value = target
+    galleryVisible.value = true
+}
+
+const closeGallery = () => {
+    galleryVisible.value = false
+    activeGallery.value = null
+}
+
+const handleGalleryViewCounted = (payload: { id: number; views: number }) => {
+    const target = galleryList.value.find(item => item.id === payload.id)
+    if (target) target.views = payload.views
 }
 
 onMounted(() => {
