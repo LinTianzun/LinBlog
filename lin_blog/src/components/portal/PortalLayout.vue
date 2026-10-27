@@ -19,16 +19,15 @@
                 <div class="nav-tools">
                     <!-- 主题切换：与后台设置共用同一套预设与 applyThemePreset，切换后双向同步 -->
                     <label class="theme-picker" :title="`当前主题：${activePresetName}`">
-                        <span class="theme-picker-icon" aria-hidden="true">
-                            <IconPaintBrushFill />
-                        </span>
+                        <!-- 小圆点预览当前主题的基色，切换后即时可见 -->
+                        <span class="theme-dot" :style="{ background: activePresetPrimary }" aria-hidden="true" />
                         <select v-model="activePresetId" class="theme-select" aria-label="切换主题"
                             @change="onPresetSelect">
                             <option v-for="preset in themePresets" :key="preset.id" :value="preset.id">
                                 {{ preset.name }}
                             </option>
                         </select>
-                        <span class="theme-picker-caret" aria-hidden="true">
+                        <span class="theme-caret" aria-hidden="true">
                             <IconDownOutline />
                         </span>
                     </label>
@@ -105,6 +104,8 @@ const year = computed(() => new Date().getFullYear())
 // applyThemePreset 会派发事件，后台设置页监听后可同步高亮
 const activePresetId = ref(getStoredPresetId())
 const activePresetName = computed(() => findPreset(activePresetId.value).name)
+// 预览点用当前预设的主色，切换后即时反映
+const activePresetPrimary = computed(() => findPreset(activePresetId.value).primary)
 
 // 后台改主题后同步门户下拉框的选中项
 const onPresetChange = (event: Event) => {
@@ -225,29 +226,50 @@ const goAdmin = () => router.push('/overView')
     margin-left: auto;
 }
 
-// 主题下拉：外观做成与导航一致的胶囊，原生 select 保证键盘可用
+// 主题下拉：与「进入后台」等高对齐，用描边式造型区分主次
+//（主按钮实心、下拉描边），原生 select 保留键盘可达性
 .theme-picker {
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 12px;
+    gap: 8px;
+    // 与 .nav-action 的 40px 等高，并排时不出现高低错位
+    height: 40px;
+    padding: 0 14px;
     border-radius: var(--portal-radius-pill);
-    background: var(--portal-surface-strong);
-    border: 1px solid var(--portal-surface-border);
-    color: var(--portal-text-secondary);
+    // 玻璃底 + 主色描边，比纯白板更有质感
+    background: var(--portal-surface);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    border: 1px solid var(--portal-accent-soft);
+    color: var(--portal-text-primary);
     cursor: pointer;
     transition: all var(--portal-transition-fast);
 
-    &:hover,
-    &:focus-within {
+    &:hover {
         border-color: var(--portal-accent);
-        color: var(--portal-accent);
+        background: var(--portal-surface-hover);
+        transform: translateY(-1px);
+        box-shadow: var(--portal-shadow-soft);
     }
 
     &:focus-within {
+        border-color: var(--portal-accent);
+        // 柔和主色光圈替代生硬的默认描边
         box-shadow: 0 0 0 3px var(--portal-accent-soft);
     }
+}
+
+// 当前主题的基色预览点，切换后即时可见
+.theme-dot {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    // 细描边让浅色圆点在浅底上也分辨得出
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--portal-text-secondary) 30%, transparent),
+        inset 0 1px 2px rgba(0, 0, 0, 0.12);
+    transition: background var(--portal-transition-medium);
 }
 
 .theme-select {
@@ -257,33 +279,39 @@ const goAdmin = () => router.push('/overView')
     background: transparent;
     color: inherit;
     font-size: 13px;
+    font-weight: 500;
     font-family: inherit;
     cursor: pointer;
-    padding-right: 4px;
-    max-width: 88px;
+    // 右侧留出让位给箭头，避免文字贴边
+    padding: 0 2px;
+    width: 76px;
+    text-align: left;
+    text-overflow: ellipsis;
 
     &:focus {
         outline: none;
     }
 
-    // 下拉展开后的选项由系统绘制，这里只保证文字色在明暗下都可读
+    // 展开后的选项由系统绘制，这里只保证文字在明暗下都可读
     option {
         color: #333;
         background: #fff;
     }
 }
 
-.theme-picker-icon,
-.theme-picker-caret {
+.theme-caret {
     display: inline-flex;
     align-items: center;
-    font-size: 14px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--portal-text-tertiary);
     pointer-events: none;
+    transition: transform var(--portal-transition-fast), color var(--portal-transition-fast);
 }
 
-.theme-picker-caret {
-    font-size: 12px;
-    opacity: 0.7;
+.theme-picker:hover .theme-caret {
+    color: var(--portal-accent);
+    transform: translateY(1px);
 }
 
 .portal-body {
@@ -389,27 +417,32 @@ const goAdmin = () => router.push('/overView')
     }
 
     .nav-action {
-        padding: 7px 14px;
+        // 显式高度：窄屏下让按钮与主题选择器严格等高，
+        // 不依赖 padding + font-size 的隐式计算
+        height: 34px;
+        padding: 0 14px;
         font-size: 13px;
     }
 
-    // 窄屏空间有限：主题选择器只保留图标，避免挤掉「进入后台」
+    // 窄屏空间有限：只保留主题色圆点并收窄外框，避免挤掉「进入后台」；
+    // 圆点本身就表达了当前主题，隐藏文字不影响可用性
     .nav-tools {
         gap: 8px;
     }
 
     .theme-picker {
-        padding: 7px 9px;
+        height: 34px;
+        padding: 0 10px;
+        gap: 0;
     }
 
     .theme-select {
-        max-width: 0;
         width: 0;
         padding: 0;
         overflow: hidden;
     }
 
-    .theme-picker-caret {
+    .theme-caret {
         display: none;
     }
 }
