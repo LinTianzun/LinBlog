@@ -184,11 +184,90 @@ async function getUnreadCount(userId, type) {
     return result.count
 }
 
+/**
+ * 获取博主（admin）用户ID，用于门户留言墙
+ * @returns {Promise<number|null>}
+ */
+async function getOwnerId() {
+    const sql = "SELECT id FROM users WHERE user_type = 'admin' ORDER BY id ASC LIMIT 1"
+    const [row] = await query(sql, [])
+    return row ? row.id : null
+}
+
+/**
+ * 门户留言墙：查询博主收到的私信（脱敏，不暴露 id/邮箱等）
+ * @param {Object} params - { page, pageSize, offset }
+ * @returns {Promise<Object>} { list, total, page, pageSize, totalPage }
+ */
+async function getWallMessages(params) {
+    const { page, pageSize, offset } = params
+    const ownerId = await getOwnerId()
+    if (!ownerId) {
+        return { list: [], total: 0, page, pageSize, totalPage: 0 }
+    }
+    // 只展示 type=private 的留言，按时间倒序
+    const listSql = `
+        SELECT
+            m.id,
+            s.username AS senderName,
+            s.imgurl AS senderAvatar,
+            m.content,
+            m.created_at AS createdAt
+        FROM message m
+        LEFT JOIN users s ON m.sender_id = s.id
+        WHERE m.receiver_id = ? AND m.type = 'private'
+        ORDER BY m.created_at DESC
+        LIMIT ? OFFSET ?
+    `
+    const list = await query(listSql, [ownerId, pageSize, offset])
+    const totalSql = "SELECT COUNT(*) AS total FROM message WHERE receiver_id = ? AND type = 'private'"
+    const [totalResult] = await query(totalSql, [ownerId])
+    return {
+        list,
+        total: totalResult.total,
+        page,
+        pageSize,
+        totalPage: Math.ceil(totalResult.total / pageSize)
+    }
+}
+
+/**
+ * 门户留言墙：访客提交留言（写入 message，type=private，receiver=博主）
+ * @param {string} content - 留言内容
+ * @param {number|null} senderId - 登录用户ID，未登录为 null
+ * @returns {Promise<{messageId: number}>}
+ */
+async function insertWallMessage(content, senderId) {
+    const ownerId = await getOwnerId()
+    if (!ownerId) {
+        throw new Error('博主账号不存在')
+    }
+    // sender_id 非空且有外键：未登录访客统一挂到游客账号下
+    let effectiveSenderId = senderId
+    if (!effectiveSenderId) {
+        const sql = "SELECT id FROM users WHERE user_type = 'visitor' ORDER BY id ASC LIMIT 1"
+        const [visitor] = await query(sql, [])
+        if (!visitor) {
+            throw new Error('暂不支持游客留言，请先登录')
+        }
+        effectiveSenderId = visitor.id
+    }
+    const sql = `
+        INSERT INTO message (sender_id, receiver_id, type, content, is_read, created_at)
+        VALUES (?, ?, 'private', ?, 0, NOW())
+    `
+    const result = await query(sql, [effectiveSenderId, ownerId, content])
+    return { messageId: result.insertId }
+}
+
 module.exports = {
     insertMessage,
     getInBoxMessages,
     getOutBoxMessages,
     markMessageAdRead,
     deleteMessage,
-    getUnreadCount
+    getUnreadCount,
+    getOwnerId,
+    getWallMessages,
+    insertWallMessage
 }

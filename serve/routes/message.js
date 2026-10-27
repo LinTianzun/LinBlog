@@ -1,5 +1,5 @@
 const messageController = require('../controller/messageController')
-const { authMiddleware } = require('../middleware/auth')
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 
 module.exports = (app) => {
     //  发送消息
@@ -19,4 +19,8 @@ module.exports = (app) => {
 
     //  查询未读消息数量
     app.get('/api/message/unread/count', authMiddleware, messageController.getUnreadCount)
+
+    // ===== 门户留言墙（公开）=====
+    app.get('/api/portal/messages', messageController.getWallMessages)
+    app.post('/api/portal/message', optionalAuthMiddleware, messageController.createWallMessage)
 }
