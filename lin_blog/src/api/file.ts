@@ -39,6 +39,23 @@ export interface FileSummaryData {
   subsets: FileSubsetCount[];
 }
 
+export interface FileStorageStatus {
+  usedBytes: number;
+  maxBytes: number;
+  usedPercent: number;
+  warnPercent: number;
+  level: "ok" | "warning" | "critical";
+  local: { bytes: number; files: number };
+  mirror: { bytes: number; files: number };
+  offsite: {
+    enabled: boolean;
+    mirror: boolean;
+    s3: boolean;
+    mirrorDir: string | null;
+    s3Bucket: string | null;
+  } | null;
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -108,6 +125,11 @@ export function runFileCleanup(dryRun: boolean) {
   );
 }
 
+// 备份区容量、告警级别与异地副本配置（仅管理员）
+export function getFileStorageStatus() {
+  return request.get<ApiResult<FileStorageStatus>>("/file/storage/status");
+}
+
 // 上传地址：yk-upload 内部自己发 XHR，无法附加请求头，
 // 因此凭证只能走 query。这里用一次性短期票据代替登录 token，
 // 避免长期 JWT 出现在 URL 与服务器访问日志中。
@@ -127,7 +149,12 @@ export function moveFiles(fileIds: number[], subsetId?: number) {
 
 // 批量删除文件
 export function deleteFiles(fileIds: number[]) {
-  return request.delete<ApiResult<{ deletedCount: number }>>("/file", {
-    data: { fileIds },
-  });
+  return request.delete<
+    ApiResult<{
+      deletedCount: number;
+      backedUpCount: number;
+      backupFailedCount: number;
+      offsiteFailedCount: number;
+    }>
+  >("/file", { data: { fileIds } });
 }

@@ -11,6 +11,90 @@
         flex-wrap: wrap;
     }
 
+    &-capacity {
+        --capacity-accent: var(--scolor, @scolor);
+        --capacity-soft: var(--scolor1, @bg-color-m);
+        padding: @space-m;
+        border: 1px solid color-mix(in srgb, var(--capacity-accent) 28%, var(--admin-line, var(--gray1)));
+        border-radius: var(--admin-radius-sm, @radius-m);
+        background:
+            linear-gradient(135deg, var(--capacity-soft), transparent 64%),
+            var(--admin-surface, @bg-color-m);
+
+        &-warning {
+            --capacity-accent: var(--wcolor, #d9822b);
+            --capacity-soft: var(--wcolor1, @bg-color-m);
+        }
+
+        &-critical {
+            --capacity-accent: var(--ecolor, #d64545);
+            --capacity-soft: var(--ecolor1, @bg-color-m);
+        }
+
+        &-head,
+        &-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: @space-s;
+        }
+
+        &-title {
+            display: flex;
+            align-items: center;
+            gap: @space-s;
+            color: var(--font-color-l);
+            font-size: @size-m;
+            font-weight: 600;
+
+            strong {
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: color-mix(in srgb, var(--capacity-accent) 14%, transparent);
+                color: var(--capacity-accent);
+                font-size: @size-s;
+                font-weight: 600;
+            }
+        }
+
+        &-percent {
+            color: var(--capacity-accent);
+            font-size: @size-l;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        &-track {
+            height: 8px;
+            margin: @space-s 0;
+            overflow: hidden;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--capacity-accent) 12%, var(--admin-line, var(--gray1)));
+
+            span {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, color-mix(in srgb, var(--capacity-accent) 72%, #fff), var(--capacity-accent));
+                transition: width 220ms ease;
+            }
+        }
+
+        &-meta {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            color: var(--admin-muted, var(--font-color-s));
+            font-size: @size-s;
+        }
+
+        &-tip {
+            margin: @space-s 0 0;
+            color: var(--capacity-accent);
+            font-size: @size-s;
+            line-height: 1.6;
+        }
+    }
+
     &-state {
         min-height: 180px;
         display: flex;
@@ -69,7 +153,7 @@
             margin-left: @space-s;
             padding: 0 6px;
             border-radius: @radius-s;
-            background: var(--ecolor-1, @bg-color-s);
+            background: var(--ecolor1, @bg-color-s);
             color: var(--ecolor, @font-color-s);
             font-size: @size-s;
             font-weight: 500;

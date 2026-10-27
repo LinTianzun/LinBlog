@@ -1,5 +1,7 @@
 const fileModel = require('../model/dbModel/file/index')
 const fileStorage = require('./fileStorage')
+const { defaultOffsite } = require('./fileOffsite')
+const { getBackupCapacity } = require('./fileCapacity')
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000
@@ -29,6 +31,7 @@ function readOrphanGraceHours() {
 async function runFileLifecycleCleanup(options = {}) {
     const model = options.fileModel || fileModel
     const storage = options.storage || fileStorage
+    const offsite = options.offsite || defaultOffsite
     const now = Number.isFinite(options.now) ? options.now : Date.now()
     const dryRun = options.dryRun === true
     const retentionDays = options.retentionDays || readBackupRetentionDays()
@@ -94,6 +97,15 @@ async function runFileLifecycleCleanup(options = {}) {
     for (const row of expiredRows) {
         if (!dryRun && !storage.isRemoteUrl(row.url)) {
             try {
+                const offsiteResult = await offsite.remove(row.url)
+                if (offsiteResult.failed.length > 0) {
+                    failedFiles.push({
+                        name: row.url,
+                        reason: 'offsite_remove_failed',
+                        details: offsiteResult.failed
+                    })
+                    continue
+                }
                 if (await storage.removeBackup(row.url)) removedExpiredBackups += 1
             } catch (err) {
                 failedFiles.push({ name: row.url, reason: err.message })
@@ -107,6 +119,14 @@ async function runFileLifecycleCleanup(options = {}) {
         await model.markBackupDeleted(expiredIds)
     }
 
+    const capacity = await getBackupCapacity({ storage, offsite })
+    if (!dryRun && capacity.level !== 'ok') {
+        console.warn(
+            `[FileLifecycle] 备份区使用率 ${capacity.usedPercent}% 已达到${capacity.level === 'critical' ? '上限' : '告警阈值'}：`
+            + `${capacity.usedBytes}/${capacity.maxBytes} bytes`
+        )
+    }
+
     return {
         dryRun,
         retentionDays,
@@ -116,6 +136,7 @@ async function runFileLifecycleCleanup(options = {}) {
         keptRecentFiles,
         removedExpiredBackups,
         expiredRecords: expiredIds.length,
+        capacity,
         failedFiles
     }
 }

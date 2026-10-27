@@ -8,6 +8,8 @@ const { writeSystemLog } = require('../utils/logHelper')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const fileStorage = require('../utils/fileStorage')
 const { runFileLifecycleCleanup } = require('../utils/fileLifecycle')
+const offsiteStorage = require('../utils/fileOffsite').defaultOffsite
+const { getBackupCapacity } = require('../utils/fileCapacity')
 
 const uploadDir = fileStorage.activeDir
 const maxFileSize = 20 * 1024 * 1024
@@ -310,12 +312,18 @@ async function deleteFiles(req, res) {
 
         let backedUpCount = 0
         let backupFailedCount = 0
+        let offsiteFailedCount = 0
         for (const file of activeFiles) {
             if (fileStorage.isRemoteUrl(file.url)) continue
             try {
                 const result = await fileStorage.moveToBackup(file.url)
                 if (result.moved || result.reason === 'already_backed_up') {
                     backedUpCount += 1
+                    const synced = await offsiteStorage.syncFromBackup(file.url)
+                    offsiteFailedCount += synced.failed.length
+                    if (synced.failed.length > 0) {
+                        console.warn(`[File] 异地备份部分失败 ${file.url}：`, synced.failed)
+                    }
                 } else if (result.reason !== 'missing') {
                     backupFailedCount += 1
                 }
@@ -338,7 +346,12 @@ async function deleteFiles(req, res) {
         res.json({
             code: 200,
             message: '删除成功',
-            data: { deletedCount: deleted, backedUpCount, backupFailedCount }
+            data: {
+                deletedCount: deleted,
+                backedUpCount,
+                backupFailedCount,
+                offsiteFailedCount
+            }
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '文件删除失败：' + err.message })
@@ -420,6 +433,10 @@ async function restoreFiles(req, res) {
             let diskRestored = false
             if (!fileStorage.isRemoteUrl(file.url)) {
                 try {
+                    // 本地备份可能已被清理，先尝试从跨盘镜像/S3 拉回
+                    if (!await fileStorage.backupExists(file.url)) {
+                        await offsiteStorage.restoreToBackup(file.url)
+                    }
                     const result = await fileStorage.restoreFromBackup(file.url)
                     if (!result.restored && result.reason !== 'already_active') {
                         failed.push({ id: file.id, reason: result.reason || 'restore_failed' })
@@ -525,6 +542,19 @@ async function purgeTrashFiles(req, res) {
 
         for (const file of candidates) {
             if (!fileStorage.isRemoteUrl(file.url)) {
+                // 先清理异地副本；异地失败时本地仍可恢复，避免留下不可恢复的半状态。
+                const offsiteResult = await offsiteStorage.remove(file.url)
+                if (offsiteResult.failed.length > 0) {
+                    failed.push({
+                        id: file.id,
+                        reason: 'offsite_remove_failed',
+                        details: offsiteResult.failed
+                    })
+                    continue
+                }
+            }
+
+            if (!fileStorage.isRemoteUrl(file.url)) {
                 try {
                     await fileStorage.removeBackup(file.url)
                 } catch (err) {
@@ -563,6 +593,22 @@ async function purgeTrashFiles(req, res) {
     }
 }
 
+/**
+ * 备份区容量与异地副本配置状态，仅管理员可见。
+ */
+async function getStorageStatus(req, res) {
+    try {
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({ code: 403, message: '仅管理员可以查看备份存储状态' })
+        }
+
+        const capacity = await getBackupCapacity({ offsite: offsiteStorage })
+        res.json({ code: 200, message: '查询成功', data: capacity })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '备份存储状态查询失败：' + err.message })
+    }
+}
+
 module.exports = {
     getFiles,
     getFileSummary,
@@ -573,5 +619,6 @@ module.exports = {
     getTrashFiles,
     restoreFiles,
     cleanupFiles,
-    purgeTrashFiles
+    purgeTrashFiles,
+    getStorageStatus
 }

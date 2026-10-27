@@ -23,6 +23,28 @@
                 </yk-space>
             </div>
 
+            <div v-if="isAdmin && storage" class="file-trash-capacity"
+                :class="`file-trash-capacity-${storage.level}`">
+                <div class="file-trash-capacity-head">
+                    <div class="file-trash-capacity-title">
+                        <span>备份区容量</span>
+                        <strong>{{ capacityLevelLabel }}</strong>
+                    </div>
+                    <span class="file-trash-capacity-percent">{{ capacityPercentText }}</span>
+                </div>
+                <div class="file-trash-capacity-track" role="progressbar" :aria-valuenow="storage.usedPercent"
+                    aria-valuemin="0" aria-valuemax="100" :aria-label="`备份区容量 ${capacityPercentText}`">
+                    <span :style="{ width: `${capacityPercent}%` }" />
+                </div>
+                <div class="file-trash-capacity-meta">
+                    <span>{{ formatSize(storage.usedBytes) }} / {{ formatSize(storage.maxBytes) }}</span>
+                    <span>本地 {{ storage.local.files }} 个</span>
+                    <span>跨盘 {{ storage.mirror.files }} 个</span>
+                    <span>对象存储 {{ storage.offsite?.s3 ? '已启用' : '未启用' }}</span>
+                </div>
+                <p v-if="capacityTip" class="file-trash-capacity-tip">{{ capacityTip }}</p>
+            </div>
+
             <div v-if="loading" class="file-trash-state">
                 <yk-spinner size="m" />
                 <yk-text type="secondary">正在加载回收站...</yk-text>
@@ -76,13 +98,15 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, getCurrentInstance } from 'vue'
+import { computed, ref, watch, getCurrentInstance } from 'vue'
 import {
     getTrashFiles,
     restoreFiles,
     purgeTrashFiles,
     runFileCleanup,
+    getFileStorageStatus,
     getRequestErrorMessage,
+    type FileStorageStatus,
     type TrashFileItem,
 } from '../../api/file'
 import './fileTrash.less'
@@ -106,6 +130,7 @@ const count = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const busy = ref(false)
+const storage = ref<FileStorageStatus | null>(null)
 
 // 清理接口仅管理员可用，非管理员不展示预演入口
 const isAdmin = (() => {
@@ -126,7 +151,9 @@ const formatSize = (size: number | null): string => {
     if (!Number.isFinite(value) || value <= 0) return '未知大小'
     if (value < 1024) return `${value} B`
     if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-    return `${(value / 1024 / 1024).toFixed(1)} MB`
+    if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`
+    if (value < 1024 * 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`
+    return `${(value / 1024 / 1024 / 1024 / 1024).toFixed(1)} TB`
 }
 
 const formatTime = (value: string | null): string => {
@@ -162,6 +189,47 @@ const fetchTrash = async (): Promise<void> => {
         loading.value = false
     }
 }
+
+const fetchStorageStatus = async (): Promise<void> => {
+    if (!isAdmin) return
+
+    try {
+        const result = await getFileStorageStatus()
+        storage.value = result.code === 200 && result.data ? result.data : null
+    } catch {
+        storage.value = null
+    }
+}
+
+const capacityPercent = computed(() => {
+    const value = Number(storage.value?.usedPercent ?? 0)
+    return Math.min(Math.max(value, 0), 100)
+})
+
+const capacityPercentText = computed(() => {
+    const value = Number(storage.value?.usedPercent ?? 0)
+    return Number.isFinite(value) ? `${value.toFixed(1)}%` : '0.0%'
+})
+
+const capacityLevelLabel = computed(() => {
+    if (storage.value?.level === 'critical') return '容量已满'
+    if (storage.value?.level === 'warning') return '接近上限'
+    return '容量正常'
+})
+
+const capacityTip = computed(() => {
+    if (!storage.value) return ''
+    if (storage.value.level === 'critical') {
+        return '备份区已达到容量上限，请清理过期备份或调高容量配置。'
+    }
+    if (storage.value.level === 'warning') {
+        return `备份区使用率已达到 ${storage.value.warnPercent}% 告警阈值，请及时清理。`
+    }
+    if (!storage.value.offsite?.enabled) {
+        return '尚未配置跨盘镜像或对象存储，本地备份单点故障风险较高。'
+    }
+    return ''
+})
 
 const changePage = (nextPage: number): void => {
     if (nextPage === page.value) return
@@ -212,7 +280,7 @@ const purge = async (ids: number[]): Promise<void> => {
         )
 
         selectedIds.value = []
-        await fetchTrash()
+        await Promise.all([fetchTrash(), fetchStorageStatus()])
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '彻底删除失败，请稍后重试'))
     } finally {
@@ -239,7 +307,7 @@ const restore = async (ids: number[]): Promise<void> => {
         )
 
         selectedIds.value = []
-        await fetchTrash()
+        await Promise.all([fetchTrash(), fetchStorageStatus()])
         emit('restored')
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '恢复失败，请稍后重试'))
@@ -268,6 +336,7 @@ const runCleanup = async (dryRun: boolean): Promise<void> => {
             'primary',
             `待清理孤儿 ${data.removedOrphans ?? 0} 个、过期备份 ${data.removedExpiredBackups ?? 0} 个`
         )
+        await fetchStorageStatus()
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '清理预演失败，请稍后重试'))
     } finally {
@@ -287,7 +356,7 @@ watch(() => props.visible, value => {
     if (!value) return
     page.value = 1
     selectedIds.value = []
-    void fetchTrash()
+    void Promise.all([fetchTrash(), fetchStorageStatus()])
 })
 
 defineExpose({ refresh: fetchTrash })

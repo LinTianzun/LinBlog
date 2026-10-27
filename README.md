@@ -48,7 +48,7 @@ npm run db:seed
 npm start
 ```
 
-`serve/.env.example` 提供 JWT、数据库连接、CORS 和 JSON 请求体限制的配置模板；`serve/linlog.js` 会通过 Node.js 的 `loadEnvFile` 加载 `.env`。`LINBLOG_JWT_SECRET` 至少需要 32 个字符。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
+`serve/.env.example` 提供 JWT、数据库连接、CORS、JSON 请求体限制、备份容量、跨盘镜像与 S3 兼容对象存储的配置模板；`serve/linlog.js` 会通过 Node.js 的 `loadEnvFile` 加载 `.env`。`LINBLOG_JWT_SECRET` 至少需要 32 个字符。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
 
 #### CORS 跨域配置
 
@@ -71,7 +71,7 @@ npm start
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 | 日记 | `GET/POST /api/diary`、`GET/PUT/DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
-| 文件 | `GET /api/file`、`GET /api/file/summary`、`GET /api/file/trash`、`PATCH /api/file/restore`、`POST /api/file/maintenance/cleanup`（仅管理员，支持 `dryRun`）、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；删除为软删并把本地文件移入非公开备份区，可在回收站恢复；下载公开，缩略图加 `?inline=true`。 |
+| 文件 | `GET /api/file`、`GET /api/file/summary`、`GET /api/file/trash`、`PATCH /api/file/restore`、`DELETE /api/file/trash`（仅管理员，彻底删除）、`GET /api/file/storage/status`（仅管理员）、`POST /api/file/maintenance/cleanup`（仅管理员，支持 `dryRun`）、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；删除为软删并把本地文件移入非公开备份区，可在回收站恢复或由管理员彻底删除；下载公开，缩略图加 `?inline=true`。 |
 | 分类 | `GET /api/subset?classify=...`、`POST /api/subset`、`PUT /api/subset/:id`、`DELETE /api/subset/:id` | 需要认证；图库（`classify=image`）复用文章分组，仅计数口径不同。 |
 | 标签 | `GET/POST /api/label`、`DELETE /api/label/:id` | 需要认证；标签被文章引用时禁止删除。 |
 | 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
@@ -83,6 +83,8 @@ npm start
 
 **上传凭证使用短期票据**：`yk-upload` 自带 XHR 且无法附加自定义请求头，凭证只能拼在 URL 上。为避免长期 JWT 进入访问日志与浏览器历史，前端先调 `POST /api/upload/ticket`（需登录）换取票据，再把票据拼到上传地址上。票据绑定用户 ID 与来源 IP，5 分钟过期、按次消费（默认 50 次，覆盖一次性批量选择），服务端只存 SHA-256 哈希；票据校验通过后仍查库确认账号存在且未被禁用。上传失败同样以 HTTP 200 返回，并通过 `error` 字段传递原因——`yk-upload` 不处理非 200 响应。
 
+**文件备份与异地副本**：删除文件后，本地备份会同步到可选的跨盘镜像目录与 S3 兼容对象存储；本地备份缺失时，恢复会先尝试从异地副本拉回。回收站支持管理员彻底删除，过期清理与彻底删除都会先移除异地副本，再删除本地备份，避免异地删除失败后留下“本地已不可恢复”的半状态。备份容量由 `LINBLOG_FILE_BACKUP_MAX_BYTES`（默认 2 GiB）和 `LINBLOG_FILE_BACKUP_WARN_PERCENT`（默认 80%）控制，`GET /api/file/storage/status` 与回收站容量卡会显示 `ok` / `warning` / `critical` 状态；跨盘与对象存储配置见 `serve/.env.example`。
+
 ### 当前限制与待办
 
 * 用户管理 CRUD 和账号启停用已联调；统计卡除“用户总数”外只统计启用用户，“编辑与普通用户”不含游客（后端 `staff` 过滤口径一致）。公开注册会先检查邮箱与用户名重复，并把并发插入触发的 MySQL 唯一键冲突稳定映射为 400 业务提示，不再返回通用 500。
@@ -91,8 +93,8 @@ npm start
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后移入非公开备份区 `serve/storage/file-backups`，可在回收站恢复（默认保留 30 天）；定时任务回收数据库已无引用的磁盘孤儿文件，并清理超期备份。保留期与目录可用 `LINBLOG_FILE_BACKUP_RETENTION_DAYS`、`LINBLOG_FILE_ORPHAN_GRACE_HOURS`、`LINBLOG_FILE_STORAGE_DIR`、`LINBLOG_FILE_BACKUP_DIR` 覆盖；暂无云存储同步机制。
-* 后端 `npm test` 当前 `185/185` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障，以及上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/定时清理）、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后移入非公开备份区 `serve/storage/file-backups`，可在回收站恢复（默认保留 30 天）；定时任务回收数据库已无引用的磁盘孤儿文件，并清理超期备份。保留期与目录可用 `LINBLOG_FILE_BACKUP_RETENTION_DAYS`、`LINBLOG_FILE_ORPHAN_GRACE_HOURS`、`LINBLOG_FILE_STORAGE_DIR`、`LINBLOG_FILE_BACKUP_DIR` 覆盖。跨盘镜像与 S3 兼容对象存储为可选配置；备份容量告警当前通过接口、回收站容量卡和清理任务日志呈现，尚未提供邮件或 Webhook 通知。
+* 后端 `npm test` 当前 `197/197` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障，以及上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 

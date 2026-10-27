@@ -8,6 +8,7 @@ const fileController = require(path.resolve(__dirname, '../controller/fileContro
 const fileModel = require(path.resolve(__dirname, '../model/dbModel/file/index.js'))
 const subsetModel = require(path.resolve(__dirname, '../model/dbModel/subset/index.js'))
 const fileStorage = require(path.resolve(__dirname, '../utils/fileStorage.js'))
+const defaultOffsite = require(path.resolve(__dirname, '../utils/fileOffsite.js')).defaultOffsite
 
 function createRes() {
     return {
@@ -348,6 +349,7 @@ test('purgeTrashFiles is admin-only and removes backup before marking the record
     assert.equal(empty.statusCode, 400)
 
     const removed = []
+    const offsiteRemoved = []
     const marked = []
     await withOverrides(fileModel, {
         async findFilesByIds() {
@@ -359,19 +361,60 @@ test('purgeTrashFiles is admin-only and removes backup before marking the record
         },
         async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
     }, async () => {
-        await withOverrides(fileStorage, {
-            async removeBackup(name) { removed.push(name); return true }
+        await withOverrides(defaultOffsite, {
+            async remove(name) {
+                offsiteRemoved.push(name)
+                return { removed: 0, failed: [] }
+            }
         }, async () => {
-            const res = createRes()
-            await fileController.purgeTrashFiles(
-                { body: { fileIds: [9, 10, 11] }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
-                res
-            )
+            await withOverrides(fileStorage, {
+                async removeBackup(name) { removed.push(name); return true }
+            }, async () => {
+                const res = createRes()
+                await fileController.purgeTrashFiles(
+                    { body: { fileIds: [9, 10, 11] }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
+                    res
+                )
 
-            assert.equal(res.body.code, 200)
-            assert.equal(res.body.data.purgedCount, 2)
-            assert.deepEqual(removed, ['purge-me.bin'])
-            assert.deepEqual(marked, [9, 10])
+                assert.equal(res.body.code, 200)
+                assert.equal(res.body.data.purgedCount, 2)
+                assert.deepEqual(offsiteRemoved, ['purge-me.bin'])
+                assert.deepEqual(removed, ['purge-me.bin'])
+                assert.deepEqual(marked, [9, 10])
+            })
+        })
+    })
+})
+
+test('purgeTrashFiles keeps local backup when offsite removal fails', async () => {
+    const removed = []
+    const marked = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [{ id: 31, url: 'offsite-locked.bin', status: 0, backup_deleted_at: null }]
+        },
+        async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
+    }, async () => {
+        await withOverrides(defaultOffsite, {
+            async remove() {
+                return { removed: 0, failed: [{ type: 's3', reason: 'AccessDenied' }] }
+            }
+        }, async () => {
+            await withOverrides(fileStorage, {
+                async removeBackup(name) { removed.push(name); return true }
+            }, async () => {
+                const res = createRes()
+                await fileController.purgeTrashFiles(
+                    { body: { fileIds: [31] }, user: { userId: 1, user_type: 'admin' } },
+                    res
+                )
+
+                assert.equal(res.statusCode, 409)
+                assert.equal(res.body.data.purgedCount, 0)
+                assert.equal(res.body.data.failed[0].reason, 'offsite_remove_failed')
+                assert.deepEqual(removed, [])
+                assert.deepEqual(marked, [])
+            })
         })
     })
 })
@@ -405,4 +448,23 @@ test('purgeTrashFiles keeps the record when backup removal fails', async () => {
             assert.deepEqual(marked, [22])
         })
     })
+})
+
+test('getStorageStatus is admin-only and returns capacity plus offsite config', async () => {
+    const forbidden = createRes()
+    await fileController.getStorageStatus(
+        { user: { userId: 2, user_type: 'editor' } },
+        forbidden
+    )
+    assert.equal(forbidden.statusCode, 403)
+
+    const res = createRes()
+    await fileController.getStorageStatus(
+        { user: { userId: 1, user_type: 'admin' } },
+        res
+    )
+    assert.equal(res.body.code, 200)
+    assert.ok(Number.isFinite(res.body.data.usedBytes))
+    assert.ok(Number.isFinite(res.body.data.maxBytes))
+    assert.ok(['ok', 'warning', 'critical'].includes(res.body.data.level))
 })

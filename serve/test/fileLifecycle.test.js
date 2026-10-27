@@ -111,6 +111,18 @@ test('cleanup removes expired backups and marks their records', async (t) => {
     await storage.ensureStorageDirs()
     await fs.writeFile(path.join(storage.backupDir, 'expired.bin'), 'expired')
 
+    const events = []
+    const originalRemoveBackup = storage.removeBackup
+    storage.removeBackup = async (name) => {
+        events.push(`local:${name}`)
+        return originalRemoveBackup(name)
+    }
+    const offsite = {
+        async remove(name) {
+            events.push(`offsite:${name}`)
+            return { removed: 1, failed: [] }
+        }
+    }
     const marked = []
     const model = {
         async findLocalFileReferences() { return [] },
@@ -128,6 +140,7 @@ test('cleanup removes expired backups and marks their records', async (t) => {
     const result = await runFileLifecycleCleanup({
         fileModel: model,
         storage,
+        offsite,
         retentionDays: 30
     })
 
@@ -135,6 +148,45 @@ test('cleanup removes expired backups and marks their records', async (t) => {
     assert.equal(result.removedExpiredBackups, 1)
     assert.equal(result.expiredRecords, 2)
     assert.deepEqual(marked, [8, 9])
+    assert.deepEqual(events, [
+        'offsite:expired.bin',
+        'local:expired.bin',
+        'offsite:missing.bin',
+        'local:missing.bin'
+    ])
+})
+
+test('cleanup keeps expired backup recoverable when offsite removal fails', async (t) => {
+    const { storage } = await createTempStorage(t)
+    await storage.ensureStorageDirs()
+    await fs.writeFile(path.join(storage.backupDir, 'offsite-locked.bin'), 'expired')
+
+    const marked = []
+    const model = {
+        async findLocalFileReferences() { return [] },
+        async findExpiredDeletedFiles() {
+            return [{ id: 12, url: 'offsite-locked.bin' }]
+        },
+        async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
+    }
+    const offsite = {
+        async remove() {
+            return { removed: 0, failed: [{ type: 's3', reason: 'AccessDenied' }] }
+        }
+    }
+
+    const result = await runFileLifecycleCleanup({
+        fileModel: model,
+        storage,
+        offsite,
+        retentionDays: 30
+    })
+
+    assert.equal(await storage.backupExists('offsite-locked.bin'), true)
+    assert.equal(result.removedExpiredBackups, 0)
+    assert.equal(result.expiredRecords, 0)
+    assert.equal(result.failedFiles[0].reason, 'offsite_remove_failed')
+    assert.deepEqual(marked, [])
 })
 
 test('file lifecycle env values reject zero, negatives, and malformed input', () => {

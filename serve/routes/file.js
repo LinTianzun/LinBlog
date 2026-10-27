@@ -12,6 +12,7 @@ module.exports = (app) => {
     app.get('/api/file/trash', authMiddleware, fileController.getTrashFiles)
     app.patch('/api/file/restore', authMiddleware, fileController.restoreFiles)
     app.delete('/api/file/trash', authMiddleware, fileController.purgeTrashFiles)
+    app.get('/api/file/storage/status', authMiddleware, fileController.getStorageStatus)
     app.post('/api/file/maintenance/cleanup', authMiddleware, fileController.cleanupFiles)
 
     // 文件上传（yk-upload 走 query token）
