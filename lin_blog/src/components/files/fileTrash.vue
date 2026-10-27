@@ -11,7 +11,7 @@
                         恢复所选
                     </yk-button>
                     <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除所选文件？"
-                        trigger="click" placement="topRight" @confirm="purgeSelected">
+                        content="" trigger="click" placement="bottomRight" @confirm="purgeSelected">
                         <yk-button size="s" type="secondary" status="danger"
                             :disabled="busy || selectedIds.length === 0">
                             彻底删除
@@ -73,7 +73,7 @@
                                     恢复
                                 </yk-button>
                                 <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除？"
-                                    trigger="click" placement="topRight" @confirm="purgeOne(item.id)">
+                                    content="" trigger="click" placement="leftTop" @confirm="purgeOne(item.id)">
                                     <yk-button size="s" type="secondary" status="danger" :disabled="busy"
                                         @click.stop>
                                         彻底删除
