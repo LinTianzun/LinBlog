@@ -1,53 +1,57 @@
 <template>
     <PortalLayout>
-        <!-- 首屏：左文右图，标题跨过照片上缘 -->
-        <section class="hero">
-            <div class="hero-inner">
-                <div class="hero-copy">
-                    <p class="hero-eyebrow">林知雨的记录</p>
-                    <h1 class="hero-title">
-                        写字的人，<br />
-                        也在好好生活
-                    </h1>
-                    <p class="hero-lead">
-                        技术长文、摄影图库、带天气的随笔——同一个人的三种记录方式，都收在这里。
-                    </p>
-                    <div class="hero-links">
-                        <RouterLink class="hero-link" to="/portal/articles">读文章</RouterLink>
-                        <RouterLink class="hero-link" to="/portal/gallery">看照片</RouterLink>
-                        <RouterLink class="hero-link" to="/portal/diary">翻随笔</RouterLink>
-                    </div>
-                </div>
-                <div class="hero-figure" aria-hidden="true">
-                    <div class="hero-print is-tall" />
-                    <div class="hero-print is-small" />
+        <!-- 首屏轮播 Hero：约 65vh，标题叠在照片上缘，底部渐变入页面底色 -->
+        <section class="hero" :style="{ height: 'var(--portal-banner-height-home)' }">
+            <div class="hero-slides">
+                <div
+                    v-for="(slide, i) in slides"
+                    :key="slide.id"
+                    class="hero-slide"
+                    :class="{ active: i === currentIndex }"
+                    :style="{ background: themeGradient(slide) }"
+                />
+            </div>
+            <!-- 底部渐变遮罩：明暗双态停靠到页面底色，禁止白色断层 -->
+            <div class="hero-fade" />
+            <div class="hero-content">
+                <p class="hero-eyebrow">{{ currentSlide.subtitle }}</p>
+                <h1 class="hero-title">{{ currentSlide.title }}</h1>
+                <p class="hero-lead">
+                    技术长文、摄影图库、带天气的随笔——同一个人的三种记录方式，都收在这里。
+                </p>
+                <div class="hero-links">
+                    <RouterLink class="hero-pill" to="/portal/articles">读文章</RouterLink>
+                    <RouterLink class="hero-pill" to="/portal/gallery">看照片</RouterLink>
+                    <RouterLink class="hero-pill" to="/portal/diary">翻随笔</RouterLink>
                 </div>
             </div>
-            <dl class="hero-facts">
-                <div>
-                    <dt>{{ stats.articles }}</dt>
-                    <dd>篇文章</dd>
-                </div>
-                <div>
-                    <dt>{{ stats.galleries }}</dt>
-                    <dd>组图库</dd>
-                </div>
-                <div>
-                    <dt>{{ stats.diaries }}</dt>
-                    <dd>篇随笔</dd>
-                </div>
-                <div>
-                    <dt>{{ stats.categories }}</dt>
-                    <dd>个分类</dd>
-                </div>
-            </dl>
+            <!-- 轮播指示器 -->
+            <div class="hero-dots">
+                <button
+                    v-for="(slide, i) in slides"
+                    :key="slide.id"
+                    type="button"
+                    class="hero-dot"
+                    :class="{ active: i === currentIndex }"
+                    :aria-label="`切换到第 ${i + 1} 张`"
+                    @click="goToSlide(i)"
+                />
+            </div>
+        </section>
+
+        <!-- 玻璃 fact 卡：数据条 -->
+        <section class="facts-bar">
+            <div v-for="fact in facts" :key="fact.label" class="fact-card portal-glass">
+                <div class="fact-value">{{ fact.value }}</div>
+                <div class="fact-label">{{ fact.label }}</div>
+            </div>
         </section>
 
         <!-- 分类索引：一眼看完全部分类分布 -->
-        <section class="block">
-            <h2 class="block-title">分类索引</h2>
+        <section class="block portal-reveal">
+            <h2 class="portal-section-title">分类索引</h2>
             <nav class="index-list" aria-label="文章分类">
-                <RouterLink v-for="subset in subsetList" :key="subset.id" class="index-item"
+                <RouterLink v-for="subset in subsetList" :key="subset.id" class="index-item portal-glass"
                     :to="`/portal/articles?subset=${subset.id}`">
                     <span class="index-name">{{ subset.name }}</span>
                     <span class="index-count">{{ subset.value }}</span>
@@ -57,9 +61,9 @@
         </section>
 
         <!-- 最新文章 -->
-        <section class="block">
+        <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="block-title">最新发布</h2>
+                <h2 class="portal-section-title">最新发布</h2>
                 <RouterLink class="block-more" to="/portal/articles">
                     全部文章
                     <IconRightOutline />
@@ -90,9 +94,9 @@
         </section>
 
         <!-- 摄影图库预览 -->
-        <section class="block">
+        <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="block-title">摄影图库</h2>
+                <h2 class="portal-section-title">摄影图库</h2>
                 <RouterLink class="block-more" to="/portal/gallery">
                     全部图库
                     <IconRightOutline />
@@ -109,9 +113,9 @@
         </section>
 
         <!-- 随笔：带天气的小卡片 -->
-        <section class="block">
+        <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="block-title">随笔随记</h2>
+                <h2 class="portal-section-title">随笔随记</h2>
                 <RouterLink class="block-more" to="/portal/diary">
                     全部随笔
                     <IconRightOutline />
@@ -140,10 +144,10 @@
         </section>
 
         <!-- 标签云 -->
-        <section class="block">
-            <h2 class="block-title">标签</h2>
+        <section class="block portal-reveal">
+            <h2 class="portal-section-title">标签</h2>
             <div class="tag-cloud">
-                <RouterLink v-for="label in labelList" :key="label.id" class="tag-item"
+                <RouterLink v-for="label in labelList" :key="label.id" class="tag-item portal-glass"
                     :to="`/portal/articles?label=${encodeURIComponent(label.name)}`">
                     {{ label.name }}
                     <span>{{ label.value }}</span>
@@ -160,11 +164,13 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useDark } from '@vueuse/core'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
+import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, getSlide, startBannerRotation, subscribeBanner } from '../utils/portalBanner'
 import {
     getPublicArticles,
     getPublicArticleById,
@@ -195,12 +201,34 @@ const activeDiary = ref<PortalDiary | null>(null)
 const totalArticles = ref(0)
 const totalDiaries = ref(0)
 
+// 轮播共享状态：首页全显示（intensity=1），跨页共享 index/timestamp
+const slides = BANNER_SLIDES
+const currentIndex = ref(0)
+const isDark = useDark({ attribute: 'data-theme', selector: 'html' })
+const themeGradient = (slide: BannerSlide): string => {
+    return isDark.value ? slide.gradient.dark : slide.gradient.light
+}
+const currentSlide = computed(() => getSlide(currentIndex.value))
+const goToSlide = (i: number) => {
+    currentIndex.value = i
+}
+let stopRotation: (() => void) | null = null
+let unsub: (() => void) | null = null
+
 const stats = computed(() => ({
     articles: totalArticles.value,
     galleries: galleryList.value.length,
     diaries: totalDiaries.value,
     categories: subsetList.value.length
 }))
+
+// 玻璃 fact 卡数据
+const facts = computed(() => [
+    { label: '篇文章', value: stats.value.articles },
+    { label: '组图库', value: stats.value.galleries },
+    { label: '篇随笔', value: stats.value.diaries },
+    { label: '个分类', value: stats.value.categories }
+])
 
 // 图库橱窗的排版：大图、小图、竖图交错落位
 const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, index) => {
@@ -352,33 +380,83 @@ onMounted(() => {
     void loadGallery()
     void loadDiary()
     void loadFilters()
+    // 启动轮播：单一共享 interval，切页不重置
+    currentIndex.value = deriveCurrentIndex()
+    stopRotation = startBannerRotation((idx) => {
+        currentIndex.value = idx
+    })
+    unsub = subscribeBanner((idx) => {
+        currentIndex.value = idx
+    })
+})
+
+onUnmounted(() => {
+    stopRotation?.()
+    unsub?.()
 })
 </script>
-
 <style lang="less" scoped>
-// ---------- 首屏 ----------
+// ---------- 首屏轮播 Hero ----------
 .hero {
-    padding: 72px 0 0;
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    margin-top: -1px;
 }
 
-.hero-inner {
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    column-gap: 24px;
-    align-items: end;
+.hero-slides {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
 }
 
-.hero-copy {
-    grid-column: 1 / span 6;
-    padding-bottom: 8px;
+.hero-slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity var(--portal-transition-slow) ease;
+    background-size: cover;
+    background-position: center;
+    &.active {
+        opacity: 1;
+    }
+}
+
+// 底部渐变：明暗双态停靠到页面底色，禁止白色断层
+.hero-fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 45%;
+    z-index: 2;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        color-mix(in srgb, var(--portal-page-bg) 30%, transparent) 40%,
+        color-mix(in srgb, var(--portal-page-bg) 70%, transparent) 70%,
+        var(--portal-page-bg) 100%
+    );
+    pointer-events: none;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 3;
+    width: var(--portal-page-width);
+    margin: 0 auto;
+    padding: 0 0 8vh;
+    color: var(--portal-text-on-accent);
+    text-shadow: 0 2px 24px color-mix(in srgb, var(--font-color-s) 40%, transparent);
 }
 
 .hero-eyebrow {
-    margin: 0 0 18px;
-    font-size: 12px;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
-    color: @pcolor;
+    margin: 0 0 16px;
+    font-size: 14px;
+    letter-spacing: 0.18em;
+    opacity: 0.9;
 }
 
 .hero-title {
@@ -388,96 +466,107 @@ onMounted(() => {
     font-weight: 600;
     line-height: 1.16;
     letter-spacing: 0.01em;
-    color: @font-color-l;
+    color: var(--portal-text-on-accent);
 }
 
 .hero-lead {
-    max-width: 40ch;
-    margin: 22px 0 0;
+    max-width: 46ch;
+    margin: 20px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    color: @font-color-s;
+    opacity: 0.92;
 }
 
 .hero-links {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    margin-top: 30px;
+    margin-top: 28px;
 }
 
-.hero-link {
-    padding: 9px 20px;
-    border: 1px solid @line-color-s;
-    border-radius: 999px;
+.hero-pill {
+    padding: 10px 22px;
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-surface-strong);
+    border: 1px solid color-mix(in srgb, var(--portal-text-on-accent) 30%, transparent);
     font-size: 14px;
-    color: @font-color-l;
+    color: var(--portal-text-on-accent);
     text-decoration: none;
-    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all var(--portal-transition-fast);
 
     &:hover {
-        border-color: @pcolor;
-        color: @pcolor;
-        background: var(--pcolor1);
+        background: var(--portal-accent);
+        border-color: var(--portal-accent);
+        transform: translateY(-1px);
     }
 }
 
-.hero-figure {
-    grid-column: 8 / span 5;
-    position: relative;
-    min-height: 340px;
-}
-
-// 首屏的两块"照片"用主题色排印占位，不引入无意义的灰块
-.hero-print {
+.hero-dots {
     position: absolute;
-    border-radius: 2px;
+    bottom: 4vh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    display: flex;
+    gap: 8px;
+}
 
-    &.is-tall {
-        top: 0;
-        right: 0;
-        width: 62%;
-        aspect-ratio: 4 / 5;
-        background: @pcolor;
+.hero-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    background: color-mix(in srgb, var(--portal-text-on-accent) 40%, transparent);
+    cursor: pointer;
+    transition: all var(--portal-transition-fast);
+    &.active {
+        background: var(--portal-text-on-accent);
+        width: 24px;
+        border-radius: var(--portal-radius-pill);
     }
-
-    &.is-small {
-        bottom: 6%;
-        left: 0;
-        width: 34%;
-        aspect-ratio: 1 / 1;
-        background: @pcolor-8;
+    &:hover {
+        background: color-mix(in srgb, var(--portal-text-on-accent) 60%, transparent);
     }
 }
 
-.hero-facts {
+// ---------- 玻璃 fact 卡 ----------
+.facts-bar {
     display: flex;
     flex-wrap: wrap;
-    gap: 44px;
-    margin: 56px 0 0;
-    padding: 26px 0 0;
-    border-top: 1px solid @line-color-s;
+    gap: 16px;
+    margin: -6vh auto 0;
+    position: relative;
+    z-index: 5;
+    width: var(--portal-page-width);
+}
 
-    div {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
+.fact-card {
+    flex: 1;
+    min-width: 140px;
+    padding: 22px 26px;
+    text-align: center;
+    transition: transform var(--portal-transition-medium);
+    &:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--portal-shadow-hover);
     }
+}
 
-    dt {
-        font-family: var(--portal-serif);
-        font-size: 30px;
-        font-weight: 600;
-        line-height: 1;
-        color: @font-color-l;
-        font-variant-numeric: tabular-nums;
-    }
+.fact-value {
+    font-family: var(--portal-serif);
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--portal-accent-strong);
+    font-variant-numeric: tabular-nums;
+}
 
-    dd {
-        margin: 0;
-        font-size: 14px;
-        color: @font-color-s;
-    }
+.fact-label {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--portal-text-secondary);
 }
 
 // ---------- 通用板块 ----------
@@ -493,26 +582,17 @@ onMounted(() => {
     margin-bottom: 28px;
 }
 
-.block-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: clamp(26px, 2.6vw, 34px);
-    font-weight: 600;
-    line-height: 1.3;
-    color: @font-color-l;
-}
-
 .block-more {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     font-size: 14px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     text-decoration: none;
-    transition: color 0.2s ease;
+    transition: color var(--portal-transition-fast);
 
     &:hover {
-        color: @pcolor;
+        color: var(--portal-accent);
     }
 }
 
@@ -534,27 +614,27 @@ onMounted(() => {
     display: inline-flex;
     align-items: baseline;
     gap: 10px;
-    padding: 12px 20px;
-    border: 1px solid @line-color-s;
-    border-radius: 2px;
+    padding: 14px 22px;
+    border-radius: var(--portal-radius-pill);
     text-decoration: none;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
+    transition: all var(--portal-transition-fast);
 
     &:hover {
-        border-color: @pcolor;
-        background: var(--pcolor1);
+        background: var(--portal-accent-soft);
+        transform: translateY(-2px);
+        border-color: var(--portal-accent);
     }
 
     .index-name {
         font-family: var(--portal-serif);
         font-size: 17px;
         font-weight: 600;
-        color: @font-color-l;
+        color: var(--portal-text-primary);
     }
 
     .index-count {
         font-size: 13px;
-        color: @font-color-s;
+        color: var(--portal-text-secondary);
         font-variant-numeric: tabular-nums;
     }
 }
@@ -562,7 +642,7 @@ onMounted(() => {
 .index-empty {
     margin: 0;
     font-size: 14px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 // ---------- 文章列表 ----------
@@ -572,8 +652,8 @@ onMounted(() => {
 }
 
 .post-row {
-    border-bottom: 1px solid @line-color-s;
-    animation: post-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+    border-bottom: 1px solid var(--portal-line-soft);
+    animation: portal-reveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 
     &:last-child {
         border-bottom: none;
@@ -597,7 +677,7 @@ onMounted(() => {
 .post-date {
     grid-row: 1 / span 3;
     font-size: 13px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     font-variant-numeric: tabular-nums;
     padding-top: 4px;
 }
@@ -608,15 +688,15 @@ onMounted(() => {
     font-size: 20px;
     font-weight: 600;
     line-height: 1.5;
-    color: @font-color-l;
-    transition: color 0.2s ease;
+    color: var(--portal-text-primary);
+    transition: color var(--portal-transition-fast);
 }
 
 .post-introduce {
     margin: 6px 0 0;
     font-size: 14px;
     line-height: 1.75;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -629,7 +709,7 @@ onMounted(() => {
     gap: 14px;
     margin-top: 10px;
     font-size: 13px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 
     span {
         display: inline-flex;
@@ -641,14 +721,14 @@ onMounted(() => {
 .post-chip {
     padding: 2px 10px;
     border-radius: 999px;
-    background: var(--pcolor1);
-    color: @pcolor;
+    background: var(--portal-accent-soft);
+    color: var(--portal-accent-strong);
     font-weight: 500;
 }
 
 .post-row:hover {
     .post-title {
-        color: @pcolor;
+        color: var(--portal-accent);
     }
 }
 
@@ -664,16 +744,15 @@ onMounted(() => {
     flex-direction: column;
     gap: 10px;
     padding: 22px;
-    border: 1px solid @line-color-s;
-    border-radius: 2px;
-    background: @bg-color-l;
+    border-radius: var(--portal-radius-card);
     text-align: left;
     cursor: pointer;
-    transition: border-color 0.2s ease, transform 0.25s ease;
+    transition: all var(--portal-transition-medium);
 
     &:hover {
-        border-color: @pcolor;
         transform: translateY(-3px);
+        box-shadow: var(--portal-shadow-hover);
+        background: var(--portal-surface-hover);
     }
 }
 
@@ -682,7 +761,7 @@ onMounted(() => {
     align-items: center;
     gap: 6px;
     font-size: 13px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 
     img {
         width: 18px;
@@ -695,14 +774,14 @@ onMounted(() => {
     font-size: 18px;
     font-weight: 600;
     line-height: 1.5;
-    color: @font-color-l;
+    color: var(--portal-text-primary);
 }
 
 .diary-text {
     flex: 1;
     font-size: 14px;
     line-height: 1.8;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -711,7 +790,7 @@ onMounted(() => {
 
 .diary-date {
     font-size: 12px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     font-variant-numeric: tabular-nums;
 }
 
@@ -727,69 +806,69 @@ onMounted(() => {
     align-items: baseline;
     gap: 6px;
     padding: 6px 14px;
-    border-radius: 999px;
-    background: @bg-color-l;
-    border: 1px solid @line-color-s;
     font-size: 13px;
-    color: @font-color-m;
+    color: var(--portal-text-secondary);
     text-decoration: none;
-    transition: border-color 0.2s ease, color 0.2s ease;
+    transition: all var(--portal-transition-fast);
 
     span {
         font-size: 11px;
-        color: @font-color-s;
+        color: var(--portal-text-tertiary);
         font-variant-numeric: tabular-nums;
     }
 
     &:hover {
-        border-color: @pcolor;
-        color: @pcolor;
+        background: var(--portal-accent-soft);
+        color: var(--portal-accent);
     }
 }
 
-@keyframes post-in {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
+// ---------- 响应式 ----------
+@media (max-width: 1279px) {
+    .hero-content {
+        padding-bottom: 6vh;
     }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
+    .facts-bar {
+        flex-wrap: wrap;
+        margin-top: -4vh;
+    }
+    .fact-card {
+        min-width: calc(33% - 11px);
     }
 }
 
 @media (max-width: 900px) {
-    .hero {
-        padding-top: 44px;
+    .facts-bar {
+        margin-top: -4vh;
     }
-
-    .hero-copy {
-        grid-column: 1 / span 12;
+    .fact-card {
+        min-width: calc(50% - 8px);
     }
-
-    .hero-figure {
-        grid-column: 1 / span 12;
-        min-height: 260px;
-        margin-top: 32px;
-    }
-
-    .hero-facts {
-        gap: 28px;
-        margin-top: 40px;
-    }
-
     .block {
         margin-top: 64px;
     }
-
     .post-link {
         grid-template-columns: 1fr;
         row-gap: 6px;
     }
-
     .post-date {
         grid-row: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero-content {
+        padding: 0 24px 4vh;
+    }
+    .facts-bar {
+        gap: 10px;
+    }
+    .fact-card {
+        min-width: calc(50% - 5px);
+        padding: 16px 18px;
+    }
+    .fact-value {
+        font-size: 26px;
     }
 }
 
@@ -797,17 +876,18 @@ onMounted(() => {
     .hero-title {
         font-size: 34px;
     }
-
-    .hero-facts {
-        gap: 20px 28px;
-
-        dt {
-            font-size: 24px;
-        }
-    }
-
     .diary-grid {
         grid-template-columns: 1fr;
     }
+}
+
+// 旧主题色样式回退：被移除的旧选择器保留空，避免遗留引用报错
+.hero-inner,
+.hero-copy,
+.hero-figure,
+.hero-print,
+.hero-facts,
+.hero-link {
+    display: none;
 }
 </style>

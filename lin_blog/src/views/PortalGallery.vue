@@ -1,6 +1,6 @@
 <template>
     <PortalLayout active-path="/portal/gallery">
-        <section class="page-head">
+        <section class="page-head portal-reveal">
             <h1 class="page-title">摄影图库</h1>
             <p class="page-lead">
                 共 {{ total }} 组照片。点开任意一组，可以在当前页放大查看每一张。
@@ -162,7 +162,7 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .page-head {
-    padding: 64px 0 0;
+    padding: 64px 0 32px;
 }
 
 .page-title {
@@ -171,7 +171,7 @@ onMounted(async () => {
     font-size: clamp(34px, 4vw, 52px);
     font-weight: 600;
     line-height: 1.2;
-    color: @font-color-l;
+    color: var(--portal-text-primary);
 }
 
 .page-lead {
@@ -179,7 +179,7 @@ onMounted(async () => {
     margin: 16px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 .sort-bar {

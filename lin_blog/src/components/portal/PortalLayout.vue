@@ -1,5 +1,7 @@
 <template>
     <div class="portal-layout">
+        <!-- 环境背景层：模糊低透明度轮播，与首页共享 index/timestamp -->
+        <PortalAmbientBackground :intensity="0.18" />
         <header class="portal-nav">
             <div class="nav-inner">
                 <RouterLink class="nav-brand" to="/portal">
@@ -50,6 +52,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import unityLogo from '../../assets/svg/unity.svg'
+import PortalAmbientBackground from './PortalAmbientBackground.vue'
 
 const props = withDefaults(defineProps<{
     // 导航高亮覆盖项：子页面可指定高亮哪个入口
@@ -84,25 +87,21 @@ const goAdmin = () => router.push('/overView')
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: @bg-color-m;
 }
 
 .portal-nav {
     position: sticky;
     top: 0;
     z-index: 20;
-    background: var(--portal-header-bg);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid @line-color-s;
 }
 
 .nav-inner {
     display: flex;
     align-items: center;
-    gap: 28px;
-    width: min(1240px, calc(100% - 48px));
+    gap: 20px;
+    width: var(--portal-page-width);
     margin: 0 auto;
-    padding: 16px 0;
+    padding: 14px 0;
 }
 
 .nav-brand {
@@ -122,64 +121,68 @@ const goAdmin = () => router.push('/overView')
         font-size: 19px;
         font-weight: 600;
         letter-spacing: 0.04em;
-        color: @font-color-l;
+        color: var(--portal-text-primary);
     }
 }
 
 .nav-links {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     margin-right: auto;
 }
 
 .nav-link {
-    padding: 6px 14px;
-    border-radius: 999px;
+    padding: 8px 16px;
+    border-radius: var(--portal-radius-pill);
     font-size: 14px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
     text-decoration: none;
-    transition: color 0.2s ease, background-color 0.2s ease;
+    transition: all var(--portal-transition-fast);
 
     &:hover {
-        color: @font-color-l;
-        background: @bg-color-l;
+        color: var(--portal-text-primary);
+        background: var(--portal-surface);
     }
 
     &.active {
-        color: @pcolor;
-        background: var(--pcolor1);
+        color: var(--portal-text-on-accent);
+        background: var(--portal-accent);
         font-weight: 500;
     }
 }
 
 .nav-action {
     flex-shrink: 0;
-    padding: 8px 18px;
-    border: none;
-    border-radius: 999px;
-    background: @pcolor;
-    color: #fff;
+    padding: 9px 20px;
+    border: 1px solid var(--portal-accent-strong);
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
     font-size: 14px;
     cursor: pointer;
-    transition: filter 0.2s ease;
+    transition: all var(--portal-transition-fast);
 
     &:hover {
         filter: brightness(1.08);
+        transform: translateY(-1px);
+        box-shadow: var(--portal-shadow-soft);
     }
 }
 
 .portal-body {
     flex: 1;
-    width: min(1240px, calc(100% - 48px));
+    width: var(--portal-page-width);
     margin: 0 auto;
 }
 
 .portal-foot {
     margin-top: 96px;
-    padding: 44px 0 40px;
-    border-top: 1px solid @line-color-s;
-    background: @bg-color-l;
+    padding: 48px 0 40px;
+    border-top: 1px solid var(--portal-surface-border);
+    background: var(--portal-surface-strong);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
 }
 
 .foot-inner {
@@ -187,7 +190,7 @@ const goAdmin = () => router.push('/overView')
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    width: min(1240px, calc(100% - 48px));
+    width: var(--portal-page-width);
     margin: 0 auto;
     text-align: center;
 }
@@ -208,7 +211,7 @@ const goAdmin = () => router.push('/overView')
         font-size: 22px;
         font-weight: 600;
         letter-spacing: 0.1em;
-        color: @font-color-l;
+        color: var(--portal-text-primary);
     }
 }
 
@@ -216,7 +219,7 @@ const goAdmin = () => router.push('/overView')
     margin: 0;
     font-family: var(--portal-serif);
     font-size: 16px;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 .foot-links {
@@ -227,12 +230,12 @@ const goAdmin = () => router.push('/overView')
 
     a {
         font-size: 13px;
-        color: @font-color-s;
+        color: var(--portal-text-secondary);
         text-decoration: none;
-        transition: color 0.2s ease;
+        transition: color var(--portal-transition-fast);
 
         &:hover {
-            color: @pcolor;
+            color: var(--portal-accent);
         }
     }
 }
@@ -240,7 +243,7 @@ const goAdmin = () => router.push('/overView')
 .foot-legal {
     margin: 0;
     font-size: 13px;
-    color: @font-color-s;
+    color: var(--portal-text-tertiary);
 }
 
 @media (max-width: 720px) {
@@ -281,7 +284,7 @@ const goAdmin = () => router.push('/overView')
 .portal-layout {
     // 顶栏底色由主题的页面底色派生，保证 11 套预设都跟随；
     // color-mix 只降低不透明度，不引入写死色值
-    --portal-header-bg: color-mix(in srgb, var(--bgColor1) 82%, transparent);
+    --portal-header-bg: color-mix(in srgb, var(--bgColor-l) 82%, transparent);
     --portal-logo-filter: none;
 }
 
@@ -290,10 +293,26 @@ const goAdmin = () => router.push('/overView')
     --portal-logo-filter: brightness(0) invert(1);
 }
 
-// 不支持 color-mix 的旧浏览器退回不透明底，避免顶栏透明穿透正文
+
+.portal-nav {
+    background: var(--portal-header-bg);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border-bottom: 1px solid var(--portal-surface-border);
+}
+
+.portal-layout {
+    background: transparent;
+}
+
+// 非 scoped：门户页面底色由 ambient 层提供，layout 不再写死纯色背景
+// 不支持 color-mix 的旧浏览器退回不透明底
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
     .portal-layout {
-        --portal-header-bg: var(--bgColor1);
+        background: var(--bgColor-l);
+    }
+    [data-theme='dark'] .portal-layout {
+        background: var(--bgColor-s);
     }
 }
 </style>

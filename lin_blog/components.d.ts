@@ -58,6 +58,7 @@ declare module 'vue' {
     MenuBar: typeof import('./src/components/bar/MenuBar.vue')['default']
     NotFound: typeof import('./src/components/NotFound.vue')['default']
     Pie: typeof import('./src/components/echarts/pie.vue')['default']
+    PortalAmbientBackground: typeof import('./src/components/portal/PortalAmbientBackground.vue')['default']
     PortalArticleDetail: typeof import('./src/components/portal/PortalArticleDetail.vue')['default']
     PortalDiaryDetail: typeof import('./src/components/portal/PortalDiaryDetail.vue')['default']
     PortalGalleryDetail: typeof import('./src/components/portal/PortalGalleryDetail.vue')['default']

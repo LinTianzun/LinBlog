@@ -12,3 +12,191 @@
 #app.is-portal {
     padding-top: 0;
 }
+
+// ===== 门户设计 token（全部从主题变量派生，明暗双态自动跟随）=====
+// 借鉴 EdgeOne 竞赛 prompt 的设计语言：玻璃拟态、暖色圆角、pill 导航、
+// 但所有颜色取自 LinBlog 主题变量（--pcolor* / --bgColor* / --font-color* / --line-color*），
+// 不写死色值，确保 11 套主题预设 + 明暗切换时门户自动跟随。
+:root {
+    // 空间与圆角
+    --portal-page-width: min(1240px, calc(100% - 48px));
+    --portal-radius-card: 1rem;
+    --portal-radius-small: 0.75rem;
+    --portal-radius-pill: 999px;
+    --portal-blur-glass: 10px;
+    --portal-transition-fast: 150ms ease;
+    --portal-transition-medium: 250ms cubic-bezier(0.22, 1, 0.36, 1);
+    --portal-transition-slow: 450ms cubic-bezier(0.22, 1, 0.36, 1);
+
+    // Hero 尺寸：桌面 65vh / 平板 52vh / 移动 40vh（移动端 38-44vh 范围内）
+    --portal-banner-height-home: 65vh;
+    --portal-banner-height-tablet: 52vh;
+    --portal-banner-height-mobile: 42vh;
+    --portal-section-space: 3rem;
+    --portal-section-space-mobile: 1.5rem;
+
+    // 玻璃面（明态：浅暖白半透，从 --bgColor1 派生）
+    --portal-surface: color-mix(in srgb, var(--bgColor1) 72%, transparent);
+    --portal-surface-strong: color-mix(in srgb, var(--bgColor1) 88%, transparent);
+    --portal-surface-border: color-mix(in srgb, var(--pcolor) 14%, transparent);
+    --portal-surface-hover: color-mix(in srgb, var(--bgColor1) 94%, transparent);
+
+    // 文字层级：从 --pcolor 派生（明态主色深，用作文字）
+    --portal-text-primary: color-mix(in srgb, var(--pcolor) 92%, transparent);
+    --portal-text-secondary: color-mix(in srgb, var(--pcolor) 68%, transparent);
+    --portal-text-tertiary: color-mix(in srgb, var(--pcolor) 48%, transparent);
+    --portal-text-on-accent: color-mix(in srgb, var(--bgColor1) 96%, transparent);
+
+    // 强调色
+    --portal-accent: var(--pcolor);
+    --portal-accent-strong: var(--pcolor8);
+    --portal-accent-soft: color-mix(in srgb, var(--pcolor) 18%, transparent);
+
+    // 线条与阴影
+    --portal-line-soft: color-mix(in srgb, var(--pcolor) 10%, transparent);
+    --portal-shadow-soft: 0 12px 32px color-mix(in srgb, var(--pcolor) 10%, transparent);
+    --portal-shadow-hover: 0 18px 48px color-mix(in srgb, var(--pcolor) 16%, transparent);
+    --portal-shadow-hero: 0 24px 60px color-mix(in srgb, var(--pcolor) 14%, transparent);
+
+    // 环境背景层（非首页用，模糊轮播 + 渐变遮罩）
+    --portal-ambient-opacity: 0.18;
+    --portal-ambient-blur: 28px;
+
+    // 页面底色（从 --bgColor1 派生，确保 hero 底部渐变能停靠）
+    --portal-page-bg: var(--bgColor1);
+}
+
+// 暗态覆盖：深色下用 --pcolor9（深色变体）作文字，--bgColor1 仍由 data-theme-preset 切换为深色
+[data-theme='dark'] {
+    --portal-surface: color-mix(in srgb, var(--bgColor1) 72%, transparent);
+    --portal-surface-strong: color-mix(in srgb, var(--bgColor1) 88%, transparent);
+    --portal-surface-border: color-mix(in srgb, var(--pcolor) 16%, transparent);
+    --portal-surface-hover: color-mix(in srgb, var(--bgColor1) 94%, transparent);
+
+    --portal-text-primary: color-mix(in srgb, var(--pcolor9) 92%, transparent);
+    --portal-text-secondary: color-mix(in srgb, var(--pcolor9) 68%, transparent);
+    --portal-text-tertiary: color-mix(in srgb, var(--pcolor9) 48%, transparent);
+    --portal-text-on-accent: color-mix(in srgb, var(--bgColor1) 96%, transparent);
+
+    --portal-accent-soft: color-mix(in srgb, var(--pcolor) 24%, transparent);
+    --portal-line-soft: color-mix(in srgb, var(--pcolor) 14%, transparent);
+    --portal-shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
+    --portal-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.32);
+    --portal-shadow-hero: 0 24px 60px rgba(0, 0, 0, 0.36);
+
+    --portal-ambient-opacity: 0.22;
+    --portal-page-bg: var(--bgColor1);
+}
+
+// 响应式 Hero 高度
+@media (max-width: 1279px) {
+    :root {
+        --portal-banner-height-home: var(--portal-banner-height-tablet);
+    }
+}
+@media (max-width: 767px) {
+    :root {
+        --portal-banner-height-home: var(--portal-banner-height-mobile);
+        --portal-section-space: var(--portal-section-space-mobile);
+    }
+}
+
+// ===== 通用门户工具类 =====
+.portal-page {
+    width: var(--portal-page-width);
+    margin: 0 auto;
+}
+
+// 玻璃面卡片：明暗双态自动跟随
+.portal-glass {
+    background: var(--portal-surface);
+    backdrop-filter: blur(var(--portal-blur-glass)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass)) saturate(140%);
+    border: 1px solid var(--portal-surface-border);
+    border-radius: var(--portal-radius-card);
+    box-shadow: var(--portal-shadow-soft);
+    transition: transform var(--portal-transition-medium), box-shadow var(--portal-transition-medium), background var(--portal-transition-medium);
+}
+
+// 比例容器：所有媒体必须有边界，避免原始尺寸撑破布局
+.portal-media-box {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--portal-radius-small);
+    background: var(--portal-accent-soft);
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+}
+.portal-media-box::after {
+    // 占位底色：无封面时柔和主题色排印，禁止生硬灰块
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--portal-accent-soft), color-mix(in srgb, var(--pcolor-l, var(--pcolor)) 22%, transparent));
+    opacity: 0;
+    transition: opacity var(--portal-transition-medium);
+}
+.portal-media-box.is-empty::after {
+    opacity: 1;
+}
+
+// pill 按钮
+.portal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-surface-strong);
+    border: 1px solid var(--portal-surface-border);
+    color: var(--portal-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all var(--portal-transition-fast);
+    &:hover {
+        background: var(--portal-accent-soft);
+        border-color: var(--portal-accent);
+        transform: translateY(-1px);
+    }
+}
+
+// 章节标题：衬线 + 暖色细分隔
+.portal-section-title {
+    font-family: var(--portal-serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--portal-text-primary);
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, var(--portal-line-soft), transparent);
+    }
+}
+
+// 进入动画：staggered reveal
+@keyframes portal-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.portal-reveal {
+    animation: portal-reveal var(--portal-transition-slow) both;
+}
+@media (prefers-reduced-motion: reduce) {
+    .portal-reveal {
+        animation: none;
+    }
+}

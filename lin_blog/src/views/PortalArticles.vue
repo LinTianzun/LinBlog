@@ -1,6 +1,6 @@
 <template>
     <PortalLayout active-path="/portal/articles">
-        <section class="page-head">
+        <section class="page-head portal-reveal">
             <h1 class="page-title">文章</h1>
             <p class="page-lead">
                 技术长文与生活记录，共 {{ archiveTotal }} 篇。可以按分类、标签筛选，或直接搜索关键词。
@@ -336,7 +336,7 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .page-head {
-    padding: 64px 0 0;
+    padding: 64px 0 32px;
 }
 
 .page-title {
@@ -345,7 +345,7 @@ onMounted(async () => {
     font-size: clamp(34px, 4vw, 52px);
     font-weight: 600;
     line-height: 1.2;
-    color: @font-color-l;
+    color: var(--portal-text-primary);
 }
 
 .page-lead {
@@ -353,7 +353,7 @@ onMounted(async () => {
     margin: 16px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 .filter-bar {
@@ -362,9 +362,12 @@ onMounted(async () => {
     align-items: center;
     gap: 18px;
     margin-top: 32px;
-    padding: 20px 0;
-    border-top: 1px solid @line-color-s;
-    border-bottom: 1px solid @line-color-s;
+    padding: 20px 24px;
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    border: 1px solid var(--portal-surface-border);
 }
 
 .filter-search {
