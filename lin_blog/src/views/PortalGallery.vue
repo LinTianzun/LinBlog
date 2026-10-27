@@ -51,7 +51,7 @@
         </section>
 
         <PortalGalleryDetail :open="detailVisible" :item="activeGallery" @close="closeGallery"
-            @view-counted="handleViewCounted" />
+            @view-counted="handleViewCounted" @interaction-change="handleInteractionChange" />
     </PortalLayout>
 </template>
 
@@ -145,6 +145,15 @@ const closeGallery = () => {
 const handleViewCounted = (payload: { id: number; views: number }) => {
     const target = galleryList.value.find(item => item.id === payload.id)
     if (target) target.views = payload.views
+}
+
+// 点赞/评论后把真实计数写回卡片，避免关闭弹窗后列表数字滞后
+const handleInteractionChange = (payload: { id: number; likes: number; comments: number }) => {
+    const target = galleryList.value.find(item => item.id === payload.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
 }
 
 onMounted(async () => {

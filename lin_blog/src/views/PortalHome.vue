@@ -232,9 +232,9 @@
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
-            @view-counted="handleDiaryViewCounted" />
+            @view-counted="handleDiaryViewCounted" @interaction-change="handleDiaryInteractionChange" />
         <PortalGalleryDetail :open="galleryVisible" :item="activeGallery" @close="closeGallery"
-            @view-counted="handleGalleryViewCounted" />
+            @view-counted="handleGalleryViewCounted" @interaction-change="handleGalleryInteractionChange" />
     </PortalLayout>
 </template>
 
@@ -468,6 +468,23 @@ const closeGallery = () => {
 const handleGalleryViewCounted = (payload: { id: number; views: number }) => {
     const target = galleryList.value.find(item => item.id === payload.id)
     if (target) target.views = payload.views
+}
+
+// 点赞/评论后把真实计数写回首页卡片
+const handleDiaryInteractionChange = (payload: { id: number; likes: number; comments: number }) => {
+    const target = diaryList.value.find(item => item.id === payload.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
+}
+
+const handleGalleryInteractionChange = (payload: { id: number; likes: number; comments: number }) => {
+    const target = galleryList.value.find(item => item.id === payload.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
 }
 
 onMounted(() => {

@@ -83,7 +83,7 @@
         </section>
 
         <PortalDiaryDetail :open="detailVisible" :item="activeDiary" @close="closeDiary"
-            @view-counted="handleViewCounted" />
+            @view-counted="handleViewCounted" @interaction-change="handleInteractionChange" />
     </PortalLayout>
 </template>
 
@@ -202,6 +202,15 @@ const closeDiary = () => {
 const handleViewCounted = (payload: { id: number; views: number }) => {
     const target = diaryList.value.find(item => item.id === payload.id)
     if (target) target.views = payload.views
+}
+
+// 点赞/评论后把真实计数写回卡片
+const handleInteractionChange = (payload: { id: number; likes: number; comments: number }) => {
+    const target = diaryList.value.find(item => item.id === payload.id)
+    if (target) {
+        target.likes = payload.likes
+        target.comments = payload.comments
+    }
 }
 
 onMounted(async () => {

@@ -254,6 +254,34 @@ const tablesSql = {
     INDEX idx_mood (mood)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='个人日记表';`,
 
+  // 随笔点赞/评论独立建表：diary 与 article 是两张业务表，
+  // 不能直接复用 praise/comment 的外键（它们 REFERENCES article）。
+  diary_praise: `CREATE TABLE IF NOT EXISTS diary_praise(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '点赞ID',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '点赞用户ID',
+    diary_id BIGINT UNSIGNED NOT NULL COMMENT '关联随笔ID',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (diary_id) REFERENCES diary(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_user_diary (user_id, diary_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='随笔点赞表';`,
+
+  diary_comment: `CREATE TABLE IF NOT EXISTS diary_comment(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '评论用户ID',
+    diary_id BIGINT UNSIGNED NOT NULL COMMENT '关联随笔ID',
+    content VARCHAR(512) NOT NULL COMMENT '评论内容',
+    status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (diary_id) REFERENCES diary(id) ON DELETE CASCADE,
+    INDEX idx_diary (diary_id),
+    INDEX idx_user (user_id),
+    INDEX idx_created_at (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='随笔评论表';`,
+
   weather: `CREATE TABLE IF NOT EXISTS weather(
     id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '天气ID',
     weather_name VARCHAR(20) NOT NULL COMMENT '天气名称（如：晴、雨、雪）',
@@ -801,7 +829,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'message', 'record', 'view_log', 'system_log'];
+    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'message', 'record', 'view_log', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1171,6 +1199,22 @@ async function ensureFileLifecycleSchema(exec = query) {
   await exec('UPDATE file SET deleted_at = NOW() WHERE status = 0 AND deleted_at IS NULL');
 }
 
+// 随笔互动：点赞/评论表 + diary 上的冗余计数列。
+// 建表语句已覆盖新库，这里只负责存量库补全。
+async function ensureDiaryInteractionSchema(exec = query) {
+  await exec(tablesSql.diary_praise);
+  await exec(tablesSql.diary_comment);
+
+  await ensureColumn(exec, 'diary', 'likes', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '点赞数'
+  });
+  await ensureColumn(exec, 'diary', 'comments', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '评论数'
+  });
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1197,6 +1241,10 @@ const migrations = [
   {
     version: '20261027_file_lifecycle',
     up: ensureFileLifecycleSchema
+  },
+  {
+    version: '20261027_diary_interaction',
+    up: ensureDiaryInteractionSchema
   }
 ];
 

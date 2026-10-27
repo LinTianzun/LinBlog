@@ -58,6 +58,8 @@ async function getDiaries(req, res) {
                     weatherId: item.weather_id,
                     weatherName: item.weather_name,
                     views: Number(item.views || 0),
+                    likes: Number(item.likes || 0),
+                    comments: Number(item.comments || 0),
                     createdAt: item.created_at
                 }))
             }
