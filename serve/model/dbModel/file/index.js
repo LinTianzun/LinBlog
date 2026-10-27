@@ -95,10 +95,26 @@ async function getSubsetCounts() {
 
 async function findFileById(id) {
     const rows = await query(
-        'SELECT id, file_name, format, size, url, subset_id, status FROM file WHERE id = ? LIMIT 1',
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+                deleted_at, backup_deleted_at
+         FROM file
+         WHERE id = ?
+         LIMIT 1`,
         [id]
     )
     return rows[0] || null
+}
+
+async function findFilesByIds(ids) {
+    if (!ids.length) return []
+    const placeholders = ids.map(() => '?').join(', ')
+    return query(
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+                deleted_at, backup_deleted_at
+         FROM file
+         WHERE id IN (${placeholders})`,
+        ids
+    )
 }
 
 /**
@@ -134,10 +150,79 @@ async function softDeleteFiles(ids) {
     if (!ids.length) return 0
     const placeholders = ids.map(() => '?').join(', ')
     const result = await query(
-        `UPDATE file SET status = 0 WHERE status = 1 AND id IN (${placeholders})`,
+        `UPDATE file
+         SET status = 0, deleted_at = NOW(), backup_deleted_at = NULL
+         WHERE status = 1 AND id IN (${placeholders})`,
         ids
     )
     return result.affectedRows
+}
+
+async function restoreFile(id) {
+    const result = await query(
+        `UPDATE file
+         SET status = 1, deleted_at = NULL, backup_deleted_at = NULL
+         WHERE id = ? AND status = 0 AND backup_deleted_at IS NULL`,
+        [id]
+    )
+    return result.affectedRows
+}
+
+async function markBackupDeleted(ids) {
+    if (!ids.length) return 0
+    const placeholders = ids.map(() => '?').join(', ')
+    const result = await query(
+        `UPDATE file
+         SET backup_deleted_at = NOW()
+         WHERE backup_deleted_at IS NULL AND id IN (${placeholders})`,
+        ids
+    )
+    return result.affectedRows
+}
+
+async function findLocalFileReferences() {
+    return query(
+        `SELECT id, url, status
+         FROM file
+         WHERE LOWER(url) NOT LIKE 'http://%' AND LOWER(url) NOT LIKE 'https://%'`
+    )
+}
+
+async function findExpiredDeletedFiles(days, limit = 500) {
+    return query(
+        `SELECT id, url
+         FROM file
+         WHERE status = 0
+           AND deleted_at IS NOT NULL
+           AND deleted_at < DATE_SUB(NOW(), INTERVAL ? DAY)
+           AND backup_deleted_at IS NULL
+         ORDER BY deleted_at ASC
+         LIMIT ?`,
+        [days, limit]
+    )
+}
+
+async function getDeletedFilesByPage({ keyword, pageSize, offset }) {
+    const where = ['status = 0', 'backup_deleted_at IS NULL']
+    const params = []
+    if (keyword) {
+        where.push('file_name LIKE ?')
+        params.push(`%${keyword}%`)
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`
+    const totalRows = await query(`SELECT COUNT(*) AS total FROM file ${whereSql}`, params)
+    const list = await query(
+        `SELECT id, file_name, format, size, url, subset_id, created_at,
+                deleted_at, backup_deleted_at
+         FROM file
+         ${whereSql}
+         ORDER BY deleted_at DESC, id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
+    )
+
+    return { list, total: Number(totalRows[0]?.total || 0) }
 }
 
 module.exports = {
@@ -145,8 +230,14 @@ module.exports = {
     countFilesSummary,
     getSubsetCounts,
     findFileById,
+    findFilesByIds,
     findExistingFileIds,
     insertFile,
     updateFileSubset,
-    softDeleteFiles
+    softDeleteFiles,
+    restoreFile,
+    markBackupDeleted,
+    findLocalFileReferences,
+    findExpiredDeletedFiles,
+    getDeletedFilesByPage
 }

@@ -7,6 +7,7 @@ process.env.LINBLOG_JWT_SECRET = 'test-secret-that-is-at-least-32-characters-lon
 const fileController = require(path.resolve(__dirname, '../controller/fileController.js'))
 const fileModel = require(path.resolve(__dirname, '../model/dbModel/file/index.js'))
 const subsetModel = require(path.resolve(__dirname, '../model/dbModel/subset/index.js'))
+const fileStorage = require(path.resolve(__dirname, '../utils/fileStorage.js'))
 
 function createRes() {
     return {
@@ -146,11 +147,64 @@ test('moveFiles to uncategorized passes null subset id', async () => {
 
 test('deleteFiles reports 404 when nothing was deleted', async () => {
     await withOverrides(fileModel, {
+        async findFilesByIds() { return [] },
         async softDeleteFiles() { return 0 }
     }, async () => {
         const res = createRes()
         await fileController.deleteFiles({ body: { fileIds: [404] }, params: {} }, res)
         assert.equal(res.statusCode, 404)
+    })
+})
+
+test('deleteFiles moves local files to backup after soft deleting records', async () => {
+    const backedUp = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [
+                { id: 1, url: 'local-file.txt', status: 1 },
+                { id: 2, url: 'https://example.test/remote.png', status: 1 }
+            ]
+        },
+        async softDeleteFiles() { return 2 }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async moveToBackup(name) {
+                backedUp.push(name)
+                return { moved: true, reason: null }
+            }
+        }, async () => {
+            const res = createRes()
+            await fileController.deleteFiles({ body: { fileIds: [1, 2] }, params: {}, user: { userId: 1 } }, res)
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.deletedCount, 2)
+            assert.equal(res.body.data.backedUpCount, 1)
+            assert.deepEqual(backedUp, ['local-file.txt'])
+        })
+    })
+})
+
+test('restoreFiles restores the disk file and database record', async () => {
+    const restoredIds = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [{ id: 7, url: 'restore-me.txt', status: 0, backup_deleted_at: null }]
+        },
+        async restoreFile(id) {
+            restoredIds.push(id)
+            return 1
+        }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async restoreFromBackup() { return { restored: true, reason: null } }
+        }, async () => {
+            const res = createRes()
+            await fileController.restoreFiles({ body: { fileIds: [7] }, user: { userId: 1 } }, res)
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.restoredCount, 1)
+            assert.deepEqual(restoredIds, [7])
+        })
     })
 })
 
@@ -171,5 +225,109 @@ test('getFileSummary returns all, uncategorized and subset counts', async () => 
         assert.equal(res.body.data.all, 22)
         assert.equal(res.body.data.uncategorized, 4)
         assert.equal(res.body.data.subsets.length, 2)
+    })
+})
+
+test('getTrashFiles rejects invalid pagination and formats deleted rows', async () => {
+    const invalid = createRes()
+    await fileController.getTrashFiles({ query: { pageSize: '999' }, user: { userId: 1 } }, invalid)
+    assert.equal(invalid.statusCode, 400)
+
+    await withOverrides(fileModel, {
+        async getDeletedFilesByPage() {
+            return {
+                total: 1,
+                list: [{
+                    id: 4,
+                    file_name: '旧文件.txt',
+                    format: 'txt',
+                    size: 10,
+                    url: 'old-file.txt',
+                    subset_id: null,
+                    created_at: '2026-10-20 10:00:00',
+                    deleted_at: '2026-10-27 10:00:00'
+                }]
+            }
+        }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async backupExists() { return true }
+        }, async () => {
+            const res = createRes()
+            await fileController.getTrashFiles({ query: {}, user: { userId: 1 } }, res)
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.total, 1)
+            assert.equal(res.body.data.list[0].url, '/api/file/4/download')
+            assert.equal(res.body.data.list[0].recoverable, true)
+        })
+    })
+})
+
+test('restoreFiles rejects empty selection and non-restorable files', async () => {
+    const empty = createRes()
+    await fileController.restoreFiles({ body: { fileIds: [] }, user: { userId: 1 } }, empty)
+    assert.equal(empty.statusCode, 400)
+
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [{ id: 3, url: 'purged.bin', status: 0, backup_deleted_at: '2026-10-27 10:00:00' }]
+        }
+    }, async () => {
+        const res = createRes()
+        await fileController.restoreFiles({ body: { fileIds: [3] }, user: { userId: 1 } }, res)
+        assert.equal(res.statusCode, 404)
+    })
+})
+
+test('restoreFiles rolls the disk file back when the record cannot be restored', async () => {
+    const rolledBack = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [{ id: 5, url: 'race.txt', status: 0, backup_deleted_at: null }]
+        },
+        async restoreFile() { return 0 }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async restoreFromBackup() { return { restored: true, reason: null } },
+            async moveToBackup(name) { rolledBack.push(name); return { moved: true, reason: null } }
+        }, async () => {
+            const res = createRes()
+            await fileController.restoreFiles({ body: { fileIds: [5] }, user: { userId: 1 } }, res)
+
+            assert.equal(res.statusCode, 409)
+            assert.equal(res.body.data.restoredCount, 0)
+            assert.deepEqual(rolledBack, ['race.txt'])
+        })
+    })
+})
+
+test('cleanupFiles rejects non-admins and delegates to the lifecycle task', async () => {
+    const forbidden = createRes()
+    await fileController.cleanupFiles({ body: {}, user: { userId: 2, user_type: 'normal' } }, forbidden)
+    assert.equal(forbidden.statusCode, 403)
+
+    const unauthorized = createRes()
+    await fileController.cleanupFiles({ body: {}, user: undefined }, unauthorized)
+    assert.equal(unauthorized.statusCode, 403)
+
+    // 清理实现在模块内直接引用模型与存储对象，替身打在对应模块上即可覆盖真实库访问
+    await withOverrides(fileModel, {
+        async findLocalFileReferences() { return [] },
+        async findExpiredDeletedFiles() { return [] },
+        async markBackupDeleted() { return 0 }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async listActiveFiles() { return [] }
+        }, async () => {
+            const res = createRes()
+            await fileController.cleanupFiles(
+                { body: { dryRun: true }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
+                res
+            )
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.dryRun, true)
+        })
     })
 })

@@ -10,6 +10,12 @@ export interface FileItem {
   createdAt: string;
 }
 
+// 回收站条目：在文件字段基础上补删除时间与是否仍可恢复
+export interface TrashFileItem extends FileItem {
+  deletedAt: string | null;
+  recoverable: boolean;
+}
+
 export interface FilePageData {
   total: number;
   page: number;
@@ -69,6 +75,30 @@ export function getFiles(
 // 文件统计（分组栏计数）
 export function getFileSummary() {
   return request.get<ApiResult<FileSummaryData>>("/file/summary");
+}
+
+// 回收站分页查询
+export function getTrashFiles(params: { page?: number; pageSize?: number } = {}) {
+  return request.get<ApiResult<FilePageData & { list: TrashFileItem[] }>>(
+    "/file/trash",
+    { params }
+  );
+}
+
+// 批量恢复回收站文件
+export function restoreFiles(fileIds: number[]) {
+  return request.patch<ApiResult<{ restoredCount: number; failedCount: number }>>(
+    "/file/restore",
+    { fileIds }
+  );
+}
+
+// 管理员手动触发清理；dryRun 只预演不落盘
+export function runFileCleanup(dryRun: boolean) {
+  return request.post<ApiResult<Record<string, unknown>>>(
+    "/file/maintenance/cleanup",
+    { dryRun }
+  );
 }
 
 // 上传地址：yk-upload 内部自己发 XHR，无法附加请求头，

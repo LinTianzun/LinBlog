@@ -47,3 +47,7 @@ Thumbs.db
 # Runtime file uploads
 serve/data/files/*
 !serve/data/files/.gitkeep
+
+# Non-public deleted-file backups
+serve/storage/file-backups/*
+!serve/storage/file-backups/.gitkeep

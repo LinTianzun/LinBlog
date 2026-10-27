@@ -21,6 +21,7 @@ if (!targetDb) {
     const userModel = require('../model/dbModel/users/index')
     const articleModel = require('../model/dbModel/article/index')
     const imageModel = require('../model/dbModel/image/index')
+    const fileModel = require('../model/dbModel/file/index')
     const commentController = require('../controller/commentController')
     const userController = require('../controller/userController')
 
@@ -101,6 +102,19 @@ if (!targetDb) {
             [targetDb]
         )
         assert.equal(Number(tables[0].total), 6)
+
+        const fileColumns = await db.query(
+            `SELECT COLUMN_NAME
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ?
+               AND TABLE_NAME = 'file'
+               AND COLUMN_NAME IN ('deleted_at', 'backup_deleted_at')`,
+            [targetDb]
+        )
+        assert.deepEqual(
+            fileColumns.map(row => row.COLUMN_NAME).sort(),
+            ['backup_deleted_at', 'deleted_at']
+        )
     })
 
     test('staff role filter excludes visitors and respects status', async () => {
@@ -194,6 +208,38 @@ if (!targetDb) {
         assert.equal(rows[0].mime_type, 'image/jpeg')
         assert.equal(Number(rows[0].size), payload.length)
         assert.ok(Buffer.from(rows[0].data).equals(payload))
+    })
+
+    test('file soft-delete and restore preserve lifecycle timestamps', async () => {
+        const inserted = await fileModel.insertFile({
+            fileName: '生命周期测试.txt',
+            format: 'txt',
+            size: 12,
+            url: 'integration-file-lifecycle.txt',
+            subsetId: null
+        })
+
+        const affected = await fileModel.softDeleteFiles([inserted.fileId])
+        assert.equal(affected, 1)
+
+        const deleted = await fileModel.findFileById(inserted.fileId)
+        assert.equal(Number(deleted.status), 0)
+        assert.ok(deleted.deleted_at)
+        assert.equal(deleted.backup_deleted_at, null)
+
+        const trash = await fileModel.getDeletedFilesByPage({
+            pageSize: 20,
+            offset: 0
+        })
+        assert.ok(trash.list.some(file => Number(file.id) === Number(inserted.fileId)))
+
+        const restored = await fileModel.restoreFile(inserted.fileId)
+        assert.equal(restored, 1)
+
+        const active = await fileModel.findFileById(inserted.fileId)
+        assert.equal(Number(active.status), 1)
+        assert.equal(active.deleted_at, null)
+        assert.equal(active.backup_deleted_at, null)
     })
 
     test('cover cleanup keeps referenced images and removes orphaned ones', async () => {

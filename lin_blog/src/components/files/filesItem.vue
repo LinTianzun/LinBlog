@@ -10,7 +10,7 @@
             </div>
             <yk-space class="file-item-img-tool" size="s">
                 <IconDownloadOutline class="files-tool-download" @click="downloadFile" />
-                <yk-popconfirm title="确认删除该文件？删除后不可恢复" trigger="click" placement="topRight"
+                <yk-popconfirm title="确认删除该文件？可在回收站恢复" trigger="click" placement="topRight"
                     @confirm="deleteFile">
                     <IconDeleteOutline class="files-tool-delete" />
                 </yk-popconfirm>

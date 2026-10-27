@@ -8,6 +8,11 @@ module.exports = (app) => {
     // 文件统计（分组栏计数）
     app.get('/api/file/summary', authMiddleware, fileController.getFileSummary)
 
+    // 回收站与恢复
+    app.get('/api/file/trash', authMiddleware, fileController.getTrashFiles)
+    app.patch('/api/file/restore', authMiddleware, fileController.restoreFiles)
+    app.post('/api/file/maintenance/cleanup', authMiddleware, fileController.cleanupFiles)
+
     // 文件上传（yk-upload 走 query token）
     app.post('/api/file/upload', authMiddlewareFromQuery, fileController.uploadFile)
 

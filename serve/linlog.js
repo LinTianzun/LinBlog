@@ -11,6 +11,7 @@ const db = require('./model/db/dbnew')
 const { normalizeJsonBody } = require('./middleware/normalizeBody')
 const recordMiddleware = require('./middleware/record')
 const { startRecordRetention } = require('./utils/recordRetention')
+const { startFileLifecycle } = require('./utils/fileLifecycle')
 
 // 1. 配置跨域（OPTIONS 预检在进入 API 路由前由 cors 中间件处理）
 const corsOptions = {
@@ -67,6 +68,8 @@ db.initDatabase()
             console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);
             // 访问记录按保留期滚动清理，避免 record 表无限增长
             startRecordRetention();
+            // 文件备份按保留期清理，并回收数据库已无引用的磁盘孤儿文件
+            startFileLifecycle();
         });
     })
     .catch((err) => {
