@@ -130,3 +130,69 @@ test('getLogs rejects non-admin and formats list rows', async () => {
         systemLogModel.getLogsByPage = originalPage
     }
 })
+
+test('getLogs forwards desc by default and only allows asc when requested', async () => {
+    const originalPage = systemLogModel.getLogsByPage
+    const captured = []
+
+    systemLogModel.getLogsByPage = async (params) => {
+        captured.push(params.sortOrder)
+        return { list: [], total: 0 }
+    }
+
+    try {
+        await systemLogController.getLogs(
+            { query: { page: '1' }, user: { userId: 1, user_type: 'admin' } },
+            createRes()
+        )
+        await systemLogController.getLogs(
+            { query: { page: '1', sortOrder: 'asc' }, user: { userId: 1, user_type: 'admin' } },
+            createRes()
+        )
+        await systemLogController.getLogs(
+            { query: { page: '1', sortOrder: '; DROP TABLE' }, user: { userId: 1, user_type: 'admin' } },
+            createRes()
+        )
+
+        assert.deepEqual(captured, ['desc', 'asc', 'desc'])
+    } finally {
+        systemLogModel.getLogsByPage = originalPage
+    }
+})
+
+test('getLogsByPage orders by created_at with the requested direction', async () => {
+    const capturedSql = []
+    const dbPath = path.resolve(__dirname, '../model/db/dbnew.js')
+    const originalModule = require.cache[dbPath]
+
+    //  模型在 require 时就解构了 query，只能整体替换模块来捕获 SQL
+    delete require.cache[dbPath]
+    require.cache[dbPath] = {
+        id: dbPath,
+        filename: dbPath,
+        loaded: true,
+        exports: {
+            query: async (sql) => {
+                capturedSql.push(sql)
+                return sql.includes('COUNT(*)') ? [{ total: 0 }] : []
+            }
+        }
+    }
+
+    try {
+        delete require.cache[path.resolve(__dirname, '../model/dbModel/systemLog/index.js')]
+        const freshModel = require(path.resolve(__dirname, '../model/dbModel/systemLog/index.js'))
+
+        await freshModel.getLogsByPage({ pageSize: 10, offset: 0, sortOrder: 'asc' })
+        await freshModel.getLogsByPage({ pageSize: 10, offset: 0, sortOrder: 'desc' })
+
+        const orderClauses = capturedSql.filter(sql => sql.includes('ORDER BY'))
+        assert.equal(orderClauses.length, 2)
+        assert.match(orderClauses[0], /ORDER BY l\.created_at ASC, l\.id ASC/)
+        assert.match(orderClauses[1], /ORDER BY l\.created_at DESC, l\.id DESC/)
+    } finally {
+        delete require.cache[path.resolve(__dirname, '../model/dbModel/systemLog/index.js')]
+        if (originalModule) require.cache[dbPath] = originalModule
+        else delete require.cache[dbPath]
+    }
+})

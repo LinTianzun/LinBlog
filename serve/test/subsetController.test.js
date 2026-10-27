@@ -66,8 +66,29 @@ test('getSubsets reuses article subsets for gallery with image counts', async ()
         assert.deepEqual(received, {
             classify: 'article',
             includeCount: true,
-            countClassify: 'image'
+            countClassify: 'image',
+            countState: undefined
         })
+        assert.equal(res.body.data.list[0].value, 2)
+    } finally {
+        subsetModel.findSubsets = originalFind
+    }
+})
+
+test('public getSubsets counts only published articles', async () => {
+    const originalFind = subsetModel.findSubsets
+    let received = null
+    subsetModel.findSubsets = async (params) => {
+        received = params
+        return [{ id: 1, name: '技术博客', classify: 'article', sort: 10, value: 2, moment: '2026-10-24' }]
+    }
+
+    try {
+        const res = createRes()
+        await subsetController.getSubsets({ query: { classify: 'article' }, publicRead: true }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(received.countState, 'published')
         assert.equal(res.body.data.list[0].value, 2)
     } finally {
         subsetModel.findSubsets = originalFind

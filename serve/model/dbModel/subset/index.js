@@ -2,7 +2,7 @@ const { query } = require('../../db/dbnew')
 
 const CLASSIFY_TYPES = ['article', 'image', 'resource']
 
-async function findSubsets({ classify, includeCount = false, countClassify } = {}) {
+async function findSubsets({ classify, includeCount = false, countClassify, countState } = {}) {
     const whereParams = []
     let whereClause = 'status = 1'
 
@@ -19,6 +19,11 @@ async function findSubsets({ classify, includeCount = false, countClassify } = {
         if (countClassify && ['article', 'image'].includes(countClassify)) {
             countFilter = ' AND a.classify = ?'
             countParams.push(countClassify)
+        }
+        //  countState 限定统计哪些状态的内容；门户只统计已发布，后台统计全部未删除
+        if (countState && ['draft', 'published', 'rejected'].includes(countState)) {
+            countFilter += ' AND a.state = ?'
+            countParams.push(countState)
         }
         columns = `id, subset_name AS name, classify, sort,
            (SELECT COUNT(*) FROM article a

@@ -22,8 +22,16 @@ async function getLogs(req, res) {
         const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
         const module = systemLogModel.MODULES.includes(req.query.module) ? req.query.module : ''
         const action = systemLogModel.ACTIONS.includes(req.query.action) ? req.query.action : ''
+        const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc'
 
-        const { list, total } = await systemLogModel.getLogsByPage({ keyword, module, action, pageSize, offset })
+        const { list, total } = await systemLogModel.getLogsByPage({
+            keyword,
+            module,
+            action,
+            pageSize,
+            offset,
+            sortOrder
+        })
 
         res.json({
             code: 200,

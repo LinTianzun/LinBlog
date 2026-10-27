@@ -17,8 +17,16 @@ async function insertLog({ userId = null, action, module, targetType = null, tar
 
 /**
  * 分页查询日志；keyword 匹配详情/目标类型/目标ID/用户名，支持按模块和动作过滤
+ * sortOrder 仅支持 asc/desc，控制 created_at 的升降序
  */
-async function getLogsByPage({ keyword = '', module = '', action = '', pageSize = 20, offset = 0 }) {
+async function getLogsByPage({
+    keyword = '',
+    module = '',
+    action = '',
+    pageSize = 20,
+    offset = 0,
+    sortOrder = 'desc'
+}) {
     const where = []
     const params = []
 
@@ -37,6 +45,7 @@ async function getLogsByPage({ keyword = '', module = '', action = '', pageSize 
     }
 
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+    const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
 
     const totalRows = await query(
         `SELECT COUNT(*) AS total FROM system_log l LEFT JOIN users u ON l.user_id = u.id ${whereSql}`,
@@ -48,7 +57,7 @@ async function getLogsByPage({ keyword = '', module = '', action = '', pageSize 
          FROM system_log l
          LEFT JOIN users u ON l.user_id = u.id
          ${whereSql}
-         ORDER BY l.created_at DESC, l.id DESC
+         ORDER BY l.created_at ${orderDirection}, l.id ${orderDirection}
          LIMIT ? OFFSET ?`,
         [...params, pageSize, offset]
     )

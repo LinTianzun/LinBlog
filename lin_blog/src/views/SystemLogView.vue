@@ -27,7 +27,13 @@
                     <span class="log-col log-col-module">模块</span>
                     <span class="log-col log-col-detail">详情</span>
                     <span class="log-col log-col-target">目标 / IP</span>
-                    <span class="log-col log-col-time">时间</span>
+                    <span class="log-col log-col-time">
+                        <button type="button" class="log-sort" :class="{ 'is-active': sortOrder !== 'desc' }"
+                            :aria-sort="sortOrder === 'asc' ? 'ascending' : 'descending'" @click="toggleSort">
+                            <span>时间</span>
+                            <span class="log-sort-icon" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                        </button>
+                    </span>
                 </div>
 
                 <div v-for="item in logs" :key="item.id" class="system-log-row">
@@ -66,6 +72,7 @@
         getSystemLogs,
         getRequestErrorMessage,
         type SystemLogItem,
+        type SystemLogSortOrder,
     } from '../api/systemLog'
 
     const logs = ref<SystemLogItem[]>([])
@@ -78,6 +85,8 @@
     const keyword = ref('')
     const moduleFilter = ref('')
     const actionFilter = ref('')
+    //  默认最新在前；点击表头在升序/降序之间切换
+    const sortOrder = ref<SystemLogSortOrder>('desc')
 
     const moduleOptions = [
         { value: 'user', label: '用户' },
@@ -122,6 +131,7 @@
                 keyword: keyword.value.trim() || undefined,
                 module: moduleFilter.value || undefined,
                 action: actionFilter.value || undefined,
+                sortOrder: sortOrder.value,
             })
 
             if (result.code !== 200 || !result.data) {
@@ -152,6 +162,13 @@
     const changePage = (nextPage: number): void => {
         if (nextPage === page.value) return
         page.value = nextPage
+        void fetchLogs()
+    }
+
+    const toggleSort = (): void => {
+        const nextOrder: SystemLogSortOrder = sortOrder.value === 'desc' ? 'asc' : 'desc'
+        sortOrder.value = nextOrder
+        page.value = 1
         void fetchLogs()
     }
 
@@ -267,6 +284,36 @@
             color: var(--gray6);
             font-variant-numeric: tabular-nums;
             text-align: right;
+        }
+
+        .log-sort {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin: 0;
+            padding: 2px 6px;
+            border: 1px solid transparent;
+            border-radius: @radius-s;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+
+            &:hover {
+                border-color: var(--admin-line, var(--gray1));
+                background: var(--admin-surface-soft, var(--bgColor2));
+                color: var(--pcolor);
+            }
+
+            &.is-active {
+                color: var(--pcolor);
+            }
+        }
+
+        .log-sort-icon {
+            font-size: 12px;
+            line-height: 1;
         }
 
         .system-log-item-tag {
