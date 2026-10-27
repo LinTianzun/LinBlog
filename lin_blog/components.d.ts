@@ -100,7 +100,6 @@ declare module 'vue' {
     YkTag: typeof import('@yike-design/ui')['YkTag']
     YkText: typeof import('@yike-design/ui')['YkText']
     YkTextArea: typeof import('@yike-design/ui')['YkTextArea']
-    YkTheme: typeof import('@yike-design/ui')['YkTheme']
     YkTitle: typeof import('@yike-design/ui')['YkTitle']
     YkTooltip: typeof import('@yike-design/ui')['YkTooltip']
     YkUpload: typeof import('@yike-design/ui')['YkUpload']
