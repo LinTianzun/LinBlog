@@ -127,22 +127,31 @@ test('public comments on published articles return the created comment', async (
         userId: 42,
         articleId: 5,
         content: '门户评论',
-        parentId: 0
+        parentId: 0,
+        replyToCommentId: null,
+        replyToUserId: null
     }])
     assert.equal(res.body.data.commentId, 88)
     assert.equal(res.body.data.articleId, 5)
 })
 
-test('public comments enforce the two-level reply boundary', async () => {
-    parentRow = { id: 7, parent_id: 3 }
+test('replying to a second-level comment stays under its root comment', async () => {
+    parentRow = { id: 7, user_id: 11, parent_id: 3 }
     const res = makeResponse()
     await commentController.createPublicComment({
         body: { articleId: 5, parentId: 7, content: 'reply' },
         user: { userId: 42, userType: 'normal' }
     }, res)
 
-    assert.equal(res.statusCode, 400)
-    assert.equal(createCalls.length, 0)
+    assert.equal(res.statusCode, 201)
+    assert.deepEqual(createCalls, [{
+        userId: 42,
+        articleId: 5,
+        content: 'reply',
+        parentId: 3,
+        replyToCommentId: 7,
+        replyToUserId: 11
+    }])
 })
 
 test('anonymous visitors are rejected when toggling likes', async () => {

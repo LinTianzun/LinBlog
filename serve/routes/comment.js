@@ -1,4 +1,5 @@
 const commentController = require('../controller/commentController')
+const commentInteractionController = require('../controller/commentInteractionController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 
 module.exports = (app) => {
@@ -10,6 +11,12 @@ module.exports = (app) => {
 
     // 门户公开评论发表（需登录；匿名返回 401 提示登录）
     app.post('/api/public/comment', optionalAuthMiddleware, commentController.createPublicComment)
+
+    // 评论点赞（门户与后台共用；需登录，匿名返回 401）
+    app.post('/api/public/comment/like', optionalAuthMiddleware, commentInteractionController.toggleLike)
+
+    // 举报评论（同一用户重复举报只记一次）
+    app.post('/api/public/comment/report', optionalAuthMiddleware, commentInteractionController.report)
 
     // 新增评论（需登录）
     app.post('/api/comment', authMiddleware, commentController.createComment)
