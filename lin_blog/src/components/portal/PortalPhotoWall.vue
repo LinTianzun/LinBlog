@@ -1,8 +1,8 @@
 <template>
     <div class="photo-wall">
-        <RouterLink v-for="(item, index) in items" :key="item.id" :to="item.to" class="wall-print"
+        <button v-for="(item, index) in items" :key="item.id" type="button" class="wall-print"
             :class="[`is-${item.span}`, `tone-${item.tone ?? 0}`]"
-            :style="{ animationDelay: `${Math.min(index, 11) * 55}ms` }">
+            :style="{ animationDelay: `${Math.min(index, 11) * 55}ms` }" @click="emit('select', item.id)">
             <div class="print-frame">
                 <img v-if="item.image" :src="item.image" :alt="item.alt" loading="lazy" />
                 <div v-else class="print-blank" :class="`tone-${item.tone ?? 0}`">
@@ -18,7 +18,7 @@
             <div class="print-caption">
                 <h3>{{ item.title }}</h3>
             </div>
-        </RouterLink>
+        </button>
     </div>
 </template>
 
@@ -32,7 +32,6 @@ export interface WallPrint {
     glyph?: string
     tone?: number
     count?: number
-    to: string
     // 跨栏：wide 占 7 列，portrait 占 4 列，small 占 3 列
     span: 'wide' | 'portrait' | 'small'
     // 垂直错位档位
@@ -44,6 +43,10 @@ withDefaults(defineProps<{
 }>(), {
     items: () => []
 })
+
+const emit = defineEmits<{
+    (e: 'select', id: WallPrint['id']): void
+}>()
 </script>
 
 <style lang="less" scoped>
@@ -60,6 +63,14 @@ withDefaults(defineProps<{
 
 .wall-print {
     display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
     text-decoration: none;
     // backwards：只保留入场前起始态，避免动画终态覆盖悬停位移
     animation: print-in 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
