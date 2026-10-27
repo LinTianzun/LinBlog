@@ -10,6 +10,13 @@
                         @click="restoreSelected">
                         恢复所选
                     </yk-button>
+                    <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除所选文件？"
+                        trigger="click" placement="topRight" @confirm="purgeSelected">
+                        <yk-button size="s" type="secondary" status="danger"
+                            :disabled="busy || selectedIds.length === 0">
+                            彻底删除
+                        </yk-button>
+                    </yk-popconfirm>
                     <yk-button v-if="isAdmin" size="s" type="secondary" :disabled="busy" @click="runCleanup(true)">
                         清理预演
                     </yk-button>
@@ -38,10 +45,19 @@
                                     {{ formatSize(item.size) }} · 删除于 {{ formatTime(item.deletedAt) }}
                                 </yk-text>
                             </div>
-                            <yk-button size="s" type="secondary" :disabled="busy || !item.recoverable"
-                                @click.stop="restoreOne(item.id)">
-                                恢复
-                            </yk-button>
+                            <yk-space size="s">
+                                <yk-button size="s" type="secondary" :disabled="busy || !item.recoverable"
+                                    @click.stop="restoreOne(item.id)">
+                                    恢复
+                                </yk-button>
+                                <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除？"
+                                    trigger="click" placement="topRight" @confirm="purgeOne(item.id)">
+                                    <yk-button size="s" type="secondary" status="danger" :disabled="busy"
+                                        @click.stop>
+                                        彻底删除
+                                    </yk-button>
+                                </yk-popconfirm>
+                            </yk-space>
                         </div>
                     </div>
                 </yk-scrollbar>
@@ -64,6 +80,7 @@ import { ref, watch, getCurrentInstance } from 'vue'
 import {
     getTrashFiles,
     restoreFiles,
+    purgeTrashFiles,
     runFileCleanup,
     getRequestErrorMessage,
     type TrashFileItem,
@@ -165,6 +182,42 @@ const restoreOne = (id: number): void => {
 const restoreSelected = (): void => {
     if (selectedIds.value.length === 0) return
     void restore([...selectedIds.value])
+}
+
+const purgeOne = (id: number): void => {
+    void purge([id])
+}
+
+const purgeSelected = (): void => {
+    if (selectedIds.value.length === 0) return
+    void purge([...selectedIds.value])
+}
+
+const purge = async (ids: number[]): Promise<void> => {
+    if (busy.value || ids.length === 0) return
+    busy.value = true
+
+    try {
+        const result = await purgeTrashFiles(ids)
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '彻底删除失败')
+        }
+
+        const failed = Number(result.data.failedCount || 0)
+        showMessage(
+            failed > 0 ? 'error' : 'primary',
+            failed > 0
+                ? `已彻底删除 ${result.data.purgedCount} 个，${failed} 个删除失败`
+                : `已彻底删除 ${result.data.purgedCount} 个文件`
+        )
+
+        selectedIds.value = []
+        await fetchTrash()
+    } catch (error) {
+        showMessage('error', getRequestErrorMessage(error, '彻底删除失败，请稍后重试'))
+    } finally {
+        busy.value = false
+    }
 }
 
 const restore = async (ids: number[]): Promise<void> => {

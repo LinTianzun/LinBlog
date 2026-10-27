@@ -75,6 +75,7 @@ declare module 'vue' {
     Subset: typeof import('./src/components/subset/subset.vue')['default']
     SubsetManage: typeof import('./src/components/subset/subsetManage.vue')['default']
     TopTitle: typeof import('./src/components/bar/TopTitle.vue')['default']
+    YkAffix: typeof import('@yike-design/ui')['YkAffix']
     YkAvatar: typeof import('@yike-design/ui')['YkAvatar']
     YkBadge: typeof import('@yike-design/ui')['YkBadge']
     YkButton: typeof import('@yike-design/ui')['YkButton']

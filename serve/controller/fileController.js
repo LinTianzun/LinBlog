@@ -496,6 +496,73 @@ async function cleanupFiles(req, res) {
     }
 }
 
+/**
+ * 彻底删除回收站文件：物理删除非公开备份，并标记备份已清理。
+ * 仅管理员可执行，避免误删后无法恢复。
+ */
+async function purgeTrashFiles(req, res) {
+    try {
+        if (!req.user || req.user.user_type !== 'admin') {
+            return res.status(403).json({ code: 403, message: '仅管理员可以彻底删除文件' })
+        }
+
+        const ids = normalizeIdList(req.body.fileIds)
+        if (ids.length === 0) {
+            return res.status(400).json({ code: 400, message: '请选择要彻底删除的文件' })
+        }
+
+        const files = await fileModel.findFilesByIds(ids)
+        const candidates = files.filter(
+            file => Number(file.status) === 0 && !file.backup_deleted_at
+        )
+        if (candidates.length === 0) {
+            return res.status(404).json({ code: 404, message: '没有可彻底删除的文件' })
+        }
+
+        let purgedCount = 0
+        const failed = []
+        const purgedIds = []
+
+        for (const file of candidates) {
+            if (!fileStorage.isRemoteUrl(file.url)) {
+                try {
+                    await fileStorage.removeBackup(file.url)
+                } catch (err) {
+                    failed.push({ id: file.id, reason: err.message })
+                    continue
+                }
+            }
+            purgedIds.push(file.id)
+        }
+
+        if (purgedIds.length > 0) {
+            await fileModel.markBackupDeleted(purgedIds)
+            purgedCount = purgedIds.length
+        }
+
+        if (purgedCount > 0) {
+            writeSystemLog({
+                userId: req.user.userId,
+                action: 'delete',
+                module: 'file',
+                targetType: 'file',
+                targetId: null,
+                detail: `彻底删除 ${purgedCount} 个回收站文件`,
+                ip: req.ip || null,
+            })
+        }
+
+        const statusCode = purgedCount > 0 ? 200 : 409
+        res.status(statusCode).json({
+            code: purgedCount > 0 ? 200 : 409,
+            message: purgedCount > 0 ? '彻底删除完成' : '彻底删除失败',
+            data: { purgedCount, failedCount: failed.length, failed }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '彻底删除失败：' + err.message })
+    }
+}
+
 module.exports = {
     getFiles,
     getFileSummary,
@@ -505,5 +572,6 @@ module.exports = {
     deleteFiles,
     getTrashFiles,
     restoreFiles,
-    cleanupFiles
+    cleanupFiles,
+    purgeTrashFiles
 }

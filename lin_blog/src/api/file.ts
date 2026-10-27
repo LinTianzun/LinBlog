@@ -93,6 +93,13 @@ export function restoreFiles(fileIds: number[]) {
   );
 }
 
+// 彻底删除回收站文件（仅管理员），删除备份后记录不再出现在回收站
+export function purgeTrashFiles(fileIds: number[]) {
+  return request.delete<
+    ApiResult<{ purgedCount: number; failedCount: number }>
+  >("/file/trash", { data: { fileIds } });
+}
+
 // 管理员手动触发清理；dryRun 只预演不落盘
 export function runFileCleanup(dryRun: boolean) {
   return request.post<ApiResult<Record<string, unknown>>>(

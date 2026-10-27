@@ -331,3 +331,78 @@ test('cleanupFiles rejects non-admins and delegates to the lifecycle task', asyn
         })
     })
 })
+
+test('purgeTrashFiles is admin-only and removes backup before marking the record', async () => {
+    const forbidden = createRes()
+    await fileController.purgeTrashFiles(
+        { body: { fileIds: [9] }, user: { userId: 2, user_type: 'normal' } },
+        forbidden
+    )
+    assert.equal(forbidden.statusCode, 403)
+
+    const empty = createRes()
+    await fileController.purgeTrashFiles(
+        { body: { fileIds: [] }, user: { userId: 1, user_type: 'admin' } },
+        empty
+    )
+    assert.equal(empty.statusCode, 400)
+
+    const removed = []
+    const marked = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [
+                { id: 9, url: 'purge-me.bin', status: 0, backup_deleted_at: null },
+                { id: 10, url: 'https://example.test/remote.png', status: 0, backup_deleted_at: null },
+                { id: 11, url: 'already-purged.bin', status: 0, backup_deleted_at: '2026-10-27 10:00:00' }
+            ]
+        },
+        async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async removeBackup(name) { removed.push(name); return true }
+        }, async () => {
+            const res = createRes()
+            await fileController.purgeTrashFiles(
+                { body: { fileIds: [9, 10, 11] }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
+                res
+            )
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.purgedCount, 2)
+            assert.deepEqual(removed, ['purge-me.bin'])
+            assert.deepEqual(marked, [9, 10])
+        })
+    })
+})
+
+test('purgeTrashFiles keeps the record when backup removal fails', async () => {
+    const marked = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [
+                { id: 21, url: 'locked.bin', status: 0, backup_deleted_at: null },
+                { id: 22, url: 'ok.bin', status: 0, backup_deleted_at: null }
+            ]
+        },
+        async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async removeBackup(name) {
+                if (name === 'locked.bin') throw new Error('EBUSY')
+                return true
+            }
+        }, async () => {
+            const res = createRes()
+            await fileController.purgeTrashFiles(
+                { body: { fileIds: [21, 22] }, user: { userId: 1, user_type: 'admin' } },
+                res
+            )
+
+            assert.equal(res.body.data.purgedCount, 1)
+            assert.equal(res.body.data.failedCount, 1)
+            assert.equal(res.body.data.failed[0].id, 21)
+            assert.deepEqual(marked, [22])
+        })
+    })
+})
