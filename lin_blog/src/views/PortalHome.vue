@@ -356,10 +356,13 @@ const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
 }
 
 const openArticle = async (id: number) => {
+    // 先用列表里的数据占位，避免 modal 打开后内容空态闪一下再填充
+    const summary = articleList.value.find(item => item.id === id)
+    activeArticle.value = summary || null
     articleVisible.value = true
     try {
         const result = await getPublicArticleById(id)
-        if (result.code === 200) activeArticle.value = result.data || null
+        if (result.code === 200) activeArticle.value = result.data || activeArticle.value
     } catch {
         articleVisible.value = false
     }
@@ -449,7 +452,7 @@ onUnmounted(() => {
     margin: 0 auto;
     padding: 0 0 8vh;
     color: var(--portal-text-on-accent);
-    text-shadow: 0 2px 24px color-mix(in srgb, var(--font-color-s) 40%, transparent);
+    text-shadow: 0 2px 24px color-mix(in srgb, var(--pcolor) 40%, transparent);
 }
 
 .hero-eyebrow {

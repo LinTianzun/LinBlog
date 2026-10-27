@@ -21,8 +21,8 @@ export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'dawn',
         gradient: {
-            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 28%, var(--bgColor-l)), color-mix(in srgb, var(--pcolor-l, var(--pcolor)) 18%, var(--bgColor-l)))',
-            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 32%, var(--bgColor-s)), color-mix(in srgb, var(--pcolor-l, var(--pcolor)) 22%, var(--bgColor-s)))'
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 18%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 32%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 22%, var(--bgColor1)))'
         },
         title: '写字的人，也在好好生活',
         subtitle: '林知雨的个人小站 · 一些文章、摄影与随笔'
@@ -30,8 +30,8 @@ export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'noon',
         gradient: {
-            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-d) 22%, var(--bgColor-l)), color-mix(in srgb, var(--pcolor) 30%, var(--bgColor-l)))',
-            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-d) 26%, var(--bgColor-s)), color-mix(in srgb, var(--pcolor) 34%, var(--bgColor-s)))'
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 22%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 30%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 34%, var(--bgColor1)))'
         },
         title: '文章',
         subtitle: '长文与短札，记录思考的来路与去向'
@@ -39,8 +39,8 @@ export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'dusk',
         gradient: {
-            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-s, var(--pcolor)) 24%, var(--bgColor-l)), color-mix(in srgb, var(--pcolor-d) 20%, var(--bgColor-l)))',
-            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-s, var(--pcolor)) 28%, var(--bgColor-s)), color-mix(in srgb, var(--pcolor-d) 24%, var(--bgColor-s)))'
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 20%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor9) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 24%, var(--bgColor1)))'
         },
         title: '摄影',
         subtitle: '光与影的片段，生活被看见的瞬间'
@@ -48,8 +48,8 @@ export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'night',
         gradient: {
-            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 20%, var(--bgColor-l)), color-mix(in srgb, var(--pcolor-d) 26%, var(--bgColor-l)))',
-            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 24%, var(--bgColor-s)), color-mix(in srgb, var(--pcolor-d) 30%, var(--bgColor-s)))'
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 20%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 26%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor8) 30%, var(--bgColor1)))'
         },
         title: '随笔',
         subtitle: '日记式的碎片，天气与心情一同记下'
@@ -57,8 +57,8 @@ export const BANNER_SLIDES: BannerSlide[] = [
     {
         id: 'end',
         gradient: {
-            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-l, var(--pcolor)) 24%, var(--bgColor-l)), color-mix(in srgb, var(--pcolor) 22%, var(--bgColor-l)))',
-            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor-l, var(--pcolor)) 28%, var(--bgColor-s)), color-mix(in srgb, var(--pcolor) 26%, var(--bgColor-s)))'
+            light: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 24%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 22%, var(--bgColor1)))',
+            dark: 'linear-gradient(135deg, color-mix(in srgb, var(--pcolor8) 28%, var(--bgColor1)), color-mix(in srgb, var(--pcolor) 26%, var(--bgColor1)))'
         },
         title: '林知雨',
         subtitle: '欢迎来到我的小站'

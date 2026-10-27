@@ -284,7 +284,7 @@ const goAdmin = () => router.push('/overView')
 .portal-layout {
     // 顶栏底色由主题的页面底色派生，保证 11 套预设都跟随；
     // color-mix 只降低不透明度，不引入写死色值
-    --portal-header-bg: color-mix(in srgb, var(--bgColor-l) 82%, transparent);
+    --portal-header-bg: color-mix(in srgb, var(--bgColor1) 82%, transparent);
     --portal-logo-filter: none;
 }
 
@@ -309,10 +309,10 @@ const goAdmin = () => router.push('/overView')
 // 不支持 color-mix 的旧浏览器退回不透明底
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
     .portal-layout {
-        background: var(--bgColor-l);
+        background: var(--bgColor1);
     }
     [data-theme='dark'] .portal-layout {
-        background: var(--bgColor-s);
+        background: var(--bgColor1);
     }
 }
 </style>
