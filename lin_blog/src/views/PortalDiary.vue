@@ -1,11 +1,8 @@
 <template>
     <PortalLayout active-path="/portal/diary">
-        <section class="page-head portal-reveal">
-            <h1 class="page-title">随笔</h1>
-            <p class="page-lead">
-                共 {{ total }} 篇。每一篇都记着那天的天气——点开任意一篇，可以在当前页读完整内容。
-            </p>
-
+        <PortalPageHeader index="03" kicker="MICRO JOURNAL" title="随笔"
+            :description="`共 ${total} 篇。每一篇都记着那天的天气——点开任意一篇，可以在当前页读完整内容。`"
+            aside-label="DAYS & WEATHER" :aside-value="`${total} 篇`" aside-note="天气是日子的注脚，短句、照片和当时的心情一起留在这里。">
             <div v-if="weatherFilters.length" class="weather-bar">
                 <button type="button" class="weather-pill" :class="{ active: !activeWeather }"
                     @click="selectWeather('')">
@@ -21,6 +18,7 @@
             </div>
 
             <div class="sort-bar">
+                <span class="filter-caption">SORT</span>
                 <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
                     @click="setSort('latest')">
                     最新
@@ -30,7 +28,7 @@
                     最热
                 </button>
             </div>
-        </section>
+        </PortalPageHeader>
 
         <section class="list-area">
             <div v-if="loading" class="list-state">
@@ -93,6 +91,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import { getPublicDiaries, type PortalDiary, type PortalWeatherFacet } from '../api/portal'
 import type { PortalSort } from '../api/portal'
@@ -222,35 +221,14 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
-.page-head {
-    padding: 64px 0 32px;
-}
-
-.page-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: clamp(34px, 4vw, 52px);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--portal-text-primary);
-}
-
-.page-lead {
-    max-width: 46ch;
-    margin: 16px 0 0;
-    font-size: 16px;
-    line-height: 1.85;
-    color: var(--portal-text-secondary);
-}
-
 .weather-bar {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 32px;
-    padding: 20px 0;
-    border-top: 1px solid @line-color-s;
-    border-bottom: 1px solid @line-color-s;
+    padding: 16px 18px;
+    border: 1px solid var(--portal-surface-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
 }
 
 .weather-pill {
@@ -297,8 +275,14 @@ onMounted(async () => {
 .sort-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-top: 16px;
+    gap: 6px;
+}
+
+.filter-caption {
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
 }
 
 .sort-btn {
@@ -509,10 +493,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 560px) {
-    .page-head {
-        padding-top: 40px;
-    }
-
     .diary-card,
     .diary-card:nth-child(3n + 1) {
         grid-column: span 12;

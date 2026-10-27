@@ -1,12 +1,8 @@
 <template>
     <PortalLayout active-path="/portal/messages">
-        <section class="page-head portal-reveal">
-            <h1 class="page-title">留言墙</h1>
-            <p class="page-lead">
-                这里收录着读者留下的话，共 {{ wallTotal }} 条。留言会直接进入博主的后台私信收件箱。
-            </p>
-
-            <!-- 留言输入 -->
+        <PortalPageHeader index="04" kicker="GUEST BOOK" title="留言墙"
+            :description="`这里收录着读者留下的话，共 ${wallTotal} 条。留言会直接进入博主的后台私信收件箱。`"
+            aside-label="OPEN LETTERS" :aside-value="`${wallTotal} 条`" aside-note="没有算法排序，只有路过时留下的一句话。">
             <div class="wall-compose portal-glass">
                 <yk-text-area v-model="wallDraft" :max-length="512" show-word-limit
                     :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="给博主留一句想说的话…" />
@@ -19,7 +15,7 @@
                     </yk-button>
                 </div>
             </div>
-        </section>
+        </PortalPageHeader>
 
         <section class="list-area">
             <div v-if="wallLoading" class="block-state">
@@ -66,6 +62,7 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import { getWallMessages, createWallMessage, type PortalWallMessage } from '../api/portal'
 
 const wallList = ref<PortalWallMessage[]>([])
@@ -175,29 +172,8 @@ onUnmounted(() => {
 </script>
 
 <style lang="less" scoped>
-.page-head {
-    padding: 64px 0 8px;
-}
-
-.page-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: clamp(34px, 4vw, 52px);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--portal-text-primary);
-}
-
-.page-lead {
-    max-width: 46ch;
-    margin: 16px 0 0;
-    font-size: 16px;
-    line-height: 1.85;
-    color: var(--portal-text-secondary);
-}
-
 .list-area {
-    margin-top: 32px;
+    margin-top: 38px;
 }
 
 .block-state {
@@ -208,7 +184,6 @@ onUnmounted(() => {
 }
 
 .wall-compose {
-    margin-top: 32px;
     padding: 20px 22px;
     transition: box-shadow var(--portal-transition-medium);
 
@@ -366,10 +341,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-    .page-head {
-        padding-top: 44px;
-    }
-
     .wall-grid {
         grid-template-columns: 1fr;
     }

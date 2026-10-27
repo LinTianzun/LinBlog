@@ -1,6 +1,6 @@
 <template>
     <PortalLayout>
-        <!-- 首屏轮播 Hero：约 65vh，标题叠在照片上缘，底部渐变入页面底色 -->
+        <!-- 首屏轮播 Hero：照片负责氛围，左右双栏负责叙事与入口 -->
         <section class="hero" :style="{ height: 'var(--portal-banner-height-home)' }">
             <div class="hero-slides">
                 <div
@@ -14,36 +14,71 @@
             <!-- 底部渐变遮罩：明暗双态停靠到页面底色，禁止白色断层 -->
             <div class="hero-fade" />
             <div class="hero-content">
-                <p class="hero-eyebrow">{{ currentSlide.subtitle }}</p>
-                <h1 class="hero-title">{{ currentSlide.title }}</h1>
-                <p class="hero-lead">
-                    技术长文、摄影图库、带天气的随笔——同一个人的三种记录方式，都收在这里。
-                </p>
-                <div class="hero-links">
-                    <RouterLink class="hero-pill" to="/portal/articles">读文章</RouterLink>
-                    <RouterLink class="hero-pill" to="/portal/gallery">看照片</RouterLink>
-                    <RouterLink class="hero-pill" to="/portal/diary">翻随笔</RouterLink>
+                <div class="hero-copy">
+                    <p class="hero-eyebrow">
+                        <span class="hero-issue">ISSUE {{ slideNumber }}</span>
+                        <span>{{ currentSlide.subtitle }}</span>
+                    </p>
+                    <h1 class="hero-title">{{ currentSlide.title }}</h1>
+                    <p class="hero-lead">
+                        把技术里的推敲、镜头里的光线和日子里的情绪放在一起，
+                        写成一份缓慢更新、但始终诚实的个人刊物。
+                    </p>
+                    <div class="hero-links">
+                        <RouterLink class="hero-pill hero-pill-primary" to="/portal/articles">
+                            开始阅读
+                            <IconRightOutline />
+                        </RouterLink>
+                        <RouterLink class="hero-pill" to="/portal/gallery">浏览摄影集</RouterLink>
+                        <RouterLink class="hero-pill" to="/portal/diary">翻看随笔</RouterLink>
+                    </div>
                 </div>
+
+                <aside class="hero-aside" aria-label="卷首语">
+                    <span class="hero-aside-kicker">EDITOR'S NOTE</span>
+                    <blockquote>
+                        记录不是为了证明什么，
+                        只是让那些一闪而过的时刻，有地方留下来。
+                    </blockquote>
+                    <div class="hero-aside-foot">
+                        <span>林知雨 · 个人刊物</span>
+                        <RouterLink to="/portal/messages">
+                            留言给我
+                            <IconRightOutline />
+                        </RouterLink>
+                    </div>
+                </aside>
             </div>
-            <!-- 轮播指示器 -->
-            <div class="hero-dots">
-                <button
-                    v-for="(slide, i) in slides"
-                    :key="slide.id"
-                    type="button"
-                    class="hero-dot"
-                    :class="{ active: i === currentIndex }"
-                    :aria-label="`切换到第 ${i + 1} 张`"
-                    @click="goToSlide(i)"
-                />
+            <div class="hero-meta">
+                <span class="hero-counter">{{ slideNumber }} / {{ slideTotal }}</span>
+                <div class="hero-dots">
+                    <button
+                        v-for="(slide, i) in slides"
+                        :key="slide.id"
+                        type="button"
+                        class="hero-dot"
+                        :class="{ active: i === currentIndex }"
+                        :aria-label="`切换到第 ${i + 1} 张`"
+                        @click="goToSlide(i)"
+                    />
+                </div>
+                <span class="hero-scroll">SCROLL TO READ</span>
             </div>
         </section>
 
-        <!-- 玻璃 fact 卡：数据条 -->
-        <section class="facts-bar">
-            <div v-for="fact in facts" :key="fact.label" class="fact-card portal-glass">
-                <div class="fact-value">{{ fact.value }}</div>
-                <div class="fact-label">{{ fact.label }}</div>
+        <!-- 刊物索引：用一条横向目录替代四张同构统计卡 -->
+        <section class="journal-index portal-glass portal-reveal">
+            <div class="index-intro">
+                <span class="index-kicker">CONTENTS / 本期目录</span>
+                <h2>写作、光线，<br />还有普通日子。</h2>
+                <p>持续记录中，欢迎随意翻阅。</p>
+            </div>
+            <div class="index-facts">
+                <div v-for="(fact, index) in facts" :key="fact.label" class="fact-card">
+                    <span class="fact-index">0{{ index + 1 }}</span>
+                    <span class="fact-value">{{ fact.value }}</span>
+                    <span class="fact-label">{{ fact.label }}</span>
+                </div>
             </div>
         </section>
 
@@ -51,7 +86,10 @@
         <!-- 最新文章 -->
         <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="portal-section-title">最新发布</h2>
+                <div class="block-heading">
+                    <span class="block-kicker">01 / LATEST NOTES</span>
+                    <h2 class="portal-section-title">最近写下的</h2>
+                </div>
                 <RouterLink class="block-more" to="/portal/articles">
                     全部文章
                     <IconRightOutline />
@@ -61,28 +99,60 @@
             <div v-if="articleLoading" class="block-state">
                 <yk-spinner size="m" />
             </div>
-            <div v-else-if="articleList.length" class="post-list">
-                <article v-for="(article, i) in articleList" :key="article.id" class="post-row"
-                    :style="{ animationDelay: `${Math.min(i, 8) * 45}ms` }">
-                    <button type="button" class="post-link" @click="openArticle(article.id)">
-                        <!-- 封面：有图显示图，无图用主题色排印占位，不重复展示误导性默认图 -->
-                        <span class="post-cover portal-media-box" :class="{ 'is-empty': !articleCover(article) }">
-                            <img v-if="articleCover(article)" :src="articleCover(article)" :alt="article.title"
-                                loading="lazy" />
-                            <span v-else class="post-cover-glyph">{{ (article.title || '文').trim().charAt(0) }}</span>
-                        </span>
-                        <span class="post-body">
-                            <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
-                            <h3 class="post-title">{{ article.title }}</h3>
-                            <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
-                            <span class="post-meta">
-                                <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
-                                <span><IconEyeOutline />{{ article.views }}</span>
-                                <span><IconLikeOutline />{{ article.likes }}</span>
+            <div v-else-if="featuredArticle" class="story-layout">
+                <article class="story-featured">
+                    <button type="button" class="story-feature-link" @click="openArticle(featuredArticle.id)">
+                        <span class="story-feature-media portal-media-box"
+                            :class="{ 'is-empty': !articleCover(featuredArticle) }">
+                            <img v-if="articleCover(featuredArticle)" :src="articleCover(featuredArticle)"
+                                :alt="featuredArticle.title" loading="lazy" />
+                            <span v-else class="story-placeholder">
+                                {{ (featuredArticle.title || '文').trim().charAt(0) }}
+                            </span>
+                            <span class="story-feature-shade" />
+                            <span class="story-feature-copy">
+                                <span class="story-meta-line">
+                                    <span>{{ featuredArticle.subsetName || '随笔' }}</span>
+                                    <time>{{ formatDate(featuredArticle.publishedAt || featuredArticle.createdAt) }}</time>
+                                </span>
+                                <strong>{{ featuredArticle.title }}</strong>
+                                <span class="story-feature-intro">
+                                    {{ featuredArticle.introduce || '点击阅读全文' }}
+                                </span>
+                                <span class="story-feature-stats">
+                                    <span><IconEyeOutline />{{ featuredArticle.views }}</span>
+                                    <span><IconLikeOutline />{{ featuredArticle.likes }}</span>
+                                </span>
                             </span>
                         </span>
                     </button>
                 </article>
+
+                <div class="story-side">
+                    <article v-for="(article, i) in secondaryArticles" :key="article.id" class="story-compact"
+                        :style="{ animationDelay: `${i * 70}ms` }">
+                        <button type="button" class="story-compact-link" @click="openArticle(article.id)">
+                            <span class="story-compact-number">0{{ i + 2 }}</span>
+                            <span class="story-compact-body">
+                                <span class="story-compact-meta">
+                                    <span>{{ article.subsetName || '文章' }}</span>
+                                    <time>{{ formatDate(article.publishedAt || article.createdAt) }}</time>
+                                </span>
+                                <strong>{{ article.title }}</strong>
+                                <span class="story-compact-intro">
+                                    {{ article.introduce || '点击阅读全文' }}
+                                </span>
+                            </span>
+                            <span class="story-compact-arrow" aria-hidden="true">
+                                <IconRightOutline />
+                            </span>
+                        </button>
+                    </article>
+                    <RouterLink class="story-all" to="/portal/articles">
+                        <span>继续翻阅全部文章</span>
+                        <IconRightOutline />
+                    </RouterLink>
+                </div>
             </div>
             <div v-else class="block-state">
                 <yk-empty description="这里还没有已发布的文章" />
@@ -92,7 +162,10 @@
         <!-- 摄影图库预览 -->
         <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="portal-section-title">摄影图库</h2>
+                <div class="block-heading">
+                    <span class="block-kicker">02 / PHOTOGRAPHS</span>
+                    <h2 class="portal-section-title">光落下的地方</h2>
+                </div>
                 <RouterLink class="block-more" to="/portal/gallery">
                     全部图库
                     <IconRightOutline />
@@ -111,7 +184,10 @@
         <!-- 随笔：带天气的小卡片 -->
         <section class="block portal-reveal">
             <div class="block-head">
-                <h2 class="portal-section-title">随笔随记</h2>
+                <div class="block-heading">
+                    <span class="block-kicker">03 / MICRO JOURNAL</span>
+                    <h2 class="portal-section-title">日子与天气</h2>
+                </div>
                 <RouterLink class="block-more" to="/portal/diary">
                     全部随笔
                     <IconRightOutline />
@@ -122,8 +198,9 @@
                 <yk-spinner size="m" />
             </div>
             <div v-else-if="diaryList.length" class="diary-grid">
-                <button v-for="diary in diaryList" :key="diary.id" type="button" class="diary-card"
-                    @click="openDiary(diary)">
+                <button v-for="(diary, index) in diaryList" :key="diary.id" type="button"
+                    class="diary-card" :class="`tone-${index % 3}`" @click="openDiary(diary)">
+                    <span class="diary-mark" aria-hidden="true">“</span>
                     <span class="diary-weather">
                         <img v-if="weatherIcon(diary.weatherName)" :src="weatherIcon(diary.weatherName)"
                             :alt="diary.weatherName || ''" />
@@ -136,6 +213,20 @@
             </div>
             <div v-else class="block-state">
                 <yk-empty description="还没有随笔" />
+            </div>
+        </section>
+
+        <section class="closing-note portal-reveal">
+            <div>
+                <span class="block-kicker">04 / KEEP IN TOUCH</span>
+                <h2>如果你也刚好路过，<br />留下一句话再走吧。</h2>
+            </div>
+            <div class="closing-side">
+                <p>这里没有催促，也没有算法。更新随缘，阅读也一样。</p>
+                <RouterLink class="closing-link" to="/portal/messages">
+                    去留言墙
+                    <IconRightOutline />
+                </RouterLink>
             </div>
         </section>
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
@@ -188,6 +279,8 @@ const themeGradient = (slide: BannerSlide): string => {
     return isDark.value ? slide.gradient.dark : slide.gradient.light
 }
 const currentSlide = computed(() => getSlide(currentIndex.value))
+const slideNumber = computed(() => String(currentIndex.value + 1).padStart(2, '0'))
+const slideTotal = computed(() => String(slides.length).padStart(2, '0'))
 const goToSlide = (i: number) => {
     currentIndex.value = i
 }
@@ -208,6 +301,9 @@ const facts = computed(() => [
     { label: '篇随笔', value: stats.value.diaries },
     { label: '个分类', value: stats.value.categories }
 ])
+
+const featuredArticle = computed(() => articleList.value[0] || null)
+const secondaryArticles = computed(() => articleList.value.slice(1, 3))
 
 // 图库橱窗的排版：大图、小图、竖图交错落位
 const galleryPrints = computed<WallPrint[]>(() => galleryList.value.map((item, index) => {
@@ -376,12 +472,15 @@ onUnmounted(() => {
 <style lang="less" scoped>
 // ---------- 首屏轮播 Hero ----------
 .hero {
+    // 轮播内容与照片边缘至少保留一档呼吸空间，避免文字和按钮贴边
+    --hero-inline-padding: clamp(28px, 4vw, 64px);
     position: relative;
     width: 100%;
     overflow: hidden;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     margin-top: -1px;
+    background: #111720;
 }
 
 // 照片上统一压一层深色遮罩：浅色主题避免亮图吞掉白字，
@@ -395,16 +494,16 @@ onUnmounted(() => {
     background:
         linear-gradient(
             90deg,
-            rgba(7, 10, 17, 0.64) 0%,
-            rgba(7, 10, 17, 0.4) 42%,
-            rgba(7, 10, 17, 0.08) 74%,
+            rgba(7, 10, 17, 0.76) 0%,
+            rgba(7, 10, 17, 0.48) 44%,
+            rgba(7, 10, 17, 0.12) 76%,
             transparent 100%
         ),
         linear-gradient(
             180deg,
-            rgba(7, 10, 17, 0.2) 0%,
-            transparent 36%,
-            rgba(7, 10, 17, 0.08) 72%,
+            rgba(7, 10, 17, 0.34) 0%,
+            transparent 38%,
+            rgba(7, 10, 17, 0.12) 70%,
             transparent 100%
         );
 }
@@ -448,49 +547,80 @@ onUnmounted(() => {
 .hero-content {
     position: relative;
     z-index: 4;
-    width: var(--portal-page-width);
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+    align-items: end;
+    gap: clamp(40px, 7vw, 112px);
+    width: 100%;
     margin: 0 auto;
-    padding: 0 0 8vh;
+    padding: clamp(88px, 12vh, 150px) var(--hero-inline-padding) calc(9vh + 30px);
+    box-sizing: border-box;
     color: var(--portal-hero-ink);
     text-shadow: var(--portal-hero-shadow);
 }
 
+.hero-copy {
+    max-width: 760px;
+}
+
 .hero-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
     margin: 0 0 16px;
     font-size: 14px;
     font-weight: 500;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.1em;
     color: var(--portal-hero-ink-muted);
+}
+
+.hero-issue {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: var(--portal-radius-pill);
+    background: rgba(7, 10, 17, 0.24);
+    color: var(--portal-hero-ink);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .hero-title {
     margin: 0;
     font-family: var(--portal-serif);
-    font-size: clamp(38px, 4.6vw, 64px);
+    font-size: clamp(48px, 6.2vw, 92px);
     font-weight: 600;
-    line-height: 1.16;
-    letter-spacing: 0.01em;
+    line-height: 1.08;
+    letter-spacing: -0.025em;
     color: var(--portal-hero-ink);
     text-shadow: 0 3px 34px rgba(0, 0, 0, 0.62);
 }
 
 .hero-lead {
-    max-width: 46ch;
-    margin: 20px 0 0;
-    font-size: 16px;
-    line-height: 1.85;
+    max-width: 50ch;
+    margin: 24px 0 0;
+    font-size: 17px;
+    line-height: 1.9;
     color: var(--portal-hero-ink-muted);
 }
 
 .hero-links {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 10px;
-    margin-top: 28px;
+    margin-top: 34px;
 }
 
 .hero-pill {
-    padding: 10px 22px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
     border-radius: var(--portal-radius-pill);
     background: var(--portal-hero-surface);
     border: 1px solid var(--portal-hero-border);
@@ -519,12 +649,94 @@ onUnmounted(() => {
     }
 }
 
-.hero-dots {
+.hero-pill-primary {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(255, 255, 255, 0.94);
+    color: var(--portal-hero-button-hover-ink);
+}
+
+.hero-aside {
+    align-self: end;
+    max-width: 360px;
+    margin-left: auto;
+    padding: 26px 28px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: calc(var(--portal-radius-card) + 8px);
+    background: rgba(7, 10, 17, 0.34);
+    color: var(--portal-hero-ink);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+}
+
+.hero-aside-kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    color: var(--portal-hero-ink-muted);
+}
+
+.hero-aside blockquote {
+    margin: 20px 0 24px;
+    font-family: var(--portal-serif);
+    font-size: clamp(19px, 1.6vw, 24px);
+    line-height: 1.75;
+    color: var(--portal-hero-ink);
+}
+
+.hero-aside-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    font-size: 12px;
+    color: var(--portal-hero-ink-muted);
+
+    a {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--portal-hero-ink);
+        text-decoration: none;
+
+        &:hover {
+            text-decoration: underline;
+            text-underline-offset: 4px;
+        }
+    }
+}
+
+.hero-meta {
     position: absolute;
-    bottom: 4vh;
     left: 50%;
-    transform: translateX(-50%);
+    bottom: calc(5vh + 20px);
     z-index: 5;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    padding-inline: var(--hero-inline-padding);
+    box-sizing: border-box;
+    transform: translateX(-50%);
+    color: var(--portal-hero-ink-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+}
+
+.hero-counter {
+    justify-self: start;
+    font-variant-numeric: tabular-nums;
+}
+
+.hero-scroll {
+    justify-self: end;
+}
+
+.hero-dots {
     display: flex;
     gap: 8px;
     padding: 8px 12px;
@@ -546,7 +758,7 @@ onUnmounted(() => {
     transition: all var(--portal-transition-fast);
     &.active {
         background: var(--portal-hero-ink);
-        width: 24px;
+        width: 28px;
         border-radius: var(--portal-radius-pill);
     }
     &:hover {
@@ -558,32 +770,82 @@ onUnmounted(() => {
     }
 }
 
-// ---------- 玻璃 fact 卡 ----------
-.facts-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin: -6vh auto 0;
+// ---------- 刊物索引 ----------
+.journal-index {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.28fr);
+    gap: clamp(32px, 5vw, 72px);
+    margin: -5vh auto 0;
     position: relative;
     z-index: 5;
-    width: var(--portal-page-width);
+    width: 100%;
+    padding: clamp(28px, 3.2vw, 46px);
+    border-radius: calc(var(--portal-radius-card) + 8px);
+}
+
+.index-intro {
+    padding-right: 28px;
+    border-right: 1px solid var(--portal-line-soft);
+
+    h2 {
+        margin: 12px 0 14px;
+        font-family: var(--portal-serif);
+        font-size: clamp(25px, 2.3vw, 36px);
+        font-weight: 600;
+        line-height: 1.35;
+        color: var(--portal-text-primary);
+    }
+
+    p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--portal-text-tertiary);
+    }
+}
+
+.index-kicker,
+.block-kicker {
+    color: var(--portal-accent-strong);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+}
+
+.index-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
 }
 
 .fact-card {
-    flex: 1;
-    min-width: 140px;
-    padding: 22px 26px;
-    text-align: center;
-    transition: transform var(--portal-transition-medium);
-    &:hover {
-        transform: translateY(-3px);
-        box-shadow: var(--portal-shadow-hover);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    padding: 10px 22px;
+    border-left: 1px solid var(--portal-line-soft);
+    transition: transform var(--portal-transition-medium), color var(--portal-transition-fast);
+
+    &:first-child {
+        border-left: none;
     }
+
+    &:hover {
+        transform: translateY(-2px);
+    }
+}
+
+.fact-index {
+    margin-bottom: 22px;
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.14em;
 }
 
 .fact-value {
     font-family: var(--portal-serif);
-    font-size: 32px;
+    font-size: clamp(34px, 3.4vw, 52px);
     font-weight: 600;
     line-height: 1;
     color: var(--portal-accent-strong);
@@ -591,7 +853,7 @@ onUnmounted(() => {
 }
 
 .fact-label {
-    margin-top: 6px;
+    margin-top: 10px;
     font-size: 13px;
     color: var(--portal-text-secondary);
 }
@@ -603,10 +865,16 @@ onUnmounted(() => {
 
 .block-head {
     display: flex;
-    align-items: baseline;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 28px;
+    margin-bottom: 32px;
+}
+
+.block-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .block-more {
@@ -620,6 +888,7 @@ onUnmounted(() => {
 
     &:hover {
         color: var(--portal-accent);
+        transform: translateX(2px);
     }
 }
 
@@ -630,55 +899,47 @@ onUnmounted(() => {
     min-height: 220px;
 }
 
-// ---------- 文章列表 ----------
-.post-list {
-    display: flex;
-    flex-direction: column;
-}
-
-.post-row {
-    border-bottom: 1px solid var(--portal-line-soft);
-    animation: portal-reveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-
-    &:last-child {
-        border-bottom: none;
-    }
-}
-
-.post-link {
+// ---------- 文章：主稿 + 次条 ----------
+.story-layout {
     display: grid;
-    grid-template-columns: 168px 1fr;
-    column-gap: 24px;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+    gap: 22px;
+    align-items: stretch;
+}
+
+.story-featured,
+.story-feature-link,
+.story-feature-media {
     width: 100%;
-    padding: 24px 0;
+    height: 100%;
+}
+
+.story-feature-link {
+    display: block;
+    padding: 0;
     border: none;
     background: transparent;
-    text-align: left;
     cursor: pointer;
-    text-decoration: none;
-    transition: background-color 0.2s ease;
+    text-align: left;
 }
 
-// 封面：固定 4:3 比例容器，避免原始尺寸撑破布局
-.post-cover {
-    grid-row: 1 / span 3;
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    border-radius: var(--portal-radius-small);
-    overflow: hidden;
-    background: var(--portal-accent-soft);
-    transition: transform var(--portal-transition-medium), box-shadow var(--portal-transition-medium);
-
-    img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
+.story-feature-media {
+    position: relative;
+    display: block;
+    min-height: 520px;
+    border-radius: calc(var(--portal-radius-card) + 6px);
+    isolation: isolate;
 }
 
-// 无封面时的排印占位：主题色渐变 + 标题首字，避免生硬灰块
-.post-cover-glyph {
+.story-feature-media img {
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.story-feature-link:hover .story-feature-media img {
+    transform: scale(1.035);
+}
+
+.story-placeholder {
     position: absolute;
     inset: 0;
     display: flex;
@@ -686,108 +947,261 @@ onUnmounted(() => {
     justify-content: center;
     z-index: 1;
     font-family: var(--portal-serif);
-    font-size: 40px;
+    font-size: clamp(80px, 11vw, 150px);
     font-weight: 600;
-    color: var(--portal-accent-strong);
-    opacity: 0.55;
+    color: color-mix(in srgb, var(--portal-accent-strong) 44%, transparent);
 }
 
-.post-body {
-    display: block;
-    min-width: 0;
+.story-feature-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background:
+        linear-gradient(to top, rgba(7, 10, 17, 0.9) 0%, rgba(7, 10, 17, 0.28) 56%, transparent 100%),
+        linear-gradient(120deg, rgba(7, 10, 17, 0.28), transparent 62%);
 }
 
-.post-date {
-    font-size: 13px;
-    color: var(--portal-text-secondary);
-    font-variant-numeric: tabular-nums;
-    padding-top: 4px;
+.story-feature-copy {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: clamp(28px, 4vw, 48px);
+    color: #fff;
 }
 
-.post-title {
-    margin: 0;
+.story-meta-line,
+.story-compact-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.72);
+    text-transform: uppercase;
+}
+
+.story-feature-copy strong {
+    max-width: 19ch;
     font-family: var(--portal-serif);
-    font-size: 20px;
+    font-size: clamp(30px, 3.2vw, 48px);
     font-weight: 600;
-    line-height: 1.5;
-    color: var(--portal-text-primary);
-    transition: color var(--portal-transition-fast);
+    line-height: 1.24;
+    color: #fff;
 }
 
-.post-introduce {
-    margin: 6px 0 0;
+.story-feature-intro {
+    max-width: 58ch;
+    color: rgba(255, 255, 255, 0.78);
     font-size: 14px;
-    line-height: 1.75;
-    color: var(--portal-text-secondary);
+    line-height: 1.8;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.post-meta {
+.story-feature-stats {
     display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-top: 10px;
+    gap: 18px;
+    padding-top: 4px;
+    color: rgba(255, 255, 255, 0.7);
     font-size: 13px;
-    color: var(--portal-text-secondary);
 
     span {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 5px;
     }
 }
 
-.post-chip {
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: var(--portal-accent-soft);
-    color: var(--portal-accent-strong);
-    font-weight: 500;
+.story-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.post-row:hover {
-    .post-title {
-        color: var(--portal-accent);
-    }
+.story-compact {
+    flex: 1;
+    animation: portal-reveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
 
-    // hover 时封面轻微放大与描边，强化可点击感
-    .post-cover {
-        transform: scale(1.02);
+.story-compact-link {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) 28px;
+    align-items: start;
+    gap: 16px;
+    width: 100%;
+    height: 100%;
+    padding: 24px;
+    border: 1px solid var(--portal-surface-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+    color: var(--portal-text-primary);
+    text-align: left;
+    cursor: pointer;
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    box-shadow: var(--portal-shadow-soft);
+    transition: transform var(--portal-transition-medium), border-color var(--portal-transition-fast),
+        box-shadow var(--portal-transition-medium);
+
+    &:hover {
+        transform: translateY(-3px);
+        border-color: var(--portal-accent-soft);
         box-shadow: var(--portal-shadow-hover);
+    }
+}
+
+.story-compact-number {
+    padding-top: 2px;
+    color: var(--portal-accent-strong);
+    font-family: var(--portal-serif);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.story-compact-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.story-compact-meta {
+    color: var(--portal-text-tertiary);
+
+    time {
+        font-weight: 400;
+        letter-spacing: 0;
+    }
+}
+
+.story-compact-body strong {
+    font-family: var(--portal-serif);
+    font-size: clamp(20px, 1.6vw, 25px);
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.story-compact-intro {
+    color: var(--portal-text-secondary);
+    font-size: 13px;
+    line-height: 1.75;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.story-compact-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--portal-surface-border);
+    border-radius: 50%;
+    color: var(--portal-text-secondary);
+    transition: all var(--portal-transition-fast);
+}
+
+.story-compact-link:hover .story-compact-arrow {
+    border-color: var(--portal-accent);
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
+    transform: translateX(2px);
+}
+
+.story-all {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 17px 24px;
+    border: 1px dashed var(--portal-surface-border);
+    border-radius: var(--portal-radius-card);
+    color: var(--portal-text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+    transition: all var(--portal-transition-fast);
+
+    &:hover {
+        border-color: var(--portal-accent);
+        color: var(--portal-accent);
+        background: var(--portal-accent-soft);
     }
 }
 
 // ---------- 随笔卡片 ----------
 .diary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
 }
 
 .diary-card {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 22px;
+    min-height: 260px;
+    gap: 12px;
+    padding: 28px;
+    overflow: hidden;
+    border: 1px solid var(--portal-surface-border);
     border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
     text-align: left;
     cursor: pointer;
-    transition: all var(--portal-transition-medium);
+    box-shadow: var(--portal-shadow-soft);
+    transition: transform var(--portal-transition-medium), box-shadow var(--portal-transition-medium),
+        border-color var(--portal-transition-fast);
 
     &:hover {
-        transform: translateY(-3px);
+        transform: translateY(-4px);
+        border-color: var(--portal-accent-soft);
         box-shadow: var(--portal-shadow-hover);
-        background: var(--portal-surface-hover);
     }
+
+    &.tone-0 {
+        background:
+            linear-gradient(145deg, color-mix(in srgb, var(--pcolor) 10%, var(--portal-surface)), var(--portal-surface));
+    }
+
+    &.tone-1 {
+        background:
+            linear-gradient(145deg, color-mix(in srgb, var(--pcolor8) 12%, var(--portal-surface)), var(--portal-surface));
+    }
+
+    &.tone-2 {
+        background:
+            linear-gradient(145deg, color-mix(in srgb, var(--pcolor6) 10%, var(--portal-surface)), var(--portal-surface));
+    }
+}
+
+.diary-mark {
+    position: absolute;
+    top: -18px;
+    right: 14px;
+    color: color-mix(in srgb, var(--portal-accent) 12%, transparent);
+    font-family: var(--portal-serif);
+    font-size: 112px;
+    line-height: 1;
+    pointer-events: none;
 }
 
 .diary-weather {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    position: relative;
+    z-index: 1;
     font-size: 13px;
     color: var(--portal-text-secondary);
 
@@ -798,14 +1212,18 @@ onUnmounted(() => {
 }
 
 .diary-title {
+    position: relative;
+    z-index: 1;
     font-family: var(--portal-serif);
-    font-size: 18px;
+    font-size: 21px;
     font-weight: 600;
     line-height: 1.5;
     color: var(--portal-text-primary);
 }
 
 .diary-text {
+    position: relative;
+    z-index: 1;
     flex: 1;
     font-size: 14px;
     line-height: 1.8;
@@ -817,80 +1235,330 @@ onUnmounted(() => {
 }
 
 .diary-date {
+    position: relative;
+    z-index: 1;
+    padding-top: 14px;
+    border-top: 1px solid var(--portal-line-soft);
     font-size: 12px;
     color: var(--portal-text-secondary);
     font-variant-numeric: tabular-nums;
+}
+
+.closing-note {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+    gap: clamp(32px, 6vw, 90px);
+    align-items: end;
+    margin-top: 96px;
+    padding: clamp(34px, 4.5vw, 64px);
+    border: 1px solid var(--portal-surface-border);
+    border-radius: calc(var(--portal-radius-card) + 10px);
+    background:
+        radial-gradient(circle at 8% 0%, var(--portal-accent-soft), transparent 38%),
+        var(--portal-surface);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    box-shadow: var(--portal-shadow-soft);
+
+    h2 {
+        margin: 14px 0 0;
+        font-family: var(--portal-serif);
+        font-size: clamp(30px, 3.5vw, 48px);
+        font-weight: 600;
+        line-height: 1.35;
+        color: var(--portal-text-primary);
+    }
+}
+
+.closing-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+
+    p {
+        max-width: 34ch;
+        margin: 0;
+        color: var(--portal-text-secondary);
+        font-size: 14px;
+        line-height: 1.85;
+    }
+}
+
+.closing-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
+    font-size: 14px;
+    text-decoration: none;
+    transition: all var(--portal-transition-fast);
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--portal-shadow-soft);
+        filter: brightness(1.06);
+    }
 }
 
 
 // ---------- 响应式 ----------
 @media (max-width: 1279px) {
     .hero-content {
-        padding-bottom: 6vh;
+        grid-template-columns: minmax(0, 1.3fr) minmax(250px, 0.7fr);
+        gap: 42px;
+        padding-bottom: 8vh;
     }
-    .facts-bar {
-        flex-wrap: wrap;
-        margin-top: -4vh;
+
+    .journal-index {
+        grid-template-columns: 1fr;
     }
-    .fact-card {
-        min-width: calc(33% - 11px);
+
+    .index-intro {
+        padding: 0 0 24px;
+        border-right: none;
+        border-bottom: 1px solid var(--portal-line-soft);
+    }
+
+    .story-layout {
+        grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    }
+
+    .story-feature-media {
+        min-height: 470px;
     }
 }
 
 @media (max-width: 900px) {
-    .facts-bar {
+    .hero-content {
+        display: flex;
+        align-items: flex-end;
+        padding: 80px var(--hero-inline-padding) calc(9vh + 26px);
+    }
+
+    .hero-aside {
+        display: none;
+    }
+
+    .hero-title {
+        font-size: clamp(42px, 8vw, 70px);
+    }
+
+    .hero-meta {
+        grid-template-columns: auto 1fr;
+        bottom: calc(4vh + 16px);
+    }
+
+    .hero-scroll {
+        display: none;
+    }
+
+    .hero-dots {
+        justify-self: end;
+    }
+
+    .journal-index {
         margin-top: -4vh;
     }
-    .fact-card {
-        min-width: calc(50% - 8px);
+
+    .index-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .fact-card {
+        min-height: 116px;
+        padding: 16px 20px;
+
+        &:nth-child(3) {
+            border-left: none;
+        }
+
+        &:nth-child(n + 3) {
+            border-top: 1px solid var(--portal-line-soft);
+        }
+    }
+
     .block {
         margin-top: 64px;
     }
-    .post-link {
+
+    .story-layout {
         grid-template-columns: 1fr;
-        row-gap: 12px;
     }
 
-    // 窄屏改为封面在上、16:9 全宽，阅读流更自然
-    .post-cover {
-        grid-row: auto;
-        aspect-ratio: 16 / 9;
+    .story-feature-media {
+        min-height: 440px;
+    }
+
+    .story-side {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .story-all {
+        grid-column: 1 / -1;
+    }
+
+    .diary-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .closing-note {
+        grid-template-columns: 1fr;
+        align-items: start;
     }
 }
 
 @media (max-width: 768px) {
     .hero-content {
-        padding: 0 24px 4vh;
+        width: 100%;
+        padding: 68px var(--hero-inline-padding) calc(8vh + 24px);
     }
-    .facts-bar {
+
+    .hero-eyebrow {
+        align-items: flex-start;
+        flex-direction: column;
         gap: 10px;
+        letter-spacing: 0.04em;
     }
+
+    .hero-issue {
+        min-height: 24px;
+    }
+
+    .hero-lead {
+        font-size: 15px;
+        line-height: 1.8;
+    }
+
+    .hero-links {
+        gap: 8px;
+        margin-top: 24px;
+    }
+
+    .hero-pill {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+
+    .hero-meta {
+        width: 100%;
+        bottom: calc(4vh + 12px);
+    }
+
     .fact-card {
-        min-width: calc(50% - 5px);
-        padding: 16px 18px;
+        min-height: 104px;
+        padding: 13px 16px;
     }
+
     .fact-value {
-        font-size: 26px;
+        font-size: 34px;
+    }
+
+    .fact-index {
+        margin-bottom: 14px;
+    }
+
+    .block-head {
+        align-items: flex-start;
+    }
+
+    .block-more {
+        padding-top: 18px;
+        white-space: nowrap;
+    }
+
+    .story-feature-media {
+        min-height: 390px;
+    }
+
+    .story-feature-copy {
+        padding: 24px;
+    }
+
+    .story-side {
+        grid-template-columns: 1fr;
+    }
+
+    .story-all {
+        grid-column: auto;
+    }
+
+    .story-compact-link {
+        padding: 20px;
+    }
+
+    .diary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .diary-card {
+        min-height: 220px;
+    }
+
+    .closing-note {
+        margin-top: 64px;
+        padding: 28px 24px;
     }
 }
 
 @media (max-width: 560px) {
     .hero-title {
-        font-size: 34px;
+        font-size: 40px;
     }
-    .diary-grid {
-        grid-template-columns: 1fr;
-    }
-}
 
-// 旧主题色样式回退：被移除的旧选择器保留空，避免遗留引用报错
-.hero-inner,
-.hero-copy,
-.hero-figure,
-.hero-print,
-.hero-facts,
-.hero-link {
-    display: none;
+    .hero-pill:not(.hero-pill-primary) {
+        display: none;
+    }
+
+    .journal-index {
+        padding: 22px 18px;
+    }
+
+    .index-intro h2 {
+        font-size: 25px;
+    }
+
+    .index-facts {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .story-feature-media {
+        min-height: 340px;
+    }
+
+    .story-feature-copy strong {
+        font-size: 27px;
+    }
+
+    .story-feature-intro {
+        -webkit-line-clamp: 1;
+    }
+
+    .story-meta-line {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .story-compact-link {
+        grid-template-columns: 28px minmax(0, 1fr);
+    }
+
+    .story-compact-arrow {
+        display: none;
+    }
+
+    .hero-counter {
+        display: none;
+    }
+
+    .hero-meta {
+        display: flex;
+        justify-content: center;
+    }
 }
 </style>
