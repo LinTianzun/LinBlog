@@ -1,0 +1,6 @@
+留言墙独立成页：新增 /portal/messages 并从首页剥离
+
+- 新建 PortalMessages.vue：页面标题、留言输入框（支持 Ctrl+Enter）、留言卡片墙、分页，风格沿用门户设计 token
+- PortalHome 移除留言墙区块及全部相关状态/接口调用/锚点逻辑与 CSS，首页只剩最新发布、摄影图库、随笔随记
+- 路由注册 /portal/messages；PortalLayout 导航与页脚均新增「留言」入口（页脚复用 links 自动同步）
+- 分页改为自研轻量控件：yk-pagination 受控模式下数据翻页但高亮不同步，自研控件行为可控且风格统一

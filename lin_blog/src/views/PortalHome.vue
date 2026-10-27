@@ -130,49 +130,6 @@
                 <yk-empty description="还没有随笔" />
             </div>
         </section>
-
-        <!-- 留言墙：接通后台私信，访客可留言 -->
-        <section id="wall" class="block portal-reveal wall-section">
-            <div class="block-head">
-                <h2 class="portal-section-title">留言墙</h2>
-                <span class="wall-count">共 {{ wallTotal }} 条</span>
-            </div>
-
-            <!-- 留言输入 -->
-            <div class="wall-compose portal-glass">
-                <yk-text-area v-model="wallDraft" :max-length="512" show-word-limit
-                    :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="给博主留一句想说的话…" />
-                <div class="wall-compose-actions">
-                    <span v-if="wallError" class="wall-error">{{ wallError }}</span>
-                    <span v-else class="wall-hint">留言会直接进入博主的后台私信收件箱</span>
-                    <yk-button type="primary" size="s" :loading="wallSubmitting"
-                        :disabled="!wallDraft.trim()" @click="submitWallMessage">
-                        留言
-                    </yk-button>
-                </div>
-            </div>
-
-            <div v-if="wallLoading" class="block-state">
-                <yk-spinner size="m" />
-            </div>
-            <div v-else-if="wallList.length" class="wall-grid">
-                <div v-for="message in wallList" :key="message.id" class="wall-card portal-glass">
-                    <div class="wall-head">
-                        <yk-avatar :size="32" :img-url="message.senderAvatar || undefined" />
-                        <div class="wall-user">
-                            <span class="wall-name">{{ message.senderName || '匿名访客' }}</span>
-                            <time class="wall-date">{{ formatDateTime(message.createdAt) }}</time>
-                        </div>
-                    </div>
-                    <p class="wall-text">{{ message.content }}</p>
-                </div>
-            </div>
-            <div v-else class="block-state">
-                <yk-empty description="还没有留言，来抢第一楼吧" />
-            </div>
-        </section>
-
-        <!-- 标签云已移入文章页，与分类筛选并列，首页不再重复 -->
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
@@ -182,7 +139,6 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
 import { useDark } from '@vueuse/core'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
@@ -194,9 +150,6 @@ import {
     getPublicArticleById,
     getPublicSubsets,
     getPublicDiaries,
-    getWallMessages,
-    createWallMessage,
-    type PortalWallMessage,
     type PortalDiary,
     type PortalSubset,
 } from '../api/portal'
@@ -211,8 +164,6 @@ const diaryList = ref<PortalDiary[]>([])
 const diaryLoading = ref(false)
 const subsetList = ref<PortalSubset[]>([])
 
-const route = useRoute()
-
 const articleVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
 const diaryVisible = ref(false)
@@ -220,14 +171,6 @@ const activeDiary = ref<PortalDiary | null>(null)
 
 const totalArticles = ref(0)
 const totalDiaries = ref(0)
-
-// 留言墙
-const wallList = ref<PortalWallMessage[]>([])
-const wallTotal = ref(0)
-const wallLoading = ref(false)
-const wallDraft = ref('')
-const wallSubmitting = ref(false)
-const wallError = ref('')
 
 // 轮播共享状态：首页全显示（intensity=1），跨页共享 index/timestamp
 const slides = BANNER_SLIDES
@@ -296,15 +239,6 @@ const formatDate = (value: string): string => {
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
 
-const formatDateTime = (value: string): string => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return `${date.toLocaleDateString('zh-CN')} ${date.toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
-    })}`
-}
-
 const loadArticles = async () => {
     articleLoading.value = true
     try {
@@ -360,42 +294,6 @@ const loadSubsetCount = async () => {
     }
 }
 
-const loadWall = async () => {
-    wallLoading.value = true
-    try {
-        const result = await getWallMessages({ page: 1, pageSize: 6 })
-        if (result.code === 200) {
-            wallList.value = result.data?.list || []
-            wallTotal.value = result.data?.total || 0
-        }
-    } catch {
-        // 留言墙加载失败不影响首页其他板块
-    } finally {
-        wallLoading.value = false
-    }
-}
-
-const submitWallMessage = async () => {
-    const content = wallDraft.value.trim()
-    if (!content || wallSubmitting.value) return
-    wallError.value = ''
-    wallSubmitting.value = true
-    try {
-        const result = await createWallMessage(content)
-        if (result.code === 200 || result.code === 201) {
-            wallDraft.value = ''
-            // 新留言置顶展示，总数同步
-            await loadWall()
-        } else {
-            wallError.value = result.message || '留言失败，请稍后重试'
-        }
-    } catch {
-        wallError.value = '留言失败，请稍后重试'
-    } finally {
-        wallSubmitting.value = false
-    }
-}
-
 const closeArticle = () => {
     articleVisible.value = false
     activeArticle.value = null
@@ -428,21 +326,6 @@ const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
     if (target) target.views = payload.views
 }
 
-// 锚点跳转：等图片与列表渲染稳定后再滚动，避免因布局位移落到错误位置
-const scrollToWallAfterReady = async () => {
-    for (let attempt = 0; attempt < 12; attempt++) {
-        const target = document.getElementById('wall')
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            // 每次重滚后再等一拍，若布局仍在变化（图片陆续到位）则继续校正
-            await new Promise(resolve => setTimeout(resolve, 220))
-            const rect = target.getBoundingClientRect()
-            if (Math.abs(rect.top - 88) < 12) return
-        }
-        await new Promise(resolve => setTimeout(resolve, 160))
-    }
-}
-
 const openArticle = async (id: number) => {
     // 先加载详情，数据就绪后再开 modal，避免 modal 先开空态再填内容造成的闪烁
     try {
@@ -471,7 +354,6 @@ onMounted(() => {
     void loadGallery()
     void loadDiary()
     void loadSubsetCount()
-    void loadWall()
     // 启动轮播：单一共享 interval，切页不重置
     currentIndex.value = deriveCurrentIndex()
     stopRotation = startBannerRotation((idx) => {
@@ -480,11 +362,6 @@ onMounted(() => {
     unsub = subscribeBanner((idx) => {
         currentIndex.value = idx
     })
-    // 从其他页带 #wall 跳来时，图片/接口未就绪会造成布局位移，
-    // 等渲染稳定后再滚到锚点，避免落在错误位置
-    if (route.hash === '#wall') {
-        void scrollToWallAfterReady()
-    }
 })
 
 onUnmounted(() => {
@@ -849,104 +726,6 @@ onUnmounted(() => {
     font-variant-numeric: tabular-nums;
 }
 
-// ---------- 留言墙 ----------
-// 锚点跳转时为 sticky 顶栏留出偏移，避免标题被遮住
-.wall-section {
-    scroll-margin-top: 88px;
-}
-
-.wall-count {
-    font-size: 13px;
-    color: var(--portal-text-tertiary);
-    font-variant-numeric: tabular-nums;
-}
-
-.wall-compose {
-    padding: 20px 22px;
-    margin-bottom: 20px;
-    transition: box-shadow var(--portal-transition-medium);
-
-    &:focus-within {
-        box-shadow: var(--portal-shadow-hover);
-    }
-}
-
-.wall-compose-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 12px;
-}
-
-.wall-hint,
-.wall-error {
-    font-size: 13px;
-}
-
-.wall-hint {
-    color: var(--portal-text-tertiary);
-}
-
-.wall-error {
-    color: var(--portal-accent-strong);
-    font-weight: 500;
-}
-
-.wall-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
-}
-
-.wall-card {
-    padding: 20px;
-    transition: all var(--portal-transition-medium);
-
-    &:hover {
-        transform: translateY(-3px);
-        box-shadow: var(--portal-shadow-hover);
-        background: var(--portal-surface-hover);
-    }
-}
-
-.wall-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-}
-
-.wall-user {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.wall-name {
-    font-family: var(--portal-serif);
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--portal-text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wall-date {
-    font-size: 12px;
-    color: var(--portal-text-tertiary);
-    font-variant-numeric: tabular-nums;
-}
-
-.wall-text {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.8;
-    color: var(--portal-text-secondary);
-    word-break: break-word;
-    white-space: pre-wrap;
-}
 
 // ---------- 响应式 ----------
 @media (max-width: 1279px) {
@@ -1003,16 +782,6 @@ onUnmounted(() => {
     }
     .diary-grid {
         grid-template-columns: 1fr;
-    }
-    .wall-grid {
-        grid-template-columns: 1fr;
-    }
-    .wall-compose {
-        padding: 16px 18px;
-    }
-    .wall-compose-actions {
-        flex-wrap: wrap;
-        justify-content: flex-start;
     }
 }
 
