@@ -25,6 +25,11 @@ const routes = [
         meta: { requiresAuth: false, hideHeader: true },
     },
     {
+        path: '/portal/messages',
+        component: () => import('../views/PortalMessages.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         path: '/',
         redirect: '/loginRegister',
         component: IndexView,
@@ -104,6 +109,17 @@ const routes = [
 const router = createRouter({
     history: createWebHistory(),
     routes,
+    // 切页统一回到页顶；带 hash 时滚到锚点元素并留出门户 sticky 顶栏的偏移
+    scrollBehavior(to) {
+        if (to.hash) {
+            return {
+                el: to.hash,
+                top: 88,
+                behavior: 'smooth'
+            }
+        }
+        return { top: 0 }
+    },
 })
 
 // 全局路由守卫：未登录时禁止访问业务页面

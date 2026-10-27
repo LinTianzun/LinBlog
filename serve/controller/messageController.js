@@ -245,11 +245,74 @@ async function getUnreadCount(req, res) {
     }
 }
 
+/**
+ * 门户留言墙：查询博主收到的私信（公开、脱敏）
+ */
+async function getWallMessages(req, res) {
+    try {
+        const paginationResult = formatPaginationParams(req.query, {
+            defaultPageSize: 12,
+            maxPageSize: 50
+        })
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
+        }
+        const { page, pageSize, offset } = paginationResult.data
+        const result = await messageModel.getWallMessages({ page, pageSize, offset })
+        res.json({
+            code: 200,
+            message: result.total > 0 ? '留言墙查询成功' : '留言墙暂无留言',
+            data: result
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '留言墙查询失败：' + err.message })
+    }
+}
+
+/**
+ * 门户留言墙：访客提交留言（写入博主私信收件箱）
+ */
+async function createWallMessage(req, res) {
+    try {
+        const { content } = req.body
+        if (typeof content !== 'string' || !content.trim()) {
+            return res.status(400).json({ code: 400, message: '留言内容必须是非空字符串' })
+        }
+        const normalizedContent = content.trim()
+        if (normalizedContent.length > 512) {
+            return res.status(400).json({ code: 400, message: '留言内容不能超过512字' })
+        }
+        // 匿名访客 sender 传 null，模型内挂到游客账号
+        const senderId = req.user?.userId ?? null
+        const result = await messageModel.insertWallMessage(normalizedContent, senderId)
+
+        writeSystemLog({
+            userId: senderId,
+            action: 'create',
+            module: 'message',
+            targetType: 'message',
+            targetId: result.messageId,
+            detail: '门户留言墙新增一条留言',
+            ip: req.ip || null,
+        })
+
+        res.status(201).json({
+            code: 200,
+            message: '留言成功',
+            data: { messageId: result.messageId }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '留言失败：' + err.message })
+    }
+}
+
 module.exports = {
     sendMessage,
     getInBox,
     getOutBox,
     markAdRead,
     deleteMessage,
-    getUnreadCount
+    getUnreadCount,
+    getWallMessages,
+    createWallMessage
 }

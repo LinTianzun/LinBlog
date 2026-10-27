@@ -137,6 +137,18 @@ export function getArticleStateLabel(
   return articleStateLabels[state];
 }
 
+// 列表封面：优先文章 cover，其次正文首图；都没有返回空，
+// 由调用方改用排印占位，避免列表里重复出现同一张误导性默认图
+export function extractArticleCover(article?: {
+  cover?: string | null;
+  content?: string | null;
+}): string {
+  if (!article) return "";
+  if (article.cover) return article.cover;
+  const first = article.content?.match(/<img[^>]+src="([^"]+)"/)?.[1];
+  return first || "";
+}
+
 export function formatArticleDate(value?: string | null): string {
   if (!value) return "暂无时间";
 

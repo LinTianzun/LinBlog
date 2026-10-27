@@ -163,3 +163,30 @@ export function recordView(targetType: "article" | "image" | "diary", targetId: 
     targetId,
   });
 }
+
+// ===== 门户留言墙（后端私信的公开展示）=====
+export interface PortalWallMessage {
+  id: number;
+  senderName: string | null;
+  senderAvatar: string | null;
+  content: string;
+  createdAt: string;
+}
+
+export interface PortalWallMessagePage {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+  list: PortalWallMessage[];
+}
+
+// 查询留言墙（博主收到的私信，脱敏：只含昵称/头像/内容/时间）
+export function getWallMessages(params: { page?: number; pageSize?: number } = {}) {
+  return request.get<ApiResult<PortalWallMessagePage>>("/portal/messages", { params });
+}
+
+// 提交留言（写入博主私信收件箱；匿名访客由后端挂到游客账号）
+export function createWallMessage(content: string) {
+  return request.post<ApiResult<{ messageId: number }>>("/portal/message", { content });
+}

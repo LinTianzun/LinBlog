@@ -1,6 +1,6 @@
 <template>
     <PortalLayout active-path="/portal/diary">
-        <section class="page-head">
+        <section class="page-head portal-reveal">
             <h1 class="page-title">随笔</h1>
             <p class="page-lead">
                 共 {{ total }} 篇。每一篇都记着那天的天气——点开任意一篇，可以在当前页读完整内容。
@@ -223,7 +223,7 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .page-head {
-    padding: 64px 0 0;
+    padding: 64px 0 32px;
 }
 
 .page-title {
@@ -232,7 +232,7 @@ onMounted(async () => {
     font-size: clamp(34px, 4vw, 52px);
     font-weight: 600;
     line-height: 1.2;
-    color: @font-color-l;
+    color: var(--portal-text-primary);
 }
 
 .page-lead {
@@ -240,7 +240,7 @@ onMounted(async () => {
     margin: 16px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 .weather-bar {

@@ -1,6 +1,6 @@
 <template>
     <PortalLayout active-path="/portal/articles">
-        <section class="page-head">
+        <section class="page-head portal-reveal">
             <h1 class="page-title">文章</h1>
             <p class="page-lead">
                 技术长文与生活记录，共 {{ archiveTotal }} 篇。可以按分类、标签筛选，或直接搜索关键词。
@@ -67,18 +67,26 @@
                 <article v-for="(article, i) in articles" :key="article.id" class="post-row"
                     :style="{ '--stagger': `${Math.min(i, 8) * 40}ms` }">
                     <button type="button" class="post-link" @click="openArticle(article.id)">
-                        <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
-                        <h3 class="post-title">{{ article.title }}</h3>
-                        <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
-                        <div class="post-meta">
-                            <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
-                            <span v-for="label in articleLabels(article)" :key="label" class="post-label">
-                                {{ label }}
+                        <!-- 封面：有图显示图，无图用主题色排印占位，不重复展示误导性默认图 -->
+                        <span class="post-cover portal-media-box" :class="{ 'is-empty': !articleCover(article) }">
+                            <img v-if="articleCover(article)" :src="articleCover(article)" :alt="article.title"
+                                loading="lazy" />
+                            <span v-else class="post-cover-glyph">{{ (article.title || '文').trim().charAt(0) }}</span>
+                        </span>
+                        <span class="post-body">
+                            <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
+                            <h3 class="post-title">{{ article.title }}</h3>
+                            <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
+                            <span class="post-meta">
+                                <span v-if="article.subsetName" class="post-chip">{{ article.subsetName }}</span>
+                                <span v-for="label in articleLabels(article)" :key="label" class="post-label">
+                                    {{ label }}
+                                </span>
+                                <span><IconEyeOutline />{{ article.views }}</span>
+                                <span><IconLikeOutline />{{ article.likes }}</span>
+                                <span><IconCommentOutline />{{ article.comments }}</span>
                             </span>
-                            <span><IconEyeOutline />{{ article.views }}</span>
-                            <span><IconLikeOutline />{{ article.likes }}</span>
-                            <span><IconCommentOutline />{{ article.comments }}</span>
-                        </div>
+                        </span>
                     </button>
                 </article>
 
@@ -115,7 +123,7 @@ import {
     type PortalSubset,
     type PortalLabel
 } from '../api/portal'
-import { parseArticleLabels, type ArticleItem } from '../api/article'
+import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,6 +165,9 @@ const activeHeading = computed(() => {
 
 const articleLabels = (article: ArticleItem): string[] =>
     parseArticleLabels(article.label).slice(0, 3)
+
+// 列表封面：没有真实封面时返回空，改走主题色排印占位
+const articleCover = (article: ArticleItem): string => extractArticleCover(article)
 
 const formatDate = (value: string): string => {
     const date = new Date(value)
@@ -336,7 +347,7 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .page-head {
-    padding: 64px 0 0;
+    padding: 64px 0 32px;
 }
 
 .page-title {
@@ -345,7 +356,7 @@ onMounted(async () => {
     font-size: clamp(34px, 4vw, 52px);
     font-weight: 600;
     line-height: 1.2;
-    color: @font-color-l;
+    color: var(--portal-text-primary);
 }
 
 .page-lead {
@@ -353,7 +364,7 @@ onMounted(async () => {
     margin: 16px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    color: @font-color-s;
+    color: var(--portal-text-secondary);
 }
 
 .filter-bar {
@@ -362,9 +373,12 @@ onMounted(async () => {
     align-items: center;
     gap: 18px;
     margin-top: 32px;
-    padding: 20px 0;
-    border-top: 1px solid @line-color-s;
-    border-bottom: 1px solid @line-color-s;
+    padding: 20px 24px;
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    border: 1px solid var(--portal-surface-border);
 }
 
 .filter-search {
@@ -526,8 +540,8 @@ onMounted(async () => {
 
 .post-link {
     display: grid;
-    grid-template-columns: 110px 1fr;
-    column-gap: 28px;
+    grid-template-columns: 168px 1fr;
+    column-gap: 24px;
     width: 100%;
     padding: 24px 0;
     border: none;
@@ -536,8 +550,45 @@ onMounted(async () => {
     cursor: pointer;
 }
 
-.post-date {
+// 封面：固定 4:3 比例容器，避免原始尺寸撑破布局
+.post-cover {
     grid-row: 1 / span 3;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--portal-radius-small);
+    overflow: hidden;
+    background: var(--portal-accent-soft);
+    transition: transform var(--portal-transition-medium);
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+}
+
+// 无封面时的排印占位：主题色渐变 + 标题首字，避免生硬灰块
+.post-cover-glyph {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    font-family: var(--portal-serif);
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--portal-accent-strong);
+    opacity: 0.55;
+}
+
+.post-body {
+    display: block;
+    min-width: 0;
+}
+
+.post-date {
     font-size: 13px;
     color: @font-color-s;
     font-variant-numeric: tabular-nums;
@@ -600,6 +651,12 @@ onMounted(async () => {
     color: @pcolor;
 }
 
+// hover 时封面轻微放大与描边，强化可点击感
+.post-row:hover .post-cover {
+    transform: scale(1.02);
+    box-shadow: var(--portal-shadow-hover);
+}
+
 .list-pagination {
     display: flex;
     justify-content: flex-end;
@@ -629,11 +686,13 @@ onMounted(async () => {
 
     .post-link {
         grid-template-columns: 1fr;
-        row-gap: 6px;
+        row-gap: 12px;
     }
 
-    .post-date {
+    // 窄屏改为封面在上、16:9 全宽，阅读流更自然
+    .post-cover {
         grid-row: auto;
+        aspect-ratio: 16 / 9;
     }
 }
 </style>
