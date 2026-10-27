@@ -132,7 +132,7 @@
         </section>
 
         <!-- 留言墙：接通后台私信，访客可留言 -->
-        <section class="block portal-reveal">
+        <section id="wall" class="block portal-reveal wall-section">
             <div class="block-head">
                 <h2 class="portal-section-title">留言墙</h2>
                 <span class="wall-count">共 {{ wallTotal }} 条</span>
@@ -182,6 +182,7 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDark } from '@vueuse/core'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
@@ -209,6 +210,8 @@ const galleryLoading = ref(false)
 const diaryList = ref<PortalDiary[]>([])
 const diaryLoading = ref(false)
 const subsetList = ref<PortalSubset[]>([])
+
+const route = useRoute()
 
 const articleVisible = ref(false)
 const activeArticle = ref<ArticleItem | null>(null)
@@ -425,6 +428,21 @@ const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
     if (target) target.views = payload.views
 }
 
+// 锚点跳转：等图片与列表渲染稳定后再滚动，避免因布局位移落到错误位置
+const scrollToWallAfterReady = async () => {
+    for (let attempt = 0; attempt < 12; attempt++) {
+        const target = document.getElementById('wall')
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            // 每次重滚后再等一拍，若布局仍在变化（图片陆续到位）则继续校正
+            await new Promise(resolve => setTimeout(resolve, 220))
+            const rect = target.getBoundingClientRect()
+            if (Math.abs(rect.top - 88) < 12) return
+        }
+        await new Promise(resolve => setTimeout(resolve, 160))
+    }
+}
+
 const openArticle = async (id: number) => {
     // 先加载详情，数据就绪后再开 modal，避免 modal 先开空态再填内容造成的闪烁
     try {
@@ -462,6 +480,11 @@ onMounted(() => {
     unsub = subscribeBanner((idx) => {
         currentIndex.value = idx
     })
+    // 从其他页带 #wall 跳来时，图片/接口未就绪会造成布局位移，
+    // 等渲染稳定后再滚到锚点，避免落在错误位置
+    if (route.hash === '#wall') {
+        void scrollToWallAfterReady()
+    }
 })
 
 onUnmounted(() => {
@@ -827,6 +850,11 @@ onUnmounted(() => {
 }
 
 // ---------- 留言墙 ----------
+// 锚点跳转时为 sticky 顶栏留出偏移，避免标题被遮住
+.wall-section {
+    scroll-margin-top: 88px;
+}
+
 .wall-count {
     font-size: 13px;
     color: var(--portal-text-tertiary);

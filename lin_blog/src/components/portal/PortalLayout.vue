@@ -10,8 +10,8 @@
                 </RouterLink>
 
                 <nav class="nav-links" aria-label="门户导航">
-                    <RouterLink v-for="item in links" :key="item.path" :to="item.path" class="nav-link"
-                        :class="{ active: isActive(item.path) }">
+                    <RouterLink v-for="item in links" :key="item.to" :to="item.to" class="nav-link"
+                        :class="{ active: isActive(item.path) }" @click="handleNavClick(item)">
                         {{ item.label }}
                     </RouterLink>
                 </nav>
@@ -65,16 +65,28 @@ const router = useRouter()
 const route = useRoute()
 
 const links = [
-    { label: '首页', path: '/portal' },
-    { label: '文章', path: '/portal/articles' },
-    { label: '摄影', path: '/portal/gallery' },
-    { label: '随笔', path: '/portal/diary' }
+    { label: '首页', path: '/portal', to: '/portal' },
+    { label: '文章', path: '/portal/articles', to: '/portal/articles' },
+    { label: '摄影', path: '/portal/gallery', to: '/portal/gallery' },
+    { label: '随笔', path: '/portal/diary', to: '/portal/diary' },
+    // 留言是首页面内区块，用锚点跳转；已在首页时直接滚动过去
+    { label: '留言', path: '/portal#wall', to: '/portal#wall', hash: 'wall' }
 ]
 
 const isActive = (path: string): boolean => {
     const target = props.activePath || route.path
     if (path === '/portal') return target === '/portal'
+    if (path === '/portal#wall') return target === '/portal' && route.hash === '#wall'
     return target.startsWith(path)
+}
+
+// 已在目标页时 router 不触发滚动，这里手动滚动到锚点区块
+const handleNavClick = (item: { path: string; hash?: string }) => {
+    if (!item.hash) return
+    if (route.path === '/portal') {
+        const target = document.getElementById(item.hash)
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
 }
 
 const year = computed(() => new Date().getFullYear())

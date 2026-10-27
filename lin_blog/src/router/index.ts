@@ -104,6 +104,18 @@ const routes = [
 const router = createRouter({
     history: createWebHistory(),
     routes,
+    // 支持门户锚点导航（如顶部「留言」跳到首页留言墙）：
+    // 带 hash 时滚动到锚点元素并留出顶栏偏移，无 hash 时回到页顶
+    scrollBehavior(to) {
+        if (to.hash) {
+            return {
+                el: to.hash,
+                top: 88,
+                behavior: 'smooth'
+            }
+        }
+        return { top: 0 }
+    },
 })
 
 // 全局路由守卫：未登录时禁止访问业务页面
