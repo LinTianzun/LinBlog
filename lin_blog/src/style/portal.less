@@ -47,6 +47,16 @@
     --portal-text-tertiary: color-mix(in srgb, var(--pcolor) 48%, transparent);
     --portal-text-on-accent: color-mix(in srgb, var(--bgColor1) 96%, transparent);
 
+    // Hero 覆盖在照片上，颜色不能跟随明暗底色反转，否则深色主题下会变成黑字。
+    // 统一使用浅色文字，并通过深色渐变遮罩保证所有主题下的可读性。
+    --portal-hero-ink: #ffffff;
+    --portal-hero-ink-muted: rgba(255, 255, 255, 0.84);
+    --portal-hero-surface: rgba(12, 16, 24, 0.34);
+    --portal-hero-border: rgba(255, 255, 255, 0.46);
+    --portal-hero-shadow: 0 2px 28px rgba(0, 0, 0, 0.46);
+    --portal-hero-button-hover-bg: rgba(255, 255, 255, 0.94);
+    --portal-hero-button-hover-ink: #172033;
+
     // 强调色
     --portal-accent: var(--pcolor);
     --portal-accent-strong: var(--pcolor8);
