@@ -147,12 +147,12 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useDark } from '@vueuse/core'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, getSlide, startBannerRotation, subscribeBanner } from '../utils/portalBanner'
+import { useThemeDark } from '../utils/themeMode'
 import {
     getPublicArticles,
     getPublicArticleById,
@@ -183,7 +183,7 @@ const totalDiaries = ref(0)
 // 轮播共享状态：首页全显示（intensity=1），跨页共享 index/timestamp
 const slides = BANNER_SLIDES
 const currentIndex = ref(0)
-const isDark = useDark({ attribute: 'data-theme', selector: 'html' })
+const isDark = useThemeDark()
 const themeGradient = (slide: BannerSlide): string => {
     return isDark.value ? slide.gradient.dark : slide.gradient.light
 }

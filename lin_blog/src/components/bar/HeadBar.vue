@@ -37,12 +37,9 @@ import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
 import { information } from '../reply/index.ts'
 import { getUnreadCount } from '../../api/message'
-import { useDark } from '@vueuse/core'
+import { useThemeDark } from '../../utils/themeMode'
 
-const isDark = useDark({
-    attribute: 'data-theme',
-    storageKey: 'YIKE_THEME'
-})
+const isDark = useThemeDark()
 
 const router = useRouter();
 

@@ -15,7 +15,7 @@
 <script lang="ts" setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, startBannerRotation, subscribeBanner } from '../../utils/portalBanner'
-import { useDark } from '@vueuse/core'
+import { useThemeDark } from '../../utils/themeMode'
 
 const props = withDefaults(defineProps<{
     intensity?: number
@@ -25,7 +25,8 @@ const props = withDefaults(defineProps<{
 
 const slides = BANNER_SLIDES
 const currentIndex = ref(0)
-const isDark = useDark({ attribute: 'data-theme', selector: 'html' })
+// 与 themePreset 共用同一存储键，避免组件重新挂载时把 data-theme 覆写成空串
+const isDark = useThemeDark()
 
 const themeGradient = (slide: BannerSlide): string => {
     return isDark.value ? slide.gradient.dark : slide.gradient.light
