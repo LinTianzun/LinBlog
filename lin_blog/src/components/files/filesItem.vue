@@ -1,7 +1,7 @@
 <template>
     <div class="file-item">
         <div class="file-item-img" :class="{ 'file-item-selected': props.data?.selected }">
-            <yk-image v-if="isPreviewable" :src="previewUrl" fit="contain" width="200" height="200"
+            <yk-image v-if="isPreviewable" :src="previewUrl" fit="contain" width="100%" height="100%"
                 :preview="true" :is-lazy="true">
             </yk-image>
             <div v-else class="file-item-img-placeholder">
@@ -139,12 +139,21 @@ const downloadFile = () => {
 
 <style lang="less" scoped>
 .file-item {
+    // 宽度交给网格列控制，配合 minmax(200px, 1fr) 填满整行
+    width: 100%;
+    min-width: 0;
 
     &-img {
-        width: 205px;
+        // 跟随网格列宽自适应；图片区域用等比高度，避免大屏留空
+        width: 100%;
+        aspect-ratio: 1 / 1;
         position: relative;
-        border: 2px solid @bg-color-l;
-        border-radius: @radius-s;
+        overflow: hidden;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 14px;
+        background: var(--admin-surface, var(--bgColor1));
+        box-shadow: var(--admin-shadow-sm, @shadow-s);
+        transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 
         &-tool {
             position: absolute;
@@ -156,14 +165,16 @@ const downloadFile = () => {
                 width: 32px;
                 height: 32px;
                 padding: 8px;
-                background: rgba(255, 255, 255, 0.56);
-                border-radius: @radius-m;
+                color: #fff;
+                background: rgba(18, 22, 30, 0.52);
+                border-radius: 9px;
+                backdrop-filter: blur(8px);
                 transition: all @animatb;
                 cursor: pointer;
 
                 &:hover {
-                    color: @pcolor;
-                    background: rgba(255, 255, 255, 0.72);
+                    color: #fff;
+                    background: color-mix(in srgb, var(--pcolor) 76%, transparent);
                     backdrop-filter: blur(2px);
                 }
             }
@@ -174,7 +185,7 @@ const downloadFile = () => {
             width: 24px;
             height: 24px;
             border-radius: @radius-s;
-            background: @gray-4;
+            background: rgba(18, 22, 30, 0.42);
             left: @space-s;
             top: @space-s;
             cursor: pointer;
@@ -188,7 +199,10 @@ const downloadFile = () => {
         }
 
         &:hover {
-            background: @pcolor-1;
+            transform: translateY(-2px);
+            border-color: var(--pcolor3);
+            background: var(--pcolor1);
+            box-shadow: var(--admin-shadow-md, @shadow-m);
 
             .file-item-img-tool {
                 opacity: 1;
@@ -202,15 +216,15 @@ const downloadFile = () => {
     }
 
     &-selected {
-        background: @pcolor-1;
-        border: 2px solid @pcolor-3;
+        background: var(--pcolor1);
+        border: 2px solid var(--pcolor3);
 
         .file-item-img-tool {
             opacity: 0;
         }
 
         .file-item-img-check {
-            background: @pcolor;
+            background: var(--pcolor);
             /* border: 1px solid rgba(255, 255, 255, 0.56); */
             opacity: 1;
 
@@ -230,33 +244,47 @@ const downloadFile = () => {
 
     &-name {
         display: flex;
-        padding-top: @space-l;
+        align-items: baseline;
+        gap: 2px;
+        padding: 10px 4px 0;
         justify-content: center;
 
         &-file {
+            max-width: 172px;
             overflow: hidden;
             display: -webkit-box;
             -webkit-line-clamp: 1;
             -webkit-box-orient: vertical;
             text-overflow: ellipsis;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray);
+        }
+
+        p {
+            margin: 0;
+            color: var(--gray6);
+            font-size: 11px;
         }
     }
 
     // 非图片文件的类型占位
     &-img-placeholder {
-        width: 200px;
-        height: 200px;
+        width: 100%;
+        aspect-ratio: 1 / 1;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: @space-s;
-        background: @bg-color-m;
+        background:
+            linear-gradient(145deg, var(--pcolor1), transparent 62%),
+            var(--bgColor2);
         cursor: pointer;
 
         .yk-icon {
             font-size: 56px;
-            color: @font-color-s;
+            color: var(--gray6);
         }
     }
 }

@@ -66,9 +66,13 @@ const editDiary = (): void => {
 <style lang="less" scoped>
     .diary-item {
         width: 100%;
-        border-radius: @radius-m;
-        padding: @space-xl;
-        background: @bg-color-l;
+        box-sizing: border-box;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 16px;
+        padding: 20px;
+        background: var(--admin-surface, var(--bgColor1));
+        box-shadow: var(--admin-shadow-sm, @shadow-s);
+        transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 
         &-top {
             width: 100%;
@@ -80,6 +84,7 @@ const editDiary = (): void => {
                 font-size: 20px;
                 font-weight: 600;
                 align-items: center;
+                color: var(--gray);
 
                 img {
                     width: 20px;
@@ -91,17 +96,21 @@ const editDiary = (): void => {
                 width: 20px;
                 height: 20px;
                 padding: 2px;
-                color: @font-color-s;
+                color: var(--gray6);
                 transition: color @animatb;
                 display: none;
 
                 &:hover {
-                    color: @font-color-l;
+                    color: var(--pcolor);
                 }
             }
         }
 
         &:hover {
+            transform: translateY(-1px);
+            border-color: var(--pcolor3);
+            box-shadow: var(--admin-shadow-md, @shadow-m);
+
             .diary-item-top-delete {
                 display: block;
             }

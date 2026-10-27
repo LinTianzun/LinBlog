@@ -12,6 +12,7 @@ import { libraryIcons } from './utils/libraryIcons'
 import './style.less'
 import './style/theme-presets.less'
 import './style/portal.less'
+import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
 
 // 启动时恢复用户选择的主题预设（设置 data-theme 与 data-theme-preset）

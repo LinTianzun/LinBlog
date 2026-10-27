@@ -1,5 +1,5 @@
 <template>
-    <div class="forms" :class="{formsHeight:props.classify ? 0 : 1}">
+    <div class="forms" :class="{ formsHeight: props.classify === 0, 'forms-gallery': props.classify === 1 }">
         <div class="forms-layout">
             <div class="forms-content">
                 <input type="text" class="forms-title" v-model="formData.title" maxlength="150"
@@ -23,7 +23,7 @@
                     </yk-space>
                 </div>
 
-                <div :class="{introduce:props.classify ? 0 : 1}">
+                <div class="forms-intro" :class="{ introduce: props.classify === 0 }">
                     <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
                         :max-length="512"></yk-text-area>
                 </div>
@@ -146,8 +146,8 @@ const emitFormData = (): void => {
 const raws = computed(() => {
     if (props.classify === 1) {
         return {
-            minRows: 18,
-            maxRows: 18,
+            minRows: 8,
+            maxRows: 10,
         }
     }
 
@@ -407,6 +407,50 @@ onMounted(() => {
             gap: @space-l;
             width: 100%;
             margin-top: @space-l;
+        }
+
+        &.forms-gallery {
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+
+            .forms-layout,
+            .forms-content {
+                height: 100%;
+            }
+
+            .forms-content {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .forms-intro {
+                flex: 1;
+            }
+
+            .forms-title {
+                padding-bottom: @space-m;
+                border-bottom: 1px solid var(--admin-line, @line-color-s);
+            }
+
+            .forms-meta {
+                flex-wrap: wrap;
+                row-gap: @space-m;
+                margin-top: @space-m;
+            }
+
+            .forms-tags {
+                flex: 1 0 100%;
+                flex-wrap: wrap;
+                row-gap: @space-s;
+            }
+
+            .forms-intro {
+                margin-top: @space-l;
+                padding-top: @space-l;
+                border-top: 1px solid var(--admin-line, @line-color-s);
+            }
         }
 
         &-tags {

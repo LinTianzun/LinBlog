@@ -18,15 +18,14 @@
 
         <yk-empty v-else-if="comments.length === 0" description="暂无评论" />
 
-        <yk-scrollbar v-else ref="scrollbar"
-            style="padding: 0 24px; height: calc(100vh * 0.55); border-bottom: 1px solid rgba(30,32,37,0.08);">
+        <yk-scrollbar v-else ref="scrollbar" class="comment-scroll">
             <yk-space dir="vertical">
                 <reply v-for="item in comments" :key="item.id" :content="item" is-comment
                     @delete="removeComment" />
             </yk-space>
         </yk-scrollbar>
 
-        <div v-if="count > pageSize" class="comment-pagination">
+        <div v-if="!loading && !errorMessage && count > pageSize" class="comment-pagination">
             <yk-pagination :current="page" :page-size="pageSize" @change="changePage" :total="count" size="m" />
         </div>
     </div>
@@ -56,7 +55,6 @@ const proxy = getCurrentInstance()?.proxy as CommentCardInstance | null | undefi
 
 const props = withDefaults(defineProps<CommentProps>(), {
     pageSize: 8,
-    height: "calc(100vh * 0.67)",
 })
 
 //  评论总数
@@ -164,16 +162,33 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .comment {
-    position: relative;
-    padding: @space-xl 0 64px;
-    height: calc(100vh * 0.67);
+    display: flex;
+    min-width: 0;
+    // 总览页是两栏等高网格：这里不能写死高度，
+    // 否则评论卡会比「访问量 + 数据监测」两卡更高
+    height: 100%;
+    box-sizing: border-box;
+    flex-direction: column;
+    padding: @space-xl 0 0;
 
     .card-title-name {
+        padding: 0;
+    }
+
+    .card-title {
+        padding: 0 @space-xl 18px;
+    }
+
+    &-scroll {
+        min-height: 0;
+        flex: 1;
         padding: 0 @space-xl;
+        border-top: 1px solid var(--admin-line, var(--gray1));
+        border-bottom: 1px solid var(--admin-line, var(--gray1));
     }
 
     &-state {
-        height: calc(100vh * 0.55);
+        min-height: 240px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -183,13 +198,22 @@ onMounted(() => {
 
     &-pagination {
         display: flex;
-        position: absolute;
-        width: 100%;
-        left: 0;
-        bottom: 0;
+        flex: none;
         padding: @space-l @space-xl;
         align-items: center;
         justify-content: flex-end;
+    }
+
+    @media (max-width: 640px) {
+        // 单栏布局时没有等高参照，给一个最小高度避免内容塌缩
+        height: auto;
+        min-height: 420px;
+
+        .card-title,
+        &-scroll {
+            padding-right: @space-l;
+            padding-left: @space-l;
+        }
     }
 }
 </style>

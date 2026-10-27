@@ -1,5 +1,5 @@
 <template>
-    <yk-space dir="vertical" size="l" class="user-management">
+    <yk-space dir="vertical" size="l" class="admin-page user-management">
         <!-- 页面标题与搜索 -->
         <top-title name="用户管理" :is-search="true" @search="handleSearch" />
         <yk-text v-if="loading" type="secondary">
@@ -90,7 +90,7 @@
                         </tr>
 
                         <tr v-if="filteredUsers.length === 0">
-                            <td colspan="5" class="empty-state">
+                            <td colspan="6" class="empty-state">
                                 没有找到符合条件的用户
                             </td>
                         </tr>
