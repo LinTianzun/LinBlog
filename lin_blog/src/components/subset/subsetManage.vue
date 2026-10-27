@@ -1,11 +1,13 @@
 <template>
-    <yk-table :data="subsetStore.data"">
+    <!-- 不传 data：yk-table 会按列渲染一份默认空行，与 #tbody 自定义行叠加导致行数翻倍 -->
+    <yk-table>
         <yk-table-column property="email" label="名称"></yk-table-column>
         <yk-table-column property="bir" label="关联文章数"></yk-table-column>
         <yk-table-column property="desc" label="创建时间"></yk-table-column>
         <yk-table-column property="manage" label="操作" align="right"></yk-table-column>
         <template #tbody>
-            <tr v-for="(item, index) in subsetStore.data" :key="index" class="yk-table__row">
+            <tbody>
+            <tr v-for="item in subsetStore.data" :key="item.id" class="yk-table__row">
                 <td class="yk-table__cell">
                     <yk-input v-model="item.name" @focus="focusSubset(item.id)" @blur="blurSubset(item.id)" />
                 </td>
@@ -19,6 +21,10 @@
                 <yk-text type="primary" @click="removeSubset(item.id)" style="cursor: pointer">删除</yk-text>
                 </td>
             </tr>
+            <tr v-if="subsetStore.data.length === 0" class="yk-table__row">
+                <td class="yk-table__cell text-center" colspan="4">暂无分组</td>
+            </tr>
+            </tbody>
         </template>
     </yk-table>
 </template>
