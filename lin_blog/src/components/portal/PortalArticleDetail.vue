@@ -36,7 +36,7 @@
             <div class="comment-section">
                 <div class="section-title">
                     评论
-                    <yk-tag type="primary">{{ commentTotal }} 条</yk-tag>
+                    <span class="comment-count">{{ commentTotal }}</span>
                 </div>
 
                 <!-- 发表评论：登录后可用，游客点击直接引导登录 -->
@@ -60,15 +60,45 @@
                     <p v-if="commentError" class="compose-error">{{ commentError }}</p>
                 </div>
 
-                <div v-if="!comments.length" class="empty-comments">还没有评论，来抢沙发吧。</div>
-                <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                    <yk-avatar :size="36" :img-url="comment.userAvatar || undefined" />
-                    <div class="comment-main">
-                        <div class="comment-head">
-                            <span class="comment-user">{{ comment.userName || '匿名用户' }}</span>
-                            <time>{{ formatDateTime(comment.createdAt) }}</time>
+                <div v-if="!threads.length" class="empty-comments">还没有评论，来抢沙发吧。</div>
+
+                <div v-else class="comment-list">
+                    <div v-for="thread in threads" :key="thread.root.id" class="comment-thread">
+                        <yk-avatar :size="36" :img-url="thread.root.userAvatar || undefined"
+                            class="comment-avatar" />
+                        <div class="comment-main">
+                            <div class="comment-head">
+                                <span class="comment-user">{{ thread.root.userName || '匿名用户' }}</span>
+                                <time>{{ formatDateTime(thread.root.createdAt) }}</time>
+                            </div>
+                            <p class="comment-content">{{ thread.root.content }}</p>
+
+                            <template v-if="thread.replies.length">
+                                <button type="button" class="reply-toggle"
+                                    @click="toggleReplies(thread.root.id)">
+                                    <template v-if="isExpanded(thread.root.id)">
+                                        <IconUpOutline />收起回复
+                                    </template>
+                                    <template v-else>
+                                        <IconDownOutline />展开 {{ thread.replies.length }} 条回复
+                                    </template>
+                                </button>
+
+                                <div v-if="isExpanded(thread.root.id)" class="reply-list">
+                                    <div v-for="reply in thread.replies" :key="reply.id" class="reply-item">
+                                        <yk-avatar :size="26" :img-url="reply.userAvatar || undefined" />
+                                        <div class="reply-body">
+                                            <div class="comment-head">
+                                                <span class="comment-user">{{ reply.userName || '匿名用户' }}</span>
+                                                <span class="reply-to">回复 {{ thread.root.userName || '该用户' }}</span>
+                                                <time>{{ formatDateTime(reply.createdAt) }}</time>
+                                            </div>
+                                            <p class="comment-content">{{ reply.content }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
-                        <p class="comment-content">{{ comment.content }}</p>
                     </div>
                 </div>
             </div>
@@ -101,6 +131,39 @@ const emit = defineEmits<{
     (e: 'view-counted', payload: { views: number }): void
 }>()
 const comments = ref<PortalComment[]>([])
+// 二级评论默认收起，按一级评论 ID 记录展开状态
+const expandedThreads = ref<Set<number>>(new Set())
+
+type CommentThread = {
+    root: PortalComment
+    replies: PortalComment[]
+}
+
+// 一级评论按时间倒序，二级回复按时间正序挂在所属评论下
+const threads = computed<CommentThread[]>(() => {
+    const roots = comments.value.filter(item => !item.parentId)
+    const replies = comments.value.filter(item => item.parentId)
+
+    return roots
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(root => ({
+            root,
+            replies: replies
+                .filter(reply => Number(reply.parentId) === Number(root.id))
+                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+        }))
+})
+
+const isExpanded = (commentId: number) => expandedThreads.value.has(commentId)
+
+const toggleReplies = (commentId: number) => {
+    // 直接改 Set 不会触发更新，这里复制一份再赋值
+    const next = new Set(expandedThreads.value)
+    if (next.has(commentId)) next.delete(commentId)
+    else next.add(commentId)
+    expandedThreads.value = next
+}
 const commentTotal = ref(0)
 const commentDraft = ref('')
 const commentSubmitting = ref(false)
@@ -147,7 +210,8 @@ const formatDateTime = (value: string) => {
 
 const loadComments = async (articleId: number) => {
     try {
-        const result = await getPublicComments(articleId)
+        // 一页 50 条是接口上限，门户详情一次取满，避免二级回复被分页截断
+        const result = await getPublicComments(articleId, 1, 50)
         if (result.code === 200) {
             comments.value = result.data?.list || []
             commentTotal.value = result.data?.total || 0
@@ -259,6 +323,7 @@ watch(loadKey, async (key, previousKey) => {
     if (!key) {
         comments.value = []
         commentTotal.value = 0
+        expandedThreads.value = new Set()
         commentDraft.value = ''
         commentError.value = ''
         detailLoading.value = false
@@ -280,6 +345,8 @@ watch(loadKey, async (key, previousKey) => {
             liked: false,
             likes: props.article?.likes ?? 0
         }
+        // 换文章时清空展开状态，避免上一篇的展开记录串到下一篇
+        expandedThreads.value = new Set()
         views.value = props.article?.views ?? 0
         await Promise.all([loadComments(articleId), loadLikeState(articleId)])
         likePending.value = false
@@ -558,14 +625,27 @@ watch(loadKey, async (key, previousKey) => {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 14px;
-        font-size: 15px;
+        margin-bottom: 16px;
+        font-family: var(--portal-serif);
+        font-size: 16px;
         font-weight: 600;
         color: @font-color-l;
     }
 
+    .comment-count {
+        min-width: 20px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 20px;
+        text-align: center;
+    }
+
     .empty-comments {
-        padding: 18px 0;
+        padding: 20px 0;
         color: @font-color-s;
         font-size: @size-s;
     }
@@ -576,7 +656,7 @@ watch(loadKey, async (key, previousKey) => {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 .compose-actions {
@@ -597,42 +677,109 @@ watch(loadKey, async (key, previousKey) => {
     color: @ecolor;
 }
 
-.comment-item {
+// 评论列表：用分隔线而不是卡片，阅读节奏更连贯
+.comment-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.comment-thread {
     display: flex;
     gap: 12px;
-    padding: 12px 0;
+    padding: 16px 0;
 
-    & + .comment-item {
+    & + & {
         border-top: 1px solid @line-color-s;
     }
+}
 
-    .comment-main {
-        flex: 1;
-        min-width: 0;
+.comment-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.comment-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+
+    .comment-user {
+        font-size: 14px;
+        font-weight: 600;
+        color: @font-color-l;
     }
 
-    .comment-head {
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-
-        .comment-user {
-            font-weight: 600;
-            color: @font-color-l;
-        }
-
-        time {
-            font-size: @size-ss;
-            color: @font-color-s;
-        }
+    .reply-to {
+        font-size: 12px;
+        color: @font-color-s;
     }
 
-    .comment-content {
-        margin: 4px 0 0;
-        color: @font-color-m;
-        line-height: 1.7;
-        word-break: break-word;
+    time {
+        margin-left: auto;
+        font-size: 12px;
+        color: @font-color-s;
+        font-variant-numeric: tabular-nums;
     }
+}
+
+.comment-content {
+    margin: 6px 0 0;
+    font-size: 14.5px;
+    line-height: 1.8;
+    color: @font-color-m;
+    word-break: break-word;
+}
+
+// 展开 / 收起二级评论
+.reply-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: @pcolor;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+
+    .yk-icon {
+        width: 13px;
+        height: 13px;
+    }
+
+    &:hover {
+        opacity: 0.75;
+    }
+}
+
+// 二级回复：浅底 + 左侧强调线，比独立卡片更轻
+.reply-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 12px 14px 12px 16px;
+    border-left: 2px solid @pcolor;
+    border-radius: 0 12px 12px 0;
+    background: @bg-color-s;
+}
+
+.reply-item {
+    display: flex;
+    gap: 8px;
+
+    & + & {
+        padding-top: 12px;
+        border-top: 1px dashed @line-color-s;
+    }
+}
+
+.reply-body {
+    flex: 1;
+    min-width: 0;
 }
 
 // 窄屏：阅读区放开到容器宽度，头图改为 16:10 减少留白
