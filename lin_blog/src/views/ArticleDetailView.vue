@@ -104,29 +104,30 @@
 
                 <!-- 评论区 -->
                 <section class="article-detail-comments">
-                    <div class="comments-head">
-                        <div class="comments-title">
+                    <header class="comments-head">
+                        <h2 class="comments-title">
                             评论
-                            <span class="comments-count">{{ commentTotal }} 条</span>
-                        </div>
-                        <yk-text type="secondary" class="comments-hint">
-                            仅支持两级评论，回复请针对一级评论
-                        </yk-text>
-                    </div>
+                            <span class="comments-count">{{ commentTotal }}</span>
+                        </h2>
+                        <span class="comments-hint">支持两级评论，回复请针对一级评论</span>
+                    </header>
 
-                    <div class="comment-compose">
-                        <yk-text-area v-model="newCommentDraft" :max-length="512" show-word-limit
-                            :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="写下你的评论…"
-                            @keydown.ctrl.enter="submitComment(0)" />
-                        <div class="compose-actions">
-                            <span class="compose-hint">Ctrl + Enter 快速发送</span>
-                            <yk-button type="primary" size="s" :loading="commentSubmitting === 0"
-                                :disabled="!newCommentDraft.trim()" @click="submitComment(0)">
-                                发表评论
-                            </yk-button>
+                    <div class="comment-composer">
+                        <yk-avatar :size="40" :img-url="composerAvatar || undefined" class="composer-avatar" />
+                        <div class="composer-main">
+                            <yk-text-area v-model="newCommentDraft" :max-length="512" show-word-limit
+                                :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="写下你的评论…"
+                                @keydown.ctrl.enter="submitComment(0)" />
+                            <div class="composer-footer">
+                                <span class="composer-hint">Ctrl + Enter 快速发送</span>
+                                <yk-button type="primary" size="s" :loading="commentSubmitting === 0"
+                                    :disabled="!newCommentDraft.trim()" @click="submitComment(0)">
+                                    发表评论
+                                </yk-button>
+                            </div>
                         </div>
-                        <p v-if="commentError" class="compose-error">{{ commentError }}</p>
                     </div>
+                    <p v-if="commentError" class="compose-error">{{ commentError }}</p>
 
                     <div v-if="commentsLoading" class="comments-state">
                         <yk-spinner size="s" />
@@ -140,73 +141,76 @@
 
                     <yk-empty v-else-if="threads.length === 0" description="还没有评论" />
 
-                    <div v-else class="comment-threads">
-                        <div v-for="thread in threads" :key="thread.root.id" class="comment-thread">
-                            <div class="comment-item is-root">
-                                <yk-avatar :size="36" :img-url="thread.root.userAvatar || undefined" />
-                                <div class="comment-main">
-                                    <div class="comment-head">
-                                        <span class="comment-user">{{ thread.root.userName || '未知用户' }}</span>
-                                        <time>{{ formatDateTime(thread.root.createdAt) }}</time>
-                                    </div>
-                                    <p class="comment-content">{{ thread.root.content }}</p>
-                                    <div class="comment-actions">
-                                        <yk-text type="primary" @click="startReply(thread.root.id)">
-                                            回复
-                                        </yk-text>
-                                        <yk-popconfirm placement="bottomRight" trigger="click"
-                                            title="确认删除" content="删除后不可恢复"
-                                            @confirm="removeComment(thread.root.id)">
-                                            <yk-text type="secondary">删除</yk-text>
-                                        </yk-popconfirm>
-                                    </div>
+                    <div v-else class="comment-list">
+                        <article v-for="thread in threads" :key="thread.root.id" class="comment-thread">
+                            <yk-avatar :size="38" :img-url="thread.root.userAvatar || undefined"
+                                class="comment-avatar" />
+                            <div class="thread-body">
+                                <div class="thread-head">
+                                    <span class="comment-user">{{ thread.root.userName || '未知用户' }}</span>
+                                    <time>{{ formatDateTime(thread.root.createdAt) }}</time>
+                                </div>
+                                <p class="comment-content">{{ thread.root.content }}</p>
 
-                                    <div v-if="replyTarget === thread.root.id" class="reply-compose">
-                                        <yk-text-area v-model="replyDraft" :max-length="512" show-word-limit
-                                            :auto-size="{ minRows: 2, maxRows: 4 }"
-                                            :placeholder="`回复 ${thread.root.userName || '该用户'}`"
-                                            @keydown.ctrl.enter="submitComment(thread.root.id)" />
-                                        <div class="compose-actions">
-                                            <span class="compose-hint">Ctrl + Enter 快速发送</span>
-                                            <yk-space size="s">
-                                                <yk-button size="s" type="secondary" @click="cancelReply">
-                                                    取消
-                                                </yk-button>
-                                                <yk-button size="s" type="primary"
-                                                    :loading="commentSubmitting === thread.root.id"
-                                                    :disabled="!replyDraft.trim()"
-                                                    @click="submitComment(thread.root.id)">
-                                                    回复
-                                                </yk-button>
-                                            </yk-space>
+                                <div class="thread-actions">
+                                    <button type="button" class="comment-action"
+                                        @click="startReply(thread.root.id)">
+                                        <IconCommentOutline />回复
+                                    </button>
+                                    <yk-popconfirm placement="bottomRight" trigger="click"
+                                        title="确认删除" content="删除后不可恢复"
+                                        @confirm="removeComment(thread.root.id)">
+                                        <button type="button" class="comment-action is-danger">
+                                            <IconDeleteOutline />删除
+                                        </button>
+                                    </yk-popconfirm>
+                                </div>
+
+                                <div v-if="replyTarget === thread.root.id" class="reply-composer">
+                                    <yk-text-area v-model="replyDraft" :max-length="512" show-word-limit
+                                        :auto-size="{ minRows: 2, maxRows: 4 }"
+                                        :placeholder="`回复 ${thread.root.userName || '该用户'}`"
+                                        @keydown.ctrl.enter="submitComment(thread.root.id)" />
+                                    <div class="composer-footer">
+                                        <span class="composer-hint">Ctrl + Enter 快速发送</span>
+                                        <yk-space size="s">
+                                            <yk-button size="s" type="secondary" @click="cancelReply">
+                                                取消
+                                            </yk-button>
+                                            <yk-button size="s" type="primary"
+                                                :loading="commentSubmitting === thread.root.id"
+                                                :disabled="!replyDraft.trim()"
+                                                @click="submitComment(thread.root.id)">
+                                                回复
+                                            </yk-button>
+                                        </yk-space>
+                                    </div>
+                                </div>
+
+                                <div v-if="thread.replies.length" class="reply-list">
+                                    <div v-for="reply in thread.replies" :key="reply.id" class="reply-item">
+                                        <yk-avatar :size="26" :img-url="reply.userAvatar || undefined" />
+                                        <div class="reply-body">
+                                            <div class="thread-head">
+                                                <span class="comment-user">{{ reply.userName || '未知用户' }}</span>
+                                                <span class="reply-to">回复 {{ thread.root.userName || '该用户' }}</span>
+                                                <time>{{ formatDateTime(reply.createdAt) }}</time>
+                                            </div>
+                                            <p class="comment-content">{{ reply.content }}</p>
+                                            <div class="thread-actions">
+                                                <yk-popconfirm placement="bottomRight" trigger="click"
+                                                    title="确认删除" content="删除后不可恢复"
+                                                    @confirm="removeComment(reply.id)">
+                                                    <button type="button" class="comment-action is-danger">
+                                                        <IconDeleteOutline />删除
+                                                    </button>
+                                                </yk-popconfirm>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
-                            <div v-if="thread.replies.length" class="comment-replies">
-                                <div v-for="reply in thread.replies" :key="reply.id" class="comment-item is-reply">
-                                    <yk-avatar :size="28" :img-url="reply.userAvatar || undefined" />
-                                    <div class="comment-main">
-                                        <div class="comment-head">
-                                            <span class="comment-user">{{ reply.userName || '未知用户' }}</span>
-                                            <span class="comment-reply-to">
-                                                回复 {{ thread.root.userName || '该用户' }}
-                                            </span>
-                                            <time>{{ formatDateTime(reply.createdAt) }}</time>
-                                        </div>
-                                        <p class="comment-content">{{ reply.content }}</p>
-                                        <div class="comment-actions">
-                                            <yk-popconfirm placement="bottomRight" trigger="click"
-                                                title="确认删除" content="删除后不可恢复"
-                                                @confirm="removeComment(reply.id)">
-                                                <yk-text type="secondary">删除</yk-text>
-                                            </yk-popconfirm>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        </article>
                     </div>
                 </section>
             </article>
@@ -293,13 +297,16 @@ const commentError = ref('')
 const currentUser = (() => {
     try {
         const saved = localStorage.getItem('userInfo')
-        return saved ? JSON.parse(saved) as { id?: number; user_type?: string } : null
+        return saved
+            ? JSON.parse(saved) as { id?: number; user_type?: string; imgurl?: string }
+            : null
     } catch {
         return null
     }
 })()
 
 const currentRole = currentUser?.user_type || ''
+const composerAvatar = currentUser?.imgurl || ''
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
 const labels = computed(() => parseArticleLabels(article.value?.label))
 const articleDate = computed(() => formatArticleDate(
@@ -799,7 +806,8 @@ watch(
 
     // 评论区
     &-comments {
-        padding-top: @space-l;
+        margin-top: @space-l;
+        padding-top: @space-xl;
         border-top: 1px solid @line-color-m;
     }
 
@@ -814,47 +822,61 @@ watch(
 
     .comments-title {
         display: inline-flex;
-        gap: @space-s;
+        gap: 8px;
         align-items: center;
+        margin: 0;
         color: @font-color-l;
         font-size: 17px;
         font-weight: 600;
+        letter-spacing: 0.01em;
     }
 
     .comments-count {
-        padding: 1px 9px;
+        min-width: 20px;
+        padding: 0 8px;
         border-radius: 999px;
         background: var(--pcolor1);
         color: @pcolor;
-        font-size: @size-ss;
-        font-weight: 500;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 20px;
+        text-align: center;
     }
 
     .comments-hint {
+        color: @font-color-s;
         font-size: @size-ss;
     }
 
-    .comment-compose {
+    // 发布框：头像 + 输入框并排，输入框自带底色与聚焦描边，不再套外层边框
+    .comment-composer {
         display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin-bottom: @space-xl;
+        gap: @space-m;
+        align-items: flex-start;
     }
 
-    .compose-actions {
+    .composer-main {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .composer-footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: @space-s;
     }
 
-    .compose-hint {
+    .composer-hint {
         color: @font-color-s;
         font-size: @size-ss;
     }
 
     .compose-error {
-        margin: 0;
+        margin: 8px 0 0 52px;
         color: @ecolor;
         font-size: @size-ss;
     }
@@ -867,85 +889,125 @@ watch(
         padding: @space-xl 0;
     }
 
-    .comment-threads {
+    // 评论列表：用分隔线而不是卡片，避免弹窗里出现层层边框
+    .comment-list {
         display: flex;
         flex-direction: column;
-        gap: @space-l;
+        margin-top: @space-l;
     }
 
     .comment-thread {
-        padding: @space-l;
-        border: 1px solid @line-color-s;
-        border-radius: @radius-m;
-        background: @bg-color-l;
-    }
-
-    .comment-item {
         display: flex;
         gap: @space-m;
+        padding: @space-l 0;
 
-        .comment-main {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .comment-head {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: baseline;
-            gap: @space-s;
-
-            .comment-user {
-                color: @font-color-l;
-                font-weight: 600;
-            }
-
-            .comment-reply-to {
-                color: @font-color-s;
-                font-size: @size-ss;
-            }
-
-            time {
-                color: @font-color-s;
-                font-size: @size-ss;
-            }
-        }
-
-        .comment-content {
-            margin: 6px 0 0;
-            color: @font-color-m;
-            line-height: 1.75;
-            word-break: break-word;
-        }
-
-        .comment-actions {
-            display: flex;
-            gap: @space-m;
-            margin-top: 6px;
-            font-size: @size-ss;
-            cursor: pointer;
+        & + & {
+            border-top: 1px solid @line-color-s;
         }
     }
 
-    .comment-replies {
+    .thread-body {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .thread-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px;
+
+        .comment-user {
+            color: @font-color-l;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .reply-to {
+            color: @font-color-s;
+            font-size: 12px;
+        }
+
+        time {
+            margin-left: auto;
+            color: @font-color-s;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+    }
+
+    .comment-content {
+        margin: 6px 0 0;
+        color: @font-color-m;
+        line-height: 1.75;
+        word-break: break-word;
+    }
+
+    .thread-actions {
+        display: flex;
+        gap: @space-l;
+        margin-top: 8px;
+    }
+
+    .comment-action {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: @font-color-s;
+        font-size: 12px;
+        cursor: pointer;
+        transition: color 0.2s ease;
+
+        .yk-icon {
+            width: 13px;
+            height: 13px;
+        }
+
+        &:hover {
+            color: @pcolor;
+        }
+
+        &.is-danger:hover {
+            color: @ecolor;
+        }
+    }
+
+    // 回复输入：紧贴该条评论下方，输入框自带样式，这里只负责排版
+    .reply-composer {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: @space-m;
+    }
+
+    // 二级回复：浅底 + 左侧强调线，比独立卡片更轻
+    .reply-list {
         display: flex;
         flex-direction: column;
         gap: @space-m;
-        margin: @space-m 0 0 48px;
-        padding: @space-m 0 0 @space-m;
-        border-left: 2px solid @line-color-m;
+        margin-top: @space-m;
+        padding: @space-m @space-m @space-m @space-l;
+        border-left: 2px solid @pcolor;
+        border-radius: 0 12px 12px 0;
+        background: @bg-color-s;
+    }
 
-        .comment-item.is-reply + .comment-item.is-reply {
+    .reply-item {
+        display: flex;
+        gap: @space-s;
+
+        & + & {
             padding-top: @space-m;
             border-top: 1px dashed @line-color-s;
         }
     }
 
-    .reply-compose {
-        display: flex;
-        flex-direction: column;
-        gap: @space-s;
-        margin-top: @space-m;
+    .reply-body {
+        flex: 1;
+        min-width: 0;
     }
 
     .state-published {
@@ -1000,8 +1062,8 @@ watch(
             grid-template-columns: minmax(0, 1fr);
         }
 
-        .comment-replies {
-            margin-left: @space-m;
+        .reply-list {
+            padding-left: @space-m;
         }
     }
 }
