@@ -30,7 +30,9 @@ async function getComments(req, res) {
         }
 
         // 调用模型分页查询（关联文章+用户信息）
-        const result = await commentModel.getCommentsByPage(page, pageSize, offset, articleId)
+        const result = await commentModel.getCommentsByPage(
+            page, pageSize, offset, articleId, req.user?.userId ?? null
+        )
         res.json({
             code: 200,
             message: '查询成功',
@@ -68,7 +70,8 @@ async function getPublicComments(req, res) {
             parsedArticleId,
             page,
             pageSize,
-            offset
+            offset,
+            req.user?.userId ?? null
         )
 
         res.json({
@@ -120,17 +123,35 @@ async function submitComment(body, userId) {
     }
 
     // 回复必须属于同一篇文章，防止跨文章构造评论树。
+    // 数据库仍保持两级结构：回复二级评论时，新评论挂到它的根评论下，
+    // 同时记录本次实际回复的评论与用户，前端据此展示“回复某某”。
+    let normalizedParentId = parsedParentId
+    let replyToCommentId = null
+    let replyToUserId = null
     if (parsedParentId > 0) {
-        const [parentComment] = await query(
-            'SELECT id, parent_id FROM comment WHERE id = ? AND article_id = ? AND status = 1',
+        const [replyTarget] = await query(
+            `SELECT id, user_id, parent_id
+             FROM comment
+             WHERE id = ? AND article_id = ? AND status = 1`,
             [parsedParentId, parsedArticleId]
         )
-        if (!parentComment) {
+        if (!replyTarget) {
             return { error: { code: 404, message: '父评论不存在、已删除或不属于当前文章' } }
         }
-        // 仅支持两级评论：不能回复二级评论（parent_id > 0 的评论）
-        if (Number(parentComment.parent_id) > 0) {
-            return { error: { code: 400, message: '只能回复一级评论' } }
+        replyToCommentId = Number(replyTarget.id)
+        replyToUserId = Number(replyTarget.user_id)
+
+        if (Number(replyTarget.parent_id) > 0) {
+            const [rootComment] = await query(
+                `SELECT id
+                 FROM comment
+                 WHERE id = ? AND article_id = ? AND parent_id = 0 AND status = 1`,
+                [Number(replyTarget.parent_id), parsedArticleId]
+            )
+            if (!rootComment) {
+                return { error: { code: 404, message: '根评论不存在、已删除或不属于当前文章' } }
+            }
+            normalizedParentId = Number(replyTarget.parent_id)
         }
     }
 
@@ -138,14 +159,18 @@ async function submitComment(body, userId) {
         userId,
         articleId: parsedArticleId,
         content: content.trim(),
-        parentId: parsedParentId
+        parentId: normalizedParentId,
+        replyToCommentId,
+        replyToUserId
     })
 
     return {
         data: {
             commentId: result.commentId,
             articleId: parsedArticleId,
-            parentId: parsedParentId
+            parentId: normalizedParentId,
+            replyToCommentId,
+            replyToUserId
         }
     }
 }
@@ -207,7 +232,7 @@ async function createPublicComment(req, res) {
             })
         }
 
-        const { commentId, articleId, parentId } = normalized.data
+        const { commentId, articleId, parentId, replyToCommentId, replyToUserId } = normalized.data
         writeSystemLog({
             userId,
             action: 'create',
@@ -225,6 +250,8 @@ async function createPublicComment(req, res) {
                 commentId,
                 articleId,
                 parentId,
+                replyToCommentId,
+                replyToUserId,
                 createdAt: new Date().toISOString()
             }
         })

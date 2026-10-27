@@ -3,7 +3,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 
 ## 功能亮点
 
-* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章详情支持登录用户点赞/取消点赞与发表评论，点赞数和评论数实时回写列表；匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
+* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章详情支持登录用户点赞/取消点赞、发表评论、评论点赞/举报与评论操作菜单，点赞数和评论数实时回写列表；二级评论默认收起，可展开/收起。匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
 * **11 套主题**：默认浅色/深色，叠加海洋蓝、森林绿、樱花粉、极光绿、落日橙、星云紫、黑曜石、午夜蓝、摩卡棕；`data-theme` 驱动组件明暗，`data-theme-preset` 注入品牌色与背景，选择持久化并在启动时恢复。
 * **后台全模块真实联调**：文章支持列表、新建、编辑、搜索、发布、撤回、删除及详情弹窗；日记支持天气图标与最多 6 张图片；图库分组与文章分组共用同一套分类数据。总览页统计卡片、访问量折线图与设备/系统分布饼图均走真实接口。
 * **统一后台视觉与响应式体验**：侧栏按运营/内容/系统分组，图标、悬停态、焦点态和选中态统一；顶部保留主题下拉、私信未读提示与用户入口。总览和用户管理复用 `StatCard`，支持配色、图标、点击筛选与当前筛选高亮；文件、图库和私信列表会按视口宽高动态计算每页数量，大屏下保持多行填充，不出现单行或大面积留白。图库编辑页左右卡片等高，评论分页固定在内容分隔线下方，图库初始化不会重复请求。
@@ -22,7 +22,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | 后台视觉与响应式 | `admin.less` 统一后台外壳、卡片、滚动区和大屏布局；`MenuBar` 分组导航，`StatCard` 可复用统计卡，`responsivePageSize` 处理文件、图库和消息列表分页。图库编辑左右等高，评论分页位于内容底线下方。见 `lin_blog/src/style/admin.less`、`lin_blog/src/components/common/StatCard.vue`、`lin_blog/src/utils/responsivePageSize.ts`。 |
 | 用户管理 | 管理员用户列表/搜索/分页、创建、编辑、删除和启用/禁用已联调；统计卡（用户总数/管理员/编辑与普通用户/封禁用户）支持点击筛选与选中高亮，除总数外只统计启用用户。 |
 | 文章 | 已完成列表、筛选、搜索、新建、编辑、发布、撤回、删除及当前页详情弹窗联调；新建入口位于总览/Gather 页面。图片上传到本地目录，文章 `cover` 字段保存访问 URL。 |
-| 评论、消息 | 已接入真实 API：评论列表/回复/删除、举报数展示、私信收发、一键已读、未读红点提示均可用。 |
+| 评论、消息 | 已接入真实 API：文章评论列表/两级回复/展开收起/删除、评论点赞与举报、举报数展示、私信收发、一键已读、未读红点提示均可用；前台与后台文章详情共用同一套评论互动能力。 |
 | 文件 | 本地文件已接入数据库：上传（多选、单文件 20MB 上限）、图片/文件/视频/压缩包分组、批量移动与删除、下载与缩略图。 |
 | 图库 | 摄影图库已接入数据库：图片集创建/编辑/发布/撤回、瀑布流展示、分组与文章分组共用（分组仅在文章页维护）。 |
 | 日记 | 随笔随记已接入数据库：天气图标字典与前端对齐（8 种）、图片上限 6 张、按天记录；公开列表支持按天气名在 SQL 层过滤。 |
@@ -65,7 +65,7 @@ npm start
 | 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
 | 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary`（支持 `weather` 按天气名过滤、`sort=hot` 按浏览量排序，并回传 weatherFacet 分面计数） | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
-| 门户互动（需登录） | `POST /api/public/comment`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论与点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级。 |
+| 门户互动（需登录） | `POST /api/public/comment`、`POST /api/public/comment/like`、`POST /api/public/comment/report`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论、评论点赞/举报与文章点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级，同一用户重复举报同一评论不重复计数。 |
 | 随笔互动（公开） | `GET/POST /api/public/diary/praise/:id`、`GET/POST /api/public/diary/comment` | 点赞状态与评论可匿名读取，点赞与发表评论需登录（匿名返回 401）；点赞/取消在事务内同步 `diary.likes`，评论同步 `diary.comments`。 |
 | 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
@@ -95,7 +95,7 @@ npm start
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
 * 文章/评论图片保存于 `image` 表并有引用清理；文件模块的磁盘文件在逻辑删除后移入非公开备份区 `serve/storage/file-backups`，可在回收站恢复（默认保留 30 天）；定时任务回收数据库已无引用的磁盘孤儿文件，并清理超期备份。保留期与目录可用 `LINBLOG_FILE_BACKUP_RETENTION_DAYS`、`LINBLOG_FILE_ORPHAN_GRACE_HOURS`、`LINBLOG_FILE_STORAGE_DIR`、`LINBLOG_FILE_BACKUP_DIR` 覆盖。跨盘镜像与 S3 兼容对象存储为可选配置；备份容量告警当前通过接口、回收站容量卡和清理任务日志呈现，尚未提供邮件或 Webhook 通知。
-* 后端 `npm test` 当前 `200/200` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、门户点赞与公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障，以及上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `226/226` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝）与门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障，以及上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
@@ -231,12 +231,25 @@ npm start
 | article_id     | BIGINT UNSIGNED                   | 非空、普通索引（idx_article）、外键（关联 article.id）                       | 关联文章/图片集ID                     |
 | parent_id      | BIGINT UNSIGNED                   | 非空、默认值 `0`、普通索引（idx_parent）                                     | 父评论ID（0表示一级评论，非0表示回复） |
 | content        | VARCHAR(512)                      | 非空                                                                       | 评论内容（不超过512个字符）           |
+| likes          | INT UNSIGNED                      | 非空、默认值 `0`                                                           | 点赞数                                |
 | complaint      | INT UNSIGNED                      | 非空、默认值 `0`                                                           | 举报次数                              |
 | is_read        | TINYINT(1)                        | 非空、默认值 `0`、普通索引（idx_is_read）                                    | 是否已读：1-是，0-否（针对回复通知）  |
 | status         | TINYINT(1)                        | 非空、默认值 `1`                                                           | 状态：1-正常，0-已删除                |
 | created_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP`、普通索引（idx_created_at）                 | 评论时间                              |
 | 外键规则       | ——                                | FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE                | 用户删除时，关联评论级联删除          |
 | 外键规则       | ——                                | FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE           | 内容删除时，关联评论级联删除          |
+
+#### 评论点赞/举报表（comment_praise / comment_report）
+
+两张表结构一致，`target_type` 区分文章评论与随笔评论，`(target_type, comment_id, user_id)` 唯一，保证同一用户对同一条评论只点赞或举报一次；点赞/举报计数同步冗余到对应评论表的 `likes` / `complaint` 字段。
+
+| 字段名         | 数据类型                          | 约束/默认值                                                                 | 注释                                  |
+|----------------|-----------------------------------|-----------------------------------------------------------------------------|---------------------------------------|
+| id             | BIGINT UNSIGNED                   | 主键、自增                                                                 | 记录ID                                |
+| target_type    | ENUM('article','diary')           | 非空                                                                       | 评论所属内容类型                      |
+| comment_id     | BIGINT UNSIGNED                   | 非空、联合唯一索引                                                         | 评论ID                                |
+| user_id        | BIGINT UNSIGNED                   | 非空、联合唯一索引、外键（关联 users.id）                                   | 操作用户ID                            |
+| created_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP`                                            | 点赞/举报时间                         |
 
 ####  标签字典表（label）
 

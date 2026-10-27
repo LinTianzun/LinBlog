@@ -7,11 +7,16 @@ const controllerPath = path.resolve(__dirname, '../controller/commentController.
 const originalLoad = Module._load
 let parentRow = null
 let createCalls = 0
+let createdComment = null
 
 Module._load = function (request, parent, isMain) {
     if (parent && parent.filename === controllerPath && request === '../model/dbModel/comment/index') {
         return {
-            createComment: async () => { createCalls++; return { commentId: 99 } },
+            createComment: async (data) => {
+                createCalls++
+                createdComment = data
+                return { commentId: 99 }
+            },
             deleteComment: async () => 1,
             getCommentsByPage: async () => ({ total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }),
             getPublicCommentsByArticle: async () => ({ total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }),
@@ -54,27 +59,38 @@ async function submit(body) {
     return res
 }
 
-test.beforeEach(() => { parentRow = null; createCalls = 0 })
+test.beforeEach(() => { parentRow = null; createCalls = 0; createdComment = null })
 
-test('rejects a reply to a second-level comment', async () => {
-    parentRow = { id: 20, article_id: 10, parent_id: 19 }
+test('keeps a reply to a second-level comment under the root comment', async () => {
+    parentRow = { id: 20, article_id: 10, user_id: 12, parent_id: 19 }
     const res = await submit({ articleId: 10, content: 'reply', parentId: 20 })
-    assert.equal(res.statusCode, 400)
-    assert.equal(createCalls, 0)
+    assert.equal(res.statusCode, 201)
+    assert.equal(createCalls, 1)
+    assert.deepEqual(createdComment, {
+        userId: 7,
+        articleId: 10,
+        content: 'reply',
+        parentId: 19,
+        replyToCommentId: 20,
+        replyToUserId: 12
+    })
 })
 
 test('rejects a reply to a comment on another article', async () => {
-    parentRow = { id: 20, article_id: 11, parent_id: 0 }
+    parentRow = { id: 20, article_id: 11, user_id: 12, parent_id: 0 }
     const res = await submit({ articleId: 10, content: 'reply', parentId: 20 })
     assert.equal(res.statusCode, 404)
     assert.equal(createCalls, 0)
 })
 
 test('accepts a reply to a first-level comment on the same article', async () => {
-    parentRow = { id: 20, article_id: 10, parent_id: 0 }
+    parentRow = { id: 20, article_id: 10, user_id: 12, parent_id: 0 }
     const res = await submit({ articleId: 10, content: 'reply', parentId: 20 })
     assert.equal(res.statusCode, 201)
     assert.equal(createCalls, 1)
+    assert.equal(createdComment.parentId, 20)
+    assert.equal(createdComment.replyToCommentId, 20)
+    assert.equal(createdComment.replyToUserId, 12)
 })
 
 test('rejects negative or non-integer parent IDs', async () => {

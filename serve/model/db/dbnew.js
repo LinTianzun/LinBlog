@@ -214,7 +214,10 @@ const tablesSql = {
     user_id BIGINT UNSIGNED NOT NULL COMMENT '评论用户ID',
     article_id BIGINT UNSIGNED NOT NULL COMMENT '关联文章ID',
     parent_id BIGINT UNSIGNED DEFAULT 0 COMMENT '父评论ID（0表示一级评论）',
+    reply_to_comment_id BIGINT UNSIGNED NULL COMMENT '实际回复的评论ID',
+    reply_to_user_id BIGINT UNSIGNED NULL COMMENT '实际回复的用户ID',
     content VARCHAR(512) NOT NULL COMMENT '评论内容',
+    likes INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '点赞数',
     complaint INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '举报次数',
     is_read TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已读：1-是，0-否',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
@@ -225,6 +228,8 @@ const tablesSql = {
     INDEX idx_article (article_id),
     INDEX idx_user (user_id),
     INDEX idx_parent (parent_id),
+    INDEX idx_reply_to_comment (reply_to_comment_id),
+    INDEX idx_reply_to_user (reply_to_user_id),
     INDEX idx_is_read (is_read),
     INDEX idx_created_at (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表';`,
@@ -272,6 +277,8 @@ const tablesSql = {
     user_id BIGINT UNSIGNED NOT NULL COMMENT '评论用户ID',
     diary_id BIGINT UNSIGNED NOT NULL COMMENT '关联随笔ID',
     content VARCHAR(512) NOT NULL COMMENT '评论内容',
+    likes INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '点赞数',
+    complaint INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '举报次数',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
     PRIMARY KEY (id),
@@ -281,6 +288,31 @@ const tablesSql = {
     INDEX idx_user (user_id),
     INDEX idx_created_at (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='随笔评论表';`,
+
+  // 评论点赞/举报：文章评论与随笔评论共用一套表，用 target_type 区分来源
+  comment_praise: `CREATE TABLE IF NOT EXISTS comment_praise(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'ID',
+    target_type ENUM('article','diary') NOT NULL COMMENT '评论所属内容类型',
+    comment_id BIGINT UNSIGNED NOT NULL COMMENT '评论ID',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '点赞用户ID',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_user_comment (target_type, comment_id, user_id),
+    INDEX idx_comment (target_type, comment_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论点赞表';`,
+
+  comment_report: `CREATE TABLE IF NOT EXISTS comment_report(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'ID',
+    target_type ENUM('article','diary') NOT NULL COMMENT '评论所属内容类型',
+    comment_id BIGINT UNSIGNED NOT NULL COMMENT '评论ID',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '举报用户ID',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '举报时间',
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_user_comment (target_type, comment_id, user_id),
+    INDEX idx_comment (target_type, comment_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论举报表';`,
 
   weather: `CREATE TABLE IF NOT EXISTS weather(
     id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '天气ID',
@@ -829,7 +861,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'message', 'record', 'view_log', 'system_log'];
+    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1215,6 +1247,39 @@ async function ensureDiaryInteractionSchema(exec = query) {
   });
 }
 
+// 评论互动：点赞/举报表 + 两张评论表上的冗余计数列。
+// 建表语句已覆盖新库，这里只负责存量库补全。
+async function ensureCommentInteractionSchema(exec = query) {
+  await exec(tablesSql.comment_praise);
+  await exec(tablesSql.comment_report);
+
+  await ensureColumn(exec, 'comment', 'likes', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '点赞数'
+  });
+  await ensureColumn(exec, 'diary_comment', 'likes', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '点赞数'
+  });
+  await ensureColumn(exec, 'diary_comment', 'complaint', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '举报次数'
+  });
+}
+
+// 两级评论仍统一挂在根评论下，另外记录“实际回复的是哪条评论/哪位用户”，
+// 用于二级回复之间继续回复且不产生三级嵌套。
+async function ensureCommentReplyTargetSchema(exec = query) {
+  await ensureColumn(exec, 'comment', 'reply_to_comment_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '实际回复的评论ID'
+  });
+  await ensureColumn(exec, 'comment', 'reply_to_user_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '实际回复的用户ID'
+  });
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1245,6 +1310,14 @@ const migrations = [
   {
     version: '20261027_diary_interaction',
     up: ensureDiaryInteractionSchema
+  },
+  {
+    version: '20261027_comment_interaction',
+    up: ensureCommentInteractionSchema
+  },
+  {
+    version: '20261027_comment_reply_target',
+    up: ensureCommentReplyTargetSchema
   }
 ];
 

@@ -12,7 +12,13 @@ export interface PortalComment {
   userName: string | null;
   userAvatar: string | null;
   parentId: number;
+  replyToCommentId: number | null;
+  replyToUserId: number | null;
+  replyToUserName: string | null;
   content: string;
+  likes: number;
+  liked: boolean;
+  complaint: number;
   createdAt: string;
 }
 
@@ -98,6 +104,9 @@ export interface DiaryComment {
   userName: string | null;
   userAvatar: string | null;
   content: string;
+  likes: number;
+  liked: boolean;
+  complaint: number;
   createdAt: string;
 }
 
@@ -132,6 +141,8 @@ export interface CreateCommentResult {
   commentId: number;
   articleId: number;
   parentId: number;
+  replyToCommentId: number | null;
+  replyToUserId: number | null;
   createdAt: string;
 }
 

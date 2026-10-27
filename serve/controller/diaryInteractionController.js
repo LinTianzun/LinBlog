@@ -76,7 +76,9 @@ async function getComments(req, res) {
         }
         const { page, pageSize, offset } = paginationResult.data
 
-        const result = await diaryInteractionModel.getCommentsByDiary(diaryId, page, pageSize, offset)
+        const result = await diaryInteractionModel.getCommentsByDiary(
+            diaryId, page, pageSize, offset, req.user?.userId ?? null
+        )
 
         res.json({
             code: 200,

@@ -1,4 +1,5 @@
 const { query, withTransaction } = require('../../db/dbnew')
+const commentInteractionModel = require('../commentInteraction/index')
 
 function parseDiaryId(value) {
     const parsed = Number(value)
@@ -87,13 +88,13 @@ async function toggleLike(diaryId, userId) {
 /**
  * 随笔评论列表（仅正常状态随笔下的未删除评论）
  */
-async function getCommentsByDiary(diaryId, page, pageSize, offset) {
+async function getCommentsByDiary(diaryId, page, pageSize, offset, userId = null) {
     const id = parseDiaryId(diaryId)
     if (!id) return { total: 0, page, pageSize, totalPage: 0, list: [] }
 
     const list = await query(
         `SELECT c.id, c.user_id, u.username AS user_name, u.imgurl AS user_avatar,
-                c.content, c.created_at
+                c.content, c.likes, c.complaint, c.created_at
          FROM diary_comment c
          INNER JOIN diary d ON c.diary_id = d.id
          LEFT JOIN users u ON c.user_id = u.id
@@ -112,6 +113,13 @@ async function getCommentsByDiary(diaryId, page, pageSize, offset) {
     )
 
     const total = Number(totalRows[0]?.total || 0)
+
+    const likedIds = await commentInteractionModel.findLikedIds(
+        'diary',
+        list.map(item => item.id),
+        userId
+    )
+
     return {
         list: list.map(item => ({
             id: item.id,
@@ -119,6 +127,9 @@ async function getCommentsByDiary(diaryId, page, pageSize, offset) {
             userName: item.user_name,
             userAvatar: item.user_avatar,
             content: item.content,
+            likes: Number(item.likes || 0),
+            liked: likedIds.has(Number(item.id)),
+            complaint: Number(item.complaint || 0),
             createdAt: item.created_at
         })),
         total,

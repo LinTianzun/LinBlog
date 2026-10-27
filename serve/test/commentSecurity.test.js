@@ -6,7 +6,7 @@ const test = require('node:test')
 const controllerPath = path.resolve(__dirname, '../controller/commentController.js')
 const originalLoad = Module._load
 let articleState = 'published'
-let parentRow = { id: 7 }
+let parentRow = { id: 7, user_id: 9, parent_id: 0 }
 const queryCalls = []
 const createCalls = []
 
@@ -59,7 +59,7 @@ function makeResponse() {
 
 test.beforeEach(() => {
     articleState = 'published'
-    parentRow = { id: 7 }
+    parentRow = { id: 7, user_id: 9, parent_id: 0 }
     queryCalls.length = 0
     createCalls.length = 0
 })
@@ -103,7 +103,9 @@ test('valid replies on published articles are created with normalized IDs', asyn
         userId: 42,
         articleId: 5,
         content: 'reply',
-        parentId: 7
+        parentId: 7,
+        replyToCommentId: 7,
+        replyToUserId: 9
     }])
 })
 

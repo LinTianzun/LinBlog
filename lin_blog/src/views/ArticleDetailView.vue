@@ -148,22 +148,61 @@
                             <div class="thread-body">
                                 <div class="thread-head">
                                     <span class="comment-user">{{ thread.root.userName || '未知用户' }}</span>
-                                    <time>{{ formatDateTime(thread.root.createdAt) }}</time>
+                                    <div class="comment-head-right">
+                                        <time>{{ formatDateTime(thread.root.createdAt) }}</time>
+                                        <button type="button" class="comment-like"
+                                            :class="{ liked: thread.root.liked, busy: isCommentLikeBusy(thread.root.id) }"
+                                            :disabled="isCommentLikeBusy(thread.root.id)"
+                                            title="点赞 / 取消点赞"
+                                            @click="handleCommentLike(thread.root)">
+                                            <IconLikeFill v-if="thread.root.liked" />
+                                            <IconLikeOutline v-else />
+                                            {{ thread.root.likes }}
+                                        </button>
+                                    </div>
                                 </div>
                                 <p class="comment-content">{{ thread.root.content }}</p>
 
                                 <div class="thread-actions">
-                                    <button type="button" class="comment-action"
-                                        @click="startReply(thread.root.id)">
-                                        <IconCommentOutline />回复
-                                    </button>
-                                    <yk-popconfirm placement="bottomRight" trigger="click"
-                                        title="确认删除" content="删除后不可恢复"
-                                        @confirm="removeComment(thread.root.id)">
-                                        <button type="button" class="comment-action is-danger">
-                                            <IconDeleteOutline />删除
+                                    <div class="thread-actions-left">
+                                        <button type="button" class="comment-action"
+                                            @click="startReply(thread.root.id)">
+                                            <IconCommentOutline />回复
                                         </button>
-                                    </yk-popconfirm>
+                                        <button v-if="thread.replies.length" type="button"
+                                            class="comment-action reply-toggle"
+                                            @click="toggleReplies(thread.root.id)">
+                                            <template v-if="isExpanded(thread.root.id)">
+                                                <IconUpOutline />收起回复
+                                            </template>
+                                            <template v-else>
+                                                <IconDownOutline />展开 {{ thread.replies.length }} 条回复
+                                            </template>
+                                        </button>
+                                    </div>
+
+                                    <yk-popover :open="activeCommentMenu === thread.root.id"
+                                        trigger="click" placement="bottomRight" :arrow="false"
+                                        overlay-class="comment-action-popover"
+                                        @update:open="(open: boolean) => setCommentMenu(thread.root.id, open)">
+                                        <button type="button" class="comment-more" title="更多操作"
+                                            aria-label="更多操作">
+                                            <IconMoreOutline />
+                                        </button>
+                                        <template #popover>
+                                            <div class="comment-menu">
+                                                <button type="button"
+                                                    :disabled="!canDeleteComment(thread.root)"
+                                                    :class="{ 'is-danger': deleteConfirmId === thread.root.id }"
+                                                    @click="requestDeleteComment(thread.root.id)">
+                                                    <IconDeleteOutline />{{ deleteConfirmId === thread.root.id ? '确认删除' : '删除' }}
+                                                </button>
+                                                <button type="button" @click="reportCommentItem(thread.root)">
+                                                    <IconWarningOutline />举报
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </yk-popover>
                                 </div>
 
                                 <div v-if="replyTarget === thread.root.id" class="reply-composer">
@@ -187,24 +226,54 @@
                                     </div>
                                 </div>
 
-                                <div v-if="thread.replies.length" class="reply-list">
+                                <div v-if="thread.replies.length && isExpanded(thread.root.id)"
+                                    class="reply-list">
                                     <div v-for="reply in thread.replies" :key="reply.id" class="reply-item">
                                         <yk-avatar :size="26" :img-url="reply.userAvatar || undefined" />
                                         <div class="reply-body">
                                             <div class="thread-head">
-                                                <span class="comment-user">{{ reply.userName || '未知用户' }}</span>
-                                                <span class="reply-to">回复 {{ thread.root.userName || '该用户' }}</span>
-                                                <time>{{ formatDateTime(reply.createdAt) }}</time>
+                                                <div class="comment-author-line">
+                                                    <span class="comment-user">{{ reply.userName || '未知用户' }}</span>
+                                                    <span class="reply-to">回复 {{ thread.root.userName || '该用户' }}</span>
+                                                </div>
+                                                <div class="comment-head-right">
+                                                    <time>{{ formatDateTime(reply.createdAt) }}</time>
+                                                    <button type="button" class="comment-like"
+                                                        :class="{ liked: reply.liked, busy: isCommentLikeBusy(reply.id) }"
+                                                        :disabled="isCommentLikeBusy(reply.id)"
+                                                        title="点赞 / 取消点赞"
+                                                        @click="handleCommentLike(reply)">
+                                                        <IconLikeFill v-if="reply.liked" />
+                                                        <IconLikeOutline v-else />
+                                                        {{ reply.likes }}
+                                                    </button>
+                                                </div>
                                             </div>
                                             <p class="comment-content">{{ reply.content }}</p>
-                                            <div class="thread-actions">
-                                                <yk-popconfirm placement="bottomRight" trigger="click"
-                                                    title="确认删除" content="删除后不可恢复"
-                                                    @confirm="removeComment(reply.id)">
-                                                    <button type="button" class="comment-action is-danger">
-                                                        <IconDeleteOutline />删除
+                                            <div class="thread-actions is-reply">
+                                                <yk-popover :open="activeCommentMenu === reply.id"
+                                                    trigger="click" placement="bottomRight" :arrow="false"
+                                                    overlay-class="comment-action-popover"
+                                                    @update:open="(open: boolean) => setCommentMenu(reply.id, open)">
+                                                    <button type="button" class="comment-more"
+                                                        title="更多操作" aria-label="更多操作">
+                                                        <IconMoreOutline />
                                                     </button>
-                                                </yk-popconfirm>
+                                                    <template #popover>
+                                                        <div class="comment-menu">
+                                                            <button type="button"
+                                                                :disabled="!canDeleteComment(reply)"
+                                                                :class="{ 'is-danger': deleteConfirmId === reply.id }"
+                                                                @click="requestDeleteComment(reply.id)">
+                                                                <IconDeleteOutline />{{ deleteConfirmId === reply.id ? '确认删除' : '删除' }}
+                                                            </button>
+                                                            <button type="button"
+                                                                @click="reportCommentItem(reply)">
+                                                                <IconWarningOutline />举报
+                                                            </button>
+                                                        </div>
+                                                    </template>
+                                                </yk-popover>
                                             </div>
                                         </div>
                                     </div>
@@ -237,6 +306,8 @@ import {
     deleteComment,
     getComments,
     getRequestErrorMessage,
+    reportComment,
+    toggleCommentLike,
     type CommentItem,
 } from '../api/comment'
 import { useSubsetStore } from '../store/subset'
@@ -293,6 +364,10 @@ const replyDraft = ref('')
 // 0 表示顶部「发表评论」，大于 0 表示正在回复该一级评论
 const commentSubmitting = ref<number | null>(null)
 const commentError = ref('')
+const expandedThreads = ref<Set<number>>(new Set())
+const activeCommentMenu = ref<number | null>(null)
+const commentLikeBusyIds = ref<Set<number>>(new Set())
+const deleteConfirmId = ref<number | null>(null)
 
 const currentUser = (() => {
     try {
@@ -331,6 +406,13 @@ const canDelete = computed(() => {
     return currentRole === 'normal' &&
         Number(article.value.userId) === Number(currentUser?.id)
 })
+
+const canDeleteComment = (comment: CommentItem): boolean => {
+    if (!currentUser) return false
+    if (currentRole === 'admin') return true
+    return Number(comment.userId) === Number(currentUser.id)
+}
+
 const safeContent = computed(() => {
     const html = article.value?.content || '<p>暂无正文</p>'
     return DOMPurify.sanitize(html, {
@@ -353,6 +435,36 @@ const threads = computed<CommentThread[]>(() => {
                 .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
         }))
 })
+
+const isExpanded = (commentId: number) => expandedThreads.value.has(commentId)
+
+const toggleReplies = (commentId: number) => {
+    const next = new Set(expandedThreads.value)
+    if (next.has(commentId)) next.delete(commentId)
+    else next.add(commentId)
+    expandedThreads.value = next
+}
+
+const isCommentLikeBusy = (commentId: number) => commentLikeBusyIds.value.has(commentId)
+
+const setCommentLikeBusy = (commentId: number, busy: boolean) => {
+    const next = new Set(commentLikeBusyIds.value)
+    if (busy) next.add(commentId)
+    else next.delete(commentId)
+    commentLikeBusyIds.value = next
+}
+
+const setCommentMenu = (commentId: number, open: boolean) => {
+    if (open) {
+        activeCommentMenu.value = commentId
+        deleteConfirmId.value = null
+        return
+    }
+    if (activeCommentMenu.value === commentId) {
+        activeCommentMenu.value = null
+        deleteConfirmId.value = null
+    }
+}
 
 const showMessage = (
     type: 'primary' | 'warning' | 'error' | 'success',
@@ -397,6 +509,10 @@ const loadArticle = async (): Promise<void> => {
     loading.value = true
     errorMessage.value = ''
     article.value = null
+    expandedThreads.value = new Set()
+    activeCommentMenu.value = null
+    commentLikeBusyIds.value = new Set()
+    deleteConfirmId.value = null
 
     try {
         const result = await getArticleById(id)
@@ -485,13 +601,72 @@ const submitComment = async (parentId: number): Promise<void> => {
     }
 }
 
+const handleCommentLike = async (comment: CommentItem): Promise<void> => {
+    if (isCommentLikeBusy(comment.id)) return
+
+    setCommentLikeBusy(comment.id, true)
+    try {
+        const result = await toggleCommentLike({
+            commentType: 'article',
+            commentId: comment.id,
+        })
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '点赞评论失败')
+        }
+        comment.liked = result.data.liked
+        comment.likes = result.data.likes
+    } catch (error) {
+        showMessage('error', getRequestErrorMessage(error, '点赞评论失败，请稍后重试'))
+    } finally {
+        setCommentLikeBusy(comment.id, false)
+    }
+}
+
+const reportCommentItem = async (comment: CommentItem): Promise<void> => {
+    activeCommentMenu.value = null
+    deleteConfirmId.value = null
+    try {
+        const result = await reportComment({
+            commentType: 'article',
+            commentId: comment.id,
+        })
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '举报评论失败')
+        }
+        comment.complaint = result.data.complaint
+        showMessage(
+            result.data.already ? 'primary' : 'success',
+            result.message || (result.data.already ? '你已举报过该评论' : '举报成功，感谢反馈')
+        )
+    } catch (error) {
+        showMessage('error', getRequestErrorMessage(error, '举报评论失败，请稍后重试'))
+    }
+}
+
+const requestDeleteComment = (commentId: number): void => {
+    if (deleteConfirmId.value !== commentId) {
+        deleteConfirmId.value = commentId
+        return
+    }
+    void removeComment(commentId)
+}
+
 const removeComment = async (commentId: number): Promise<void> => {
+    activeCommentMenu.value = null
+    deleteConfirmId.value = null
+    const target = comments.value.find(comment => Number(comment.id) === Number(commentId))
+    if (!target || !canDeleteComment(target)) {
+        showMessage('warning', '只能删除自己的评论')
+        return
+    }
+
     try {
         const result = await deleteComment(commentId)
         if (result.code !== 200) {
             throw new Error(result.message || '删除失败')
         }
         await loadComments()
+        expandedThreads.value = new Set()
         if (article.value) {
             article.value.comments = Math.max(Number(article.value.comments || 0) - 1, 0)
         }
@@ -563,6 +738,10 @@ watch(
             replyTarget.value = null
             commentError.value = ''
             commentsError.value = ''
+            expandedThreads.value = new Set()
+            activeCommentMenu.value = null
+            commentLikeBusyIds.value = new Set()
+            deleteConfirmId.value = null
         }
     },
     { immediate: true }
@@ -913,9 +1092,25 @@ watch(
 
     .thread-head {
         display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
+        align-items: flex-start;
         gap: 8px;
+
+        .comment-author-line {
+            display: flex;
+            flex: 1;
+            flex-wrap: wrap;
+            min-width: 0;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .comment-head-right {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
 
         .comment-user {
             color: @font-color-l;
@@ -929,10 +1124,47 @@ watch(
         }
 
         time {
-            margin-left: auto;
             color: @font-color-s;
             font-size: 12px;
             font-variant-numeric: tabular-nums;
+        }
+    }
+
+    .comment-like {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 2px 7px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        background: transparent;
+        color: @font-color-s;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+        transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+
+        .yk-icon {
+            width: 13px;
+            height: 13px;
+        }
+
+        &:hover:not(:disabled) {
+            border-color: @pcolor;
+            color: @pcolor;
+        }
+
+        &.liked {
+            border-color: @pcolor;
+            background: var(--pcolor1);
+            color: @pcolor;
+            font-weight: 600;
+        }
+
+        &.busy,
+        &:disabled {
+            cursor: progress;
+            opacity: 0.65;
         }
     }
 
@@ -945,8 +1177,21 @@ watch(
 
     .thread-actions {
         display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: @space-l;
         margin-top: 8px;
+
+        &.is-reply {
+            justify-content: flex-end;
+        }
+    }
+
+    .thread-actions-left {
+        display: flex;
+        flex-wrap: wrap;
+        gap: @space-l;
+        align-items: center;
     }
 
     .comment-action {
@@ -972,6 +1217,74 @@ watch(
 
         &.is-danger:hover {
             color: @ecolor;
+        }
+    }
+
+    .comment-more {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: @font-color-s;
+        cursor: pointer;
+        transition: color 0.2s ease, background-color 0.2s ease;
+
+        .yk-icon {
+            width: 17px;
+            height: 17px;
+        }
+
+        &:hover {
+            background: @bg-color-s;
+            color: @font-color-l;
+        }
+    }
+
+    .comment-menu {
+        display: flex;
+        flex-direction: column;
+        min-width: 92px;
+        padding: 4px;
+
+        button {
+            display: flex;
+            gap: 7px;
+            align-items: center;
+            width: 100%;
+            padding: 7px 9px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: @font-color-m;
+            font-size: 13px;
+            text-align: left;
+            white-space: nowrap;
+            cursor: pointer;
+
+            .yk-icon {
+                width: 14px;
+                height: 14px;
+            }
+
+            &:hover:not(:disabled) {
+                background: @bg-color-s;
+                color: @pcolor;
+            }
+
+            &.is-danger {
+                color: @ecolor;
+            }
+
+            &:disabled {
+                color: @font-color-s;
+                cursor: not-allowed;
+                opacity: 0.5;
+            }
         }
     }
 

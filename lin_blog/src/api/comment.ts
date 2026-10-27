@@ -13,6 +13,8 @@ export interface CommentItem {
   article: CommentArticle;
   parentId: number;
   content: string;
+  likes: number;
+  liked: boolean;
   complaint: number;
   isRead: number;
   createdAt: string;
@@ -65,6 +67,32 @@ export function createComment(data: {
   parentId?: number;
 }) {
   return request.post<ApiResult<CreateCommentResult>>("/comment", data);
+}
+
+export type CommentTargetType = "article" | "diary";
+
+export interface CommentLikeState {
+  liked: boolean;
+  likes: number;
+}
+
+// 评论点赞/取消（文章评论与随笔评论共用；需登录）
+export function toggleCommentLike(data: {
+  commentType: CommentTargetType;
+  commentId: number;
+}) {
+  return request.post<ApiResult<CommentLikeState>>("/public/comment/like", data);
+}
+
+// 举报评论（同一用户重复举报只记一次）
+export function reportComment(data: {
+  commentType: CommentTargetType;
+  commentId: number;
+}) {
+  return request.post<ApiResult<{ complaint: number; already: boolean }>>(
+    "/public/comment/report",
+    data
+  );
 }
 
 // 删除评论（后端校验：仅本人或管理员）
