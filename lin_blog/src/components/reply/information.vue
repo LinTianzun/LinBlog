@@ -22,7 +22,8 @@
         </yk-space>
 
         <template #footer>
-            <yk-pagination :current="page" :page-size="pageSize" :total="count" @change="changePage" simple />
+            <yk-pagination :current="page" :page-size="effectivePageSize" :total="count" @change="changePage"
+                simple />
         </template>
     </yk-drawer>
 </template>
@@ -32,6 +33,7 @@ import { toRefs, ref, computed, onMounted, watch, getCurrentInstance, type Compo
 import type { InformationProps } from './reply.ts'
 import type { ReplyDat } from '../../utils/interface'
 import reply from './reply.vue'
+import { useResponsiveListPageSize } from '../../utils/responsivePageSize.ts'
 import {
     markMessagesRead,
     deleteMessage as deleteMessageApi,
@@ -50,7 +52,6 @@ type InformationInstance = ComponentPublicInstance & {
 }
 
 const props = withDefaults(defineProps<InformationProps>(), {
-    pageSize: 8,
     active: true
 })
 
@@ -66,6 +67,13 @@ const closes = () => {
 }
 
 const proxy = getCurrentInstance()?.proxy as InformationInstance | null | undefined
+const responsivePageSize = useResponsiveListPageSize(
+    ({ height }) => Math.floor((height - 220) / 100),
+    { min: 8, max: 20 }
+)
+const effectivePageSize = computed(
+    () => props.pageSize ?? responsivePageSize.value
+)
 
 // 私信总数
 const count = ref(0)
@@ -84,7 +92,7 @@ const fetchMessages = async (): Promise<void> => {
     try {
         const result = await getInboxMessages({
             page: page.value,
-            pageSize: props.pageSize,
+            pageSize: effectivePageSize.value,
             type: 'private',
         })
 
@@ -200,6 +208,12 @@ watch(active, value => {
         page.value = 1
         void fetchMessages()
     }
+})
+
+watch(effectivePageSize, () => {
+    if (!active.value) return
+    page.value = 1
+    void fetchMessages()
 })
 
 onMounted(() => {

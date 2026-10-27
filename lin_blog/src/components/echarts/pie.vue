@@ -59,7 +59,8 @@ const survey = (data: PieData[]): void => {
             }
         },
         tooltip: {
-            trigger: 'item'
+            trigger: 'item',
+            confine: true
         },
         legend: {
             show: false,
@@ -72,12 +73,19 @@ const survey = (data: PieData[]): void => {
                 radius: ['60%', '76%'],
                 avoidLabelOverlap: true,
                 label: {
-                    show: true
+                    show: true,
+                    fontSize: 13,
+                    // 标签收窄到扇区附近，hover 时不会盖住中心的标题数字
+                    edgeDistance: 4,
+                    overflow: 'truncate'
                 },
                 emphasis: {
+                    scale: true,
+                    scaleSize: 6,
                     label: {
                         show: true,
-                        fontSize: 40,
+                        // 与普通标签保持一致的字号，避免放大后遮挡饼图与标题
+                        fontSize: 13,
                         fontWeight: 'bold'
                     }
                 },

@@ -1,7 +1,7 @@
 <template>
-    <div class="gallery">
+    <div ref="rootRef" class="gallery">
         <div class="gallery-content">
-            <div v-if="loading" class="gallery-state">
+            <div v-if="loading && galleryList.length === 0" class="gallery-state">
                 <yk-spinner size="m" />
                 <yk-text type="secondary">正在加载图库...</yk-text>
             </div>
@@ -15,20 +15,21 @@
 
             <yk-empty v-else-if="galleryList.length === 0" description="暂无图库作品" />
 
-            <div v-else class="gallery-content-files">
+            <div v-else class="gallery-content-files" :class="{ 'is-refreshing': loading }">
                 <galleryItem v-for="item in galleryList" :key="item.id" :data="item"
                     @delete="removeGallery">
                 </galleryItem>
             </div>
         </div>
-        <div v-if="count > pageSize" class="gallery-pagination">
-            <yk-pagination :current="page" :page-size="pageSize" @change="changePage" :total="count" size="m" />
+        <div v-if="count > effectivePageSize" class="gallery-pagination">
+            <yk-pagination :current="page" :page-size="effectivePageSize" @change="changePage" :total="count"
+                size="m" />
         </div>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import type { ArticleItem, ArticleState } from '../../api/article.ts'
 import {
     deleteArticle,
@@ -36,11 +37,12 @@ import {
     getArticles,
 } from '../../api/article.ts'
 import galleryItem from './galleryItem.vue'
+import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 
 const props = defineProps({
     pageSize: {
         type: Number,
-        default: 6,
+        default: undefined,
     },
     subsetId: {
         type: Number,
@@ -70,6 +72,16 @@ type GalleryComponentInstance = ComponentPublicInstance & {
 }
 
 const proxy = getCurrentInstance()?.proxy as GalleryComponentInstance | null | undefined
+const rootRef = ref<HTMLElement | null>(null)
+const responsivePageSize = useResponsiveGridPageSize(rootRef, {
+    minCardWidth: 238,
+    gap: 24,
+    rows: 3,
+    horizontalPadding: 48,
+})
+const effectivePageSize = computed(
+    () => props.pageSize ?? responsivePageSize.value
+)
 
 // 图库列表
 const galleryList = ref<ArticleItem[]>([])
@@ -79,16 +91,18 @@ const count = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const errorMessage = ref('')
+let requestedPageSize = 0
 
 // 获取图库
 const fetchGalleries = async (): Promise<void> => {
+    requestedPageSize = effectivePageSize.value
     loading.value = true
     errorMessage.value = ''
 
     try {
         const result = await getArticles({
             page: page.value,
-            pageSize: props.pageSize,
+            pageSize: effectivePageSize.value,
             state: props.state || undefined,
             classify: 'image',
             subsetId: props.subsetId > 0 ? props.subsetId : undefined,
@@ -152,6 +166,13 @@ watch(
         void fetchGalleries()
     }
 )
+
+watch(effectivePageSize, size => {
+    // 初始化时尺寸测量和 onMounted 会先后触发，避免同一页大小重复请求
+    if (size === requestedPageSize) return
+    page.value = 1
+    void fetchGalleries()
+})
 </script>
 
 <style lang="less" scoped>
@@ -166,10 +187,16 @@ watch(
 
         &-files {
             display: grid;
-            grid-template-columns: repeat(auto-fill, 240px);
+            // 流体列：大屏时卡片撑满可用宽度，不再固定 240px 居中留白
+            grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
             row-gap: 32px;
             column-gap: 24px;
-            justify-content: center;
+            transition: opacity 160ms ease;
+
+            &.is-refreshing {
+                opacity: 0.72;
+                pointer-events: none;
+            }
         }
     }
 

@@ -1,0 +1,405 @@
+// 后台工作台视觉层
+// 只作用于后台路由，门户使用自己的 portal.less，避免两套视觉互相污染。
+
+#app:not(.is-portal) {
+    --admin-sidebar-width: 224px;
+    --admin-gutter: clamp(16px, 2.2vw, 34px);
+    --admin-surface: var(--bgColor1);
+    --admin-surface-soft: color-mix(in srgb, var(--bgColor1) 72%, var(--bgColor2));
+    --admin-surface-raised: color-mix(in srgb, var(--bgColor1) 88%, var(--bgColor5));
+    --admin-line: color-mix(in srgb, var(--bgColor4) 62%, transparent);
+    --admin-line-strong: color-mix(in srgb, var(--bgColor4) 88%, transparent);
+    --admin-muted: var(--gray6);
+    --admin-text: var(--gray);
+    --admin-accent: var(--pcolor);
+    --admin-accent-soft: var(--pcolor2);
+    --admin-radius: 18px;
+    --admin-radius-sm: 12px;
+    --admin-shadow-sm: 0 1px 2px color-mix(in srgb, #000 5%, transparent),
+        0 8px 24px color-mix(in srgb, #000 4%, transparent);
+    --admin-shadow-md: 0 2px 4px color-mix(in srgb, #000 4%, transparent),
+        0 18px 44px color-mix(in srgb, #000 8%, transparent);
+
+    min-height: 100vh;
+    color: var(--admin-text);
+    background:
+        radial-gradient(circle at 92% 4%, var(--pcolor2), transparent 26rem),
+        linear-gradient(180deg, var(--bgColor2) 0%, var(--bgColor2) 100%);
+
+    ::selection {
+        color: var(--bgColor1);
+        background: var(--pcolor);
+    }
+}
+
+#app:not(.is-portal) .index-view {
+    box-sizing: border-box;
+    min-height: calc(100vh - 64px);
+    padding: 26px var(--admin-gutter) 48px calc(var(--admin-sidebar-width) + var(--admin-gutter) + 18px);
+}
+
+#app:not(.is-portal) .admin-workspace {
+    width: 100%;
+    // 后台采用全宽自适应布局：侧栏固定，内容区随屏幕铺满，
+    // 不再用 max-width + 居中，避免超宽屏时右侧出现大片留白
+    min-width: 0;
+}
+
+#app:not(.is-portal) .admin-page {
+    width: 100%;
+}
+
+#app:not(.is-portal) .admin-page > .yk-space {
+    width: 100%;
+}
+
+// 页面标题
+#app:not(.is-portal) .top-title {
+    min-height: 54px;
+    gap: 24px;
+
+    .top-title-heading {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .top-title-mark {
+        width: 5px;
+        height: 34px;
+        flex: none;
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--pcolor) 0%, color-mix(in srgb, var(--pcolor) 32%, transparent) 100%);
+        box-shadow: 0 0 0 6px var(--pcolor1);
+    }
+
+    .top-title-copy {
+        min-width: 0;
+    }
+
+    .top-title-name {
+        margin: 0;
+        color: var(--gray);
+        font-size: clamp(24px, 2.1vw, 32px);
+        line-height: 1.2;
+        font-weight: 750;
+        letter-spacing: -0.035em;
+    }
+
+    .top-title-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 5px;
+        color: var(--gray6);
+        font-size: 12px;
+
+        &::before {
+            width: 5px;
+            height: 5px;
+            content: '';
+            border-radius: 50%;
+            background: var(--pcolor);
+            box-shadow: 0 0 0 3px var(--pcolor1);
+        }
+    }
+
+    .top-title-actions {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .yk-input-search {
+        width: clamp(250px, 24vw, 360px);
+    }
+}
+
+// 通用内容承载
+#app:not(.is-portal) .card,
+#app:not(.is-portal) .admin-page .user-list,
+#app:not(.is-portal) .admin-page .setting-card {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+#app:not(.is-portal) .card {
+    padding: clamp(18px, 1.7vw, 26px);
+}
+
+#app:not(.is-portal) .card-title {
+    gap: 16px;
+    padding-bottom: 18px;
+}
+
+#app:not(.is-portal) .card-title-name {
+    margin: 0;
+    color: var(--gray);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+// 按钮与输入控件保持统一，不改变 Yike 的交互语义
+#app:not(.is-portal) .index-view .yk-button {
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+#app:not(.is-portal) .index-view .yk-button--secondary {
+    border-color: var(--admin-line);
+    background: var(--admin-surface-soft);
+}
+
+#app:not(.is-portal) .index-view .yk-button--secondary:not(:disabled):hover {
+    border-color: var(--pcolor3);
+    background: var(--pcolor1);
+}
+
+#app:not(.is-portal) .index-view .yk-input,
+#app:not(.is-portal) .index-view .yk-input-search__input {
+    border-radius: 10px;
+}
+
+#app:not(.is-portal) .index-view :focus-visible {
+    outline: 2px solid var(--pcolor4);
+    outline-offset: 2px;
+}
+
+// 工具提示与下拉弹层：内容自适应 + 上限约束。
+// 组件默认宽度会继承某些父级布局状态，拉伸窗口后偶发被拉得很长（刷新才恢复），
+// 这里统一成「按内容收缩、不换行、不超过上限」的稳定宽度。
+#app:not(.is-portal) .yk-tooltip__content,
+#app:not(.is-portal) .yk-popover__content,
+#app:not(.is-portal) .yk-popconfirm__content {
+    width: max-content;
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#app:not(.is-portal) .yk-dropdown__content,
+#app:not(.is-portal) .yk-select__dropdown,
+#app:not(.is-portal) .yk-dropdown .yk-dropdown__menu {
+    width: max-content;
+    min-width: 120px;
+    max-width: 320px;
+}
+
+#app:not(.is-portal) .yk-dropdown__item {
+    width: 100%;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// 分页里的「每页条数」下拉默认向下展开，靠近视口底部时会被截断。
+// 列表容器已不再裁剪，这里让弹层自身可滚动并向上翻，保证 4 个选项都能点到。
+#app:not(.is-portal) .yk-pagination .yk-dropdown .yk-tooltip__content {
+    max-height: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#app:not(.is-portal) .yk-pagination .yk-dropdown .yk-tooltip__content.bottom {
+    transform-origin: bottom center;
+}
+
+// 分类与标签：从两块白色面板收敛为同一套工具带
+#app:not(.is-portal) .admin-page .subset {
+    padding: 14px 16px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius-sm);
+    background: color-mix(in srgb, var(--admin-surface) 82%, var(--bgColor2));
+    box-shadow: none;
+
+    .subset-menu {
+        min-height: 32px;
+        padding: 0 13px;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--bgColor3) 72%, transparent);
+        line-height: 30px;
+        transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+
+        &:hover {
+            color: var(--pcolor);
+            border-color: var(--pcolor3);
+        }
+
+        &-seledted {
+            color: var(--pcolor);
+            border-color: var(--pcolor3);
+            background: var(--pcolor1);
+            font-weight: 650;
+        }
+    }
+}
+
+#app:not(.is-portal) .admin-page .label {
+    padding: 18px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background:
+        linear-gradient(180deg, var(--pcolor1), transparent 84px),
+        var(--admin-surface);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+// 用户列表
+#app:not(.is-portal) .admin-page .user-list {
+    padding: 0;
+    // 不能裁剪：分页里的「每页条数」下拉是绝对定位弹层，
+    // overflow:hidden 会直接把它切掉导致无法选择
+    overflow: visible;
+
+    .user-list-header {
+        padding: 20px 22px 16px;
+        border-bottom: 1px solid var(--admin-line);
+        border-radius: var(--admin-radius) var(--admin-radius) 0 0;
+    }
+
+    .table-wrapper {
+        padding: 0 10px;
+        overflow: visible;
+    }
+
+    table {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    th {
+        color: var(--gray6);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        background: var(--admin-surface-soft);
+    }
+
+    th:first-child {
+        border-radius: 10px 0 0 10px;
+    }
+
+    th:last-child {
+        border-radius: 0 10px 10px 0;
+    }
+
+    td {
+        border-bottom: 1px solid var(--admin-line);
+    }
+
+    tbody tr {
+        transition: background 160ms ease;
+    }
+
+    tbody tr:not(:has(.empty-state)):hover {
+        background: color-mix(in srgb, var(--pcolor1) 52%, transparent);
+    }
+
+    .user-pagination {
+        padding: 16px 22px 20px;
+        border-top: 1px solid var(--admin-line);
+        position: relative;
+        z-index: 2;
+        // 让每页条数下拉能盖在表格之上
+        overflow: visible;
+    }
+}
+
+// 系统日志时间线
+#app:not(.is-portal) .admin-page .system-log-item {
+    position: relative;
+    padding: 18px 20px 18px 24px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius-sm);
+    background: var(--admin-surface);
+    box-shadow: var(--admin-shadow-sm);
+    transition: border-color 160ms ease, transform 160ms ease;
+
+    &::before {
+        position: absolute;
+        top: 20px;
+        bottom: 20px;
+        left: 0;
+        width: 3px;
+        content: '';
+        border-radius: 0 4px 4px 0;
+        background: var(--pcolor);
+    }
+
+    &:hover {
+        transform: translateY(-1px);
+        border-color: var(--pcolor3);
+    }
+}
+
+// 图库和文件栅格在当前宽度下保持呼吸感
+#app:not(.is-portal) .admin-page .gallery {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: color-mix(in srgb, var(--admin-surface) 80%, var(--bgColor2));
+    box-shadow: var(--admin-shadow-sm);
+}
+
+#app:not(.is-portal) .admin-page .files {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+@media (max-width: 1100px) {
+    #app:not(.is-portal) {
+        --admin-sidebar-width: 196px;
+    }
+
+    #app:not(.is-portal) .top-title .top-title-meta {
+        display: none;
+    }
+}
+
+@media (max-width: 900px) {
+    #app:not(.is-portal) .index-view {
+        padding: 94px 16px 32px;
+    }
+
+    #app:not(.is-portal) .top-title {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    #app:not(.is-portal) .top-title .top-title-actions,
+    #app:not(.is-portal) .top-title .yk-space {
+        width: 100%;
+    }
+
+    #app:not(.is-portal) .top-title .yk-input-search {
+        width: 100%;
+    }
+}
+
+@media (max-width: 640px) {
+    #app:not(.is-portal) .card,
+    #app:not(.is-portal) .admin-page .user-list,
+    #app:not(.is-portal) .admin-page .setting-card {
+        border-radius: 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #app:not(.is-portal) *,
+    #app:not(.is-portal) *::before,
+    #app:not(.is-portal) *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

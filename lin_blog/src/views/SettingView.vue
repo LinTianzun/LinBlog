@@ -1,6 +1,6 @@
  <template>
-    <yk-space dir="vertical" size="xl">
-        <top-title name="系统设置" :is-search="false" />
+    <yk-space dir="vertical" size="xl" class="admin-page setting-page">
+        <top-title name="系统设置" description="账号安全、主题与系统信息" :is-search="false" />
 
         <div class="setting-layout">
             <div class="setting-main">
@@ -393,9 +393,9 @@ onMounted(() => void refreshUploadUrl())
     .setting-card {
         width: 100%;
         padding: 24px 28px;
-        border-radius: 12px;
-        background: @bg-color-l;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        border-radius: var(--admin-radius, 18px);
+        background: var(--admin-surface, var(--bgColor1));
+        box-shadow: var(--admin-shadow-sm, @shadow-s);
         box-sizing: border-box;
     }
 
@@ -413,7 +413,9 @@ onMounted(() => void refreshUploadUrl())
             height: 72px;
             padding: 0 28px;
             box-sizing: border-box;
-            background: linear-gradient(120deg, #2b5aed 0%, #4d86f7 55%, #19b89b 100%);
+            background:
+                radial-gradient(circle at 84% 0%, rgba(255, 255, 255, 0.2), transparent 42%),
+                linear-gradient(120deg, var(--pcolor) 0%, var(--pcolor8) 58%, var(--scolor) 100%);
 
             .profile-card-title {
                 margin: 0;
@@ -480,7 +482,7 @@ onMounted(() => void refreshUploadUrl())
         .profile-label {
             flex-shrink: 0;
             font-size: @size-s;
-            color: @font-color-s;
+            color: var(--gray6);
         }
 
         .profile-value {
@@ -497,17 +499,17 @@ onMounted(() => void refreshUploadUrl())
         width: 100%;
         height: 40px;
         padding: 0 12px;
-        border: 1px solid @line-color-m;
+        border: 1px solid var(--admin-line);
         border-radius: 8px;
         outline: none;
         font-size: 14px;
         box-sizing: border-box;
-        background: @bg-color-l;
-        color: @font-color-l;
+        background: var(--bgColor1);
+        color: var(--gray);
 
         &:focus {
-            border-color: @pcolor;
-            box-shadow: 0 0 0 3px rgba(43, 90, 237, 0.12);
+            border-color: var(--pcolor);
+            box-shadow: 0 0 0 3px var(--pcolor2);
         }
     }
 
@@ -533,7 +535,7 @@ onMounted(() => void refreshUploadUrl())
         padding: @space-m;
         border: 2px solid transparent;
         border-radius: 10px;
-        background: @bg-color-m;
+        background: var(--bgColor2);
         cursor: pointer;
         transition: transform @animatb, border-color @animatb;
 
@@ -542,7 +544,7 @@ onMounted(() => void refreshUploadUrl())
         }
 
         &-active {
-            border-color: @pcolor;
+            border-color: var(--pcolor);
         }
     }
 
@@ -568,7 +570,7 @@ onMounted(() => void refreshUploadUrl())
 
     .theme-name {
         font-size: @size-s;
-        color: @font-color-l;
+        color: var(--gray);
         text-align: center;
     }
 
@@ -576,7 +578,7 @@ onMounted(() => void refreshUploadUrl())
         position: absolute;
         top: 8px;
         right: 8px;
-        color: @pcolor;
+        color: var(--pcolor);
     }
 
     .about-grid {
@@ -591,7 +593,7 @@ onMounted(() => void refreshUploadUrl())
         gap: @space-ss;
         padding: @space-l;
         border-radius: 8px;
-        background: @bg-color-m;
+        background: var(--bgColor2);
     }
 
     .setting-aside {

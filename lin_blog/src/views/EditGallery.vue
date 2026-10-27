@@ -41,13 +41,13 @@
             </yk-empty>
         </div>
 
-        <yk-space v-else class="edit-gallery-body">
+        <div v-else class="edit-gallery-body">
             <editphoto ref="photoRef" :initial-photos="initialPhotos" :initial-cover="initialCover"
-                style="width: 70%;" @change="handlePhotosChange" />
+                class="edit-gallery-body-photos" @change="handlePhotosChange" />
             <div class="edit-gallery-body-tag">
                 <forms :classify="1" :initial-data="initialForm" @formData="handleFormData" />
             </div>
-        </yk-space>
+        </div>
     </div>
 </template>
 
@@ -339,15 +339,29 @@ onMounted(() => {
 
     &-body {
         width: 85%;
-        align-items: flex-start;
+        display: flex;
+        align-items: stretch;
+        gap: @space-l;
+
+        &-photos {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
 
         &-tag {
-            width: 35%;
+            width: clamp(320px, 31%, 420px);
             background: @bg-color-l;
             border-radius: @radius-m;
             flex: none;
             display: flex;
             padding: @space-l @space-xl;
+            align-self: stretch;
+            border: 1px solid var(--admin-line, transparent);
+            box-shadow: var(--admin-shadow-sm, none);
+
+            :deep(.forms) {
+                width: 100%;
+            }
         }
     }
 
@@ -361,6 +375,17 @@ onMounted(() => {
         gap: @space-m;
         border-radius: @radius-m;
         background: @bg-color-l;
+    }
+
+    @media (max-width: 900px) {
+        &-body {
+            width: 92%;
+            flex-direction: column;
+        }
+
+        &-body-tag {
+            width: 100%;
+        }
     }
 }
 </style>

@@ -141,18 +141,29 @@ const updateState = (state: ArticleState): void => {
 <style lang="less" scoped>
 .article-item {
     width: 100%;
-    border-radius: @radius-m;
-    background: @bg-color-l;
-    padding: @space-xl;
+    box-sizing: border-box;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius, 18px);
+    background: var(--admin-surface, var(--bgColor1));
+    padding: clamp(18px, 1.8vw, 24px);
+    box-shadow: var(--admin-shadow-sm, @shadow-s);
+    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+
+    &:hover {
+        transform: translateY(-1px);
+        border-color: var(--pcolor3);
+        box-shadow: var(--admin-shadow-md, @shadow-m);
+    }
 
     &-cover {
         position: relative;
-        width: 160px;
-        height: 120px;
+        width: 176px;
+        height: 128px;
         flex: none;
-        border-radius: @radius-m;
+        border-radius: 13px;
         overflow: hidden;
         cursor: pointer;
+        background: var(--bgColor3);
 
         &-placeholder {
             width: 100%;
@@ -160,8 +171,10 @@ const updateState = (state: ArticleState): void => {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, @pcolor-1 0%, @bg-color-s 100%);
-            color: @pcolor;
+            background:
+                linear-gradient(135deg, var(--pcolor2) 0%, transparent 70%),
+                var(--bgColor3);
+            color: var(--pcolor);
             font-size: 42px;
             font-weight: 700;
         }
@@ -169,21 +182,27 @@ const updateState = (state: ArticleState): void => {
 
     &-state {
         position: absolute;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        line-height: 30px;
+        top: 9px;
+        left: 9px;
+        width: auto;
+        min-width: 48px;
+        padding: 3px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        line-height: 20px;
         text-align: center;
         color: @white;
-        font-weight: 600;
-        background: rgba(43, 90, 237, 0.82);
+        font-size: 11px;
+        font-weight: 650;
+        background: color-mix(in srgb, var(--pcolor) 86%, transparent);
+        backdrop-filter: blur(8px);
 
         &.is-published {
-            background: rgba(31, 157, 99, 0.84);
+            background: color-mix(in srgb, var(--scolor) 84%, transparent);
         }
 
         &.is-rejected {
-            background: rgba(218, 80, 66, 0.86);
+            background: color-mix(in srgb, var(--ecolor) 84%, transparent);
         }
     }
 
@@ -195,11 +214,16 @@ const updateState = (state: ArticleState): void => {
     &-title {
         font-size: 20px;
         font-weight: 600;
+        line-height: 1.35;
         padding-bottom: @space-s;
         cursor: pointer;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
 
         &:hover {
-            color: @pcolor;
+            color: var(--pcolor);
         }
     }
 
@@ -211,7 +235,7 @@ const updateState = (state: ArticleState): void => {
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         text-overflow: ellipsis;
-        color: @font-color-l;
+        color: var(--gray8);
         margin-bottom: @space-m;
         max-width: 85%;
     }
@@ -229,17 +253,40 @@ const updateState = (state: ArticleState): void => {
 
         &-icons {
             flex: none;
+            padding: 6px 8px;
+            border-radius: 10px;
+            background: var(--gray1);
 
             .yk-icon {
-                width: 20px;
-                height: 20px;
-                color: @font-color-s;
+                width: 18px;
+                height: 18px;
+                color: var(--gray6);
                 cursor: pointer;
 
                 &:hover {
-                    color: @pcolor;
+                    color: var(--pcolor);
                 }
             }
+        }
+    }
+
+    @media (max-width: 640px) {
+        :deep(.yk-space) {
+            flex-wrap: wrap;
+        }
+
+        &-cover {
+            width: 100%;
+            height: 190px;
+        }
+
+        &-introduce {
+            max-width: 100%;
+        }
+
+        &-datas {
+            align-items: flex-start;
+            flex-direction: column;
         }
     }
 }

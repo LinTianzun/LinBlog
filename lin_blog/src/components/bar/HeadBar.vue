@@ -1,20 +1,30 @@
 <template>
     <div class="head-bar">
-        <yk-space align="center" size="m" style="cursor: pointer;" @click="backHome">
-            <img :src="isDark ? unityW : unity" class="logo" alt="">
-            <span class="name">林知雨博客后台</span>
-        </yk-space>
-        <yk-space align="center" size="xl">
-            <yk-badge :is-dot="hasUnread">
-                <IconMailOutline @click="openInbox" style="font-size: 20px;" />
-            </yk-badge>
-
-            <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar"
-                style="cursor: pointer;" @click="goSetting" />
-
-            <span class="user-name">
-                {{ userInfo?.username || '用户' }}
+        <button type="button" class="brand" title="返回系统总览" @click="backHome">
+            <span class="logo-wrap">
+                <img :src="isDark ? unityW : unity" class="logo" alt="">
             </span>
+            <span class="brand-copy">
+                <strong class="name">林知雨博客后台</strong>
+                <small>内容与运营控制台</small>
+            </span>
+        </button>
+
+        <div class="head-actions">
+            <button type="button" class="icon-button inbox-button" title="私信" aria-label="打开私信"
+                @click="openInbox">
+                <yk-badge :is-dot="hasUnread">
+                    <IconMailOutline />
+                </yk-badge>
+            </button>
+
+            <button type="button" class="user-chip" title="打开个人信息" @click="goSetting">
+                <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar" />
+                <span class="user-copy">
+                    <strong class="user-name">{{ userInfo?.username || '用户' }}</strong>
+                    <small>{{ userInfo?.user_type === 'admin' ? '管理员' : '内容成员' }}</small>
+                </span>
+            </button>
 
             <!-- 主题切换：与前台门户同款自研下拉，复用同一套预设与 applyThemePreset -->
             <div ref="pickerRef" class="theme-picker">
@@ -55,10 +65,13 @@
                     </div>
                 </Transition>
             </div>
-            
-            <yk-button type="secondary" @click="goPortal">我的博客</yk-button>
-            <yk-button @click="quit">退出</yk-button>
-        </yk-space>
+
+            <yk-button class="portal-button" type="secondary" @click="goPortal">
+                <IconAppOutline />
+                我的博客
+            </yk-button>
+            <yk-button class="exit-button" @click="quit">退出</yk-button>
+        </div>
 
         <information :active="active" @close="changeActive(false)" @read="fetchUnread" />
     </div>
@@ -213,23 +226,127 @@ onUnmounted(() => {
     left: 0;
     width: 100%;
     height: 64px;
-    background: @bg-color-l;
+    box-sizing: border-box;
+    border-bottom: 1px solid color-mix(in srgb, var(--bgColor4) 62%, transparent);
+    background: color-mix(in srgb, var(--bgColor1) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(1.3);
     z-index: 10;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 @space-xl;
+    padding: 0 clamp(16px, 2.2vw, 34px);
 
+    .brand {
+        display: inline-flex;
+        min-width: 0;
+        align-items: center;
+        gap: 11px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .logo-wrap {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        flex: none;
+        place-items: center;
+        border: 1px solid var(--pcolor3);
+        border-radius: 12px;
+        background:
+            linear-gradient(135deg, var(--pcolor1), transparent),
+            var(--bgColor1);
+        box-shadow: 0 5px 16px var(--pcolor1);
+    }
 
     .logo {
-        width: 38px;
-        height: 24px;
+        width: 30px;
+        height: 20px;
+    }
 
+    .brand-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
     }
 
     .name {
-        font-size: 20px;
-        font-weight: 600;
+        overflow: hidden;
+        color: var(--gray);
+        font-size: 16px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .brand-copy small {
+        color: var(--gray6);
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    .head-actions {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .icon-button {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        flex: none;
+        place-items: center;
+        padding: 0;
+        border: 1px solid var(--gray1);
+        border-radius: 10px;
+        background: var(--gray1);
+        color: var(--gray8);
+        font-size: 19px;
+        cursor: pointer;
+        transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+
+        &:hover {
+            border-color: var(--pcolor3);
+            background: var(--pcolor1);
+            color: var(--pcolor);
+        }
+    }
+
+    .user-chip {
+        display: inline-flex;
+        min-width: 0;
+        align-items: center;
+        gap: 9px;
+        padding: 4px 8px 4px 4px;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 160ms ease, background 160ms ease;
+
+        &:hover {
+            border-color: var(--gray1);
+            background: var(--gray1);
+        }
+    }
+
+    .user-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
     }
 
     .user-avatar {
@@ -241,9 +358,14 @@ onUnmounted(() => {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: @size-m;
-        font-weight: 500;
-        color: @font-color-l;
+        font-size: 12px;
+        font-weight: 650;
+        color: var(--gray);
+    }
+
+    .user-copy small {
+        color: var(--gray6);
+        font-size: 10px;
     }
 
     // 主题下拉：与旁边的 yk-button 等高、同风格（secondary 按钮）
@@ -257,14 +379,15 @@ onUnmounted(() => {
         display: inline-flex;
         align-items: center;
         gap: @space-s;
-        height: 32px;
-        min-width: 32px;
-        padding: @space-l;
-        border: 1px solid transparent;
-        border-radius: @radius-s;
-        background: @gray-1;
-        color: @font-color-l;
-        font-size: @size-s;
+        // 与旁边的「我的博客 / 退出」yk-button 对齐：等高 36px、同圆角、同内边距
+        height: 36px;
+        min-width: 36px;
+        padding: 0 16px;
+        border: 1px solid var(--gray1);
+        border-radius: 8px;
+        background: var(--gray1);
+        color: var(--gray8);
+        font-size: 14px;
         font-family: inherit;
         line-height: 1;
         white-space: nowrap;
@@ -272,11 +395,13 @@ onUnmounted(() => {
         transition: background-color @animatb, color @animatb, box-shadow @animatb;
 
         &:hover {
-            background: @gray-2;
+            border-color: var(--pcolor3);
+            background: var(--pcolor1);
+            color: var(--pcolor);
         }
 
         &:active {
-            background: @gray-3;
+            background: var(--pcolor2);
         }
 
         &:focus-visible {
@@ -285,7 +410,9 @@ onUnmounted(() => {
         }
 
         &.open {
-            background: @gray-3;
+            border-color: var(--pcolor3);
+            background: var(--pcolor1);
+            color: var(--pcolor);
         }
 
         .theme-caret {
@@ -305,15 +432,15 @@ onUnmounted(() => {
 
     .theme-dot {
         flex-shrink: 0;
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
         box-shadow: inset 0 0 0 1px @line-color-s, inset 0 1px 2px rgba(0, 0, 0, 0.12);
         transition: background 250ms ease;
     }
 
     .theme-name {
-        max-width: 96px;
+        max-width: 84px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -326,10 +453,11 @@ onUnmounted(() => {
         z-index: 40;
         width: 248px;
         padding: 10px;
-        background: @bg-color-l;
-        border: 1px solid @line-color-s;
+        background: color-mix(in srgb, var(--bgColor1) 96%, transparent);
+        border: 1px solid var(--gray1);
         border-radius: @radius-l;
-        box-shadow: @shadow-m;
+        box-shadow: var(--admin-shadow-md, @shadow-m);
+        backdrop-filter: blur(18px);
         transform-origin: top right;
     }
 
@@ -439,6 +567,52 @@ onUnmounted(() => {
     @keyframes theme-option-in {
         from { opacity: 0; transform: translateY(4px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+
+    .portal-button,
+    .exit-button {
+        flex: none;
+    }
+
+    @media (max-width: 1180px) {
+        .brand-copy small,
+        .user-copy {
+            display: none;
+        }
+
+        .user-chip {
+            padding: 2px;
+        }
+
+        .theme-name {
+            display: none;
+        }
+
+        .theme-trigger {
+            // 窄屏收成方形图标按钮时，仍与图标按钮同高
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .theme-trigger .theme-caret {
+            display: none;
+        }
+    }
+
+    @media (max-width: 760px) {
+        padding: 0 14px;
+
+        .brand-copy,
+        .portal-button {
+            display: none;
+        }
+
+        .head-actions {
+            gap: 6px;
+        }
     }
 }
 </style>

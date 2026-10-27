@@ -1,7 +1,7 @@
 <template>
     <yk-space class="gather">
         <stat-card v-for="(item, index) in gathers" :key="item.name" :name="item.name"
-            :total="item.total" :bg-color="item.bgColor" :icon="item.icon"
+            :total="item.total" :bg-color="item.bgColor" :icon="iconOf(item.icon)"
             :to="item.path || item.viewTo" :class="{ 'gather-dark': index === 0 }" />
     </yk-space>
 </template>
@@ -11,6 +11,10 @@ import { ref, onMounted } from 'vue'
 import StatCard from '../common/StatCard.vue'
 import { overLink } from '../../utils/menu.ts'
 import { getOverviewSummary, type OverviewSummary } from '../../api/overview'
+import { resolveMenuIcon } from '../../utils/menuIcons.ts'
+
+// overLink 里存的是图标名字符串，这里转成真正的组件，否则卡片渲染不出图标
+const iconOf = (name: string) => resolveMenuIcon(name)
 
 //  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
 const gathers = ref(overLink)
@@ -48,19 +52,34 @@ onMounted(async () => {
     .gather {
         width: 100%;
         align-items: stretch;
+        flex-wrap: wrap;
 
         :deep(.stat-card) {
-            width: 25%;
+            width: auto;
+            flex: 1 1 220px;
             border: none;
         }
     }
 
     //  第一张卡是深色渐变底，文字与图标用白色
     .gather-dark {
-        :deep(.yk-title),
-        :deep(.yk-text),
-        :deep(.stat-card-icon) {
+        :deep(.stat-card-label),
+        :deep(.stat-card-value),
+        :deep(.stat-card-icon-wrap) {
             color: @white;
+        }
+
+        :deep(.stat-card-value) {
+            text-shadow: 0 1px 12px rgba(0, 0, 0, 0.12);
+        }
+
+        :deep(.stat-card-label) {
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        :deep(.stat-card-icon-wrap) {
+            border-color: rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.12);
         }
     }
 </style>

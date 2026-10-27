@@ -1,8 +1,11 @@
 <template>
-    <yk-space class="datas" dir="vertical" size="xl" style="width: 50%;">
+    <div class="datas">
         <div class="card">
             <div class="card-title">
-                <p class="card-title-name">访问量</p>
+                <div class="card-title-copy">
+                    <p class="card-title-name">访问量</p>
+                    <span>站内内容访问趋势</span>
+                </div>
                 <yk-radio-group v-model="visitRadio" type="button" :solid="true" @change="getVisit">
                     <yk-radio value="week">近一周</yk-radio>
                     <yk-radio value="moon">近一月</yk-radio>
@@ -12,18 +15,21 @@
         </div>
         <div class="card">
             <div class="card-title">
-                <p class="card-title-name">数据监测</p>
+                <div class="card-title-copy">
+                    <p class="card-title-name">数据监测</p>
+                    <span>访问设备与来源构成</span>
+                </div>
                 <yk-radio-group v-model="checkRadio" type="button" :solid="true" @change="changeCheck">
                     <yk-radio value="week">近一周</yk-radio>
                     <yk-radio value="moon">近一月</yk-radio>
                 </yk-radio-group>
             </div>
-            <div style="display: flex;">
+            <div class="datas-charts">
                 <PieChart :data="deviceData" title="设备总数" :chartHeight="'208px'" />
                 <PieChart :data="websiteData" title="访问总数" :chartHeight="'208px'" />
             </div>
         </div>
-    </yk-space>
+    </div>
 </template>
 
 <script lang="ts" setup>
@@ -80,16 +86,40 @@
 .datas {
     display: flex;
     width: 100%;
-    height: calc(100vh * 0.67);
-    /* 固定高度为屏幕高度 */
+    min-width: 0;
+    flex-direction: column;
+    gap: @space-xl;
 }
 
-        .card {
-            width: 100%;
-            height: 50%;
-            background-color: @bg-color-l;
-            border-radius: @radius-m;
-            padding: @space-xl;
-        }
+.card {
+    width: 100%;
+    box-sizing: border-box;
+}
 
+.card-title-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+
+    span {
+        color: var(--gray6);
+        font-size: 11px;
+    }
+}
+
+.datas-charts {
+    display: flex;
+    min-width: 0;
+
+    :deep(.pie-chart) {
+        min-width: 0;
+        flex: 1;
+    }
+}
+
+@media (max-width: 720px) {
+    .datas-charts {
+        flex-direction: column;
+    }
+}
 </style>

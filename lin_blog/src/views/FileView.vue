@@ -1,6 +1,6 @@
 <template>
-    <yk-space dir="vertical" size="l" class="file-view">
-        <top-title name="本地文件" :is-search="false" style="margin-bottom: 8px;">
+    <yk-space dir="vertical" size="l" class="admin-page file-view">
+        <top-title name="本地文件" description="资源上传、分组与批量管理" :is-search="false">
             <template #custom>
                 <yk-space align="center">
                     <yk-text type="third">支持多选，单个文件不超过 20MB</yk-text>
@@ -11,7 +11,7 @@
 
         <subset classify="resource" @nowSubset="handleSubset" />
 
-        <files ref="filesRef" :page-size="8" :subset-id="subsetId" :uncategorized="uncategorized" />
+        <files ref="filesRef" :subset-id="subsetId" :uncategorized="uncategorized" />
 
         <yk-modal :model-value="uploadVisible" title="上传文件" @update:model-value="handleModalChange">
             <yk-space dir="vertical" size="m" style="width: 100%;">

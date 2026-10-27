@@ -1,5 +1,5 @@
 <template>
-    <div class="files">
+    <div ref="rootRef" class="files">
         <div class="files-tool" v-show="selectedFilesId.length > 0">
             <yk-space>
                 <yk-checkbox :checked="checkedAll" :indeterminate="indeterminate" @change="handleChangeAll">
@@ -49,15 +49,17 @@
         </div>
 
         <div class="files-pagination">
-            <yk-pagination @change="changePage" :current="page" :total="count" :page-size="pageSize" size="m" />
+            <yk-pagination @change="changePage" :current="page" :total="count" :page-size="effectivePageSize"
+                size="m" />
         </div>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, watch, getCurrentInstance } from 'vue'
+import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import fileItem from './filesItem.vue'
 import { useSubsetStore } from '../../store/subset.ts'
+import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 import type { FileData } from '../../utils/interface.ts'
 import {
     getFiles,
@@ -80,12 +82,21 @@ type FileChangeSubset = {
 }
 
 const props = withDefaults(defineProps<FileProps>(), {
-    pageSize: 8,
     subsetId: -1,
     uncategorized: false,
 })
 
 const subsetStore = useSubsetStore()
+const rootRef = ref<HTMLElement | null>(null)
+const responsivePageSize = useResponsiveGridPageSize(rootRef, {
+    minCardWidth: 200,
+    gap: 24,
+    rows: 3,
+    horizontalPadding: 48,
+})
+const effectivePageSize = computed(
+    () => props.pageSize ?? responsivePageSize.value
+)
 
 const indeterminate = ref(false)
 const checkedAll = ref(false)
@@ -126,7 +137,7 @@ const fetchFiles = async (): Promise<void> => {
     try {
         const result = await getFiles({
             page: page.value,
-            pageSize: props.pageSize,
+            pageSize: effectivePageSize.value,
             subsetId: Number(props.subsetId) > 0 ? Number(props.subsetId) : undefined,
             uncategorized: props.uncategorized || undefined,
         })
@@ -164,6 +175,12 @@ const fetchFiles = async (): Promise<void> => {
 
 // 筛选条件变化时回到第一页
 watch(() => [props.subsetId, props.uncategorized], () => {
+    page.value = 1
+    void fetchFiles()
+})
+
+// 大屏切换为更多列时自动增加每页条数，并回到第一页重新取数
+watch(effectivePageSize, () => {
     page.value = 1
     void fetchFiles()
 })
@@ -326,10 +343,10 @@ defineExpose({ refresh: fetchFiles })
 
         &-main {
             display: grid;
-            grid-template-columns: repeat(auto-fill, 200px);
+            // 流体列：卡片宽度随可用空间伸缩，屏幕拉宽时铺满而不是居中留白
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             row-gap: 32px;
             column-gap: 24px;
-            justify-content: center;
             padding: 24px 0 32px;
         }
 

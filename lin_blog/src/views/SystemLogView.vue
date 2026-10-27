@@ -1,6 +1,6 @@
 <template>
-    <yk-space dir="vertical" size="l" class="system-log">
-        <top-title name="系统日志" :is-search="true" @search="handleSearch" />
+    <yk-space dir="vertical" size="l" class="admin-page system-log">
+        <top-title name="系统日志" description="追踪关键操作与系统活动" :is-search="true" @search="handleSearch" />
 
         <yk-text v-if="loading" type="secondary">正在加载日志...</yk-text>
         <yk-text v-else-if="errorMessage" type="danger">{{ errorMessage }}</yk-text>
@@ -19,20 +19,38 @@
 
             <yk-empty v-if="logs.length === 0" description="暂无日志" />
 
-            <yk-space v-else dir="vertical" size="m" class="system-log-list">
-                <div v-for="item in logs" :key="item.id" class="system-log-item">
-                    <yk-space align="center" size="m" class="system-log-item-head">
-                        <span class="system-log-item-name">{{ item.username }}</span>
-                        <span class="system-log-item-tag" :class="`is-${item.action}`">{{ actionLabel(item.action) }}</span>
-                        <span class="system-log-item-module">{{ moduleLabel(item.module) }}</span>
-                        <yk-text type="third" class="system-log-item-time">{{ formatTime(item.createdAt) }}</yk-text>
-                    </yk-space>
-                    <p class="system-log-item-detail">{{ item.detail || '（无详情）' }}</p>
-                    <yk-text type="third">
-                        {{ item.targetType ? `目标：${item.targetType} #${item.targetId ?? '-'}　` : '' }}IP：{{ item.ip || '-' }}
-                    </yk-text>
+            <!-- 紧凑日志表：一页 10 条，操作人/动作/模块/详情/来源分行对齐 -->
+            <div v-else class="system-log-table">
+                <div class="system-log-row system-log-head">
+                    <span class="log-col log-col-user">操作人</span>
+                    <span class="log-col log-col-action">动作</span>
+                    <span class="log-col log-col-module">模块</span>
+                    <span class="log-col log-col-detail">详情</span>
+                    <span class="log-col log-col-target">目标 / IP</span>
+                    <span class="log-col log-col-time">时间</span>
                 </div>
-            </yk-space>
+
+                <div v-for="item in logs" :key="item.id" class="system-log-row">
+                    <span class="log-col log-col-user">
+                        <span class="log-avatar" aria-hidden="true">{{ item.username?.slice(0, 1) || '·' }}</span>
+                        <span class="log-user-name">{{ item.username }}</span>
+                    </span>
+                    <span class="log-col log-col-action">
+                        <span class="system-log-item-tag" :class="`is-${item.action}`">{{ actionLabel(item.action) }}</span>
+                    </span>
+                    <span class="log-col log-col-module">
+                        <span class="system-log-item-module">{{ moduleLabel(item.module) }}</span>
+                    </span>
+                    <span class="log-col log-col-detail" :title="item.detail || ''">
+                        {{ item.detail || '（无详情）' }}
+                    </span>
+                    <span class="log-col log-col-target">
+                        {{ item.targetType ? `${item.targetType} #${item.targetId ?? '-'}` : '-' }}
+                        <span class="log-ip">{{ item.ip || '-' }}</span>
+                    </span>
+                    <span class="log-col log-col-time">{{ formatTime(item.createdAt) }}</span>
+                </div>
+            </div>
 
             <div class="system-log-pagination">
                 <yk-pagination @change="changePage" :current="page" :total="total" :page-size="pageSize" size="m" />
@@ -53,7 +71,8 @@
     const logs = ref<SystemLogItem[]>([])
     const total = ref(0)
     const page = ref(1)
-    const pageSize = 20
+    // 单页 20 条日志过长：改为 10 条 + 紧凑表格，一屏内可读完
+    const pageSize = 10
     const loading = ref(false)
     const errorMessage = ref('')
     const keyword = ref('')
@@ -147,72 +166,144 @@
 
         &-filters {
             width: 100%;
+            flex-wrap: wrap;
+            row-gap: 8px;
         }
 
         &-list {
             width: 100%;
         }
 
-        &-item {
+        // 紧凑表格：单行一条日志，纵向占用约为原来的 1/3
+        &-table {
             width: 100%;
-            background: @bg-color-l;
-            border-radius: @radius-m;
-            padding: @space-l @space-xl;
+            overflow: hidden;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: var(--admin-radius, 18px);
+            background: var(--admin-surface, var(--bgColor1));
+            box-shadow: var(--admin-shadow-sm, @shadow-s);
+        }
 
-            &-head {
-                width: 100%;
+        &-row {
+            display: grid;
+            grid-template-columns: minmax(120px, 1.1fr) 76px 72px minmax(0, 2.6fr) minmax(0, 1.3fr) 148px;
+            gap: 12px;
+            align-items: center;
+            padding: 10px 18px;
+            border-bottom: 1px solid var(--admin-line, var(--gray1));
+            font-size: 13px;
+            transition: background 160ms ease;
+
+            &:last-child {
+                border-bottom: 0;
             }
 
-            &-name {
-                font-weight: 600;
-                color: @font-color-l;
+            &:not(.system-log-head):hover {
+                background: color-mix(in srgb, var(--pcolor1) 52%, transparent);
+            }
+        }
+
+        &-head {
+            color: var(--gray6);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            background: var(--admin-surface-soft, var(--bgColor2));
+        }
+
+        .log-col {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--gray8);
+        }
+
+        .log-col-user {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .log-avatar {
+            display: grid;
+            width: 24px;
+            height: 24px;
+            flex: none;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--pcolor1);
+            color: var(--pcolor);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .log-user-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 600;
+            color: var(--gray);
+        }
+
+        .log-col-target {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        .log-ip {
+            flex: none;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: var(--bgColor3);
+            color: var(--gray6);
+            font-size: 11px;
+        }
+
+        .log-col-time {
+            color: var(--gray6);
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+
+        .system-log-item-tag {
+            font-size: @size-s;
+            padding: 2px 10px;
+            border-radius: @radius-r;
+            color: @pcolor;
+            background: rgba(43, 90, 237, 0.08);
+
+            &.is-delete {
+                color: @ecolor;
+                background: rgba(250, 82, 71, 0.1);
             }
 
-            &-tag {
-                font-size: @size-s;
-                padding: 2px 10px;
-                border-radius: @radius-r;
-                color: @pcolor;
-                background: rgba(43, 90, 237, 0.08);
-
-                &.is-delete {
-                    color: @ecolor;
-                    background: rgba(250, 82, 71, 0.1);
-                }
-
-                &.is-publish {
-                    color: @scolor;
-                    background: rgba(31, 180, 162, 0.1);
-                }
-
-                &.is-revoke,
-                &.is-status {
-                    color: @wcolor;
-                    background: rgba(255, 170, 26, 0.12);
-                }
-
-                &.is-login {
-                    color: @font-color-m;
-                    background: @bg-color-m;
-                }
+            &.is-publish {
+                color: @scolor;
+                background: rgba(31, 180, 162, 0.1);
             }
 
-            &-module {
-                font-size: @size-s;
-                color: @font-color-s;
-                padding: 2px 10px;
-                border-radius: @radius-r;
+            &.is-revoke,
+            &.is-status {
+                color: @wcolor;
+                background: rgba(255, 170, 26, 0.12);
+            }
+
+            &.is-login {
+                color: @font-color-m;
                 background: @bg-color-m;
             }
+        }
 
-            &-time {
-                margin-left: auto;
-            }
-
-            &-detail {
-                margin: @space-s 0;
-                color: @font-color-m;
-            }
+        .system-log-item-module {
+            font-size: @size-s;
+            color: @font-color-s;
+            padding: 2px 10px;
+            border-radius: @radius-r;
+            background: @bg-color-m;
         }
 
         &-pagination {
@@ -220,6 +311,39 @@
             justify-content: flex-end;
             padding-top: @space-m;
             width: 100%;
+        }
+
+        @media (max-width: 1100px) {
+            &-row {
+                grid-template-columns: minmax(0, 1.2fr) 76px 72px minmax(0, 2fr) 130px;
+            }
+
+            .log-col-target {
+                display: none;
+            }
+        }
+
+        @media (max-width: 820px) {
+            &-head {
+                display: none;
+            }
+
+            &-row {
+                grid-template-columns: minmax(0, 1fr) 76px 72px;
+                row-gap: 6px;
+                padding: 12px 14px;
+            }
+
+            .log-col-detail {
+                grid-column: 1 / -1;
+                white-space: normal;
+                color: var(--gray6);
+            }
+
+            .log-col-time {
+                grid-column: 1 / -1;
+                text-align: left;
+            }
         }
     }
 </style>

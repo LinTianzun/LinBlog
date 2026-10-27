@@ -1,9 +1,9 @@
 <template>
-    <yk-space dir="vertical" size="l">
-        <top-title name="博客文章" :is-search="true" style="margin-bottom: 8px;" @search="handleSearch">
+    <yk-space dir="vertical" size="l" class="admin-page article-page">
+        <top-title name="博客文章" description="文章发布、分类与标签管理" :is-search="true" @search="handleSearch">
         </top-title>
         <subset @nowSubset="handleSubset" />
-        <yk-space style="width: 100%;">
+        <yk-space class="article-content">
             <artcle :serch-term="keyword" :state="articleState" :subset-id="subsetId"
                 :uncategorized="uncategorized" :label-name="labelName" />
             <labelV @nowSubset="handleSubset"></labelV>
@@ -56,5 +56,18 @@ const handleSubset = (payload: SubsetPayload): void => {
 </script>
 
 <style lang="less" scoped>
+    .article-content {
+        width: 100%;
+        align-items: flex-start;
+    }
 
+    @media (max-width: 1080px) {
+        .article-content {
+            flex-wrap: wrap;
+        }
+
+        .article-content :deep(.label) {
+            width: 100%;
+        }
+    }
 </style>

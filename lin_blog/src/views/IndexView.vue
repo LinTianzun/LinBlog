@@ -1,8 +1,9 @@
 <template>
     <div class="index-view">
         <MenuBar />
-        <!-- 菜单 -->
-        <router-view></router-view>
+        <main class="admin-workspace">
+            <router-view></router-view>
+        </main>
     </div>
 </template>
 
@@ -12,7 +13,8 @@
 
 <style lang="less" scoped>
     .index-view {
-        /* height: 100vh; */
-        padding: 32px 32px 32px 200px;
+        position: relative;
+        box-sizing: border-box;
+        min-height: calc(100vh - 64px);
     }
 </style>

@@ -1,6 +1,6 @@
 <template>
-    <yk-space dir="vertical" size="l">
-        <top-title name="摄影图库" :is-search="true" style="margin-bottom: 8px;" @search="handleSearch">
+    <yk-space dir="vertical" size="l" class="admin-page gallery-page">
+        <top-title name="摄影图库" description="作品分组、封面与发布状态" :is-search="true" @search="handleSearch">
         </top-title>
         <subset classify="image" @nowSubset="handleSubset" />
         <gallery :serch-term="keyword" :state="galleryState" :subset-id="subsetId"

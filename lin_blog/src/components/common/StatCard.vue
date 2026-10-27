@@ -4,14 +4,14 @@
         'stat-card-active': active,
     }]"
         :style="bgColor" @click="handleClick">
-        <yk-space dir="vertical" size="s">
-            <yk-text type="secondary">{{ name }}</yk-text>
-            <yk-title :level="2" class="stat-card-value">
-                {{ total }}
-            </yk-title>
-        </yk-space>
+        <div class="stat-card-copy">
+            <span class="stat-card-label">{{ name }}</span>
+            <strong class="stat-card-value">{{ total }}</strong>
+        </div>
 
-        <component :is="icon" v-if="icon" class="stat-card-icon" />
+        <span v-if="icon" class="stat-card-icon-wrap">
+            <component :is="icon" class="stat-card-icon" />
+        </span>
 
         <yk-button v-else-if="to" size="xl" type="secondary" shape="square" aria-label="新建"
             @click.stop="handleClick">
@@ -67,34 +67,88 @@ const handleClick = (): void => {
 
 <style lang="less" scoped>
     .stat-card {
+        position: relative;
         display: flex;
         flex: 1;
         min-width: 0;
         align-items: center;
         justify-content: space-between;
-        padding: @space-xl;
-        border-radius: @radius-m;
-        background: @bg-color-l;
-        border: 1px solid @gray-1;
-        transition: transform @animatb, box-shadow @animatb;
+        gap: 18px;
+        box-sizing: border-box;
+        padding: clamp(18px, 1.8vw, 26px);
+        overflow: hidden;
+        border-radius: var(--admin-radius, 18px);
+        border: 1px solid var(--admin-line, var(--gray1));
+        background: var(--admin-surface, var(--bgColor1));
+        box-shadow: var(--admin-shadow-sm, @shadow-s);
+        transition: transform @animatb, box-shadow @animatb, border-color @animatb;
+
+        &::after {
+            position: absolute;
+            right: -28px;
+            bottom: -54px;
+            width: 142px;
+            height: 142px;
+            content: '';
+            border: 1px solid color-mix(in srgb, var(--card-accent, var(--pcolor)) 18%, transparent);
+            border-radius: 50%;
+            opacity: 0.55;
+            pointer-events: none;
+        }
+
+        &-copy {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        &-label {
+            overflow: hidden;
+            color: var(--gray6);
+            font-size: 12px;
+            font-weight: 550;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
         // 浅色渐变卡上的文字保持默认色；深色卡（如总览第一张）由父级覆盖为白色
         &-value {
+            display: block;
             margin: 0;
+            color: var(--gray);
+            font-size: clamp(27px, 2.4vw, 38px);
+            line-height: 1;
+            font-weight: 760;
+            letter-spacing: -0.05em;
+        }
+
+        &-icon-wrap {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            width: 48px;
+            height: 48px;
+            flex: none;
+            place-items: center;
+            border: 1px solid color-mix(in srgb, var(--card-accent, var(--pcolor)) 22%, transparent);
+            border-radius: 15px;
+            color: var(--card-accent, var(--pcolor));
+            background: color-mix(in srgb, var(--card-accent, var(--pcolor)) 10%, transparent);
         }
 
         &-icon {
-            width: 28px;
-            height: 28px;
-            color: @font-color-s;
+            width: 23px;
+            height: 23px;
         }
 
         &-clickable {
             cursor: pointer;
 
             &:hover {
-                transform: translateY(-2px);
-                box-shadow: @shadow-s;
+                transform: translateY(-3px);
+                border-color: color-mix(in srgb, var(--card-accent, var(--pcolor)) 30%, var(--admin-line, transparent));
+                box-shadow: var(--admin-shadow-md, @shadow-m);
             }
         }
 
@@ -105,34 +159,39 @@ const handleClick = (): void => {
 
         // 各功能色调：浅色底 + 选中态描边与光圈颜色
         &-primary {
-            --card-accent: @pcolor-light;
-            --card-accent-soft: rgba(43, 90, 237, 0.18);
-            background: rgba(43, 90, 237, 0.08);
+            --card-accent: var(--pcolor);
+            --card-accent-soft: var(--pcolor2);
+            background:
+                linear-gradient(140deg, var(--pcolor1), transparent 58%),
+                var(--admin-surface, var(--bgColor1));
         }
 
         &-success {
-            --card-accent: @scolor-light;
-            --card-accent-soft: rgba(31, 180, 162, 0.2);
-            background: rgba(31, 180, 162, 0.1);
+            --card-accent: var(--scolor);
+            --card-accent-soft: color-mix(in srgb, var(--scolor) 15%, transparent);
+            background:
+                linear-gradient(140deg, color-mix(in srgb, var(--scolor) 12%, transparent), transparent 58%),
+                var(--admin-surface, var(--bgColor1));
         }
 
         &-warning {
-            --card-accent: @wcolor-light;
-            --card-accent-soft: rgba(255, 170, 26, 0.22);
-            background: rgba(255, 170, 26, 0.12);
+            --card-accent: var(--wcolor);
+            --card-accent-soft: color-mix(in srgb, var(--wcolor) 16%, transparent);
+            background:
+                linear-gradient(140deg, color-mix(in srgb, var(--wcolor) 13%, transparent), transparent 58%),
+                var(--admin-surface, var(--bgColor1));
         }
 
         &-error {
-            --card-accent: @ecolor-light;
-            --card-accent-soft: rgba(250, 82, 71, 0.2);
-            background: rgba(250, 82, 71, 0.1);
+            --card-accent: var(--ecolor);
+            --card-accent-soft: color-mix(in srgb, var(--ecolor) 14%, transparent);
+            background:
+                linear-gradient(140deg, color-mix(in srgb, var(--ecolor) 11%, transparent), transparent 58%),
+                var(--admin-surface, var(--bgColor1));
         }
 
-        &-primary &-icon,
-        &-success &-icon,
-        &-warning &-icon,
-        &-error &-icon {
-            color: var(--card-accent);
+        &:not([style*='background']) {
+            --card-accent: var(--pcolor);
         }
     }
 </style>

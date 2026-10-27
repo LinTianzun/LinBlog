@@ -1,9 +1,9 @@
 <template>
-    <yk-space dir="vertical" size="l">
-        <top-title name="随笔随记" :is-search="true" style="margin-bottom: 8px;" @search="handleSearch"></top-title>
-        <yk-space style="width: 100%;" size="l">
+    <yk-space dir="vertical" size="l" class="admin-page diary-page">
+        <top-title name="随笔随记" description="记录、编辑与整理日常内容" :is-search="true" @search="handleSearch"></top-title>
+        <yk-space class="diary-content" size="l">
             <diary ref="diaryListRef" :serch-term="keyword" @edit="startEdit" />
-            <diaryEditor ref="editorRef" style="flex:none;width: 37%;" @created="refreshDiary" @updated="refreshDiary" />
+            <diaryEditor ref="editorRef" @created="refreshDiary" @updated="refreshDiary" />
         </yk-space>
     </yk-space>
 </template>
@@ -34,5 +34,23 @@
 </script>
 
 <style lang="less" scoped>
+    .diary-content {
+        width: 100%;
+        align-items: flex-start;
 
+        :deep(.diary-editor) {
+            width: 37%;
+            flex: none;
+        }
+    }
+
+    @media (max-width: 1040px) {
+        .diary-content {
+            flex-wrap: wrap;
+        }
+
+        .diary-content :deep(.diary-editor) {
+            width: 100%;
+        }
+    }
 </style>
