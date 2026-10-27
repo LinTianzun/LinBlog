@@ -17,20 +17,48 @@
                 </nav>
 
                 <div class="nav-tools">
-                    <!-- 主题切换：与后台设置共用同一套预设与 applyThemePreset，切换后双向同步 -->
-                    <label class="theme-picker" :title="`当前主题：${activePresetName}`">
-                        <!-- 小圆点预览当前主题的基色，切换后即时可见 -->
-                        <span class="theme-dot" :style="{ background: activePresetPrimary }" aria-hidden="true" />
-                        <select v-model="activePresetId" class="theme-select" aria-label="切换主题"
-                            @change="onPresetSelect">
-                            <option v-for="preset in themePresets" :key="preset.id" :value="preset.id">
-                                {{ preset.name }}
-                            </option>
-                        </select>
-                        <span class="theme-caret" aria-hidden="true">
-                            <IconDownOutline />
-                        </span>
-                    </label>
+                    <!-- 主题切换：与后台设置共用同一套预设与 applyThemePreset，切换后双向同步。
+                         原生 select 展开后的面板由系统绘制、无法定制样式，这里用自研面板 -->
+                    <div ref="pickerRef" class="theme-picker">
+                        <button type="button" class="theme-trigger" :class="{ open: themeOpen }"
+                            :title="`当前主题：${activePresetName}`" aria-haspopup="listbox"
+                            :aria-expanded="themeOpen" @click="toggleThemePanel"
+                            @keydown.down.prevent="openThemePanel" @keydown.up.prevent="openThemePanel">
+                            <span class="theme-dot" :style="{ background: activePresetPrimary }" aria-hidden="true" />
+                            <span class="theme-name">{{ activePresetName }}</span>
+                            <span class="theme-caret" aria-hidden="true">
+                                <IconDownOutline />
+                            </span>
+                        </button>
+
+                        <Transition name="theme-panel">
+                            <div v-if="themeOpen" class="theme-panel portal-glass" role="listbox"
+                                aria-label="选择主题">
+                                <div class="theme-panel-head">
+                                    <span>主题</span>
+                                    <span class="theme-panel-hint">{{ themePresets.length }} 套</span>
+                                </div>
+                                <ul class="theme-options">
+                                    <li v-for="(preset, index) in themePresets" :key="preset.id">
+                                        <button type="button" class="theme-option" role="option"
+                                            :class="{ active: preset.id === activePresetId }"
+                                            :aria-selected="preset.id === activePresetId"
+                                            :style="{ animationDelay: `${Math.min(index, 10) * 24}ms` }"
+                                            @click="selectPreset(preset.id)">
+                                            <!-- 渐变主题用 preview，其余用主色+底色拼出预览块 -->
+                                            <span class="option-swatch"
+                                                :style="{ background: preset.preview || `linear-gradient(135deg, ${preset.primary}, ${preset.background})` }"
+                                                aria-hidden="true" />
+                                            <span class="option-name">{{ preset.name }}</span>
+                                            <span class="option-tick" aria-hidden="true">
+                                                <IconTickOutline />
+                                            </span>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </Transition>
+                    </div>
 
                     <button type="button" class="nav-action" @click="goAdmin">
                         进入后台
@@ -68,6 +96,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import { onMounted, onUnmounted, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import unityLogo from '../../assets/svg/unity.svg'
 import PortalAmbientBackground from './PortalAmbientBackground.vue'
@@ -107,23 +136,48 @@ const activePresetName = computed(() => findPreset(activePresetId.value).name)
 // 预览点用当前预设的主色，切换后即时反映
 const activePresetPrimary = computed(() => findPreset(activePresetId.value).primary)
 
+// 自研下拉面板的开关：原生 select 的展开面板由系统绘制，无法与门户玻璃风格统一
+const pickerRef = ref<HTMLElement | null>(null)
+const themeOpen = ref(false)
+
+const openThemePanel = () => {
+    themeOpen.value = true
+}
+const toggleThemePanel = () => {
+    themeOpen.value = !themeOpen.value
+}
+
+// 选择主题后立即收起面板；真正的应用逻辑仍走 applyThemePreset，保持与后台双向同步
+const selectPreset = (presetId: string) => {
+    activePresetId.value = presetId
+    applyThemePreset(presetId)
+    themeOpen.value = false
+}
+
+// 点击面板外部收起
+onClickOutside(pickerRef, () => {
+    themeOpen.value = false
+})
+
+// Esc 收起，符合浮层键盘习惯
+const onGlobalKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') themeOpen.value = false
+}
+
 // 后台改主题后同步门户下拉框的选中项
 const onPresetChange = (event: Event) => {
     const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
     if (presetId) activePresetId.value = presetId
 }
 
-// 下拉框变更 → 应用主题（内部同步 data-theme 与 data-theme-preset）
-const onPresetSelect = () => {
-    applyThemePreset(activePresetId.value)
-}
-
 onMounted(() => {
     window.addEventListener('theme:preset-change', onPresetChange)
+    window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
     window.removeEventListener('theme:preset-change', onPresetChange)
+    window.removeEventListener('keydown', onGlobalKeydown)
 })
 
 const goAdmin = () => router.push('/overView')
@@ -271,10 +325,12 @@ const goAdmin = () => router.push('/overView')
         inset 0 1px 2px rgba(0, 0, 0, 0.12);
     transition: background var(--portal-transition-medium);
 }
-
-.theme-select {
-    appearance: none;
-    -webkit-appearance: none;
+.theme-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    padding: 0;
     border: none;
     background: transparent;
     color: inherit;
@@ -282,21 +338,29 @@ const goAdmin = () => router.push('/overView')
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
-    // 右侧留出让位给箭头，避免文字贴边
-    padding: 0 2px;
-    width: 76px;
-    text-align: left;
-    text-overflow: ellipsis;
+    transition: color var(--portal-transition-fast);
 
-    &:focus {
+    &:focus-visible {
         outline: none;
+        color: var(--portal-accent);
     }
 
-    // 展开后的选项由系统绘制，这里只保证文字在明暗下都可读
-    option {
-        color: #333;
-        background: #fff;
+    // 展开时箭头翻转
+    .theme-caret {
+        transition: transform var(--portal-transition-fast), color var(--portal-transition-fast);
     }
+
+    &.open .theme-caret {
+        color: var(--portal-accent);
+        transform: rotate(180deg);
+    }
+}
+
+.theme-name {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .theme-caret {
@@ -305,13 +369,148 @@ const goAdmin = () => router.push('/overView')
     flex-shrink: 0;
     font-size: 12px;
     color: var(--portal-text-tertiary);
-    pointer-events: none;
-    transition: transform var(--portal-transition-fast), color var(--portal-transition-fast);
 }
 
-.theme-picker:hover .theme-caret {
+// 自研下拉面板：玻璃拟态 + 门户 token
+.theme-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 40;
+    width: 248px;
+    padding: 10px;
+    border-radius: var(--portal-radius-card);
+    transform-origin: top right;
+}
+
+.theme-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 8px;
+    font-size: 12px;
+    color: var(--portal-text-secondary);
+
+    .theme-panel-hint {
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--portal-accent-soft);
+        color: var(--portal-accent);
+        font-size: 11px;
+        opacity: 1;
+    }
+}
+
+.theme-options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 340px;
+    overflow-y: auto;
+    // 细滚动条：默认滚动条在玻璃面板上太重，尤其暗色下会割裂画面
+    scrollbar-width: thin;
+    scrollbar-color: var(--portal-accent-soft) transparent;
+
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--portal-text-secondary) 32%, transparent);
+
+        &:hover {
+            background: color-mix(in srgb, var(--portal-text-secondary) 52%, transparent);
+        }
+    }
+}
+
+.theme-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: var(--portal-radius-small);
+    color: var(--portal-text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--portal-transition-fast), color var(--portal-transition-fast);
+
+    &:hover,
+    &:focus-visible {
+        background: var(--portal-accent-soft);
+        outline: none;
+    }
+
+    &.active {
+        color: var(--portal-accent);
+        font-weight: 600;
+
+        .option-tick {
+            opacity: 1;
+        }
+    }
+
+    animation: theme-option-in var(--portal-transition-medium) both;
+}
+
+.option-swatch {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-text-secondary) 24%, transparent);
+}
+
+.option-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.option-tick {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
     color: var(--portal-accent);
-    transform: translateY(1px);
+    opacity: 0;
+    transition: opacity var(--portal-transition-fast);
+}
+
+.theme-panel-enter-active,
+.theme-panel-leave-active {
+    transition: opacity var(--portal-transition-fast), transform var(--portal-transition-fast);
+}
+
+.theme-panel-enter-from,
+.theme-panel-leave-to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+}
+
+@keyframes theme-option-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .portal-body {
@@ -434,16 +633,15 @@ const goAdmin = () => router.push('/overView')
         height: 34px;
         padding: 0 10px;
         gap: 0;
+
+        .theme-name {
+            display: none;
+        }
     }
 
-    .theme-select {
-        width: 0;
-        padding: 0;
-        overflow: hidden;
-    }
-
-    .theme-caret {
-        display: none;
+    // 窄屏：面板右对齐触发器，宽度按视口收敛，避免贴边溢出
+    .theme-panel {
+        width: min(248px, calc(100vw - 32px));
     }
 }
 </style>
