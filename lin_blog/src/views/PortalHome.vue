@@ -384,6 +384,31 @@ onUnmounted(() => {
     margin-top: -1px;
 }
 
+// 照片上统一压一层深色遮罩：浅色主题避免亮图吞掉白字，
+// 深色主题也不会再把文字反转成近黑色。
+.hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(7, 10, 17, 0.64) 0%,
+            rgba(7, 10, 17, 0.4) 42%,
+            rgba(7, 10, 17, 0.08) 74%,
+            transparent 100%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(7, 10, 17, 0.2) 0%,
+            transparent 36%,
+            rgba(7, 10, 17, 0.08) 72%,
+            transparent 100%
+        );
+}
+
 .hero-slides {
     position: absolute;
     inset: 0;
@@ -409,7 +434,7 @@ onUnmounted(() => {
     right: 0;
     bottom: 0;
     height: 45%;
-    z-index: 2;
+    z-index: 3;
     background: linear-gradient(
         to bottom,
         transparent 0%,
@@ -422,19 +447,20 @@ onUnmounted(() => {
 
 .hero-content {
     position: relative;
-    z-index: 3;
+    z-index: 4;
     width: var(--portal-page-width);
     margin: 0 auto;
     padding: 0 0 8vh;
-    color: var(--portal-text-on-accent);
-    text-shadow: 0 2px 24px color-mix(in srgb, var(--pcolor) 40%, transparent);
+    color: var(--portal-hero-ink);
+    text-shadow: var(--portal-hero-shadow);
 }
 
 .hero-eyebrow {
     margin: 0 0 16px;
     font-size: 14px;
+    font-weight: 500;
     letter-spacing: 0.18em;
-    opacity: 0.9;
+    color: var(--portal-hero-ink-muted);
 }
 
 .hero-title {
@@ -444,7 +470,8 @@ onUnmounted(() => {
     font-weight: 600;
     line-height: 1.16;
     letter-spacing: 0.01em;
-    color: var(--portal-text-on-accent);
+    color: var(--portal-hero-ink);
+    text-shadow: 0 3px 34px rgba(0, 0, 0, 0.62);
 }
 
 .hero-lead {
@@ -452,7 +479,7 @@ onUnmounted(() => {
     margin: 20px 0 0;
     font-size: 16px;
     line-height: 1.85;
-    opacity: 0.92;
+    color: var(--portal-hero-ink-muted);
 }
 
 .hero-links {
@@ -465,19 +492,30 @@ onUnmounted(() => {
 .hero-pill {
     padding: 10px 22px;
     border-radius: var(--portal-radius-pill);
-    background: var(--portal-surface-strong);
-    border: 1px solid color-mix(in srgb, var(--portal-text-on-accent) 30%, transparent);
+    background: var(--portal-hero-surface);
+    border: 1px solid var(--portal-hero-border);
     font-size: 14px;
-    color: var(--portal-text-on-accent);
+    font-weight: 500;
+    color: var(--portal-hero-ink);
     text-decoration: none;
+    text-shadow: none;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     transition: all var(--portal-transition-fast);
 
-    &:hover {
-        background: var(--portal-accent);
-        border-color: var(--portal-accent);
+    &:hover,
+    &:focus-visible {
+        background: var(--portal-hero-button-hover-bg);
+        border-color: rgba(255, 255, 255, 0.95);
+        color: var(--portal-hero-button-hover-ink);
         transform: translateY(-1px);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    &:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.88);
+        outline-offset: 3px;
     }
 }
 
@@ -486,9 +524,15 @@ onUnmounted(() => {
     bottom: 4vh;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 4;
+    z-index: 5;
     display: flex;
     gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: var(--portal-radius-pill);
+    background: rgba(7, 10, 17, 0.3);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .hero-dot {
@@ -496,16 +540,21 @@ onUnmounted(() => {
     height: 8px;
     border-radius: 50%;
     border: none;
-    background: color-mix(in srgb, var(--portal-text-on-accent) 40%, transparent);
+    background: rgba(255, 255, 255, 0.52);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
     cursor: pointer;
     transition: all var(--portal-transition-fast);
     &.active {
-        background: var(--portal-text-on-accent);
+        background: var(--portal-hero-ink);
         width: 24px;
         border-radius: var(--portal-radius-pill);
     }
     &:hover {
-        background: color-mix(in srgb, var(--portal-text-on-accent) 60%, transparent);
+        background: var(--portal-hero-ink);
+    }
+    &:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.9);
+        outline-offset: 3px;
     }
 }
 
