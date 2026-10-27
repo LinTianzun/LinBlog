@@ -22,6 +22,7 @@ if (!targetDb) {
     const articleModel = require('../model/dbModel/article/index')
     const imageModel = require('../model/dbModel/image/index')
     const commentController = require('../controller/commentController')
+    const userController = require('../controller/userController')
 
     const ids = {}
 
@@ -108,6 +109,39 @@ if (!targetDb) {
         assert.ok(names.includes('普通用户'))
         assert.ok(!names.includes('游客'))
         assert.equal(result.total, 1)
+    })
+
+    test('concurrent registration returns one success and one stable conflict', async () => {
+        function response() {
+            return {
+                statusCode: 0,
+                body: null,
+                status(code) { this.statusCode = code; return this },
+                json(body) { this.body = body; return this }
+            }
+        }
+
+        const payload = {
+            body: {
+                username: '并发注册用户',
+                mail: 'concurrent-register@test.local',
+                password: '123456'
+            }
+        }
+        const first = response()
+        const second = response()
+
+        await Promise.all([
+            userController.register(payload, first),
+            userController.register(payload, second)
+        ])
+
+        const statuses = [first.statusCode, second.statusCode].sort((a, b) => a - b)
+        assert.deepEqual(statuses, [201, 400])
+
+        const conflict = first.statusCode === 400 ? first : second
+        assert.equal(conflict.body.code, 400)
+        assert.match(conflict.body.message, /该(邮箱|用户名)已被注册|该用户名或邮箱已被注册/)
     })
 
     test('normal user can update own draft but not others articles', async () => {
