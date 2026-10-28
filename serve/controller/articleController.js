@@ -2,6 +2,7 @@ const articleModel = require('../model/dbModel/article/index')
 const imageModel = require('../model/dbModel/image/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission, getArticleScope } = require('../utils/accessControl')
 
 const uploadsUrlPattern = /^\/api\/uploads\/([A-Za-z0-9._-]+)$/
 
@@ -35,11 +36,7 @@ async function createArticle(req, res) {
             title, content, classify, subsetId,
             label, introduce, cover
         } = req.body
-        const { userId, userType } = req.user
-
-        if (!['admin', 'editor', 'normal'].includes(userType)) {
-            return res.status(403).json({ code: 403, message: '当前用户无权创建文章' })
-        }
+        const { userId } = req.user
 
         //  必传参数校验
         if (!title || !content || !classify) {
@@ -58,6 +55,11 @@ async function createArticle(req, res) {
         }
         if (!['article', 'image'].includes(classify)) {
             return res.status(400).json({ code: 400, message: '内容类型仅支持 article（文章）/ image（图片集）' })
+        }
+
+        const createPermission = classify === 'image' ? 'gallery.create' : 'article.create'
+        if (!hasPermission(req.user, createPermission)) {
+            return res.status(403).json({ code: 403, message: '当前用户无权创建该类型内容' })
         }
         if (subsetId && isNaN(subsetId)) {
             return res.status(400).json({ code: 400, message: '分类ID必须是数字类型' })
@@ -103,7 +105,7 @@ async function createArticle(req, res) {
  */
 async function getArticles(req, res) {
     try {
-        const { userId, userType } = req.user
+        const { userId } = req.user
         const { state, classify, subsetId, keyword, uncategorized, label } = req.query
 
         //  分页参数校验
@@ -134,7 +136,7 @@ async function getArticles(req, res) {
             label: typeof label === 'string' ? label.trim() : undefined,
             keyword: normalizedKeyword,
             userId,
-            userType
+            userAccess: getArticleScope(req.user, classify === 'image' ? 'image' : 'article')
         })
 
         res.json({
@@ -159,16 +161,24 @@ async function getArticles(req, res) {
 async function getArticleById(req, res) {
     try {
         const { id: articleId } = req.params
-        const { userId, userType } = req.user
+        const { userId } = req.user
 
         //  校验文章ID
         if (!articleId || isNaN(articleId)) {
             return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
         }
 
-        //  调用模型查询
-        const article = await articleModel.findAtricleById(articleId, userId, userType)
+        // 先读取内容类型，再按对应模块的权限决定可见范围。
+        const article = await articleModel.findAtricleById(articleId, userId, 'admin')
         if (!article) {
+            return res.status(404).json({ code: 404, message: '文章不存在或无权限访问' })
+        }
+
+        const scope = getArticleScope(req.user, article.classify)
+        const ownsArticle = Number(article.userId) === Number(userId)
+        const canView = scope.viewAll ||
+            (scope.viewOwn && (ownsArticle || article.state === 'published'))
+        if (!canView) {
             return res.status(404).json({ code: 404, message: '文章不存在或无权限访问' })
         }
 
@@ -261,13 +271,13 @@ async function getPublicArticleById(req, res) {
  */
 async function getArticleStateSummary(req, res) {
     try {
-        const { userId, userType } = req.user
+        const { userId } = req.user
         const { classify } = req.query
 
         const summary = await articleModel.countArticlesByState({
             classify: classify && ['article', 'image'].includes(classify) ? classify : undefined,
             userId,
-            userType
+            userAccess: getArticleScope(req.user, classify === 'image' ? 'image' : 'article')
         })
 
         res.json({
@@ -290,17 +300,11 @@ async function updateArticle(req, res) {
             title, content, classify, subsetId,
             label, introduce, cover, state
         } = req.body
-        const { userId, userType } = req.user
+        const { userId } = req.user
 
         //  校验文章ID
         if (!articleId || isNaN(articleId)) {
             return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
-        }
-
-        // 普通用户只能保存草稿，不能通过文章更新接口发布或驳回文章。
-        // 已发布文章也不能由普通用户直接编辑，以免绕过审核修改线上内容。
-        if (userType === 'normal' && state !== undefined && state !== 'draft') {
-            return res.status(403).json({ code: 403, message: '普通用户只能将自己的文章保存为草稿，不能直接发布或驳回' })
         }
 
         //  检验更新字段
@@ -372,16 +376,28 @@ async function updateArticle(req, res) {
             return res.status(400).json({ code: 400, message: '请传入至少一个更新字段' })
         }
 
-        const access = await articleModel.findArticleMutationAccess(
+        const probe = await articleModel.findArticleMutationAccess(
             articleId,
             userId,
-            userType,
+            'admin',
             'update'
         )
 
-        if (!access.exists) {
+        if (!probe.exists) {
             return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
         }
+
+        const scope = getArticleScope(req.user, probe.article.classify)
+        if (state !== undefined && state !== 'draft' && !scope.publish) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发布或驳回该内容的权限' })
+        }
+
+        const access = await articleModel.findArticleMutationAccess(
+            articleId,
+            userId,
+            scope,
+            'update'
+        )
 
         if (!access.allowed) {
             return res.status(403).json({ code: 403, message: '无权限更新该文章' })
@@ -394,7 +410,7 @@ async function updateArticle(req, res) {
             articleId,
             updateData,
             userId,
-            userType
+            scope
         )
 
         if (affectedRows === 0) {
@@ -402,7 +418,7 @@ async function updateArticle(req, res) {
             const latestAccess = await articleModel.findArticleMutationAccess(
                 articleId,
                 userId,
-                userType,
+                scope,
                 'update'
             )
 
@@ -455,18 +471,23 @@ async function updateArticle(req, res) {
 async function deleteArticle(req, res) {
     try {
         const { id: articleId } = req.params
-        const { userId, userType } = req.user
+        const { userId } = req.user
 
         //  校验文章ID
         if (!articleId || isNaN(articleId)) {
             return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
         }
 
-        const access = await articleModel.findArticleMutationAccess(articleId, userId, userType, 'delete')
+        const probe = await articleModel.findArticleMutationAccess(articleId, userId, 'admin', 'delete')
+        if (!probe.exists) {
+            return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+        }
+        const scope = getArticleScope(req.user, probe.article.classify)
+        const access = await articleModel.findArticleMutationAccess(articleId, userId, scope, 'delete')
         const oldCover = access.exists ? access.article.cover : null
 
         //  调用模型删除
-        const affectedRows = await articleModel.deleteArticle(articleId, userId, userType)
+        const affectedRows = await articleModel.deleteArticle(articleId, userId, scope)
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该文章或文章不存在' })
         }
@@ -497,7 +518,7 @@ async function updateArticleStatus(req, res) {
         const { id: articleId } = req.params
         // 关键：确保从请求体获取state，变量名是state（无拼写错误）
         const { state } = req.body
-        const { userId, userType } = req.user
+        const { userId } = req.user
 
         // 1. 校验参数（先校验是否存在，再校验合法性）
         if (!articleId || isNaN(articleId)) {
@@ -515,33 +536,40 @@ async function updateArticleStatus(req, res) {
             })
         }
 
-        // 普通用户只能将被驳回的文章退回草稿，不能发布或驳回文章。
-        if (userType === 'normal' && state !== 'draft') {
-            return res.status(403).json({ code: 403, message: '普通用户不能直接发布或驳回文章' })
+        const probe = await articleModel.findArticleMutationAccess(
+            articleId,
+            userId,
+            'admin',
+            'status'
+        )
+
+        if (!probe.exists) {
+            return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
+        }
+
+        const scope = getArticleScope(req.user, probe.article.classify)
+        if (state !== 'draft' && !scope.publish) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发布或驳回该内容的权限' })
         }
 
         const access = await articleModel.findArticleMutationAccess(
             articleId,
             userId,
-            userType,
+            scope,
             'status'
         )
-
-        if (!access.exists) {
-            return res.status(404).json({ code: 404, message: '文章不存在或已删除' })
-        }
 
         if (!access.allowed) {
             return res.status(403).json({ code: 403, message: '无权限修改该文章状态' })
         }
 
         //  调用模型修改状态（参数顺序：articleId → state → userId → userType）
-        const affectedRows = await articleModel.updateArticleStatus(articleId, state, userId, userType)
+        const affectedRows = await articleModel.updateArticleStatus(articleId, state, userId, scope)
         if (affectedRows === 0) {
             const latestAccess = await articleModel.findArticleMutationAccess(
                 articleId,
                 userId,
-                userType,
+                scope,
                 'status'
             )
 

@@ -4,6 +4,12 @@ const diaryModel = require('../model/dbModel/diary/index')
 const commentModel = require('../model/dbModel/comment/index')
 const messageModel = require('../model/dbModel/message/index')
 const recordModel = require('../model/dbModel/record/index')
+const {
+    hasPermission,
+    getArticleScope,
+    getDiaryViewType,
+    getCommentViewType
+} = require('../utils/accessControl')
 
 /**
  * 总览统计聚合接口
@@ -11,21 +17,33 @@ const recordModel = require('../model/dbModel/record/index')
  */
 async function getOverviewSummary(req, res) {
     try {
-        const { userId, userType } = req.user
+        const { userId } = req.user
         // 非管理员只看与自己相关的内容：随笔按作者，评论按「我的作品/我的评论」
-        const ownerScope = { userId, userType }
+        const ownerScope = { userId, userType: getCommentViewType(req.user) }
         // 本地文件属于系统资源，普通用户与游客不返回真实磁盘占用
-        const canViewLocalFiles = ['admin', 'editor'].includes(userType)
+        const canViewLocalFiles = hasPermission(req.user, 'file.view')
 
         // 文章 / 图库各自走 countArticlesByState 并按 classify 拆分
         const [articleSummary, gallerySummary, fileSummary, diaryResult, commentResult, messageUnread] =
             await Promise.all([
-                articleModel.countArticlesByState({ classify: 'article', userId, userType }),
-                articleModel.countArticlesByState({ classify: 'image', userId, userType }),
+                articleModel.countArticlesByState({
+                    classify: 'article',
+                    userId,
+                    userAccess: getArticleScope(req.user, 'article')
+                }),
+                articleModel.countArticlesByState({
+                    classify: 'image',
+                    userId,
+                    userAccess: getArticleScope(req.user, 'image')
+                }),
                 canViewLocalFiles
                     ? fileModel.countFilesSummary()
                     : Promise.resolve({ totalSize: 0 }),
-                diaryModel.getDiariesByPage({ pageSize: 1, offset: 0, ownerScope }),
+                diaryModel.getDiariesByPage({
+                    pageSize: 1,
+                    offset: 0,
+                    ownerScope: { userId, userType: getDiaryViewType(req.user) }
+                }),
                 commentModel.getCommentsByPage(1, 1, 0, null, userId, ownerScope),
                 messageModel.getUnreadCount(userId),
             ])

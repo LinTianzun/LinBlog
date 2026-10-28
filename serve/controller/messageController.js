@@ -1,6 +1,7 @@
 const messageModel = require('../model/dbModel/message/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 
 /**
  * 发送消息
@@ -8,7 +9,7 @@ const { writeSystemLog } = require('../utils/logHelper')
 async function sendMessage(req, res) {
     try {
         const { receiverId, type, content } = req.body
-        const { userId, userType } = req.user
+        const { userId } = req.user
 
         //  参数校验
         if (receiverId === undefined || receiverId === null || !type || !content) {
@@ -29,9 +30,13 @@ async function sendMessage(req, res) {
             return res.status(400).json({ code: 400, message: '消息内容不能超过512字' });
         }
 
-        // 系统消息、通知只能由管理员发送，避免普通账号伪造通知。
-        if (userType !== 'admin' && type !== 'private') {
-            return res.status(403).json({ code: 403, message: '仅管理员可以发送系统消息或通知' });
+        if (type === 'private' && !hasPermission(req.user, 'message.private')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发送私信的权限' });
+        }
+
+        // 系统消息、通知需要独立高风险权限，避免普通账号伪造通知。
+        if (type !== 'private' && !hasPermission(req.user, 'message.system')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发送系统消息或通知的权限' });
         }
 
         //  调用模型发送消息

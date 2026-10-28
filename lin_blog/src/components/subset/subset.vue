@@ -48,6 +48,9 @@
     import { createSubset } from '../../api/subset'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
+    import { useSessionStore } from '../../store/session.ts'
+
+    const session = useSessionStore()
 
     const emits = defineEmits(['nowSubset'])
 
@@ -57,14 +60,8 @@
     //  store
     const subsetStore = useSubsetStore()
 
-    const canManageTaxonomy = computed(() => {
-        try {
-            const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-            return ['admin', 'editor'].includes(userInfo?.user_type)
-        } catch {
-            return false
-        }
-    })
+    // 分类管理走 category.manage 权限，不再依赖角色硬编码
+    const canManageTaxonomy = computed(() => session.can('category.manage'))
 
     const props = withDefaults(defineProps<{
         classify?: 'article' | 'image' | 'resource'

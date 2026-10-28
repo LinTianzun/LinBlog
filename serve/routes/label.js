@@ -1,5 +1,6 @@
 const labelController = require('../controller/labelController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
+const { requirePermission } = require('../utils/accessControl')
 
 module.exports = (app) => {
     // 公开的标签列表（访客门户展示）
@@ -9,8 +10,8 @@ module.exports = (app) => {
     app.get('/api/label', authMiddleware, labelController.getLabels)
 
     // 新建标签
-    app.post('/api/label', authMiddleware, labelController.createLabel)
+    app.post('/api/label', authMiddleware, requirePermission('label.manage'), labelController.createLabel)
 
     // 删除标签（被文章使用时拒绝）
-    app.delete('/api/label/:id', authMiddleware, labelController.deleteLabel)
+    app.delete('/api/label/:id', authMiddleware, requirePermission('label.manage'), labelController.deleteLabel)
 }

@@ -1,6 +1,7 @@
 const diaryInteractionModel = require('../model/dbModel/diaryInteraction/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 
 /**
  * 查询随笔点赞状态与总数（匿名可用，未登录只返回总数）
@@ -30,9 +31,12 @@ async function getLikeState(req, res) {
  */
 async function toggleLike(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再点赞' })
+        }
+        if (!hasPermission(req.user, 'comment.like')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有点赞权限' })
         }
 
         const result = await diaryInteractionModel.toggleLike(req.params.id, userId)
@@ -95,9 +99,12 @@ async function getComments(req, res) {
  */
 async function createComment(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再发表评论' })
+        }
+        if (!hasPermission(req.user, 'comment.create')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发表评论的权限' })
         }
 
         const diaryId = Number(req.body?.diaryId)

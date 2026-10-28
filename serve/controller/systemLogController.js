@@ -1,13 +1,14 @@
 const systemLogModel = require('../model/dbModel/systemLog/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
+const { hasPermission } = require('../utils/accessControl')
 
 /**
  * 分页查询系统日志（仅管理员）；支持关键词、模块、动作过滤
  */
 async function getLogs(req, res) {
     try {
-        if (!req.user || req.user.user_type !== 'admin') {
-            return res.status(403).json({ code: 403, message: '无权限操作，仅管理员可以查看系统日志' })
+        if (!hasPermission(req.user, 'systemLog.view')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看系统日志的权限' })
         }
 
         const params = formatPaginationParams(req.query, {

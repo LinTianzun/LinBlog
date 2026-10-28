@@ -101,8 +101,10 @@
 import { ref, getCurrentInstance } from "vue";
 import { useRouter } from "vue-router";
 import { requestPasswordReset } from "../../api/user";
+import { useSessionStore } from "../../store/session";
 
 const router = useRouter();
+const session = useSessionStore();
 
 const proxy = getCurrentInstance()?.proxy;
 
@@ -194,6 +196,12 @@ const login = async () => {
 
         // 保存用户信息，不保存密码
         localStorage.setItem("userInfo", JSON.stringify(result.data.userInfo));
+
+        // 登录态携带权限集合：后续所有后台能力都按它判定可见性
+        session.applyPayload({
+            permissions: result.data.userInfo?.permissions ?? [],
+            isSuperAdmin: result.data.userInfo?.isSuperAdmin === true,
+        });
 
         proxy?.$message({
             type: "success",

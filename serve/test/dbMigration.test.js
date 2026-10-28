@@ -21,7 +21,8 @@ const ALL_MIGRATIONS = [
     '20261028_diary_comment_reply',
     '20261028_password_reset',
     '20261028_password_reset_version_guard',
-    '20261028_diary_owner'
+    '20261028_diary_owner',
+    '20261028_access_control'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -287,4 +288,40 @@ test('diary owner migration keeps NULL owner when no user exists yet', async () 
         calls.some(call => call.sql.includes('UPDATE diary SET user_id')),
         false
     )
+})
+
+test('access control migration creates the role permission matrix and promotes the fixed super admin', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_access_control')
+        }
+        // information_schema 查询一律返回空：列与唯一索引都不存在，触发补全
+        if (sql.includes('information_schema')) return []
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE users ADD COLUMN is_super_admin TINYINT(1) NOT NULL DEFAULT 0')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS role_permission')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE users ADD UNIQUE KEY uk_single_super_admin (super_admin_slot)')
+    ))
+    // 固定账号只提升、不重建：历史库里的 admin@linlog.com 会被标记为唯一超级管理员
+    const promote = calls.find(call => call.sql.includes('UPDATE users SET is_super_admin = 1'))
+    assert.ok(promote)
+    assert.equal(promote.values[0], 'admin@linlog.com')
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261028_access_control'
+    ))
 })

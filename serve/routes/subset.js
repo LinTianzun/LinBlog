@@ -1,5 +1,6 @@
 const subsetController = require('../controller/subsetController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
+const { requirePermission } = require('../utils/accessControl')
 
 /**
  * 公开读取标记：门户分类只统计已发布内容，草稿/已驳回不对外计数。
@@ -15,7 +16,7 @@ module.exports = (app) => {
     app.get('/api/public/subset', publicRead, optionalAuthMiddleware, subsetController.getSubsets)
 
     app.get('/api/subset', authMiddleware, subsetController.getSubsets)
-    app.post('/api/subset', authMiddleware, subsetController.createSubset)
-    app.put('/api/subset/:id', authMiddleware, subsetController.updateSubset)
-    app.delete('/api/subset/:id', authMiddleware, subsetController.deleteSubset)
+    app.post('/api/subset', authMiddleware, requirePermission('category.manage'), subsetController.createSubset)
+    app.put('/api/subset/:id', authMiddleware, requirePermission('category.manage'), subsetController.updateSubset)
+    app.delete('/api/subset/:id', authMiddleware, requirePermission('category.manage'), subsetController.deleteSubset)
 }

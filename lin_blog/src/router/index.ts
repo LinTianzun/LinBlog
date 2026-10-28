@@ -49,6 +49,14 @@ const routes = [
     }
 },
             {
+                path: 'permissionManagement',
+                component: () => import('../views/PermissionManagement.vue'),
+                meta: {
+                    requiresAuth: true,
+                    roles: ['admin']
+                }
+            },
+            {
                 path: 'systemLog',
                 component: () => import('../views/SystemLogView.vue'),
                 meta: {

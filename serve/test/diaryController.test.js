@@ -31,6 +31,8 @@ test('createDiary accepts all frontend weather names and stores the dictionary i
     const originalFind = diaryModel.findWeatherByName
     const originalInsert = diaryModel.insertDiary
     const inserted = []
+    // 创建随笔走 diary.create 权限，未授权账号会被控制器挡在 403
+    const ownerUser = { userId: 7, userType: 'normal', permissions: ['diary.create'] }
 
     try {
         for (const name of FRONTEND_WEATHER_NAMES) {
@@ -45,7 +47,8 @@ test('createDiary accepts all frontend weather names and stores the dictionary i
 
             const res = createRes()
             await diaryController.createDiary({
-                body: { title: `天气验证-${name}`, content: '内容', weatherName: name }
+                body: { title: `天气验证-${name}`, content: '内容', weatherName: name },
+                user: ownerUser
             }, res)
 
             assert.equal(res.statusCode, 201)
@@ -64,13 +67,15 @@ test('createDiary accepts all frontend weather names and stores the dictionary i
 
 test('createDiary rejects unknown weather names with 400', async () => {
     const originalFind = diaryModel.findWeatherByName
+    const ownerUser = { userId: 7, userType: 'normal', permissions: ['diary.create'] }
 
     try {
         diaryModel.findWeatherByName = async () => null
 
         const res = createRes()
         await diaryController.createDiary({
-            body: { title: '天气验证-失败', content: '内容', weatherName: '不存在的天气' }
+            body: { title: '天气验证-失败', content: '内容', weatherName: '不存在的天气' },
+            user: ownerUser
         }, res)
 
         assert.equal(res.statusCode, 400)
@@ -83,6 +88,7 @@ test('createDiary rejects unknown weather names with 400', async () => {
 
 test('createDiary allows empty weather and stores null weatherId', async () => {
     const originalInsert = diaryModel.insertDiary
+    const ownerUser = { userId: 7, userType: 'normal', permissions: ['diary.create'] }
     let captured = null
 
     try {
@@ -93,7 +99,8 @@ test('createDiary allows empty weather and stores null weatherId', async () => {
 
         const res = createRes()
         await diaryController.createDiary({
-            body: { title: '天气验证-为空', content: '内容' }
+            body: { title: '天气验证-为空', content: '内容' },
+            user: ownerUser
         }, res)
 
         assert.equal(res.statusCode, 201)
@@ -101,4 +108,16 @@ test('createDiary allows empty weather and stores null weatherId', async () => {
     } finally {
         diaryModel.insertDiary = originalInsert
     }
+})
+
+// 权限矩阵：没有 diary.create 时，参数校验之前就该被拒绝
+test('createDiary rejects accounts without the diary create permission', async () => {
+    const res = createRes()
+    await diaryController.createDiary({
+        body: { title: '无权限随笔', content: '内容' },
+        user: { userId: 7, userType: 'visitor', permissions: [] }
+    }, res)
+
+    assert.equal(res.statusCode, 403)
+    assert.match(res.body.message, /创建随笔/)
 })

@@ -17,7 +17,7 @@ async function query(sql, values = []) {
     if (sql.includes('GROUP BY a.state')) return stateSummaryRows
     if (sql.includes('COUNT(*)')) return [{ total: 1 }]
     if (sql.includes('INSERT INTO article')) return { insertId: 123 }
-    if (sql.includes('SELECT id, user_id, state FROM article')) return mutationAccessRows
+    if (sql.includes('SELECT id, user_id, state, classify FROM article')) return mutationAccessRows
     if (sql.includes('UPDATE article')) return { affectedRows: updateAffectedRows }
     return []
 }
@@ -217,7 +217,7 @@ test('nullable article fields can be cleared', async () => {
 })
 
 test('article controller accepts clearing nullable fields', async () => {
-    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft' }]
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft', classify: 'article' }]
     const res = {
         statusCode: 200,
         body: null,
@@ -239,11 +239,13 @@ test('article controller accepts clearing nullable fields', async () => {
             introduce: null,
             cover: null
         },
-        user: { userId: 42, userType: 'normal' }
+        // 文章作者本人：拥有「管理自己的文章」权限即可清空可空字段
+        user: { userId: 42, userType: 'normal', permissions: ['article.manageOwn'] }
     }, res)
 
     assert.equal(res.statusCode, 200)
-    assert.deepEqual(calls[1].values, [null, null, null, null, '123', 'deleted', 42])
+    // 控制器先探测内容类型再判定权限，因此 UPDATE 是第三次查询
+    assert.deepEqual(calls[2].values, [null, null, null, null, '123', 'deleted', 42])
 })
 
 test('normal users cannot publish or reject articles through model methods', async () => {
@@ -289,6 +291,8 @@ test('visitors cannot create or mutate articles', async () => {
 
 
 test('article controller rejects normal-user publish and reject requests', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft', classify: 'article' }]
+
     function makeResponse() {
         return {
             statusCode: 200,
@@ -307,7 +311,7 @@ test('article controller rejects normal-user publish and reject requests', async
     const req = {
         params: { id: '123' },
         body: { state: 'published' },
-        user: { userId: 42, userType: 'normal' }
+        user: { userId: 42, userType: 'normal', permissions: ['article.manageOwn'] }
     }
 
     const updateResponse = makeResponse()
@@ -324,11 +328,55 @@ test('article controller rejects normal-user publish and reject requests', async
         body: { state: 'rejected' }
     }, rejectResponse)
     assert.equal(rejectResponse.statusCode, 403)
-    assert.equal(calls.length, 0)
+    // 只做权限探测，不拼接任何 UPDATE：被拒绝的请求不写库
+    assert.equal(
+        calls.some(call => call.sql.includes('UPDATE article')),
+        false
+    )
+})
+
+test('article controller rejects gallery mutations when the account only holds article permissions', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft', classify: 'image' }]
+
+    const makeResponse = () => ({
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    })
+
+    const denied = makeResponse()
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: { title: 'Renamed gallery' },
+        user: { userId: 42, userType: 'normal', permissions: ['article.manageOwn'] }
+    }, denied)
+
+    assert.equal(denied.statusCode, 403)
+    assert.equal(
+        calls.some(call => call.sql.includes('UPDATE article')),
+        false
+    )
+
+    const allowed = makeResponse()
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: { title: 'Renamed gallery' },
+        user: { userId: 42, userType: 'normal', permissions: ['gallery.manageOwn'] }
+    }, allowed)
+
+    assert.equal(allowed.statusCode, 200)
+    assert.ok(calls.some(call => call.sql.includes('UPDATE article')))
 })
 
 test('article mutation access distinguishes ownership and editable state', async () => {
-    mutationAccessRows = [{ id: 123, user_id: 42, state: 'rejected' }]
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'rejected', classify: 'article' }]
 
     assert.deepEqual(
         await articleModel.findArticleMutationAccess(123, 42, 'normal', 'update'),
@@ -353,7 +401,7 @@ test('article mutation access distinguishes ownership and editable state', async
 })
 
 test('unchanged article updates are reported as success instead of 403', async () => {
-    mutationAccessRows = [{ id: 123, user_id: 42, state: 'published' }]
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'published', classify: 'article' }]
     updateAffectedRows = 0
 
     const makeResponse = () => ({
@@ -373,7 +421,7 @@ test('unchanged article updates are reported as success instead of 403', async (
     await articleController.updateArticle({
         params: { id: '123' },
         body: { title: 'Unchanged title' },
-        user: { userId: 1, userType: 'admin' }
+        user: { userId: 1, userType: 'admin', permissions: ['article.manageAll', 'article.publish'] }
     }, updateResponse)
 
     assert.equal(updateResponse.statusCode, 200)
@@ -382,7 +430,7 @@ test('unchanged article updates are reported as success instead of 403', async (
     await articleController.updateArticleStatus({
         params: { id: '123' },
         body: { state: 'published' },
-        user: { userId: 1, userType: 'admin' }
+        user: { userId: 1, userType: 'admin', permissions: ['article.manageAll', 'article.publish'] }
     }, statusResponse)
 
     assert.equal(statusResponse.statusCode, 200)
@@ -406,8 +454,72 @@ test('article controller returns 404 when the article does not exist', async () 
     await articleController.updateArticle({
         params: { id: '404' },
         body: { title: 'Missing' },
-        user: { userId: 1, userType: 'admin' }
+        user: { userId: 1, userType: 'admin', permissions: ['article.manageAll'] }
     }, res)
 
     assert.equal(res.statusCode, 404)
+})
+
+// 权限矩阵：发布/驳回由独立权限控制，没有该权限的账号不能直接发布
+test('article controller blocks publish when the account lacks publish permission', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft', classify: 'article' }]
+
+    const makeResponse = () => ({
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    })
+
+    const res = makeResponse()
+    await articleController.updateArticleStatus({
+        params: { id: '123' },
+        body: { state: 'published' },
+        user: { userId: 42, userType: 'normal', permissions: ['article.manageOwn'] }
+    }, res)
+
+    assert.equal(res.statusCode, 403)
+    assert.match(res.body.message, /发布或驳回/)
+})
+
+// 图库与文章分属两个权限前缀，避免只凭文章权限操作图库
+test('article controller scopes gallery mutations to gallery permissions', async () => {
+    mutationAccessRows = [{ id: 123, user_id: 42, state: 'draft', classify: 'image' }]
+
+    const makeResponse = () => ({
+        statusCode: 200,
+        body: null,
+        status(code) {
+            this.statusCode = code
+            return this
+        },
+        json(body) {
+            this.body = body
+            return this
+        }
+    })
+
+    const denied = makeResponse()
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: { title: 'Renamed gallery' },
+        user: { userId: 42, userType: 'normal', permissions: ['article.manageOwn'] }
+    }, denied)
+
+    assert.equal(denied.statusCode, 403)
+
+    const allowed = makeResponse()
+    await articleController.updateArticle({
+        params: { id: '123' },
+        body: { title: 'Renamed gallery' },
+        user: { userId: 42, userType: 'normal', permissions: ['gallery.manageOwn'] }
+    }, allowed)
+
+    assert.equal(allowed.statusCode, 200)
 })

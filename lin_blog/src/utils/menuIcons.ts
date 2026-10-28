@@ -14,6 +14,7 @@ import {
     IconFolderCloseFill,
     IconHomepageFill,
     IconImageFill,
+    IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
 } from '@yike-design/ui/es/components/svg-icon'
@@ -25,6 +26,7 @@ const iconMap: Record<string, Component> = {
     IconFolderCloseFill,
     IconHomepageFill,
     IconImageFill,
+    IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
 }

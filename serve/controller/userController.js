@@ -4,6 +4,24 @@ const config = require('../config/default')
 const { generateToken } = require('../utils/jwtutil')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { writeSystemLog } = require('../utils/logHelper')
+const {
+    SUPER_ADMIN_EMAIL,
+    isSuperAdmin,
+    getPermissionsForUser,
+    hasPermission
+} = require('../utils/accessControl')
+
+function buildUserInfo(user) {
+    const { password: _, ...userInfo } = user
+    const superAdmin = isSuperAdmin(user)
+
+    return {
+        ...userInfo,
+        is_super_admin: superAdmin,
+        isSuperAdmin: superAdmin,
+        permissions: getPermissionsForUser({ ...user, isSuperAdmin: superAdmin })
+    }
+}
 
 function getRegistrationConflictMessage(err) {
     if (!err || !['ER_DUP_ENTRY', 'ER_DUP_KEY'].includes(err.code)) {
@@ -100,10 +118,10 @@ async function register(req, res) {
 async function createUser(req, res) {
     try {
         // 1. 权限校验
-        if (!req.user || req.user.user_type !== 'admin') {
+        if (!hasPermission(req.user, 'user.create')) {
             return res.status(403).json({
                 code: 403,
-                message: '无权限操作，仅管理员可以添加用户'
+                message: '当前账号没有创建用户的权限'
             });
         }
 
@@ -160,6 +178,13 @@ async function createUser(req, res) {
             return res.status(400).json({
                 code: 400,
                 message: '无效的用户角色'
+            });
+        }
+
+        if (user_type === 'admin' && !isSuperAdmin(req.user)) {
+            return res.status(403).json({
+                code: 403,
+                message: '只有超级管理员可以创建管理员账号'
             });
         }
 
@@ -236,10 +261,10 @@ async function createUser(req, res) {
 async function updateUser(req, res) {
     try {
         // 1. 检查管理员权限
-        if (!req.user || req.user.user_type !== 'admin') {
+        if (!hasPermission(req.user, 'user.edit')) {
             return res.status(403).json({
                 code: 403,
-                message: '无权限操作，仅管理员可以编辑用户'
+                message: '当前账号没有编辑用户的权限'
             });
         }
 
@@ -307,6 +332,46 @@ async function updateUser(req, res) {
         const targetUser = existingUser[0];
         const currentUserId = String(req.user.userId);
         const targetUserId = String(userId);
+        const targetIsSuperAdmin = isSuperAdmin(targetUser);
+        const actorIsSuperAdmin = isSuperAdmin(req.user);
+
+        if (targetIsSuperAdmin && !actorIsSuperAdmin) {
+            return res.status(403).json({
+                code: 403,
+                message: '超级管理员账号不可由其他管理员修改'
+            });
+        }
+
+        if (
+            targetUser.user_type === 'admin' &&
+            currentUserId !== targetUserId &&
+            !actorIsSuperAdmin
+        ) {
+            return res.status(403).json({
+                code: 403,
+                message: '只有超级管理员可以修改其他管理员账号'
+            });
+        }
+
+        if (user_type === 'admin' && targetUser.user_type !== 'admin' && !actorIsSuperAdmin) {
+            return res.status(403).json({
+                code: 403,
+                message: '只有超级管理员可以授予管理员角色'
+            });
+        }
+
+        if (
+            targetIsSuperAdmin &&
+            (
+                user_type !== 'admin' ||
+                cleanMail.toLowerCase() !== SUPER_ADMIN_EMAIL
+            )
+        ) {
+            return res.status(400).json({
+                code: 400,
+                message: '超级管理员账号的角色和固定邮箱不可修改'
+            });
+        }
 
         // 防止管理员通过编辑接口修改自己的角色，造成权限突然丢失。
         if (
@@ -377,6 +442,13 @@ async function updateUser(req, res) {
                 });
             }
 
+            if (updateResult.reason === 'super_admin_protected') {
+                return res.status(403).json({
+                    code: 403,
+                    message: '超级管理员账号不可被降级或修改'
+                });
+            }
+
             return res.status(404).json({
                 code: 404,
                 message: '用户不存在'
@@ -418,10 +490,10 @@ async function updateUser(req, res) {
 async function updateUserStatus(req, res) {
     try {
         // 1. 仅管理员可以操作
-        if (!req.user || req.user.user_type !== 'admin') {
+        if (!hasPermission(req.user, 'user.disable')) {
             return res.status(403).json({
                 code: 403,
-                message: '无权限操作，仅管理员可以修改用户状态'
+                message: '当前账号没有修改用户状态的权限'
             });
         }
 
@@ -475,6 +547,23 @@ async function updateUserStatus(req, res) {
             });
         }
 
+        if (isSuperAdmin(existingUser[0])) {
+            return res.status(403).json({
+                code: 403,
+                message: '超级管理员账号不可禁用'
+            });
+        }
+
+        if (
+            existingUser[0].user_type === 'admin' &&
+            !isSuperAdmin(req.user)
+        ) {
+            return res.status(403).json({
+                code: 403,
+                message: '只有超级管理员可以修改其他管理员的状态'
+            });
+        }
+
         // 6. 更新数据库
         const updateResult = await userModel.updateUserStatusGuarded(
             userId,
@@ -494,6 +583,13 @@ async function updateUserStatus(req, res) {
                 return res.status(400).json({
                     code: 400,
                     message: '不能修改当前登录账号的状态'
+                });
+            }
+
+            if (updateResult.reason === 'super_admin_protected') {
+                return res.status(403).json({
+                    code: 403,
+                    message: '超级管理员账号不可禁用'
                 });
             }
 
@@ -534,10 +630,10 @@ async function updateUserStatus(req, res) {
 async function deleteUser(req, res) {
     try {
         // 1. 仅管理员可以删除用户
-        if (!req.user || req.user.user_type !== 'admin') {
+        if (!hasPermission(req.user, 'user.delete')) {
             return res.status(403).json({
                 code: 403,
-                message: '无权限操作，仅管理员可以删除用户'
+                message: '当前账号没有删除用户的权限'
             });
         }
 
@@ -569,6 +665,23 @@ async function deleteUser(req, res) {
             });
         }
 
+        if (isSuperAdmin(existingUser[0])) {
+            return res.status(403).json({
+                code: 403,
+                message: '超级管理员账号不可删除'
+            });
+        }
+
+        if (
+            existingUser[0].user_type === 'admin' &&
+            !isSuperAdmin(req.user)
+        ) {
+            return res.status(403).json({
+                code: 403,
+                message: '只有超级管理员可以删除其他管理员账号'
+            });
+        }
+
         // 6. 执行删除
         const deleteResult = await userModel.deleteUserByAdminGuarded(
             userId,
@@ -586,6 +699,13 @@ async function deleteUser(req, res) {
             return res.status(400).json({
                 code: 400,
                 message: '不能删除当前登录的管理员账号'
+            });
+        }
+
+        if (!deleteResult.ok && deleteResult.reason === 'super_admin_protected') {
+            return res.status(403).json({
+                code: 403,
+                message: '超级管理员账号不可删除'
             });
         }
 
@@ -668,8 +788,7 @@ async function login(req, res) {
             tokenVersion: Number(user.token_version || 0),
         })
 
-        // 剔除密码，返回完整用户信息（含 user_type 等字段）
-        const { password: _, ...userInfo } = user
+        const userInfo = buildUserInfo(user)
 
         writeSystemLog({
             userId: user.id,
@@ -703,8 +822,7 @@ async function getUserInfo(req, res) {
         if (result.length === 0) {
             return res.status(404).json({ code: 404, message: '用户不存在' });
         }
-        // 剔除密码，返回安全信息
-        const { password: _, ...userInfo } = result[0]
+        const userInfo = buildUserInfo(result[0])
         res.json({ code: 200, data: userInfo });
     } catch (err) {
         res.status(500).json({ code: 500, message: err.message });
@@ -810,9 +928,8 @@ async function updateAvatar(req, res) {
 async function getAllUsers(req, res) {
     try {
         //  权限校验
-        const { user_type } = req.user
-        if (user_type !== 'admin') {
-            return res.status(403).json({ code: 403, message: '无权限访问，仅管理员可查询全部用户' })
+        if (!hasPermission(req.user, 'user.view')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看用户的权限' })
         }
 
         //  调用分页工具校验参数（自定义默认每页5条，最大20条）

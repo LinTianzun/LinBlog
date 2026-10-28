@@ -63,7 +63,12 @@ test('optional auth falls back to visitor when token is missing', async () => {
     await optionalAuthMiddleware(req, res, () => { nextCalled = true })
     assert.equal(nextCalled, true)
     assert.equal(res.statusCode, 200)
-    assert.deepEqual(req.user, { userId: null, user_type: 'visitor', userType: 'visitor' })
+    // 游客态也要带上空的权限集合，下游 hasPermission 才能统一按数组判断
+    assert.equal(req.user.userId, null)
+    assert.equal(req.user.user_type, 'visitor')
+    assert.equal(req.user.userType, 'visitor')
+    assert.equal(req.user.isSuperAdmin, false)
+    assert.deepEqual(req.user.permissions, [])
 })
 
 test('optional auth still rejects disabled accounts', async () => {
