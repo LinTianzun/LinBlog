@@ -18,6 +18,9 @@ module.exports = (app) => {
     // 举报评论（同一用户重复举报只记一次）
     app.post('/api/public/comment/report', optionalAuthMiddleware, commentInteractionController.report)
 
+    // 删除评论（文章与随笔共用；需登录，仅本人或管理员可删）
+    app.post('/api/public/comment/delete', optionalAuthMiddleware, commentInteractionController.deleteComment)
+
     // 新增评论（需登录）
     app.post('/api/comment', authMiddleware, commentController.createComment)
 

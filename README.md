@@ -3,7 +3,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 
 ## 功能亮点
 
-* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章、图库、随笔三个详情弹窗共用 `PortalCommentSection`，统一为两级评论：一级按时间倒序、二级回复默认收起可展开，支持评论点赞、回复、举报与「回复 @某人」展示，点赞数和评论数实时回写列表卡片。匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
+* **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章、图库、随笔三个详情弹窗共用 `PortalCommentSection`，统一为两级评论：一级按时间倒序、二级回复默认收起可展开，支持评论点赞、回复、举报、删除（本人或管理员，需二次确认）与「回复 @某人」展示，点赞数和评论数实时回写列表卡片。匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
 * **11 套主题**：默认浅色/深色，叠加海洋蓝、森林绿、樱花粉、极光绿、落日橙、星云紫、黑曜石、午夜蓝、摩卡棕；`data-theme` 驱动组件明暗，`data-theme-preset` 注入品牌色与背景，选择持久化并在启动时恢复。
 * **后台全模块真实联调**：文章支持列表、新建、编辑、搜索、发布、撤回、删除及详情弹窗；日记支持天气图标与最多 6 张图片；图库分组与文章分组共用同一套分类数据。总览页统计卡片、访问量折线图与设备/系统分布饼图均走真实接口。
 * **统一后台视觉与响应式体验**：侧栏按运营/内容/系统分组，图标、悬停态、焦点态和选中态统一；顶部保留主题下拉、私信未读提示与用户入口。总览和用户管理复用 `StatCard`，支持配色、图标、点击筛选与当前筛选高亮；文件、图库和私信列表会按视口宽高动态计算每页数量，大屏下保持多行填充，不出现单行或大面积留白。图库编辑页左右卡片等高，评论分页固定在内容分隔线下方，图库初始化不会重复请求。
@@ -65,7 +65,7 @@ npm start
 | 用户 | `POST /api/user/userInfo`、`POST /api/user/allUser`、`POST /api/user/createUser` | 需要 Bearer Token；用户列表和管理员创建用户仅管理员可操作。 |
 | 文章 | `POST/GET /api/article`、`GET/PUT/DELETE /api/article/:id`、`PATCH /api/article/:id/status` | 需要 Bearer Token；列表支持分页、状态、类型和分类筛选。 |
 | 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary`（支持 `weather` 按天气名过滤、`sort=hot` 按浏览量排序，并回传 weatherFacet 分面计数） | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
-| 门户互动（需登录） | `POST /api/public/comment`、`POST /api/public/comment/like`、`POST /api/public/comment/report`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论、评论点赞/举报与文章点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级，同一用户重复举报同一评论不重复计数。 |
+| 门户互动（需登录） | `POST /api/public/comment`、`POST /api/public/comment/like`、`POST /api/public/comment/report`、`POST /api/public/comment/delete`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论、评论点赞/举报/删除与文章点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级，同一用户重复举报同一评论不重复计数。删除按 `commentType` 分发文章评论与随笔评论，仅本人或管理员可删，并同步回退所属内容的冗余评论计数。 |
 | 随笔互动（公开） | `GET/POST /api/public/diary/praise/:id`、`GET/POST /api/public/diary/comment` | 点赞状态与评论可匿名读取，点赞与发表评论需登录（匿名返回 401）；点赞/取消在事务内同步 `diary.likes`，评论同步 `diary.comments`。 |
 | 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP+UA 哈希」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |

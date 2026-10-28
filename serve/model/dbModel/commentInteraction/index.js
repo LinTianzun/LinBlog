@@ -169,11 +169,62 @@ async function report(targetType, commentId, userId) {
     })
 }
 
+/**
+ * 删除评论（逻辑删除，仅本人或管理员可操作）。
+ * 与点赞/举报一致，用 targetType 区分文章评论与随笔评论表。
+ * @param {'article'|'diary'} targetType
+ * @param {number} commentId
+ * @param {number} userId
+ * @param {string} userType
+ * @returns {Promise<number>} 影响行数：1=删除成功，0=不存在/已删除/无权限
+ */
+async function deleteComment(targetType, commentId, userId, userType) {
+    const type = normalizeTargetType(targetType)
+    const id = parseCommentId(commentId)
+    if (!type || !id) return 0
+
+    const table = TARGETS[type].table
+    // 管理员可删除任意评论，普通用户只能删除自己的评论
+    const whereClause = userType === 'admin'
+        ? 'id = ? AND status = 1'
+        : 'id = ? AND user_id = ? AND status = 1'
+    const params = userType === 'admin' ? [id] : [id, userId]
+
+    const result = await query(
+        `UPDATE ${table} SET status = 0 WHERE ${whereClause}`,
+        params
+    )
+    const affected = Number(result?.affectedRows || 0)
+    if (affected === 0) return 0
+
+    // 同步回退所属内容的冗余评论计数；GREATEST 防止历史数据不一致时出现负数
+    if (type === 'diary') {
+        await query(
+            `UPDATE diary d
+             JOIN diary_comment c ON c.diary_id = d.id
+             SET d.comments = GREATEST(d.comments - 1, 0)
+             WHERE c.id = ?`,
+            [id]
+        )
+    } else {
+        await query(
+            `UPDATE article a
+             JOIN comment c ON c.article_id = a.id
+             SET a.comments = GREATEST(a.comments - 1, 0)
+             WHERE c.id = ?`,
+            [id]
+        )
+    }
+    return affected
+}
+
+
 module.exports = {
     normalizeTargetType,
     parseCommentId,
     findLikedIds,
     findLikeState,
     toggleLike,
-    report
+    report,
+    deleteComment
 }

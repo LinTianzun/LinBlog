@@ -80,6 +80,12 @@
                                     <button type="button" @click="handleReport(thread.root)">
                                         <IconWarningOutline />举报
                                     </button>
+                                    <button type="button" :disabled="!canDeleteComment(thread.root)"
+                                        :class="{ 'is-danger': deleteConfirmId === thread.root.id }"
+                                        @click="requestDeleteComment(thread.root.id)">
+                                        <IconDeleteOutline />
+                                        {{ deleteConfirmId === thread.root.id ? '确认删除' : '删除' }}
+                                    </button>
                                 </div>
                             </template>
                         </yk-popover>
@@ -149,6 +155,12 @@
                                                 <button type="button" @click="handleReport(reply)">
                                                     <IconWarningOutline />举报
                                                 </button>
+                                                <button type="button" :disabled="!canDeleteComment(reply)"
+                                                    :class="{ 'is-danger': deleteConfirmId === reply.id }"
+                                                    @click="requestDeleteComment(reply.id)">
+                                                    <IconDeleteOutline />
+                                                    {{ deleteConfirmId === reply.id ? '确认删除' : '删除' }}
+                                                </button>
                                             </div>
                                         </template>
                                     </yk-popover>
@@ -197,7 +209,8 @@ import {
 import {
     getRequestErrorMessage,
     reportComment,
-    toggleCommentLike
+    toggleCommentLike,
+    deleteInteractionComment
 } from '../../api/comment'
 
 type CommentRow = PortalComment | DiaryComment
@@ -238,6 +251,8 @@ const replyTarget = ref<ReplyTarget | null>(null)
 const replyDraft = ref('')
 const replySubmitting = ref(false)
 const replyError = ref('')
+// 删除需二次确认：首次点击标记待确认，再点一次才真正删除
+const deleteConfirmId = ref<number | null>(null)
 
 const proxy = getCurrentInstance()?.proxy
 
@@ -252,6 +267,28 @@ const readCanInteract = () => {
     } catch {
         return false
     }
+}
+
+// 当前登录用户：用于判断某条评论是否可删（本人或管理员）
+const readCurrentUser = (): { id: number; role: string } | null => {
+    try {
+        const saved = localStorage.getItem('userInfo')
+        if (!saved) return null
+        const user = JSON.parse(saved) as { id?: number; user_type?: string }
+        if (!user.id) return null
+        return { id: Number(user.id), role: user.user_type || '' }
+    } catch {
+        return null
+    }
+}
+
+const currentUser = ref(readCurrentUser())
+
+const canDeleteComment = (comment: CommentRow): boolean => {
+    const user = currentUser.value
+    if (!user) return false
+    if (user.role === 'admin') return true
+    return Number(comment.userId) === Number(user.id)
 }
 
 const canInteract = ref(readCanInteract())
@@ -371,6 +408,7 @@ const handleCommentLike = async (comment: CommentRow) => {
 
 const handleReport = async (comment: CommentRow) => {
     activeCommentMenu.value = null
+    deleteConfirmId.value = null
     if (!canInteract.value) {
         proxy?.$message?.({ type: 'primary', message: '登录后可举报评论' })
         return
@@ -402,6 +440,7 @@ const startReply = (target: CommentRow, root: CommentRow) => {
         return
     }
     activeCommentMenu.value = null
+    deleteConfirmId.value = null
     replyTarget.value = {
         commentId: Number(target.id),
         rootId: Number(root.id),
@@ -421,7 +460,43 @@ const cancelReply = () => {
     replyError.value = ''
 }
 
-const afterCommentCreated = async (rootId?: number) => {
+// 首次点击标记待确认，再次点击才真正删除，避免误删
+const requestDeleteComment = (commentId: number) => {
+    if (deleteConfirmId.value !== commentId) {
+        deleteConfirmId.value = commentId
+        return
+    }
+    void removeComment(commentId)
+}
+
+const removeComment = async (commentId: number) => {
+    const target = comments.value.find(item => Number(item.id) === Number(commentId))
+    if (!target || !canDeleteComment(target)) {
+        proxy?.$message?.({ type: 'primary', message: '只能删除自己的评论' })
+        return
+    }
+
+    activeCommentMenu.value = null
+    deleteConfirmId.value = null
+    try {
+        const result = await deleteInteractionComment({
+            commentType: props.targetType,
+            commentId
+        })
+        if (result.code !== 200) {
+            throw new Error(result.message || '删除失败')
+        }
+        await reloadAfterChange()
+        proxy?.$message?.({ type: 'success', message: '评论已删除' })
+    } catch (error) {
+        proxy?.$message?.({
+            type: 'error',
+            message: getRequestErrorMessage(error, '删除评论失败，请稍后重试')
+        })
+    }
+}
+
+const reloadAfterChange = async (rootId?: number) => {
     if (props.targetId) {
         await loadComments(props.targetId)
     }
@@ -453,7 +528,7 @@ const submitReply = async () => {
             const rootId = target.rootId
             replyTarget.value = null
             replyDraft.value = ''
-            await afterCommentCreated(rootId)
+            await reloadAfterChange(rootId)
             proxy?.$message?.({ type: 'success', message: '回复已发表' })
         }
     } catch (error) {
@@ -478,7 +553,7 @@ const submitComment = async () => {
         const result = await createComment(content)
         if (result?.code === 200) {
             commentDraft.value = ''
-            await afterCommentCreated()
+            await reloadAfterChange()
             proxy?.$message?.({ type: 'success', message: '评论已发表' })
         }
     } catch (error) {
@@ -497,6 +572,7 @@ watch(() => props.targetId, async (targetId, previousId) => {
     expandedThreads.value = new Set()
     activeCommentMenu.value = null
     commentLikeBusyIds.value = new Set()
+    deleteConfirmId.value = null
     resetComposer()
 
     if (!targetId) {
@@ -506,6 +582,7 @@ watch(() => props.targetId, async (targetId, previousId) => {
     }
 
     canInteract.value = readCanInteract()
+    currentUser.value = readCurrentUser()
     await loadComments(targetId)
 }, { immediate: true })
 </script>

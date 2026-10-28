@@ -104,7 +104,50 @@ async function report(req, res) {
     }
 }
 
+/**
+ * 删除评论（需登录；仅本人或管理员可删）
+ * POST /api/public/comment/delete  body: { commentType, commentId }
+ * 与点赞/举报共用 targetType 分发，补上随笔评论此前缺失的删除能力。
+ */
+async function deleteComment(req, res) {
+    try {
+        const { userId, userType } = req.user
+        if (userType === 'visitor' || !userId) {
+            return res.status(401).json({ code: 401, message: '请先登录后再删除评论' })
+        }
+
+        const parsed = parsePayload(req.body)
+        if (parsed.error) {
+            return res.status(parsed.error.code).json({ code: parsed.error.code, message: parsed.error.message })
+        }
+        const { targetType, commentId } = parsed.data
+
+        const affected = await commentInteractionModel.deleteComment(
+            targetType, commentId, userId, userType
+        )
+        if (affected === 0) {
+            // 不区分「不存在」与「无权限」，避免通过状态码探测他人评论
+            return res.status(403).json({ code: 403, message: '无权限删除该评论（评论不存在/已删除/非本人评论）' })
+        }
+
+        writeSystemLog({
+            userId,
+            action: 'delete',
+            module: 'comment',
+            targetType: `${targetType}_comment`,
+            targetId: commentId,
+            detail: '删除评论',
+            ip: req.ip || null,
+        })
+
+        res.json({ code: 200, message: '评论删除成功' })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '删除评论失败：' + err.message })
+    }
+}
+
 module.exports = {
     toggleLike,
-    report
+    report,
+    deleteComment
 }

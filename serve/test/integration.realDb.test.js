@@ -515,6 +515,73 @@ if (!targetDb) {
         assert.equal(self.reason, 'self_status_change')
     })
 
+    test('diary comment two-level reply and delete work end-to-end', async () => {
+        const diaryInteractionModel = require('../model/dbModel/diaryInteraction/index')
+        const interactionModel = require('../model/dbModel/commentInteraction/index')
+
+        const diary = await db.query(
+            `INSERT INTO diary (title, content, weather_id, status, created_at, updated_at)
+             VALUES ('评论边界随笔', '正文', NULL, 1, NOW(), NOW())`
+        )
+        const diaryId = diary.insertId
+
+        // 一级评论
+        const root = await diaryInteractionModel.createComment({
+            diaryId, userId: ids.normal, content: '一级评论'
+        })
+        assert.ok(root.commentId)
+
+        // 回复一级评论 → parent_id 指向一级
+        const reply = await diaryInteractionModel.createComment({
+            diaryId, userId: ids.admin, content: '二级回复', parentId: root.commentId
+        })
+        // 回复二级评论 → 归一挂到根评论，replyTo 仍指向所点那条
+        const nested = await diaryInteractionModel.createComment({
+            diaryId, userId: ids.normal, content: '回复二级', parentId: reply.commentId
+        })
+
+        const rows = await db.query(
+            `SELECT id, parent_id, reply_to_comment_id, reply_to_user_id, status
+             FROM diary_comment WHERE diary_id = ? ORDER BY id`,
+            [diaryId]
+        )
+        assert.equal(rows.length, 3)
+        const [rootRow, replyRow, nestedRow] = rows
+        assert.equal(Number(rootRow.parent_id), 0)
+        assert.equal(Number(replyRow.parent_id), Number(rootRow.id))
+        assert.equal(Number(replyRow.reply_to_user_id), ids.normal)
+        // 三级归一：parent 仍是根评论，replyTo 指向二级
+        assert.equal(Number(nestedRow.parent_id), Number(rootRow.id))
+        assert.equal(Number(nestedRow.reply_to_comment_id), Number(replyRow.id))
+        assert.equal(Number(nestedRow.reply_to_user_id), ids.admin)
+
+        // 列表回传 replyToUserName，供前端展示「回复 @某人」
+        const page = await diaryInteractionModel.getCommentsByDiary(diaryId, 1, 50, 0, null)
+        assert.equal(page.total, 3)
+        const nestedItem = page.list.find(item => Number(item.id) === Number(nestedRow.id))
+        assert.equal(nestedItem.replyToUserName, '管理员')
+
+        // 他人删除：无权限，行数不变
+        const denied = await interactionModel.deleteComment('diary', root.commentId, ids.admin, 'normal')
+        assert.equal(denied, 0)
+        // 管理员删除：逻辑删除并回退 diary.comments
+        const deleted = await interactionModel.deleteComment('diary', root.commentId, ids.admin, 'admin')
+        assert.equal(deleted, 1)
+
+        const after = await db.query(
+            'SELECT status FROM diary_comment WHERE id = ?',
+            [root.commentId]
+        )
+        assert.equal(Number(after[0].status), 0)
+
+        const diaryRows = await db.query('SELECT comments FROM diary WHERE id = ?', [diaryId])
+        assert.equal(Number(diaryRows[0].comments), 2)
+
+        // 删除后列表只返回未删除的两条
+        const afterPage = await diaryInteractionModel.getCommentsByDiary(diaryId, 1, 50, 0, null)
+        assert.equal(afterPage.total, 2)
+    })
+
     test.after(async () => {
         await db.closeDatabase()
         const mysql = require('mysql2/promise')
