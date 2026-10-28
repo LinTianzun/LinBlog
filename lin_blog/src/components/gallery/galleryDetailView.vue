@@ -35,7 +35,7 @@
                         <yk-text type="third">
                             <IconRotateLeftOutline /> {{ replyComments }} 条回复
                         </yk-text>
-                        <yk-button type="secondary" size="s" @click="openEditor">
+                        <yk-button v-if="access.canEdit(article)" type="secondary" size="s" @click="openEditor">
                             <IconFillOutline />编辑
                         </yk-button>
                     </yk-space>
@@ -70,6 +70,7 @@ import {
     IconHeartOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 import ReplyList from '../reply/commentList.vue'
+import { useContentAccess } from '../../utils/contentAccess.ts'
 
 const props = defineProps<{
     modelValue: boolean
@@ -82,6 +83,7 @@ const emits = defineEmits<{
 }>()
 
 const router = useRouter()
+const access = useContentAccess('gallery')
 
 const article = ref<ArticleItem | null>(null)
 const loading = ref(false)

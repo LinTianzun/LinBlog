@@ -10,6 +10,7 @@ const originalLoad = Module._load
 const calls = []
 let roleCounts = { admin: 1, editor: 2, normal: 5, visitor: 3, super_admin: 1 }
 let replaceError = null
+let writtenLogs = []
 // 替身「数据库」：写入后下次读取要能看到，否则刷新缓存会把改动抹掉
 let storedRows = []
 
@@ -46,7 +47,9 @@ Module._load = function (request, parent, isMain) {
     if (parent && parent.filename === controllerPath) {
         if (request === '../model/dbModel/users/index') return userModel
         // 权限矩阵变化必须可审计：日志模块固定走替身，避免真实写库
-        if (request === '../utils/logHelper') return { writeSystemLog: () => {} }
+        if (request === '../utils/logHelper') {
+            return { writeSystemLog: payload => writtenLogs.push(payload) }
+        }
     }
     const accessControlPath = path.resolve(__dirname, '../utils/accessControl.js')
     if (parent && parent.filename === accessControlPath) {
@@ -74,6 +77,7 @@ function makeResponse() {
 
 test.beforeEach(() => {
     calls.length = 0
+    writtenLogs = []
     replaceError = null
     storedRows = []
     roleCounts = { admin: 1, editor: 2, normal: 5, visitor: 3, super_admin: 1 }
@@ -158,6 +162,11 @@ test('updating the matrix persists deduplicated changes and refreshes the cache'
         { roleKey: 'normal', permissionKey: 'diary.create', allowed: false }
     ])
     assert.equal(calls[0].updatedBy, 9)
+    // 审计日志要写明谁把哪个角色的哪项能力打开或关闭，而不只是「更新 N 项」
+    assert.equal(writtenLogs.length, 1)
+    assert.equal(writtenLogs[0].module, 'permission')
+    assert.match(writtenLogs[0].detail, /编辑 授予「查看系统日志」/)
+    assert.match(writtenLogs[0].detail, /普通用户 收回「创建随笔」/)
 
     // 保存后立即刷新缓存：新颁发的令牌不需要等重启才生效
     const { getPermissionsForUser, hasPermission } = require(path.resolve(__dirname, '../utils/accessControl.js'))
@@ -237,4 +246,24 @@ test('permission routes keep catalog readable for admins but restrict writes to 
         { passed: true, statusCode: 200 }
     )
     assert.deepEqual(runGuard(matrix.handlers, adminUser), { passed: false, statusCode: 403 })
+})
+
+test('describePermissionChanges stays within the log column and summarizes the overflow', () => {
+    const { describePermissionChanges } = require('../utils/accessControl.js')
+    const { ALL_PERMISSION_KEYS } = require('../config/accessControl.js')
+    const { EDITABLE_ROLE_KEYS } = require('../config/accessControl.js')
+
+    const changes = []
+    for (const roleKey of EDITABLE_ROLE_KEYS) {
+        for (const permissionKey of ALL_PERMISSION_KEYS) {
+            changes.push({ roleKey, permissionKey, allowed: true })
+        }
+    }
+
+    const detail = describePermissionChanges(changes)
+
+    assert.ok(detail.length <= 500, `descriptor too long: ${detail.length}`)
+    assert.match(detail, /^角色权限变更：/)
+    // 超出可读长度后用总数收尾，避免被 VARCHAR(500) 截断
+    assert.match(detail, new RegExp(`等 ${changes.length} 项$`))
 })

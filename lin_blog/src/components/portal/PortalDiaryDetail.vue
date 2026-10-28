@@ -51,6 +51,7 @@ import {
     type LikeState
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
+import { useSessionStore } from '../../store/session.ts'
 
 const props = defineProps<{
     open: boolean
@@ -83,22 +84,12 @@ const likePending = ref(false)
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
+const session = useSessionStore()
 
-// 登录态判断：有 token 且不是 visitor 角色才允许互动。
-// 弹窗每次打开都重新读取，避免登录后返回门户仍沿用挂载时的游客状态。
-const readCanInteract = () => {
-    const token = localStorage.getItem('token')
-    if (!token) return false
-    try {
-        const saved = localStorage.getItem('userInfo')
-        const user = saved ? JSON.parse(saved) as { user_type?: string } : null
-        return user?.user_type !== 'visitor'
-    } catch {
-        return false
-    }
-}
-
-const canInteract = ref(readCanInteract())
+// 点赞能力按 comment.like 权限判定，游客角色默认没有该权限
+const canInteract = computed(
+    () => Boolean(localStorage.getItem('token')) && session.can('comment.like')
+)
 
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
@@ -185,7 +176,6 @@ watch(loadKey, async (key, previousKey) => {
     if (!Number.isFinite(diaryId)) return
 
     detailLoading.value = true
-    canInteract.value = readCanInteract()
     // 计数先用列表数据兜底避免闪成 0；图标等真实状态返回后再渲染
     likePending.value = true
     likeState.value = { liked: false, likes: props.item?.likes ?? 0 }

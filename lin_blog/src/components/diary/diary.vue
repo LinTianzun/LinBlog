@@ -9,7 +9,8 @@
             <yk-empty v-else-if="diaryList.length === 0" description="暂无日记" />
 
             <yk-space v-else dir="vertical" size="xl">
-                <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary"
+                <diaryItem v-for="item in diaryList" :key="item.id" :data="item"
+                    :can-edit="access.canEdit(item)" :can-delete="access.canDelete(item)" @delete="deleteDiary"
                     @edit="editDiary" @view="openDetail">
                 </diaryItem>
             </yk-space>
@@ -34,6 +35,10 @@ import {
     deleteDiary as deleteDiaryApi,
     getRequestErrorMessage,
 } from '../../api/diary'
+import { useContentAccess } from '../../utils/contentAccess.ts'
+
+// 随笔条目的编辑/删除按 diary.* 权限判定，不再看角色
+const access = useContentAccess('diary')
 
 const props = defineProps({
     pageSize: {

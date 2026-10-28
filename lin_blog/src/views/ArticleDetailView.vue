@@ -311,6 +311,8 @@ import {
     type CommentItem,
 } from '../api/comment'
 import { useSubsetStore } from '../store/subset'
+import { useSessionStore } from '../store/session.ts'
+import { useContentAccess } from '../utils/contentAccess.ts'
 
 type Props = {
     modelValue?: boolean
@@ -347,6 +349,7 @@ const emits = defineEmits<{
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 const subsetStore = useSubsetStore()
+const session = useSessionStore()
 
 const article = ref<ArticleItem | null>(null)
 const loading = ref(false)
@@ -380,7 +383,6 @@ const currentUser = (() => {
     }
 })()
 
-const currentRole = currentUser?.user_type || ''
 const composerAvatar = currentUser?.imgurl || ''
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
 const labels = computed(() => parseArticleLabels(article.value?.label))
@@ -392,25 +394,16 @@ const subsetName = computed(
         subsetStore.subsetName(article.value?.subsetId ?? undefined) ||
         '未分类'
 )
-const canPublish = computed(() => ['admin', 'editor'].includes(currentRole))
-const canEdit = computed(() => {
-    if (!article.value) return false
-    if (['admin', 'editor'].includes(currentRole)) return true
-    return currentRole === 'normal' &&
-        Number(article.value.userId) === Number(currentUser?.id) &&
-        ['draft', 'rejected'].includes(article.value.state)
-})
-const canDelete = computed(() => {
-    if (!article.value) return false
-    if (['admin', 'editor'].includes(currentRole)) return true
-    return currentRole === 'normal' &&
-        Number(article.value.userId) === Number(currentUser?.id)
-})
+const access = useContentAccess('article')
+const canPublish = access.canPublish
+const canEdit = computed(() => access.canEdit(article.value))
+const canDelete = computed(() => access.canDelete(article.value))
 
+// 评论删除：comment.moderate 可删任意评论，comment.manageOwn 只能删本人评论
 const canDeleteComment = (comment: CommentItem): boolean => {
-    if (!currentUser) return false
-    if (currentRole === 'admin') return true
-    return Number(comment.userId) === Number(currentUser.id)
+    if (session.can('comment.moderate')) return true
+    if (!session.can('comment.manageOwn')) return false
+    return Boolean(currentUser) && Number(comment.userId) === Number(currentUser?.id)
 }
 
 const safeContent = computed(() => {

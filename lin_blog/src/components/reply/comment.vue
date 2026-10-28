@@ -21,8 +21,8 @@
         <yk-scrollbar v-else ref="scrollbar" class="comment-scroll">
             <yk-space dir="vertical">
                 <reply v-for="item in comments" :key="item.id" :content="item" is-comment
-                    :class="{ 'comment-item-locked': !canOpenTarget }" @delete="removeComment"
-                    @click="canOpenTarget ? openTarget : noop" />
+                    :class="{ 'comment-item-locked': !canOpenTarget(item) }" @delete="removeComment"
+                    @click="canOpenTarget(item) ? openTarget(item.id) : noop" />
             </yk-space>
         </yk-scrollbar>
 
@@ -39,6 +39,7 @@ import { useRouter } from 'vue-router'
 import reply from './reply.vue'
 import type { ReplyDat } from '../../utils/interface'
 import AdminPager from '../common/AdminPager.vue'
+import { useSessionStore } from '../../store/session.ts'
 import {
     deleteComment,
     getRequestErrorMessage,
@@ -58,16 +59,14 @@ type CommentCardInstance = ComponentPublicInstance & {
 const proxy = getCurrentInstance()?.proxy as CommentCardInstance | null | undefined
 
 const router = useRouter()
+const session = useSessionStore()
 
-// 普通用户的总览评论不可跳转：后台列表已按自己名下收窄，跳转后也看不到对应作品
-const currentRole = (() => {
-    try {
-        return JSON.parse(localStorage.getItem('userInfo') || '{}')?.user_type || ''
-    } catch {
-        return ''
-    }
-})()
-const canOpenTarget = ['admin', 'editor'].includes(currentRole)
+// 跳转目标是否可见由内容查看权限决定：能看到全站图库/文章才允许跳转，
+// 否则后台列表只含本人内容，点过去会落到空页面
+const canOpenTarget = (item: ReplyDat): boolean =>
+    item.article?.classify === 'image'
+        ? session.can('gallery.viewAll')
+        : session.can('article.viewAll')
 
 const props = withDefaults(defineProps<CommentProps>(), {
     pageSize: 8,
@@ -156,10 +155,8 @@ const handlePagerChange = (): void => {
 
 // 点评论跳到对应作品：图库进后台图库页，文章进文章页并直接打开详情
 const openTarget = (id: string | number): void => {
-    // 普通用户在后台看不到他人作品，跳转只会落到空页面，这里先拦截
-    if (!canOpenTarget) return
-
     const target = comments.value.find(item => Number(item.id) === Number(id))
+    if (!target || !canOpenTarget(target)) return
     const articleId = target?.article?.id
     if (!articleId) {
         proxy?.$message?.({ type: 'primary', message: '该评论所属作品已删除' })

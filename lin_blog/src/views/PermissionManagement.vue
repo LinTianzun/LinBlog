@@ -159,12 +159,40 @@
                     </yk-space>
                 </div>
             </div>
+
+            <!-- 权限变更审计：与系统日志同一数据源，入口带 module=permission 直达 -->
+            <section v-if="canViewAudit" class="permission-audit">
+                <div class="permission-audit-head">
+                    <div>
+                        <p class="permission-audit-title">最近权限变更</p>
+                        <p class="permission-audit-desc">
+                            每次保存都会写入系统日志，记录操作人、时间与具体调整的能力
+                        </p>
+                    </div>
+                    <yk-button type="secondary" size="s" @click="openAuditLog">
+                        查看全部
+                    </yk-button>
+                </div>
+
+                <yk-text v-if="auditLoading" type="secondary">正在加载变更记录…</yk-text>
+                <yk-empty v-else-if="audits.length === 0" description="暂无权限变更记录" />
+                <ul v-else class="permission-audit-list">
+                    <li v-for="item in audits" :key="item.id" class="permission-audit-item">
+                        <span class="permission-audit-time">{{ formatAuditTime(item.createdAt) }}</span>
+                        <span class="permission-audit-user">{{ item.username }}</span>
+                        <span class="permission-audit-detail" :title="item.detail || ''">
+                            {{ item.detail || '（无详情）' }}
+                        </span>
+                    </li>
+                </ul>
+            </section>
         </template>
     </yk-space>
 </template>
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import TopTitle from '../components/bar/TopTitle.vue'
 import {
     getPermissionCatalog,
@@ -174,12 +202,14 @@ import {
     type PermissionRole,
 } from '../api/permission'
 import { useSessionStore } from '../store/session'
+import { getSystemLogs, type SystemLogItem } from '../api/systemLog'
 
 type MessageOptions = { type: 'primary' | 'success' | 'warning' | 'error'; message: string }
 type MessageProxy = { $message?: (options: MessageOptions) => void }
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 const session = useSessionStore()
+const router = useRouter()
 
 const showMessage = (type: MessageOptions['type'], message: string): void => {
     proxy?.$message?.({ type, message })
@@ -202,6 +232,33 @@ const saving = ref(false)
 const errorMessage = ref('')
 
 const canEdit = computed(() => session.isSuperAdmin)
+// 审计列表复用系统日志接口，需要 systemLog.view；没有该权限就不渲染该区块
+const canViewAudit = computed(() => session.can('systemLog.view'))
+const audits = ref<SystemLogItem[]>([])
+const auditLoading = ref(false)
+
+const formatAuditTime = (value: string): string =>
+    String(value || '').replace('T', ' ').slice(0, 19)
+
+const openAuditLog = (): void => {
+    void router.push({ path: '/systemLog', query: { module: 'permission' } })
+}
+
+const loadAudits = async (): Promise<void> => {
+    if (!canViewAudit.value) return
+
+    auditLoading.value = true
+    try {
+        const result = await getSystemLogs({ page: 1, pageSize: 6, module: 'permission' })
+        audits.value = result.code === 200 && result.data ? result.data.list : []
+    } catch {
+        // 审计列表是辅助信息，失败时静默留空，不影响权限矩阵本身
+        audits.value = []
+    } finally {
+        auditLoading.value = false
+    }
+}
+
 const totalPermissionCount = computed(() =>
     groups.value.reduce((sum, group) => sum + group.permissions.length, 0)
 )
@@ -355,6 +412,7 @@ const saveMatrix = async (): Promise<void> => {
         // 自己的权限可能同时变化（比如管理员被收回权限），同步刷新会话
         await session.refresh()
         showMessage('success', `已保存 ${pendingChanges.value.length} 项权限变更`)
+        void loadAudits()
     } catch (error) {
         showMessage('error', describeError(error, '权限矩阵保存失败'))
     } finally {
@@ -364,6 +422,7 @@ const saveMatrix = async (): Promise<void> => {
 
 onMounted(() => {
     void loadCatalog()
+    void loadAudits()
 })
 </script>
 
@@ -662,6 +721,80 @@ onMounted(() => {
     border-top: 1px solid var(--admin-line, var(--gray1));
 }
 
+.permission-audit {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 18px clamp(14px, 1.6vw, 22px);
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius, 18px);
+    background: var(--admin-surface, var(--bgColor1));
+    box-shadow: var(--admin-shadow-sm, @shadow-s);
+
+    &-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 12px;
+    }
+
+    &-title {
+        margin: 0 0 3px;
+        color: var(--gray);
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    &-desc {
+        margin: 0;
+        color: var(--gray6);
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    &-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    &-item {
+        display: grid;
+        grid-template-columns: 150px 110px minmax(0, 1fr);
+        gap: 12px;
+        padding: 9px 2px;
+        border-top: 1px solid var(--admin-line, var(--gray1));
+        font-size: 12.5px;
+
+        &:first-child {
+            border-top: none;
+        }
+    }
+
+    &-time {
+        color: var(--gray6);
+        font-variant-numeric: tabular-nums;
+    }
+
+    &-user {
+        overflow: hidden;
+        color: var(--gray8);
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &-detail {
+        overflow: hidden;
+        color: var(--gray6);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
 @media (max-width: 760px) {
     .permission-toolbar,
     .permission-footer {
@@ -671,6 +804,11 @@ onMounted(() => {
 
     .permission-search {
         width: 100%;
+    }
+
+    .permission-audit-item {
+        grid-template-columns: 1fr;
+        gap: 4px;
     }
 }
 </style>

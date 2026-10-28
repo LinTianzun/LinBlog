@@ -56,6 +56,7 @@ import {
     type LikeState
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
+import { useSessionStore } from '../../store/session.ts'
 
 const props = defineProps<{
     open: boolean
@@ -81,21 +82,12 @@ const views = ref(0)
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
+const session = useSessionStore()
 
-// 登录态判断：有 token 且不是 visitor 角色才允许互动。
-// 弹窗每次打开都重新读取，避免登录后返回门户仍沿用挂载时的游客状态。
-const readCanInteract = () => {
-    const token = localStorage.getItem('token')
-    try {
-        const saved = localStorage.getItem('userInfo')
-        const user = saved ? JSON.parse(saved) as { user_type?: string } : null
-        return Boolean(token && user?.user_type !== 'visitor')
-    } catch {
-        return false
-    }
-}
-
-const canInteract = ref(readCanInteract())
+// 点赞能力按 comment.like 权限判定，游客角色默认没有该权限
+const canInteract = computed(
+    () => Boolean(localStorage.getItem('token')) && session.can('comment.like')
+)
 
 // 评论区最新总数变化后同步到列表卡片（点赞/评论共用）
 const onCommentsChange = (total: number) => {
@@ -183,7 +175,6 @@ watch(loadKey, async (key, previousKey) => {
         // modal 打开期间加载点赞态，用遮罩盖住加载中的跳变
         // 评论由 PortalCommentSection 自己按 targetId 加载
         detailLoading.value = true
-        canInteract.value = readCanInteract()
         // 计数先用列表数据兜底避免闪成 0；图标等真实状态返回后再渲染，
         // 否则会先显示「未点赞」再跳成「已点赞」，看起来像在闪烁
         likePending.value = true

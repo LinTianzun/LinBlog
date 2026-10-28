@@ -63,6 +63,7 @@ async function getDiaries(req, res) {
                 facetTotal: facetResult.total,
                 list: list.map(item => ({
                     id: item.id,
+                    userId: item.user_id ?? null,
                     title: item.title,
                     content: item.content,
                     picture: parsePictures(item.picture),

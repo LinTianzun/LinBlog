@@ -17,6 +17,7 @@
 
             <div v-else class="gallery-content-files" :class="{ 'is-refreshing': loading }">
                 <galleryItem v-for="item in galleryList" :key="item.id" :data="item"
+                    :can-edit="access.canEdit(item)" :can-delete="access.canDelete(item)"
                     @delete="removeGallery" @view="openDetail">
                 </galleryItem>
             </div>
@@ -44,6 +45,7 @@ import galleryDetailView from './galleryDetailView.vue'
 import { useRoute, useRouter } from 'vue-router'
 import AdminPager from '../common/AdminPager.vue'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
+import { useContentAccess } from '../../utils/contentAccess.ts'
 
 const props = defineProps({
     pageSize: {
@@ -81,6 +83,8 @@ const proxy = getCurrentInstance()?.proxy as GalleryComponentInstance | null | u
 const rootRef = ref<HTMLElement | null>(null)
 const router = useRouter()
 const route = useRoute()
+// 图库条目的编辑/删除按 gallery.* 权限判定，不再看角色
+const access = useContentAccess('gallery')
 const responsivePageSize = useResponsiveGridPageSize(rootRef, {
     minCardWidth: 238,
     gap: 24,

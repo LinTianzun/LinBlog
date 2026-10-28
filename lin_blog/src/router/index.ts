@@ -2,6 +2,7 @@ import { createWebHistory, createRouter } from 'vue-router'
 
 import IndexView from '../views/IndexView.vue'
 import NotFound from '../components/NotFound.vue'
+import { useSessionStore } from '../store/session'
 
 const routes = [
     {
@@ -45,7 +46,7 @@ const routes = [
     component: () => import('../views/UserManagement.vue'),
     meta: {
         requiresAuth: true,
-        roles: ['admin']
+        permissions: ['user.view']
     }
 },
             {
@@ -53,7 +54,7 @@ const routes = [
                 component: () => import('../views/PermissionManagement.vue'),
                 meta: {
                     requiresAuth: true,
-                    roles: ['admin']
+                    permissions: ['permission.view']
                 }
             },
             {
@@ -61,7 +62,7 @@ const routes = [
                 component: () => import('../views/SystemLogView.vue'),
                 meta: {
                     requiresAuth: true,
-                    roles: ['admin']
+                    permissions: ['systemLog.view']
                 }
             },
             {
@@ -150,21 +151,13 @@ router.beforeEach((to) => {
         return '/overView'
     }
 
-     // 检查目标路由是否需要特定角色
-    const requiredRoles = to.meta.roles as string[] | undefined
+    // 路由入口按权限判定：命中任意一项即可进入，避免角色硬编码
+    const requiredPermissions = to.meta.permissions as string[] | undefined
 
-    if (requiredRoles?.length) {
-        try {
-            const savedUserInfo = localStorage.getItem('userInfo')
-            const userInfo = savedUserInfo
-                ? JSON.parse(savedUserInfo)
-                : null
-
-            if (!requiredRoles.includes(userInfo?.user_type)) {
-                return '/overView'
-            }
-        } catch {
-            return '/loginRegister'
+    if (requiredPermissions?.length) {
+        const session = useSessionStore()
+        if (!requiredPermissions.some(key => session.can(key))) {
+            return '/overView'
         }
     }
 })

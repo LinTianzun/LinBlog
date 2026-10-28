@@ -20,11 +20,11 @@
                     </div>
                 </yk-space>
 
-                <yk-space class="gallery-item-image-icons" :size="4">
-                    <IconFillOutline @click="openEditor" />
+                <yk-space v-if="props.canEdit || props.canDelete" class="gallery-item-image-icons" :size="4">
+                    <IconFillOutline v-if="props.canEdit" title="编辑" @click="openEditor" />
                     <!-- 卡片有 overflow:hidden + hover 的 transform 层叠上下文，
                          就地渲染的浮层会被裁掉，统一用 Teleport 到 body 的确认面板 -->
-                    <ConfirmPopover title="确认删除" content="删除将不可恢复" placement="topRight"
+                    <ConfirmPopover v-if="props.canDelete" title="确认删除" content="删除将不可恢复" placement="topRight"
                         @confirm="deleteGallery()">
                         <IconDeleteOutline class="gallery-item-delete" />
                     </ConfirmPopover>
@@ -115,9 +115,15 @@ import {
     parseGalleryContent,
 } from '../../api/article.ts'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     data: ArticleItem
-}>()
+    // 编辑/删除按权限矩阵逐条判定：能管理全部、或本人名下才显示按钮
+    canEdit?: boolean
+    canDelete?: boolean
+}>(), {
+    canEdit: false,
+    canDelete: false,
+})
 
 const emits = defineEmits<{
     (e: 'delete', id: number): void

@@ -212,6 +212,7 @@ import {
     toggleCommentLike,
     deleteInteractionComment
 } from '../../api/comment'
+import { useSessionStore } from '../../store/session.ts'
 
 type CommentRow = PortalComment | DiaryComment
 
@@ -255,28 +256,21 @@ const replyError = ref('')
 const deleteConfirmId = ref<number | null>(null)
 
 const proxy = getCurrentInstance()?.proxy
+const session = useSessionStore()
 
-// 登录态判断：有 token 且不是 visitor 角色才允许互动。
-// 弹窗每次打开都重新读取，避免登录后返回门户仍沿用挂载时的游客状态。
-const readCanInteract = () => {
-    const token = localStorage.getItem('token')
-    try {
-        const saved = localStorage.getItem('userInfo')
-        const user = saved ? JSON.parse(saved) as { user_type?: string } : null
-        return Boolean(token && user?.user_type !== 'visitor')
-    } catch {
-        return false
-    }
-}
+// 互动能力按 comment.create 权限判定，游客角色默认没有该权限
+const canInteract = computed(
+    () => Boolean(localStorage.getItem('token')) && session.can('comment.create')
+)
 
-// 当前登录用户：用于判断某条评论是否可删（本人或管理员）
-const readCurrentUser = (): { id: number; role: string } | null => {
+// 当前登录用户：仅用于判断某条评论是否属于本人（能否删除交给权限矩阵）
+const readCurrentUser = (): { id: number } | null => {
     try {
         const saved = localStorage.getItem('userInfo')
         if (!saved) return null
-        const user = JSON.parse(saved) as { id?: number; user_type?: string }
+        const user = JSON.parse(saved) as { id?: number }
         if (!user.id) return null
-        return { id: Number(user.id), role: user.user_type || '' }
+        return { id: Number(user.id) }
     } catch {
         return null
     }
@@ -285,13 +279,10 @@ const readCurrentUser = (): { id: number; role: string } | null => {
 const currentUser = ref(readCurrentUser())
 
 const canDeleteComment = (comment: CommentRow): boolean => {
-    const user = currentUser.value
-    if (!user) return false
-    if (user.role === 'admin') return true
-    return Number(comment.userId) === Number(user.id)
+    if (session.can('comment.moderate')) return true
+    if (!session.can('comment.manageOwn')) return false
+    return Number(comment.userId) === Number(currentUser.value?.id)
 }
-
-const canInteract = ref(readCanInteract())
 
 // 一级评论按时间倒序，二级回复按时间正序挂在所属评论下
 const threads = computed<CommentThread[]>(() => {
@@ -581,7 +572,6 @@ watch(() => props.targetId, async (targetId, previousId) => {
         return
     }
 
-    canInteract.value = readCanInteract()
     currentUser.value = readCurrentUser()
     await loadComments(targetId)
 }, { immediate: true })

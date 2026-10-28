@@ -4,8 +4,8 @@
             <template #custom>
                 <yk-space align="center">
                     <yk-text type="third">支持多选，单个文件不超过 20MB</yk-text>
-                    <yk-button type="secondary" @click="openTrash">回收站</yk-button>
-                    <yk-button @click="openUpload">上传</yk-button>
+                    <yk-button v-if="canManageFiles" type="secondary" @click="openTrash">回收站</yk-button>
+                    <yk-button v-if="canUploadFiles" @click="openUpload">上传</yk-button>
                 </yk-space>
             </template>
         </top-title>
@@ -49,14 +49,20 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, nextTick, getCurrentInstance } from 'vue'
+import { computed, ref, nextTick, getCurrentInstance } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import subset from '../components/subset/subset.vue'
 import files from '../components/files/files.vue'
 import fileTrash from '../components/files/fileTrash.vue'
 import { useSubsetStore } from '../store/subset'
+import { useSessionStore } from '../store/session.ts'
 import { getFileUploadUrl, getRequestErrorMessage } from '../api/file'
 import { createUploadTicket } from '../utils/uploadUrl.ts'
+
+const session = useSessionStore()
+// 上传与回收站分别对应 file.upload / file.manage
+const canUploadFiles = computed(() => session.can('file.upload'))
+const canManageFiles = computed(() => session.can('file.manage'))
 
 type MessageOptions = {
     type: 'primary' | 'error'

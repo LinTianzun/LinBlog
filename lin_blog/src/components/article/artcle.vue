@@ -31,7 +31,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, defineAsyncComponent, getCurrentInstance, ref, watch } from 'vue'
+import { defineAsyncComponent, getCurrentInstance, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ArticleItem, ArticleState } from '../../api/article'
 import {
@@ -45,7 +45,7 @@ import artcleItem from './artcleItem.vue'
 const ArticleDetailView = defineAsyncComponent(() => import('../../views/ArticleDetailView.vue'))
 import { useSubsetStore } from '../../store/subset'
 import AdminPager from '../common/AdminPager.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useContentAccess } from '../../utils/contentAccess.ts'
 
 type Props = {
     pageSize?: number
@@ -81,7 +81,7 @@ type MessageProxy = {
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 const subsetStore = useSubsetStore()
-const session = useSessionStore()
+const access = useContentAccess('article')
 const route = useRoute()
 const router = useRouter()
 const articleList = ref<ArticleItem[]>([])
@@ -92,40 +92,16 @@ const errorMessage = ref('')
 const detailVisible = ref(false)
 const selectedArticleId = ref<number | null>(null)
 
-const currentUser = (() => {
-    try {
-        const saved = localStorage.getItem('userInfo')
-        return saved ? JSON.parse(saved) as { id?: number; user_type?: string } : null
-    } catch {
-        return null
-    }
-})()
-
 // 发布、编辑、删除分别对应独立权限，被收权后按钮立即隐藏
-const canPublish = computed(() => session.can('article.publish'))
-
-// 管理全部内容时能操作任何文章；只管理自己的内容时按作者归属判定
-const canManageAll = computed(() => session.can('article.manageAll'))
-const canManageOwn = computed(() => session.can('article.manageOwn'))
+const canPublish = access.canPublish
 
 const showMessage = (type: MessageOptions['type'], message: string): void => {
     proxy?.$message?.({ type, message })
 }
 
-const isOwnArticle = (article: ArticleItem): boolean =>
-    Number(article.userId) === Number(currentUser?.id)
+const canEdit = (article: ArticleItem): boolean => access.canEdit(article)
 
-const canEdit = (article: ArticleItem): boolean => {
-    if (canManageAll.value) return true
-    if (!canManageOwn.value || !isOwnArticle(article)) return false
-    // 没有发布权限时不能改动已上线内容，只能继续改草稿或被驳回的稿子
-    return canPublish.value || ['draft', 'rejected'].includes(article.state)
-}
-
-const canDelete = (article: ArticleItem): boolean => {
-    if (canManageAll.value) return true
-    return canManageOwn.value && isOwnArticle(article)
-}
+const canDelete = (article: ArticleItem): boolean => access.canDelete(article)
 
 const fetchArticles = async (): Promise<void> => {
     loading.value = true

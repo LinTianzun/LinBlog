@@ -33,27 +33,14 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import {
-    navLinks,
-    contentLinks,
-    visitorLinks
+    navLinks
 } from '../../utils/menu.ts'
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
 import { useSessionStore } from '../../store/session.ts'
 
 const session = useSessionStore()
 
-// 获取当前登录用户信息
-const getUserInfo = () => {
-    try {
-        const savedUserInfo = localStorage.getItem('userInfo')
-        return savedUserInfo ? JSON.parse(savedUserInfo) : null
-    } catch (error) {
-        console.error('读取用户信息失败：', error)
-        return null
-    }
-}
-
-// 菜单权限映射：角色决定候选集，具体能力再按权限矩阵逐项收窄
+// 菜单权限映射：入口是否出现完全由权限矩阵决定，不再按角色挑选候选集
 const MENU_PERMISSIONS: Record<string, string[]> = {
     overView: [],
     userManagement: ['user.view'],
@@ -72,21 +59,8 @@ const hasMenuAccess = (path: string): boolean => {
 }
 
 const visibleLinks = computed(() => {
-    const userInfo = getUserInfo()
-    const role = userInfo?.user_type
-
-    let links: typeof navLinks = []
-
-    if (role === 'admin') {
-        links = navLinks
-    } else if (role === 'editor' || role === 'normal') {
-        links = contentLinks
-    } else if (role === 'visitor') {
-        links = visitorLinks
-    }
-
-    // 权限矩阵优先：角色给了入口，但被收回权限的模块不再出现在侧栏
-    return links.filter(item => hasMenuAccess(item.path))
+    // 空权限声明的菜单（系统总览、系统设置）对所有登录用户可见
+    return navLinks.filter(item => hasMenuAccess(item.path))
 })
 
 const menuGroups = computed(() => {
