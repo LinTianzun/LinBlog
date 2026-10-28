@@ -276,6 +276,9 @@ const tablesSql = {
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '评论ID',
     user_id BIGINT UNSIGNED NOT NULL COMMENT '评论用户ID',
     diary_id BIGINT UNSIGNED NOT NULL COMMENT '关联随笔ID',
+    parent_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '根评论ID（0表示一级评论）',
+    reply_to_comment_id BIGINT UNSIGNED NULL COMMENT '实际回复的评论ID',
+    reply_to_user_id BIGINT UNSIGNED NULL COMMENT '实际回复的用户ID',
     content VARCHAR(512) NOT NULL COMMENT '评论内容',
     likes INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '点赞数',
     complaint INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '举报次数',
@@ -1280,6 +1283,23 @@ async function ensureCommentReplyTargetSchema(exec = query) {
   });
 }
 
+// 随笔评论与文章评论对齐：统一两级结构，回复二级评论时归一到根评论，
+// 并记录实际回复目标用于前端展示「回复 @某人」。
+async function ensureDiaryCommentReplySchema(exec = query) {
+  await ensureColumn(exec, 'diary_comment', 'parent_id', {
+    definition: 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '根评论ID（0表示一级评论）'
+  });
+  await ensureColumn(exec, 'diary_comment', 'reply_to_comment_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '实际回复的评论ID'
+  });
+  await ensureColumn(exec, 'diary_comment', 'reply_to_user_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '实际回复的用户ID'
+  });
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1318,6 +1338,10 @@ const migrations = [
   {
     version: '20261027_comment_reply_target',
     up: ensureCommentReplyTargetSchema
+  },
+  {
+    version: '20261028_diary_comment_reply',
+    up: ensureDiaryCommentReplySchema
   }
 ];
 

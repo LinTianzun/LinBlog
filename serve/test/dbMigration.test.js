@@ -6,23 +6,33 @@ process.env.LINBLOG_JWT_SECRET = 'test-secret-that-is-at-least-32-characters-lon
 
 const db = require(path.resolve(__dirname, '../model/db/dbnew.js'))
 
+// 已应用列表：用例通过「除目标迁移外全部已应用」来隔离单个迁移。
+// 新增迁移后同步补进这里，否则待执行迁移会多出一个导致 appliedCount 断言失败。
+const ALL_MIGRATIONS = [
+    '20261023_article_owner',
+    '20261024_image_storage',
+    '20261024_subset_soft_delete',
+    '20261025_system_log',
+    '20261026_view_stats',
+    '20261027_file_lifecycle',
+    '20261027_diary_interaction',
+    '20261027_comment_interaction',
+    '20261027_comment_reply_target',
+    '20261028_diary_comment_reply'
+]
+
+// 除 exclude 外全部视为已应用
+const appliedExcept = (exclude) => ALL_MIGRATIONS
+    .filter(version => version !== exclude)
+    .map(version => ({ version }))
+
 test('applied migrations are not executed twice', async () => {
     const calls = []
     const exec = async (sql, values = []) => {
         calls.push({ sql, values })
 
         if (sql === 'SELECT version FROM schema_migrations') {
-            return [
-                { version: '20261023_article_owner' },
-                { version: '20261024_image_storage' },
-                { version: '20261024_subset_soft_delete' },
-                { version: '20261025_system_log' },
-                { version: '20261026_view_stats' },
-                { version: '20261027_file_lifecycle' },
-                { version: '20261027_diary_interaction' },
-                { version: '20261027_comment_interaction' },
-                { version: '20261027_comment_reply_target' }
-            ]
+            return ALL_MIGRATIONS.map(version => ({ version }))
         }
 
         return []
@@ -45,16 +55,7 @@ test('diary interaction migration creates praise/comment tables and counters', a
         calls.push({ sql, values })
 
         if (sql === 'SELECT version FROM schema_migrations') {
-            return [
-                { version: '20261023_article_owner' },
-                { version: '20261024_image_storage' },
-                { version: '20261024_subset_soft_delete' },
-                { version: '20261025_system_log' },
-                { version: '20261026_view_stats' },
-                { version: '20261027_file_lifecycle' },
-                { version: '20261027_comment_interaction' },
-                { version: '20261027_comment_reply_target' }
-            ]
+            return appliedExcept('20261027_diary_interaction')
         }
 
         // 列不存在，触发 ADD COLUMN
@@ -88,16 +89,7 @@ test('comment interaction migration creates interaction tables and counters', as
         calls.push({ sql, values })
 
         if (sql === 'SELECT version FROM schema_migrations') {
-            return [
-                { version: '20261023_article_owner' },
-                { version: '20261024_image_storage' },
-                { version: '20261024_subset_soft_delete' },
-                { version: '20261025_system_log' },
-                { version: '20261026_view_stats' },
-                { version: '20261027_file_lifecycle' },
-                { version: '20261027_diary_interaction' },
-                { version: '20261027_comment_reply_target' }
-            ]
+            return appliedExcept('20261027_comment_interaction')
         }
 
         // 列不存在，触发存量库 ADD COLUMN
@@ -135,16 +127,7 @@ test('comment reply target migration adds nullable target columns', async () => 
         calls.push({ sql, values })
 
         if (sql === 'SELECT version FROM schema_migrations') {
-            return [
-                { version: '20261023_article_owner' },
-                { version: '20261024_image_storage' },
-                { version: '20261024_subset_soft_delete' },
-                { version: '20261025_system_log' },
-                { version: '20261026_view_stats' },
-                { version: '20261027_file_lifecycle' },
-                { version: '20261027_diary_interaction' },
-                { version: '20261027_comment_interaction' }
-            ]
+            return appliedExcept('20261027_comment_reply_target')
         }
 
         return []
@@ -162,5 +145,34 @@ test('comment reply target migration adds nullable target columns', async () => 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261027_comment_reply_target'
+    ))
+})
+
+test('diary comment reply migration adds two-level reply columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_diary_comment_reply')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    const alterSql = calls
+        .filter(call => call.sql.includes('ALTER TABLE diary_comment ADD COLUMN'))
+        .map(call => call.sql)
+    assert.equal(alterSql.length, 3)
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN parent_id BIGINT UNSIGNED NOT NULL DEFAULT 0')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN reply_to_comment_id BIGINT UNSIGNED NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN reply_to_user_id BIGINT UNSIGNED NULL')))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261028_diary_comment_reply'
     ))
 })

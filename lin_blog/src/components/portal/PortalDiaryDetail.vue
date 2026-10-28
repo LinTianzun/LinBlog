@@ -29,44 +29,12 @@
                 <yk-image-preview-group :src-list="item.picture" width="100%" height="180" fit="cover" />
             </div>
 
-            <div class="comment-section">
-                <div class="section-title">
-                    评论
-                    <yk-tag type="primary">{{ commentTotal }} 条</yk-tag>
-                </div>
-
-                <div class="comment-compose">
-                    <yk-text-area v-model="commentDraft" :max-length="512" show-word-limit
-                        :auto-size="{ minRows: 3, maxRows: 6 }"
-                        :placeholder="canInteract ? '说点什么…' : '登录后即可发表评论'" :disabled="!canInteract"
-                        @keydown.ctrl.enter="submitComment" />
-                    <div class="compose-actions">
-                        <span class="compose-hint">
-                            {{ canInteract ? 'Ctrl + Enter 快速发送' : '当前为访客，登录后可评论' }}
-                        </span>
-                        <yk-button v-if="canInteract" type="primary" size="s" :loading="commentSubmitting"
-                            :disabled="!commentDraft.trim()" @click="submitComment">
-                            发表评论
-                        </yk-button>
-                        <yk-button v-else type="primary" size="s" @click="goLogin">
-                            登录后评论
-                        </yk-button>
-                    </div>
-                    <p v-if="commentError" class="compose-error">{{ commentError }}</p>
-                </div>
-
-                <div v-if="!comments.length" class="empty-comments">还没有评论，来抢沙发吧。</div>
-                <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                    <yk-avatar :size="36" :img-url="comment.userAvatar || undefined" />
-                    <div class="comment-main">
-                        <div class="comment-head">
-                            <span class="comment-user">{{ comment.userName || '匿名用户' }}</span>
-                            <time>{{ formatDateTime(comment.createdAt) }}</time>
-                        </div>
-                        <p class="comment-content">{{ comment.content }}</p>
-                    </div>
-                </div>
-            </div>
+            <!-- 评论区：与文章/图库详情共用同一套两级评论组件 -->
+            <PortalCommentSection
+                target-type="diary"
+                :target-id="item?.id ?? null"
+                @comments-change="onCommentsChange"
+                @need-login="goLogin" />
         </div>
     </yk-modal>
 </template>
@@ -77,14 +45,12 @@ import { useRouter } from 'vue-router'
 import { weathers } from '../../utils/weather'
 import type { PortalDiary } from '../../api/portal'
 import {
-    getDiaryComments,
     getDiaryLikeState,
     toggleDiaryLike,
-    createDiaryComment,
     recordView,
-    type DiaryComment,
     type LikeState
 } from '../../api/portal'
+import PortalCommentSection from './PortalCommentSection.vue'
 
 const props = defineProps<{
     open: boolean
@@ -106,11 +72,8 @@ const weatherIcon = computed(() =>
 const views = ref(0)
 
 // 随笔点赞/评论：diary 是独立业务表，走 /public/diary/praise|comment
-const comments = ref<DiaryComment[]>([])
+// 评论区最新总数，用于点赞后回写列表卡片
 const commentTotal = ref(0)
-const commentDraft = ref('')
-const commentSubmitting = ref(false)
-const commentError = ref('')
 const detailLoading = ref(false)
 
 const likeState = ref<LikeState>({ liked: false, likes: 0 })
@@ -141,13 +104,6 @@ const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
 }
 
-const formatDateTime = (value: string) => {
-    const date = new Date(value)
-    return Number.isNaN(date.getTime())
-        ? ''
-        : date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
 // 打开随笔即计一次浏览；后端按访客去重，失败不影响正文展示
 const countView = async (diaryId: number) => {
     try {
@@ -158,18 +114,6 @@ const countView = async (diaryId: number) => {
         }
     } catch {
         // 浏览计数失败时保持列表原有数字
-    }
-}
-
-const loadComments = async (diaryId: number) => {
-    try {
-        const result = await getDiaryComments(diaryId)
-        if (result.code === 200) {
-            comments.value = result.data?.list || []
-            commentTotal.value = result.data?.total || 0
-        }
-    } catch {
-        // 评论区加载失败不打断正文展示
     }
 }
 
@@ -187,6 +131,11 @@ const loadLikeState = async (diaryId: number) => {
 const goLogin = () => {
     emit('close')
     void router.push('/loginRegister')
+}
+
+// 评论区最新总数变化后同步到列表卡片（点赞时回写用）
+const onCommentsChange = (total: number) => {
+    commentTotal.value = total
 }
 
 const handleLike = async () => {
@@ -218,41 +167,6 @@ const handleLike = async () => {
     }
 }
 
-const submitComment = async () => {
-    const diaryId = props.item?.id
-    const content = commentDraft.value.trim()
-    if (!diaryId || !content || commentSubmitting.value) return
-
-    if (!canInteract.value) {
-        goLogin()
-        return
-    }
-
-    commentError.value = ''
-    commentSubmitting.value = true
-    try {
-        const result = await createDiaryComment(diaryId, content)
-        if (result.code === 200) {
-            commentDraft.value = ''
-            await loadComments(diaryId)
-            emit('interaction-change', {
-                id: diaryId,
-                likes: likeState.value.likes,
-                // 列表展示的是 diary.comments 冗余计数，按原计数递增，
-                // 不能回填只统计当前已加载评论的 commentTotal，否则会跳变。
-                comments: Math.max(commentTotal.value, (props.item?.comments ?? 0) + 1)
-            })
-            proxy?.$message?.({ type: 'success', message: '评论已发表' })
-        }
-    } catch (error) {
-        const message = (error as { response?: { data?: { message?: string } } })
-            .response?.data?.message
-        commentError.value = message || '评论失败，请稍后重试'
-    } finally {
-        commentSubmitting.value = false
-    }
-}
-
 // 监听稳定的字符串键而非 [open, id] 数组：数组每次都是新引用，
 // 父组件任何一次重渲染（如浏览量回写）都会误触发整套加载流程，导致图标反复重建闪烁
 const loadKey = computed(() => (props.open && props.item?.id ? `${props.item.id}` : ''))
@@ -261,10 +175,7 @@ watch(loadKey, async (key, previousKey) => {
     if (key === previousKey) return
 
     if (!key) {
-        comments.value = []
         commentTotal.value = 0
-        commentDraft.value = ''
-        commentError.value = ''
         detailLoading.value = false
         likePending.value = false
         return
@@ -279,7 +190,8 @@ watch(loadKey, async (key, previousKey) => {
     likePending.value = true
     likeState.value = { liked: false, likes: props.item?.likes ?? 0 }
     views.value = props.item?.views ?? 0
-    await Promise.all([loadComments(diaryId), loadLikeState(diaryId)])
+    // 评论由 PortalCommentSection 自己按 targetId 加载
+    await loadLikeState(diaryId)
     likePending.value = false
     await countView(diaryId)
     detailLoading.value = false
@@ -385,91 +297,6 @@ const formatDate = (value: string) => {
 }
 
 // 评论区：与上方正文同宽，用边界线区分内容
-.comment-section {
-    margin-top: 8px;
-    padding-top: 22px;
-    border-top: 1px solid @line-color-s;
-
-    .section-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 14px;
-        font-size: 15px;
-        font-weight: 600;
-        color: @font-color-l;
-    }
-
-    .empty-comments {
-        padding: 18px 0;
-        color: @font-color-s;
-        font-size: @size-s;
-    }
-}
-
-.comment-compose {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.compose-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.compose-hint {
-    font-size: @size-ss;
-    color: @font-color-s;
-}
-
-.compose-error {
-    margin: 0;
-    font-size: @size-ss;
-    color: @ecolor;
-}
-
-.comment-item {
-    display: flex;
-    gap: 12px;
-    padding: 12px 0;
-
-    & + .comment-item {
-        border-top: 1px solid @line-color-s;
-    }
-
-    .comment-main {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .comment-head {
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-
-        .comment-user {
-            font-weight: 600;
-            color: @font-color-l;
-        }
-
-        time {
-            font-size: @size-ss;
-            color: @font-color-s;
-        }
-    }
-
-    .comment-content {
-        margin: 4px 0 0;
-        color: @font-color-m;
-        line-height: 1.7;
-        word-break: break-word;
-    }
-}
-
 .diary-images {
     // yk-image-preview-group 的根节点是 Fragment，外部 class 不会落到 yk-space 上，
     // 因此这里用 wrapper + :deep 覆盖内部布局

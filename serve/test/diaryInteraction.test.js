@@ -160,10 +160,37 @@ test('登录用户评论随笔成功并写日志', async () => {
     }, res)
 
     assert.equal(res.statusCode, 201)
-    assert.deepEqual(commentInputs, [{ diaryId: 3, userId: 42, content: '写得真好' }])
+    assert.deepEqual(commentInputs, [{ diaryId: 3, userId: 42, content: '写得真好', parentId: 0 }])
     assert.equal(res.body.data.commentId, 12)
     assert.equal(logCalls[0].module, 'diary')
     assert.equal(logCalls[0].targetType, 'diary_comment')
+})
+
+test('回复随笔评论时 parentId 透传到模型并记录回复日志', async () => {
+    commentResult = { commentId: 13 }
+    const res = makeResponse()
+    await controller.createComment({
+        body: { diaryId: 3, content: '回复你', parentId: 12 },
+        user: { userId: 42, userType: 'normal' },
+        ip: '127.0.0.1'
+    }, res)
+
+    assert.equal(res.statusCode, 201)
+    assert.deepEqual(commentInputs, [{ diaryId: 3, userId: 42, content: '回复你', parentId: 12 }])
+    assert.match(logCalls[0].detail, /回复/)
+})
+
+test('回复目标不存在时返回 400 且不写日志', async () => {
+    commentResult = { invalidParent: true }
+    const res = makeResponse()
+    await controller.createComment({
+        body: { diaryId: 3, content: '回复', parentId: 999 },
+        user: { userId: 42, userType: 'normal' }
+    }, res)
+
+    assert.equal(res.statusCode, 400)
+    assert.match(res.body.message, /回复的评论/)
+    assert.equal(logCalls.length, 0)
 })
 
 test('评论已删除随笔返回 404', async () => {

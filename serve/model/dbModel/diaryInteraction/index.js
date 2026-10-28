@@ -94,10 +94,13 @@ async function getCommentsByDiary(diaryId, page, pageSize, offset, userId = null
 
     const list = await query(
         `SELECT c.id, c.user_id, u.username AS user_name, u.imgurl AS user_avatar,
+                c.parent_id, c.reply_to_comment_id, c.reply_to_user_id,
+                ru.username AS reply_to_user_name,
                 c.content, c.likes, c.complaint, c.created_at
          FROM diary_comment c
          INNER JOIN diary d ON c.diary_id = d.id
          LEFT JOIN users u ON c.user_id = u.id
+         LEFT JOIN users ru ON c.reply_to_user_id = ru.id
          WHERE c.diary_id = ? AND c.status = 1 AND d.status = 1
          ORDER BY c.created_at DESC
          LIMIT ? OFFSET ?`,
@@ -126,6 +129,10 @@ async function getCommentsByDiary(diaryId, page, pageSize, offset, userId = null
             userId: item.user_id,
             userName: item.user_name,
             userAvatar: item.user_avatar,
+            parentId: Number(item.parent_id || 0),
+            replyToCommentId: item.reply_to_comment_id === null ? null : Number(item.reply_to_comment_id),
+            replyToUserId: item.reply_to_user_id === null ? null : Number(item.reply_to_user_id),
+            replyToUserName: item.reply_to_user_name,
             content: item.content,
             likes: Number(item.likes || 0),
             liked: likedIds.has(Number(item.id)),
@@ -140,10 +147,13 @@ async function getCommentsByDiary(diaryId, page, pageSize, offset, userId = null
 }
 
 /**
- * 新增随笔评论并同步 diary.comments 冗余计数
- * @returns {Promise<{commentId: number}|null>} null 表示随笔不存在或已删除
+ * 新增随笔评论并同步 diary.comments 冗余计数。
+ * 与文章评论一致：回复二级评论时归一挂到根评论下（两级结构），
+ * 并记录实际回复目标（replyTo）供前端展示「回复 @某人」。
+ * @returns {Promise<{commentId: number}|{invalidParent: boolean}|null>}
+ *   null 表示随笔不存在或已删除；invalidParent 表示回复目标不存在
  */
-async function createComment({ diaryId, userId, content }) {
+async function createComment({ diaryId, userId, content, parentId = 0 }) {
     const id = parseDiaryId(diaryId)
     if (!id) return null
 
@@ -162,9 +172,35 @@ async function createComment({ diaryId, userId, content }) {
         )
         if (diaries.length === 0) return null
 
+        let rootParentId = 0
+        let replyToCommentId = null
+        let replyToUserId = null
+
+        const requestedParent = Number(parentId) || 0
+        if (requestedParent > 0) {
+            const parents = await run(
+                `SELECT id, user_id, parent_id FROM diary_comment
+                 WHERE id = ? AND diary_id = ? AND status = 1 LIMIT 1`,
+                [requestedParent, id]
+            )
+            const parent = parents[0]
+            if (!parent) return { invalidParent: true }
+
+            if (Number(parent.parent_id) > 0) {
+                // 回复的是二级评论：根评论用它的 parent，实际回复目标仍是所点的那条
+                rootParentId = Number(parent.parent_id)
+            } else {
+                rootParentId = Number(parent.id)
+            }
+            replyToCommentId = Number(parent.id)
+            replyToUserId = Number(parent.user_id)
+        }
+
         const result = await run(
-            `INSERT INTO diary_comment (user_id, diary_id, content) VALUES (?, ?, ?)`,
-            [userId, id, content]
+            `INSERT INTO diary_comment
+                (user_id, diary_id, parent_id, reply_to_comment_id, reply_to_user_id, content)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [userId, id, rootParentId, replyToCommentId, replyToUserId, content]
         )
         await run('UPDATE diary SET comments = comments + 1 WHERE id = ?', [id])
 

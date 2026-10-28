@@ -113,13 +113,23 @@ async function createComment(req, res) {
             return res.status(400).json({ code: 400, message: '评论内容不能超过512字' })
         }
 
+        // 回复目标：0/缺省表示一级评论；后端会把回复二级评论归一到根评论
+        const parentId = Number(req.body?.parentId) || 0
+        if (!Number.isSafeInteger(parentId) || parentId < 0) {
+            return res.status(400).json({ code: 400, message: '请传入有效的回复评论ID' })
+        }
+
         const result = await diaryInteractionModel.createComment({
             diaryId,
             userId,
-            content
+            content,
+            parentId
         })
         if (!result) {
             return res.status(404).json({ code: 404, message: '随笔不存在或已删除' })
+        }
+        if (result.invalidParent) {
+            return res.status(400).json({ code: 400, message: '回复的评论不存在或已删除' })
         }
 
         writeSystemLog({
@@ -128,7 +138,7 @@ async function createComment(req, res) {
             module: 'diary',
             targetType: 'diary_comment',
             targetId: result.commentId,
-            detail: '门户评论随笔',
+            detail: parentId > 0 ? '门户回复随笔评论' : '门户评论随笔',
             ip: req.ip || null,
         })
 

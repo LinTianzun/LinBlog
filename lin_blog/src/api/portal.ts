@@ -103,6 +103,10 @@ export interface DiaryComment {
   userId: number;
   userName: string | null;
   userAvatar: string | null;
+  parentId: number;
+  replyToCommentId: number | null;
+  replyToUserId: number | null;
+  replyToUserName: string | null;
   content: string;
   likes: number;
   liked: boolean;
@@ -130,10 +134,15 @@ export interface CreateDiaryCommentResult {
   createdAt: string;
 }
 
-export function createDiaryComment(diaryId: number, content: string) {
+// parentId 指向用户实际点击的评论；后端会把回复二级评论归一到根评论
+export function createDiaryComment(
+  diaryId: number,
+  content: string,
+  parentId?: number
+) {
   return request.post<ApiResult<CreateDiaryCommentResult>>(
     "/public/diary/comment",
-    { diaryId, content }
+    { diaryId, content, ...(parentId ? { parentId } : {}) }
   );
 }
 
