@@ -4,9 +4,15 @@
         <!-- current/defaultCurrent 必须成对绑定：组件内部 _current 只从 defaultCurrent 初始化，
              且只在 props.current 变化时同步，漏了 defaultCurrent 会导致挂载时高亮停在第 1 页 -->
         <yk-pagination :key="pagerKey" :current="safeCurrent" :default-current="safeCurrent" :total="total"
-            :page-size="safePageSize" :default-page-size="safePageSize" :page-size-options="pageSizeOptions"
-            :layouts="layouts" :size="size" :disabled="disabled" :hide-on-single-page="hideOnSinglePage"
-            @change="handleChange" @page-size-change="handlePageSizeChange" />
+            :page-size="safePageSize" :default-page-size="safePageSize" :layouts="layouts" :size="size"
+            :disabled="disabled" :hide-on-single-page="hideOnSinglePage" @change="handleChange" />
+        <!-- 每页条数标题由 AdminPager 受控渲染，避免 yk-pagination 内部状态在重建后回到默认值 -->
+        <yk-dropdown v-if="showPageSize" :title="`${safePageSize} 条/页`" type="secondary" :size="size"
+            :disabled="disabled" trigger="click" @selected="handleSelectPageSize">
+            <yk-dropdown-item v-for="option in pageSizeOptions" :key="option" :value="option">
+                {{ option }} 条/页
+            </yk-dropdown-item>
+        </yk-dropdown>
     </div>
 </template>
 
@@ -72,7 +78,6 @@ const pagerKey = computed(() => `${safeCurrent.value}-${safePageSize.value}`)
 const layouts = computed(() => {
     const list: string[] = ['prev', 'pager', 'next']
     if (props.showJumper) list.push('jumper')
-    if (props.showPageSize) list.push('pageSize')
     return list
 })
 
@@ -90,6 +95,11 @@ const handlePageSizeChange = (pageSize: number): void => {
     emits('update:pageSize', next)
     emits('update:page', 1)
     emits('change', { page: 1, pageSize: next })
+}
+
+const handleSelectPageSize = (value: string | number | object): void => {
+    if (props.disabled) return
+    handlePageSizeChange(Number(value))
 }
 
 // 数据总量变少时把越界页码拉回最后一页，避免停在空页上
