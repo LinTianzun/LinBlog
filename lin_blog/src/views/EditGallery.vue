@@ -73,6 +73,7 @@ import { getArticleStateLabel } from '../api/article'
 import editphoto from '../components/gallery/editPhoto.vue'
 import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
+import { useContentAccess } from '../utils/contentAccess.ts'
 
 type GalleryFormData = {
     title: string
@@ -110,22 +111,13 @@ const errorMessage = ref('')
 const saveMoment = ref('')
 const submitting = ref<SubmitAction | ''>('')
 
-const currentUser = (() => {
-    try {
-        const saved = localStorage.getItem('userInfo')
-        return saved ? JSON.parse(saved) as { id?: number; user_type?: string } : null
-    } catch {
-        return null
-    }
-})()
-
-const currentRole = currentUser?.user_type || ''
 const articleId = computed(() => {
     const id = Number(route.params.id)
     return Number.isInteger(id) && id > 0 ? id : null
 })
 const isEditing = computed(() => articleId.value !== null)
-const canPublish = computed(() => ['admin', 'editor'].includes(currentRole))
+const access = useContentAccess('gallery')
+const canPublish = access.canPublish
 const stateLabel = computed(() => isEditing.value && article.value
     ? getArticleStateLabel(article.value.state)
     : '草稿')

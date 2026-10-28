@@ -69,6 +69,7 @@
 
 <script lang="ts" setup>
     import { ref, onMounted } from 'vue'
+    import { useRoute } from 'vue-router'
     import TopTitle from '../components/bar/TopTitle.vue'
     import AdminPager from '../components/common/AdminPager.vue'
     import {
@@ -78,18 +79,7 @@
         type SystemLogSortOrder,
     } from '../api/systemLog'
 
-    const logs = ref<SystemLogItem[]>([])
-    const total = ref(0)
-    const page = ref(1)
-    // 默认一页 10 条，用户可按 5/10/20/50 调整
-    const pageSize = ref(10)
-    const loading = ref(false)
-    const errorMessage = ref('')
-    const keyword = ref('')
-    const moduleFilter = ref('')
-    const actionFilter = ref('')
-    //  默认最新在前；点击表头在升序/降序之间切换
-    const sortOrder = ref<SystemLogSortOrder>('desc')
+    const route = useRoute()
 
     const moduleOptions = [
         { value: 'user', label: '用户' },
@@ -101,8 +91,27 @@
         { value: 'message', label: '消息' },
         { value: 'subset', label: '分类' },
         { value: 'label', label: '标签' },
+        { value: 'permission', label: '权限' },
         { value: 'system', label: '系统' },
     ]
+
+    // 支持从权限管理页带 ?module=permission 直接落到权限审计
+    const initialModule = typeof route.query.module === 'string' ? route.query.module : ''
+
+    const logs = ref<SystemLogItem[]>([])
+    const total = ref(0)
+    const page = ref(1)
+    // 默认一页 10 条，用户可按 5/10/20/50 调整
+    const pageSize = ref(10)
+    const loading = ref(false)
+    const errorMessage = ref('')
+    const keyword = ref('')
+    const moduleFilter = ref(
+        moduleOptions.some(item => item.value === initialModule) ? initialModule : ''
+    )
+    const actionFilter = ref('')
+    //  默认最新在前；点击表头在升序/降序之间切换
+    const sortOrder = ref<SystemLogSortOrder>('desc')
 
     const actionOptions = [
         { value: 'login', label: '登录' },

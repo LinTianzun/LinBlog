@@ -24,10 +24,11 @@
                     </yk-space>
                 </yk-space>
 
-                <yk-space size="s">
-                    <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
+                <yk-space v-if="props.canEdit || props.canDelete" size="s">
+                    <IconModifyOutline v-if="props.canEdit" class="diary-item-top-delete" title="编辑"
+                        @click="editDiary()" />
                     <!-- 卡片有 hover 的 transform 层叠上下文，确认面板必须 Teleport 到 body -->
-                    <ConfirmPopover title="确认删除" content="删除将不可恢复" placement="leftTop"
+                    <ConfirmPopover v-if="props.canDelete" title="确认删除" content="删除将不可恢复" placement="leftTop"
                         @confirm="deleteDiary()">
                         <IconDeleteOutline class="diary-item-top-delete" />
                     </ConfirmPopover>
@@ -64,9 +65,15 @@ import ConfirmPopover from '../common/ConfirmPopover.vue'
 
 type DiaryItemProps = {
     data: DiaryData
+    // 编辑/删除按 diary.* 权限逐条判定：能管理全部、或本人名下才显示按钮
+    canEdit?: boolean
+    canDelete?: boolean
 }
 
-const props = defineProps<DiaryItemProps>()
+const props = withDefaults(defineProps<DiaryItemProps>(), {
+    canEdit: false,
+    canDelete: false,
+})
 
 const emits = defineEmits<{
     (event: 'delete', id: number): void

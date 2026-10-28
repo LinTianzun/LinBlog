@@ -2,7 +2,7 @@
     <yk-space class="gather">
         <stat-card v-for="(item, index) in gathers" :key="item.name" :name="item.name"
             :total="item.total" :bg-color="item.bgColor" :icon="iconOf(item.icon)"
-            :to="index === 0 && !canAccessLocalFiles ? '' : (item.path || item.viewTo)"
+            :to="canOpen(item) ? (item.path || item.viewTo) : ''"
             :class="{ 'gather-dark': index === 0 }" />
     </yk-space>
 </template>
@@ -13,18 +13,24 @@ import StatCard from '../common/StatCard.vue'
 import { overLink } from '../../utils/menu.ts'
 import { getOverviewSummary, type OverviewSummary } from '../../api/overview'
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
+import { useSessionStore } from '../../store/session.ts'
 
 // overLink 里存的是图标名字符串，这里转成真正的组件，否则卡片渲染不出图标
 const iconOf = (name: string) => resolveMenuIcon(name)
 
-const currentRole = (() => {
-    try {
-        return JSON.parse(localStorage.getItem('userInfo') || '{}')?.user_type || ''
-    } catch {
-        return ''
+const session = useSessionStore()
+
+// 卡片跳转按目标模块的权限判定：本地文件看 file.view，
+// 文章/图库卡片进入新建编辑器，需要对应对的 create 权限
+const canOpen = (item: { path?: string }): boolean => {
+    switch (item.path) {
+        case '': return session.can('file.view')
+        case 'editarticle': return session.can('article.create')
+        case 'editgallery': return session.can('gallery.create')
+        case 'diary': return session.can('diary.create')
+        default: return true
     }
-})()
-const canAccessLocalFiles = ['admin', 'editor'].includes(currentRole)
+}
 
 //  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
 const gathers = ref(overLink.map(item => ({ ...item })))

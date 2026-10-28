@@ -10,20 +10,20 @@
                         @click="restoreSelected">
                         恢复所选
                     </yk-button>
-                    <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除所选文件？"
+                    <yk-popconfirm v-if="canPurge" title="彻底删除后将无法恢复，确认删除所选文件？"
                         content="" trigger="click" placement="bottomRight" @confirm="purgeSelected">
                         <yk-button size="s" type="secondary" status="danger"
                             :disabled="busy || selectedIds.length === 0">
                             彻底删除
                         </yk-button>
                     </yk-popconfirm>
-                    <yk-button v-if="isAdmin" size="s" type="secondary" :disabled="busy" @click="runCleanup(true)">
+                    <yk-button v-if="canPurge" size="s" type="secondary" :disabled="busy" @click="runCleanup(true)">
                         清理预演
                     </yk-button>
                 </yk-space>
             </div>
 
-            <div v-if="isAdmin && storage" class="file-trash-capacity"
+            <div v-if="canPurge && storage" class="file-trash-capacity"
                 :class="`file-trash-capacity-${storage.level}`">
                 <div class="file-trash-capacity-head">
                     <div class="file-trash-capacity-title">
@@ -72,7 +72,7 @@
                                     @click.stop="restoreOne(item.id)">
                                     恢复
                                 </yk-button>
-                                <yk-popconfirm v-if="isAdmin" title="彻底删除后将无法恢复，确认删除？"
+                                <yk-popconfirm v-if="canPurge" title="彻底删除后将无法恢复，确认删除？"
                                     content="" trigger="click" placement="leftTop" @confirm="purgeOne(item.id)">
                                     <yk-button size="s" type="secondary" status="danger" :disabled="busy"
                                         @click.stop>
@@ -111,6 +111,7 @@ import {
 } from '../../api/file'
 import './fileTrash.less'
 import AdminPager from '../common/AdminPager.vue'
+import { useSessionStore } from '../../store/session.ts'
 
 const props = defineProps<{ visible: boolean }>()
 
@@ -123,6 +124,7 @@ type MessageOptions = { type: 'primary' | 'error'; message: string }
 type ProxyWithMessage = { $message?: (options: MessageOptions) => void }
 
 const proxy = getCurrentInstance()?.proxy as ProxyWithMessage | null | undefined
+const session = useSessionStore()
 
 const pageSize = 10
 const trashList = ref<TrashFileItem[]>([])
@@ -133,15 +135,8 @@ const loading = ref(false)
 const busy = ref(false)
 const storage = ref<FileStorageStatus | null>(null)
 
-// 清理接口仅管理员可用，非管理员不展示预演入口
-const isAdmin = (() => {
-    try {
-        const saved = localStorage.getItem('userInfo')
-        return saved ? JSON.parse(saved)?.user_type === 'admin' : false
-    } catch {
-        return false
-    }
-})()
+// 彻底删除/清理预演/容量状态都要求 file.purge，非授权用户不展示这些入口
+const canPurge = computed(() => session.can('file.purge'))
 
 const showMessage = (type: MessageOptions['type'], message: string): void => {
     proxy?.$message?.({ type, message })
@@ -192,7 +187,7 @@ const fetchTrash = async (): Promise<void> => {
 }
 
 const fetchStorageStatus = async (): Promise<void> => {
-    if (!isAdmin) return
+    if (!canPurge.value) return
 
     try {
         const result = await getFileStorageStatus()

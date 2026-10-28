@@ -11,7 +11,7 @@
         </button>
 
         <div class="head-actions">
-            <button type="button" class="icon-button inbox-button" title="私信" aria-label="打开私信"
+            <button v-if="canUseMessages" type="button" class="icon-button inbox-button" title="私信" aria-label="打开私信"
                 @click="openInbox">
                 <yk-badge :is-dot="hasUnread">
                     <IconMailOutline />
@@ -22,7 +22,7 @@
                 <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar" />
                 <span class="user-copy">
                     <strong class="user-name">{{ userInfo?.username || '用户' }}</strong>
-                    <small>{{ userInfo?.user_type === 'admin' ? '管理员' : '内容成员' }}</small>
+                    <small>{{ roleLabel }}</small>
                 </span>
             </button>
 
@@ -148,6 +148,20 @@ const quit = () => {
 
 const userInfo = ref<Record<string, any>>({})
 
+// 角色只用于展示；是否可用私信等能力由权限矩阵决定
+const roleLabel = computed(() => {
+    if (session.isSuperAdmin) return '超级管理员'
+    const labels: Record<string, string> = {
+        admin: '管理员',
+        editor: '编辑',
+        normal: '普通用户',
+        visitor: '游客',
+    }
+    return labels[userInfo.value?.user_type] || '游客'
+})
+
+const canUseMessages = computed(() => session.can('message.private'))
+
 const defaultAvatar = '/src/assets/img/xw11.jpg'
 
 //  打开私信
@@ -166,7 +180,7 @@ const hasUnread = ref(false)
 
 const fetchUnread = async () => {
     // 匿名访问门户等公开页时不请求未读数，避免 401 触发登录跳转
-    if (!localStorage.getItem('token')) {
+    if (!localStorage.getItem('token') || !session.can('message.private')) {
         hasUnread.value = false
         return
     }

@@ -2,6 +2,7 @@ const userModel = require('../model/dbModel/users/index')
 const { writeSystemLog } = require('../utils/logHelper')
 const {
     buildMatrixPayload,
+    describePermissionChanges,
     updatePermissionMatrix,
     getPermissionsForUser,
     isSuperAdmin
@@ -44,7 +45,7 @@ async function updateMatrix(req, res) {
             module: 'permission',
             targetType: 'permission',
             targetId: null,
-            detail: `更新角色权限矩阵（${result.updated} 项）`,
+            detail: describePermissionChanges(result.changes),
             ip: req.ip || null
         })
 

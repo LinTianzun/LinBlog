@@ -59,6 +59,8 @@ test('随笔 SQL 按归属过滤：普通用户加 owner 条件，管理员不�
     })
     const listSql = queries.find(q => q.sql.includes('LIMIT ? OFFSET ?'))
     assert.match(listSql.sql, /d\.user_id = \?/)
+    // 列表要回传归属作者，前端才能逐条判定「管理自己的随笔」
+    assert.match(listSql.sql, /SELECT d\.id, d\.user_id,/)
     assert.ok(listSql.values.includes(42))
 
     queries.length = 0

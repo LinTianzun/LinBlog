@@ -171,6 +171,33 @@ function normalizeChanges(changes) {
     return { data: normalized }
 }
 
+const ROLE_LABELS = new Map(ROLES.map(role => [role.key, role.label]))
+const PERMISSION_LABELS = new Map(PERMISSIONS.map(permission => [permission.key, permission.label]))
+
+/**
+ * 把权限变更矩阵折叠成一条可审计的日志描述。
+ * system_log.detail 是 VARCHAR(500)，超出部分用「等 N 项」收尾。
+ */
+function describePermissionChanges(changes = []) {
+    const items = changes.map(change => {
+        const roleLabel = ROLE_LABELS.get(change.roleKey) || change.roleKey
+        const permissionLabel = PERMISSION_LABELS.get(change.permissionKey) || change.permissionKey
+        return `${roleLabel} ${change.allowed ? '授予' : '收回'}「${permissionLabel}」`
+    })
+
+    const selected = []
+    let length = '角色权限变更：'.length
+    for (const item of items) {
+        // 预留「 等 N 项」的长度，保证整条描述不超过 500 字符
+        if (length + item.length + 6 > 480) break
+        selected.push(item)
+        length += item.length + 1
+    }
+
+    const rest = items.length > selected.length ? ` 等 ${items.length} 项` : ''
+    return `角色权限变更：${selected.join('、')}${rest}`
+}
+
 async function updatePermissionMatrix(changes, updatedBy) {
     const normalized = normalizeChanges(changes)
     if (normalized.error) {
@@ -181,7 +208,7 @@ async function updatePermissionMatrix(changes, updatedBy) {
 
     await permissionModel.replaceRolePermissions(normalized.data, updatedBy)
     await refreshPermissionCache()
-    return { updated: normalized.data.length }
+    return { updated: normalized.data.length, changes: normalized.data }
 }
 
 function getEffectiveUserType(user, { allPermission, ownPermission }) {
@@ -264,6 +291,7 @@ module.exports = {
     refreshPermissionCache,
     getRolePermissionMap,
     buildMatrixPayload,
+    describePermissionChanges,
     updatePermissionMatrix,
     getEffectiveUserType,
     getArticleAccessType,

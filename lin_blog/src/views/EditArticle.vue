@@ -72,6 +72,7 @@ import {
 const editor = defineAsyncComponent(() => import('../components/editor/editor.vue'))
 import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
+import { useContentAccess } from '../utils/contentAccess.ts'
 
 type ArticleFormData = {
     title: string
@@ -104,32 +105,17 @@ const errorMessage = ref('')
 const saveMoment = ref('')
 const submitting = ref<SubmitAction | ''>('')
 
-const currentUser = (() => {
-    try {
-        const saved = localStorage.getItem('userInfo')
-        return saved ? JSON.parse(saved) as { id?: number; user_type?: string } : null
-    } catch {
-        return null
-    }
-})()
-
-const currentRole = currentUser?.user_type || ''
 const articleId = computed(() => {
     const id = Number(route.params.id)
     return Number.isInteger(id) && id > 0 ? id : null
 })
 const isEditing = computed(() => articleId.value !== null)
-const canPublish = computed(() => ['admin', 'editor'].includes(currentRole))
+const access = useContentAccess('article')
+const canPublish = access.canPublish
 const canEditCurrent = computed(() => {
-    if (!isEditing.value) {
-        return ['admin', 'editor', 'normal'].includes(currentRole)
-    }
-    if (!article.value) return false
-    if (['admin', 'editor'].includes(currentRole)) return true
-
-    return currentRole === 'normal' &&
-        Number(article.value.userId) === Number(currentUser?.id) &&
-        ['draft', 'rejected'].includes(article.value.state)
+    // 新建走 article.create；编辑走 manageAll / manageOwn + 归属与状态判定
+    if (!isEditing.value) return access.canCreate.value
+    return access.canEdit(article.value)
 })
 
 const initialForm = computed<Partial<ArticleFormData>>(() => {

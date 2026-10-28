@@ -12,7 +12,7 @@
                     取消选中
                 </yk-text>
             </yk-space>
-            <yk-space>
+            <yk-space v-if="canManageFiles">
                 <yk-popconfirm title="确认删除所选文件？可在回收站恢复" trigger="click" placement="topRight"
                     @confirm="deleteMultipleFile">
                     <IconDeleteOutline class="files-tool-delete" />
@@ -59,6 +59,7 @@
 import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import fileItem from './filesItem.vue'
 import { useSubsetStore } from '../../store/subset.ts'
+import { useSessionStore } from '../../store/session.ts'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 import AdminPager from '../common/AdminPager.vue'
 import type { FileData } from '../../utils/interface.ts'
@@ -88,6 +89,9 @@ const props = withDefaults(defineProps<FileProps>(), {
 })
 
 const subsetStore = useSubsetStore()
+const session = useSessionStore()
+// 删除/移动依赖 file.manage，未授权的账号不展示批量操作入口
+const canManageFiles = computed(() => session.can('file.manage'))
 const rootRef = ref<HTMLElement | null>(null)
 const responsivePageSize = useResponsiveGridPageSize(rootRef, {
     minCardWidth: 200,

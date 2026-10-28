@@ -78,20 +78,23 @@
             </div>
 
             <!-- 右侧：管理员快捷入口（位置不变） -->
-            <div v-if="isAdmin" class="setting-card setting-aside">
+            <div v-if="hasQuickAccess" class="setting-card setting-aside">
                 <yk-title :level="4" style="margin: 0 0 16px">
                     快捷入口
                 </yk-title>
                 <yk-space dir="vertical" size="m">
-                    <yk-button type="secondary" style="justify-content: flex-start" @click="go('/userManagement')">
+                    <yk-button v-if="canViewUsers" type="secondary" style="justify-content: flex-start"
+                        @click="go('/userManagement')">
                         <IconAvatarFill />
                         用户管理
                     </yk-button>
-                    <yk-button type="secondary" style="justify-content: flex-start" @click="go('/systemLog')">
+                    <yk-button v-if="canViewSystemLog" type="secondary" style="justify-content: flex-start"
+                        @click="go('/systemLog')">
                         <IconStatisticsFill />
                         系统日志
                     </yk-button>
-                    <yk-button type="secondary" style="justify-content: flex-start" @click="go('/localfile')">
+                    <yk-button v-if="canViewFiles" type="secondary" style="justify-content: flex-start"
+                        @click="go('/localfile')">
                         <IconFolderCloseFill />
                         本地文件
                     </yk-button>
@@ -142,6 +145,7 @@ import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '..
 import { themePresets } from '../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
+import { useSessionStore } from '../store/session.ts'
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -162,7 +166,14 @@ const selectTheme = (presetId: string) => {
 }
 
 const profile = ref<UserInfo | null>(null)
-const isAdmin = ref(false)
+const session = useSessionStore()
+// 快捷入口按权限逐项显示：能进哪个后台模块才出现对应按钮
+const canViewUsers = computed(() => session.can('user.view'))
+const canViewSystemLog = computed(() => session.can('systemLog.view'))
+const canViewFiles = computed(() => session.can('file.view'))
+const hasQuickAccess = computed(
+    () => canViewUsers.value || canViewSystemLog.value || canViewFiles.value
+)
 
 const passwordForm = reactive({
     oldPassword: '',
@@ -319,7 +330,6 @@ const loadProfile = async () => {
         const result = await getUserInfo()
         if (result.code === 200) {
             profile.value = result.data
-            isAdmin.value = profile.value?.user_type === 'admin'
             syncAvatarFileList()
         }
     } catch (error) {

@@ -50,7 +50,7 @@ async function getDiariesByPage({ keyword, weather, pageSize, offset, sort, owne
     )
 
     const list = await query(
-        `SELECT d.id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood,
+        `SELECT d.id, d.user_id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood,
                 d.views, d.likes, d.comments,
                 -- 一级评论数与回复数：后台卡片要区分「评论」与「回复」两个口径
                 (SELECT COUNT(*) FROM diary_comment c

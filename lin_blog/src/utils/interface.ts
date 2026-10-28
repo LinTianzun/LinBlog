@@ -66,6 +66,8 @@ export interface ArticleData {
 //  日记
 export interface DiaryData {
     id: number;
+    // 归属作者：后台条目的编辑/删除按 diary.manageOwn / manageAll 逐条判定
+    userId?: number | null;
     title: string;
     moment: Date | string;//时间
     weatherId: number;//天气
