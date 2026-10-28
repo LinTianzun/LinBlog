@@ -8,6 +8,8 @@ const controllerPath = path.resolve(__dirname, '../controller/commentController.
 const originalLoad = Module._load
 
 let calls = []
+// 列表 SQL 的返回行：总览评论卡要能拿到所属作品的 classify 才能区分文章/图库入口
+let listRows = []
 
 Module._load = function (request, parent, isMain) {
     if (parent && parent.filename === modelPath && request === '../../db/dbnew') {
@@ -15,7 +17,7 @@ Module._load = function (request, parent, isMain) {
             async query(sql, values = []) {
                 calls.push({ sql, values })
                 if (/COUNT\(\*\)/.test(sql)) return [{ total: 0 }]
-                return []
+                return listRows
             }
         }
     }
@@ -27,6 +29,58 @@ Module._load = originalLoad
 
 test.beforeEach(() => {
     calls = []
+    listRows = []
+})
+
+test('评论列表回传所属作品的 classify，供总览点击区分文章与图库入口', async () => {
+    listRows = [{
+        id: 7,
+        user_id: 1,
+        user_name: 'lin',
+        user_avatar: null,
+        article_id: 12,
+        article_title: '街角',
+        article_classify: 'image',
+        parent_id: 0,
+        reply_to_comment_id: null,
+        reply_to_user_id: null,
+        reply_to_user_name: null,
+        content: '拍得好',
+        likes: 0,
+        complaint: 0,
+        is_read: 1,
+        created_at: '2026-10-28 10:00:00'
+    }]
+
+    const result = await commentModel.getCommentsByPage(1, 10, 0)
+
+    assert.match(calls[0].sql, /a\.classify AS article_classify/)
+    assert.deepEqual(result.list[0].article, { id: 12, title: '街角', classify: 'image' })
+})
+
+test('文章被删除时 classify 回退为 null，前端按文章入口处理', async () => {
+    listRows = [{
+        id: 8,
+        user_id: 1,
+        user_name: 'lin',
+        user_avatar: null,
+        article_id: 99,
+        article_title: null,
+        article_classify: null,
+        parent_id: 0,
+        reply_to_comment_id: null,
+        reply_to_user_id: null,
+        reply_to_user_name: null,
+        content: '站位不错',
+        likes: 0,
+        complaint: 0,
+        is_read: 1,
+        created_at: '2026-10-28 10:00:00'
+    }]
+
+    const result = await commentModel.getCommentsByPage(1, 10, 0)
+
+    assert.deepEqual(result.list[0].article, { id: 99, title: '文章已删除', classify: null })
 })
 
 test('评论列表按文章过滤时列表与总数共用同一条件', async () => {

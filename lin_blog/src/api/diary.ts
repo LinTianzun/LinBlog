@@ -7,6 +7,9 @@ export interface DiaryItem {
   picture: string[];
   weatherId: number | null;
   weatherName: string | null;
+  views: number;
+  likes: number;
+  comments: number;
   createdAt: string;
 }
 

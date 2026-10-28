@@ -17,7 +17,7 @@
 
             <div v-else class="gallery-content-files" :class="{ 'is-refreshing': loading }">
                 <galleryItem v-for="item in galleryList" :key="item.id" :data="item"
-                    @delete="removeGallery">
+                    @delete="removeGallery" @view="openDetail">
                 </galleryItem>
             </div>
         </div>
@@ -26,6 +26,9 @@
                 size="m" />
         </div>
     </div>
+
+    <!-- 后台图库详情：点卡片打开，含图片、简介与评论区 -->
+    <galleryDetailView v-model="detailVisible" :gallery-id="detailId" @changed="fetchGalleries" />
 </template>
 
 <script lang="ts" setup>
@@ -37,6 +40,8 @@ import {
     getArticles,
 } from '../../api/article.ts'
 import galleryItem from './galleryItem.vue'
+import galleryDetailView from './galleryDetailView.vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 
 const props = defineProps({
@@ -73,6 +78,8 @@ type GalleryComponentInstance = ComponentPublicInstance & {
 
 const proxy = getCurrentInstance()?.proxy as GalleryComponentInstance | null | undefined
 const rootRef = ref<HTMLElement | null>(null)
+const router = useRouter()
+const route = useRoute()
 const responsivePageSize = useResponsiveGridPageSize(rootRef, {
     minCardWidth: 238,
     gap: 24,
@@ -92,6 +99,15 @@ const page = ref(1)
 const loading = ref(false)
 const errorMessage = ref('')
 let requestedPageSize = 0
+
+// 详情弹窗
+const detailVisible = ref(false)
+const detailId = ref<number | null>(null)
+
+const openDetail = (id: number): void => {
+    detailId.value = id
+    detailVisible.value = true
+}
 
 // 获取图库
 const fetchGalleries = async (): Promise<void> => {
@@ -120,6 +136,7 @@ const fetchGalleries = async (): Promise<void> => {
         if (result.data.list.length === 0 && page.value > 1) {
             page.value = 1
             await fetchGalleries()
+            return
         }
     } catch (error) {
         galleryList.value = []
@@ -158,6 +175,16 @@ const removeGallery = async (id: number): Promise<void> => {
 onMounted(() => {
     void fetchGalleries()
 })
+
+// 从总览页点评论跳转过来时（?open=id）自动打开详情。
+// 详情弹窗按 ID 自己拉数据，不依赖当前页是否包含这一行；用完即清，避免翻页后重复弹出。
+watch(() => route.query.open, raw => {
+    const targetId = typeof raw === 'string' ? Number(raw) : null
+    if (!Number.isFinite(targetId) || !targetId) return
+
+    openDetail(targetId)
+    void router.replace({ query: { ...route.query, open: undefined } })
+}, { immediate: true })
 
 watch(
     () => [props.subsetId, props.uncategorized, props.serchTerm, props.state],

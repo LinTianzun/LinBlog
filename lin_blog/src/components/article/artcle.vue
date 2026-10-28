@@ -32,6 +32,7 @@
 
 <script lang="ts" setup>
 import { computed, defineAsyncComponent, getCurrentInstance, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { ArticleItem, ArticleState } from '../../api/article'
 import {
     deleteArticle,
@@ -78,6 +79,8 @@ type MessageProxy = {
 
 const proxy = getCurrentInstance()?.proxy as MessageProxy | null | undefined
 const subsetStore = useSubsetStore()
+const route = useRoute()
+const router = useRouter()
 const articleList = ref<ArticleItem[]>([])
 const count = ref(0)
 const page = ref(1)
@@ -141,6 +144,7 @@ const fetchArticles = async (): Promise<void> => {
         if (result.data.list.length === 0 && page.value > 1) {
             page.value = 1
             await fetchArticles()
+            return
         }
     } catch (error) {
         articleList.value = []
@@ -209,6 +213,16 @@ watch(
     },
     { immediate: true }
 )
+
+// 从总览页点评论跳转过来时（?open=id）自动打开详情。
+// 详情弹窗按 ID 自己拉数据，不依赖当前页是否包含这一行；用完即清，避免翻页后重复弹出。
+watch(() => route.query.open, raw => {
+    const targetId = typeof raw === 'string' ? Number(raw) : null
+    if (!Number.isFinite(targetId) || !targetId) return
+
+    openDetail(targetId)
+    void router.replace({ query: { ...route.query, open: undefined } })
+}, { immediate: true })
 </script>
 
 <style lang="less" scoped>

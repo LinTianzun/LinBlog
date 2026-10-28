@@ -15,8 +15,8 @@
                     @click="handleLike">
                     <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
                     <template v-if="!likePending">
-                        <IconLikeFill v-if="likeState.liked" />
-                        <IconLikeOutline v-else />
+                        <IconHeartFill v-if="likeState.liked" />
+                        <IconHeartOutline v-else />
                     </template>
                     {{ likeState.likes }}
                 </button>

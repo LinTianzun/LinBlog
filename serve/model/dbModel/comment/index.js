@@ -29,6 +29,7 @@ async function getCommentsByPage(page, pageSize, offset, articleId = null, userI
             u.imgurl AS user_avatar,
             c.article_id,
             a.title AS article_title, 
+            a.classify AS article_classify,
             c.parent_id,
             c.reply_to_comment_id,
             c.reply_to_user_id,
@@ -64,7 +65,9 @@ async function getCommentsByPage(page, pageSize, offset, articleId = null, userI
         userAvatar: item.user_avatar,
         article: {
             id: item.article_id,
-            title: item.article_title || '文章已删除'  // 文章删除时的兼容处理
+            title: item.article_title || '文章已删除',  // 文章删除时的兼容处理
+            // 图库也是 article 表里的行（classify=image），总览点评论跳转时要区分入口
+            classify: item.article_classify || null
         },
         parentId: item.parent_id,
         replyToCommentId: item.reply_to_comment_id,
@@ -251,6 +254,7 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
             u.imgurl AS user_avatar,
             c.article_id,
             a.title AS article_title,
+            a.classify AS article_classify,
             c.parent_id,
             c.reply_to_comment_id,
             c.reply_to_user_id,
@@ -281,7 +285,8 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
         userAvatar: item.user_avatar,
         article: {
             id: item.article_id,
-            title: item.article_title || '文章已删除'
+            title: item.article_title || '文章已删除',
+            classify: item.article_classify || null
         },
         parentId: item.parent_id,
         replyToCommentId: item.reply_to_comment_id,

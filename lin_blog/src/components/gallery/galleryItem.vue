@@ -29,7 +29,8 @@
                 </yk-space>
             </div>
 
-            <div style="width: 100%;">
+            <!-- 卡片下半部分整体可点：打开后台详情弹窗看图与评论 -->
+            <div class="gallery-item-body" @click="openDetail">
                 <p class="gallery-item-title">
                     {{ props.data.title }}
                 </p>
@@ -111,6 +112,7 @@ const props = defineProps<{
 
 const emits = defineEmits<{
     (e: 'delete', id: number): void
+    (e: 'view', id: number): void
 }>()
 
 const router = useRouter()
@@ -172,6 +174,11 @@ onBeforeUnmount(() => {
 
 const openEditor = (): void => {
     router.push(`/editgallery/${props.data.id}`)
+}
+
+// 点击卡片空白处打开后台详情弹窗（标题、图片与评论区）
+const openDetail = (): void => {
+    emits('view', props.data.id)
 }
 
 // 删除
@@ -318,6 +325,10 @@ const deleteGallery = (): void => {
         -webkit-box-orient: vertical;
         text-overflow: ellipsis;
         font-weight: 600;
+    }
+
+    &-body {
+        cursor: pointer;
     }
 
     &-datas {

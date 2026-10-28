@@ -19,12 +19,16 @@
                 </yk-space>
             </div>
 
-            <yk-text> {{props.data.content}} </yk-text>
+            <!-- 正文与图片整体可点：打开后台详情弹窗看图与评论 -->
+            <div class="diary-item-body" @click="openDetail">
+                <yk-text> {{props.data.content}} </yk-text>
 
-            <div class="diary-item-images">
-                <yk-image-preview-group :src-list="props.data.picture" width="80" height="80"
-                    fit="cover"></yk-image-preview-group>
+                <div class="diary-item-images">
+                    <yk-image-preview-group :src-list="props.data.picture" width="80" height="80"
+                        fit="cover"></yk-image-preview-group>
+                </div>
             </div>
+
 
         </yk-space>
     </div>
@@ -45,6 +49,7 @@ const props = defineProps<DiaryItemProps>()
 const emits = defineEmits<{
     (event: 'delete', id: number): void
     (event: 'edit', diary: DiaryData): void
+    (event: 'view', diary: DiaryData): void
 }>()
 
 // 按天气名称匹配前端图标，避免与数据库自增 ID 错位
@@ -59,6 +64,11 @@ const deleteDiary = (): void => {
 // 编辑日记
 const editDiary = (): void => {
     emits('edit', props.data)
+}
+
+// 点击卡片正文打开后台详情弹窗（图片 + 评论区）
+const openDetail = (): void => {
+    emits('view', props.data)
 }
 </script>
 
@@ -114,6 +124,11 @@ const editDiary = (): void => {
             .diary-item-top-delete {
                 display: block;
             }
+        }
+
+        &-body {
+            width: 100%;
+            cursor: pointer;
         }
     }
 </style>

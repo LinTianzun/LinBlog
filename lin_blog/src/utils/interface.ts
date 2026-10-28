@@ -5,6 +5,8 @@ export type ReplyDat =
         article?: {
             id: number;
             title: string;
+            // 图库也是 article 表的行（classify=image），总览点评论跳转时要区分入口
+            classify?: 'article' | 'image' | null;
         };
         user: {
             id: string;
@@ -69,4 +71,7 @@ export interface DiaryData {
     weatherName?: string;//天气名称（用于匹配前端图标）
     content: string;
     picture?: string[];
+    views?: number;
+    likes?: number;
+    comments?: number;
 }

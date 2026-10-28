@@ -21,7 +21,7 @@
         <yk-scrollbar v-else ref="scrollbar" class="comment-scroll">
             <yk-space dir="vertical">
                 <reply v-for="item in comments" :key="item.id" :content="item" is-comment
-                    @delete="removeComment" />
+                    @delete="removeComment" @click="openTarget" />
             </yk-space>
         </yk-scrollbar>
 
@@ -33,6 +33,7 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { useRouter } from 'vue-router'
 import reply from './reply.vue'
 import type { ReplyDat } from '../../utils/interface'
 import {
@@ -52,6 +53,8 @@ type CommentCardInstance = ComponentPublicInstance & {
 }
 
 const proxy = getCurrentInstance()?.proxy as CommentCardInstance | null | undefined
+
+const router = useRouter()
 
 const props = withDefaults(defineProps<CommentProps>(), {
     pageSize: 8,
@@ -102,7 +105,7 @@ const formatComment = (item: {
     id: number
     userName: string | null
     userAvatar: string | null
-    article: { id: number | null; title: string }
+    article: { id: number | null; title: string; classify?: 'article' | 'image' | null }
     content: string
     complaint: number
     createdAt: string
@@ -116,6 +119,7 @@ const formatComment = (item: {
     article: {
         id: item.article.id ?? 0,
         title: item.article.title,
+        classify: item.article.classify ?? null,
     },
     comment: item.content,
     moment: formatMoment(item.createdAt),
@@ -135,6 +139,23 @@ const changePage = (nextPage: number) => {
     if (nextPage === page.value) return
     page.value = nextPage
     void fetchComments()
+}
+
+// 点评论跳到对应作品：图库进后台图库页，文章进文章页并直接打开详情
+const openTarget = (id: string | number) => {
+    const target = comments.value.find(item => Number(item.id) === Number(id))
+    const articleId = target?.article?.id
+    if (!articleId) {
+        proxy?.$message?.({ type: 'primary', message: '该评论所属作品已删除' })
+        return
+    }
+
+    const isGallery = target?.article?.classify === 'image'
+    void router.push(
+        isGallery
+            ? { path: '/gallery', query: { open: String(articleId) } }
+            : { path: '/article', query: { open: String(articleId) } }
+    )
 }
 
 // 删除评论

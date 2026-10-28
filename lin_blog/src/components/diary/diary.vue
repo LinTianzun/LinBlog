@@ -10,7 +10,7 @@
 
             <yk-space v-else dir="vertical" size="xl">
                 <diaryItem v-for="item in diaryList" :key="item.id" :data="item" @delete="deleteDiary"
-                    @edit="editDiary">
+                    @edit="editDiary" @view="openDetail">
                 </diaryItem>
             </yk-space>
         </yk-scrollbar>
@@ -18,6 +18,8 @@
             <yk-pagination @change="changePage" :current="page" :total="count" :page-size="pageSize" size="m" />
         </div>
     </div>
+
+    <diaryDetailView v-model="detailVisible" :diary="detailDiary" @changed="refreshDiaries" />
 </template>
 
 
@@ -73,6 +75,20 @@ const count = ref(0)
 const page = ref(1)
 const loading = ref(false)
 
+// 详情弹窗：点卡片正文打开，内含图片与评论区
+const detailVisible = ref(false)
+const detailDiary = ref<DiaryData | null>(null)
+
+const openDetail = (diary: DiaryData): void => {
+    detailDiary.value = diary
+    detailVisible.value = true
+}
+
+// 评论删除后随笔冗余计数已变，刷新列表让卡片数字同步
+const refreshDiaries = (): void => {
+    void fetchDiaries()
+}
+
 // 获取日记
 const fetchDiaries = async (): Promise<void> => {
     loading.value = true
@@ -96,6 +112,9 @@ const fetchDiaries = async (): Promise<void> => {
             weatherName: item.weatherName ?? undefined,
             content: item.content,
             picture: item.picture,
+            views: item.views,
+            likes: item.likes,
+            comments: item.comments,
         }))
         count.value = result.data.total
 

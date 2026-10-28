@@ -3,6 +3,8 @@ import request from "../utils/request";
 export interface CommentArticle {
   id: number | null;
   title: string;
+  // 图库也是 article 表的行（classify=image），总览跳转时要区分入口
+  classify?: "article" | "image" | null;
 }
 
 export interface CommentItem {
