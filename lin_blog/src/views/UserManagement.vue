@@ -38,9 +38,6 @@
                     <button v-if="canCreateUser" class="add-user-btn" @click="openAddUserModal">
                         + 添加用户
                     </button>
-                    <router-link v-if="canViewPermissions" class="permission-entry" to="/permissionManagement">
-                        权限管理
-                    </router-link>
                 </yk-space>
             </yk-space>
 
@@ -240,7 +237,7 @@ const canDeleteUser = computed(() => session.can('user.delete'))
 // 让「可删除」同时参与删除按钮的禁用判断，避免权限丢失后仍可点击
 const canDeleteTarget = (user: UserInfo): boolean =>
     canDeleteUser.value && canOperateUser(user)
-const canViewPermissions = computed(() => session.can('permission.view'))
+// 授予管理员角色是极高风险权限，只有超级管理员能选「管理员」
 // 授予管理员角色是极高风险权限，只有超级管理员能选「管理员」
 const canAssignAdmin = computed(() => session.isSuperAdmin)
 
@@ -936,24 +933,6 @@ td {
 
 .role-super {
     margin-left: 6px;
-}
-
-.permission-entry {
-    display: inline-flex;
-    align-items: center;
-    padding: 8px 15px;
-    border: 1px solid @line-color-m;
-    border-radius: @radius-s;
-    color: @font-color-l;
-    font-size: 13px;
-    text-decoration: none;
-    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-
-    &:hover {
-        border-color: var(--pcolor3);
-        background: var(--pcolor1);
-        color: var(--pcolor);
-    }
 }
 
 .form-hint {
