@@ -14,13 +14,17 @@ async function getOverviewSummary(req, res) {
         const { userId, userType } = req.user
         // 非管理员只看与自己相关的内容：随笔按作者，评论按「我的作品/我的评论」
         const ownerScope = { userId, userType }
+        // 本地文件属于系统资源，普通用户与游客不返回真实磁盘占用
+        const canViewLocalFiles = ['admin', 'editor'].includes(userType)
 
         // 文章 / 图库各自走 countArticlesByState 并按 classify 拆分
         const [articleSummary, gallerySummary, fileSummary, diaryResult, commentResult, messageUnread] =
             await Promise.all([
                 articleModel.countArticlesByState({ classify: 'article', userId, userType }),
                 articleModel.countArticlesByState({ classify: 'image', userId, userType }),
-                fileModel.countFilesSummary(),
+                canViewLocalFiles
+                    ? fileModel.countFilesSummary()
+                    : Promise.resolve({ totalSize: 0 }),
                 diaryModel.getDiariesByPage({ pageSize: 1, offset: 0, ownerScope }),
                 commentModel.getCommentsByPage(1, 1, 0, null, userId, ownerScope),
                 messageModel.getUnreadCount(userId),
@@ -33,7 +37,7 @@ async function getOverviewSummary(req, res) {
                 article: articleSummary.all,
                 gallery: gallerySummary.all,
                 //  本地文件卡片展示磁盘文件总大小（字节），前端再格式化成可读体积
-                file: fileSummary.totalSize,
+                file: canViewLocalFiles ? fileSummary.totalSize : null,
                 diary: diaryResult.total,
                 comment: commentResult.total,
                 messageUnread,

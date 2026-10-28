@@ -120,7 +120,10 @@ test('总览随笔与评论计数按当前用户收窄', async () => {
             countArticlesByState: async () => ({ all: 0 }),
         },
         '../model/dbModel/file/index': {
-            countFilesSummary: async () => ({ totalSize: 0 }),
+            countFilesSummary: async () => {
+                captured.push({ target: 'file', args: null })
+                return { totalSize: 0 }
+            },
         },
         '../model/dbModel/message/index': {
             getUnreadCount: async () => 0,
@@ -157,6 +160,8 @@ test('总览随笔与评论计数按当前用户收窄', async () => {
     )
 
     assert.equal(res.statusCode, 200)
+    assert.equal(res.payload.data.file, null)
+    assert.equal(captured.some(call => call.target === 'file'), false)
     const diaryCall = captured.find(call => call.target === 'diary')
     assert.deepEqual(diaryCall.args.ownerScope, { userId: 9, userType: 'normal' })
 
@@ -164,4 +169,30 @@ test('总览随笔与评论计数按当前用户收窄', async () => {
     assert.deepEqual(commentCall.args[5], { userId: 9, userType: 'normal' })
 
     delete require.cache[overviewControllerPath]
+})
+
+test('分类计数按归属收窄：普通用户加 user_id，管理员不加', async () => {
+    const subsetModelPath = path.resolve(__dirname, '../model/dbModel/subset/index.js')
+    const { model: scopedSubsetModel, queries, restore } = reloadWithFakeDb(subsetModelPath)
+
+    await scopedSubsetModel.findSubsets({
+        classify: 'article',
+        includeCount: true,
+        countClassify: 'image',
+        countUserId: 42,
+    })
+    const normalSql = queries.find(q => q.sql.includes('FROM subset'))
+    assert.match(normalSql.sql, /a\.user_id = \?/)
+    assert.deepEqual(normalSql.values, ['image', 42, 'article'])
+
+    queries.length = 0
+    await scopedSubsetModel.findSubsets({
+        classify: 'article',
+        includeCount: true,
+        countClassify: 'image',
+    })
+    const adminSql = queries.find(q => q.sql.includes('FROM subset'))
+    assert.doesNotMatch(adminSql.sql, /a\.user_id = \?/)
+    assert.deepEqual(adminSql.values, ['image', 'article'])
+    restore()
 })

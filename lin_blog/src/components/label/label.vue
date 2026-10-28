@@ -2,7 +2,7 @@
     <div class="label">
         <div class="label-title">
             <yk-title :level="4" style="margin: 0;">标签</yk-title>
-            <yk-space style="flex:none">
+            <yk-space v-if="canManageTaxonomy" style="flex:none">
                 <yk-popconfirm title="请输入标签名称" trigger="click" placement="bottom" @cancel="cancel" @confirm="confirm">
                     <yk-text type="primary">
                         <IconCirclePlusOutline style="margin-right: 4px;" /> 新建
@@ -29,7 +29,7 @@
     </div>
 
     <!-- 管理标签对话框 -->
-    <yk-modal v-model="visible" title="管理标签">
+    <yk-modal v-if="canManageTaxonomy" v-model="visible" title="管理标签">
         <labelManage @changed="rawLabel" />
         <template #footer>
             <yk-button @click="showModal">确定</yk-button>
@@ -39,7 +39,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import { createLabel } from '../../api/label.ts'
 import { useLabelStore } from '../../store/label.ts'
 import type { LabelData } from '../../utils/interface.ts'
@@ -56,6 +56,15 @@ type MessageInstance = ComponentPublicInstance & {
 
 const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
 const labelStore = useLabelStore()
+
+const canManageTaxonomy = computed((): boolean => {
+    try {
+        const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+        return ['admin', 'editor'].includes(userInfo?.user_type)
+    } catch {
+        return false
+    }
+})
 
 // 新建标签内容
 const inputValue = ref('')
@@ -118,6 +127,7 @@ const confirm = async (): Promise<void> => {
 const visible = ref(false)
 
 const showModal = (): void => {
+    if (!canManageTaxonomy.value) return
     visible.value = !visible.value
 }
 

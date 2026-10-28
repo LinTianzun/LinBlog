@@ -1,9 +1,18 @@
 const diaryController = require('../controller/diaryController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 
+/**
+ * 公开读取标记：门户随笔列表不按登录用户收窄，任何登录态都能看到完整内容。
+ * 后台列表仍然保留「普通用户只看自己名下」的归属过滤。
+ */
+function publicRead(req, res, next) {
+    req.publicRead = true
+    return next()
+}
+
 module.exports = (app) => {
     // 公开的随笔列表（访客门户展示；随笔无草稿状态，status=1 即对外可见）
-    app.get('/api/public/diary', optionalAuthMiddleware, diaryController.getDiaries)
+    app.get('/api/public/diary', publicRead, optionalAuthMiddleware, diaryController.getDiaries)
 
     // 日记分页查询（支持关键词搜索）
     app.get('/api/diary', authMiddleware, diaryController.getDiaries)

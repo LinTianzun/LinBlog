@@ -2,7 +2,7 @@ const { query } = require('../../db/dbnew')
 
 const CLASSIFY_TYPES = ['article', 'image', 'resource']
 
-async function findSubsets({ classify, includeCount = false, countClassify, countState } = {}) {
+async function findSubsets({ classify, includeCount = false, countClassify, countState, countUserId } = {}) {
     const whereParams = []
     let whereClause = 'status = 1'
 
@@ -24,6 +24,11 @@ async function findSubsets({ classify, includeCount = false, countClassify, coun
         if (countState && ['draft', 'published', 'rejected'].includes(countState)) {
             countFilter += ' AND a.state = ?'
             countParams.push(countState)
+        }
+        //  普通用户的后台分类计数只包含自己名下内容
+        if (countUserId) {
+            countFilter += ' AND a.user_id = ?'
+            countParams.push(countUserId)
         }
         columns = `id, subset_name AS name, classify, sort,
            (SELECT COUNT(*) FROM article a

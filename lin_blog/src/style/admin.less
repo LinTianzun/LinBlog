@@ -165,7 +165,9 @@
     border-radius: 10px;
 }
 
-#app:not(.is-portal) .index-view :focus-visible {
+// 搜索框等输入类控件聚焦时组件自身会切换边框色，再叠加全局焦点环就会出现第二圈线条；
+// 因此焦点环只作用于非输入控件，输入框的聚焦反馈仍由边框色表达。
+#app:not(.is-portal) .index-view :focus-visible:not(.yk-input__inner):not(.yk-input__widget):not(.yk-text-area):not(.yk-text-area *) {
     outline: 2px solid var(--pcolor4);
     outline-offset: 2px;
 }

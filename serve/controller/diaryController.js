@@ -32,8 +32,11 @@ async function getDiaries(req, res) {
         const weather = typeof req.query.weather === 'string' ? req.query.weather.trim() : ''
         const sort = req.query.sort === 'hot' ? 'hot' : 'latest'
 
-        // 后台列表按登录用户收窄：管理员/编辑看全站，普通用户只看自己名下
-        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+        // 后台列表按登录用户收窄：管理员/编辑看全站，普通用户只看自己名下。
+        // 门户公开接口要看到完整内容，因此显式放开归属过滤。
+        const ownerScope = req.publicRead === true
+            ? null
+            : { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
 
         const [pageResult, facetResult] = await Promise.all([
             diaryModel.getDiariesByPage({ keyword, weather, pageSize, offset, sort, ownerScope }),
