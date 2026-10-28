@@ -38,11 +38,12 @@ test('public read endpoints mount optional auth and keep admin write endpoints s
 
     const anonymous = { headers: {} }
     await optionalAuthMiddleware(anonymous, makeResponse(), () => {})
-    assert.deepEqual(anonymous.user, {
-        userId: null,
-        user_type: 'visitor',
-        userType: 'visitor'
-    })
+    // 游客态带空权限集合：公开接口按「无权限」放行只读，写操作由控制器拒绝
+    assert.equal(anonymous.user.userId, null)
+    assert.equal(anonymous.user.user_type, 'visitor')
+    assert.equal(anonymous.user.userType, 'visitor')
+    assert.equal(anonymous.user.isSuperAdmin, false)
+    assert.deepEqual(anonymous.user.permissions, [])
 })
 
 test('article model scopes anonymous visitors to published content only', async () => {

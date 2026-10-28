@@ -1,25 +1,26 @@
 const messageController = require('../controller/messageController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 const { publicMessageLimit } = require('../middleware/rateLimit')
+const { requirePermission } = require('../utils/accessControl')
 
 module.exports = (app) => {
     //  发送消息
     app.post('/api/message', authMiddleware, messageController.sendMessage)
 
     //  收件箱查询
-    app.get('/api/message/inbox', authMiddleware, messageController.getInBox)
+    app.get('/api/message/inbox', authMiddleware, requirePermission('message.private'), messageController.getInBox)
 
     //  发件箱查询
-    app.get('/api/message/outbox', authMiddleware, messageController.getOutBox)
+    app.get('/api/message/outbox', authMiddleware, requirePermission('message.private'), messageController.getOutBox)
 
     //  标记消息已读
-    app.patch('/api/message/read', authMiddleware, messageController.markAdRead)
+    app.patch('/api/message/read', authMiddleware, requirePermission('message.private'), messageController.markAdRead)
 
     //  删除消息
-    app.delete('/api/message/:id', authMiddleware, messageController.deleteMessage)
+    app.delete('/api/message/:id', authMiddleware, requirePermission('message.private'), messageController.deleteMessage)
 
     //  查询未读消息数量
-    app.get('/api/message/unread/count', authMiddleware, messageController.getUnreadCount)
+    app.get('/api/message/unread/count', authMiddleware, requirePermission('message.private'), messageController.getUnreadCount)
 
     // ===== 门户留言墙（公开）=====
     app.get('/api/portal/messages', messageController.getWallMessages)

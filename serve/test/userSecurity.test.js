@@ -126,7 +126,8 @@ test('the last admin cannot be demoted', async () => {
             mail: 'admin-two@example.com',
             user_type: 'normal'
         },
-        user: { userId: 1, user_type: 'admin' }
+        // 只有超级管理员能改其他管理员账号，因此这里的操作者必须是超级管理员
+        user: { userId: 1, user_type: 'admin', is_super_admin: 1 }
     }, res)
 
     assert.equal(res.statusCode, 400)
@@ -156,7 +157,7 @@ test('an admin can be demoted when another admin remains', async () => {
             mail: 'admin-two@example.com',
             user_type: 'normal'
         },
-        user: { userId: 1, user_type: 'admin' }
+        user: { userId: 1, user_type: 'admin', is_super_admin: 1 }
     }, res)
 
     assert.equal(res.statusCode, 200)
@@ -173,7 +174,7 @@ test('the last admin cannot be disabled', async () => {
     await userController.updateUserStatus({
         params: { id: '2' },
         body: { status: 0 },
-        user: { userId: 1, user_type: 'admin' }
+        user: { userId: 1, user_type: 'admin', is_super_admin: 1 }
     }, res)
 
     assert.equal(res.statusCode, 400)
@@ -190,7 +191,7 @@ test('the last admin cannot be deleted', async () => {
 
     await userController.deleteUser({
         params: { id: '2' },
-        user: { userId: 1, user_type: 'admin' }
+        user: { userId: 1, user_type: 'admin', is_super_admin: 1 }
     }, res)
 
     assert.equal(res.statusCode, 400)

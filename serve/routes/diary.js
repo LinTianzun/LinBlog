@@ -1,5 +1,6 @@
 const diaryController = require('../controller/diaryController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
+const { requirePermission } = require('../utils/accessControl')
 
 /**
  * 公开读取标记：门户随笔列表不按登录用户收窄，任何登录态都能看到完整内容。
@@ -18,7 +19,7 @@ module.exports = (app) => {
     app.get('/api/diary', authMiddleware, diaryController.getDiaries)
 
     // 新建日记
-    app.post('/api/diary', authMiddleware, diaryController.createDiary)
+    app.post('/api/diary', authMiddleware, requirePermission('diary.create'), diaryController.createDiary)
 
     // 编辑日记（标题/内容/图片/天气）
     app.put('/api/diary/:id', authMiddleware, diaryController.updateDiary)

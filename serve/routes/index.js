@@ -2,6 +2,8 @@
 module.exports = (app) => {
     //  引入用户相关路由
     require('./user')(app)
+    //  引入权限管理路由
+    require('./permission')(app)
     //  引入评论相关路由
     require('./comment')(app)
     //  引入点赞相关路由

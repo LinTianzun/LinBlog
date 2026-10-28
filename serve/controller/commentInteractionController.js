@@ -1,5 +1,6 @@
 const commentInteractionModel = require('../model/dbModel/commentInteraction/index')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 
 /**
  * 解析并校验互动入参，失败时返回 { error: { code, message } }
@@ -24,9 +25,12 @@ function parsePayload(body) {
  */
 async function toggleLike(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再点赞' })
+        }
+        if (!hasPermission(req.user, 'comment.like')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有点赞权限' })
         }
 
         const parsed = parsePayload(req.body)
@@ -66,9 +70,12 @@ async function toggleLike(req, res) {
  */
 async function report(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再举报' })
+        }
+        if (!hasPermission(req.user, 'comment.report')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有举报权限' })
         }
 
         const parsed = parsePayload(req.body)
@@ -111,9 +118,12 @@ async function report(req, res) {
  */
 async function deleteComment(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再删除评论' })
+        }
+        if (!hasPermission(req.user, 'comment.moderate') && !hasPermission(req.user, 'comment.manageOwn')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有删除评论的权限' })
         }
 
         const parsed = parsePayload(req.body)
@@ -122,8 +132,9 @@ async function deleteComment(req, res) {
         }
         const { targetType, commentId } = parsed.data
 
+        const accessType = hasPermission(req.user, 'comment.moderate') ? 'admin' : 'normal'
         const affected = await commentInteractionModel.deleteComment(
-            targetType, commentId, userId, userType
+            targetType, commentId, userId, accessType
         )
         if (affected === 0) {
             // 不区分「不存在」与「无权限」，避免通过状态码探测他人评论

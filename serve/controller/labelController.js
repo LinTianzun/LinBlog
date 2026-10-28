@@ -1,5 +1,6 @@
 const labelModel = require('../model/dbModel/label/index')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 
 async function getLabels(req, res) {
     try {
@@ -25,7 +26,7 @@ async function getLabels(req, res) {
 
 async function createLabel(req, res) {
     try {
-        if (!['admin', 'editor'].includes(req.user.userType)) {
+        if (!hasPermission(req.user, 'label.manage')) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以创建标签' })
         }
 
@@ -69,7 +70,7 @@ async function createLabel(req, res) {
 
 async function deleteLabel(req, res) {
     try {
-        if (!['admin', 'editor'].includes(req.user.userType)) {
+        if (!hasPermission(req.user, 'label.manage')) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以删除标签' })
         }
 

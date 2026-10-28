@@ -106,6 +106,8 @@ const tablesSql = {
     mail VARCHAR(100) NOT NULL COMMENT '邮箱（登录账号）',
     password VARCHAR(255) NOT NULL COMMENT '密码（bcrypt哈希存储）',
     user_type ENUM('admin', 'editor', 'normal', 'visitor') NOT NULL DEFAULT 'normal' COMMENT '用户类型：管理员/编辑/普通用户/游客',
+    is_super_admin TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为唯一超级管理员',
+    super_admin_slot TINYINT GENERATED ALWAYS AS (IF(is_super_admin = 1, 1, NULL)) STORED COMMENT '超级管理员唯一槽位',
     imgurl VARCHAR(255) COMMENT '头像地址',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '账号状态：1-正常，0-禁用',
     token_version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '登录令牌版本（改密后递增）',
@@ -115,9 +117,21 @@ const tablesSql = {
     PRIMARY KEY (id),
     UNIQUE KEY uk_mail (mail),
     UNIQUE KEY uk_username (username),
+    UNIQUE KEY uk_single_super_admin (super_admin_slot),
     INDEX idx_user_type (user_type),
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';`,
+
+  role_permission: `CREATE TABLE IF NOT EXISTS role_permission(
+    role_key ENUM('admin', 'editor', 'normal', 'visitor') NOT NULL COMMENT '可编辑角色',
+    permission_key VARCHAR(64) NOT NULL COMMENT '权限标识',
+    allowed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许',
+    updated_by BIGINT UNSIGNED NULL COMMENT '最后修改人',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (role_key, permission_key),
+    INDEX idx_role_permission_updated_by (updated_by),
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限矩阵';`,
 
   subset: `CREATE TABLE IF NOT EXISTS subset(
     id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '分类ID',
@@ -425,7 +439,7 @@ async function seedDemoData() {
 
     // 1. 插入用户数据
     const users = [
-      { username: '管理员', mail: 'admin@linlog.com', password: passwordHash, user_type: 'admin', imgurl: 'https://picsum.photos/id/1/200', last_login_at: '2025-11-04 10:30:00' },
+      { username: '管理员', mail: 'admin@linlog.com', password: passwordHash, user_type: 'admin', is_super_admin: 1, imgurl: 'https://picsum.photos/id/1/200', last_login_at: '2025-11-04 10:30:00' },
       { username: '编辑小李', mail: 'editor@linlog.com', password: passwordHash, user_type: 'editor', imgurl: 'https://picsum.photos/id/2/200', last_login_at: '2025-11-04 09:15:00' },
       { username: '普通用户张三', mail: 'user1@linlog.com', password: passwordHash, user_type: 'normal', imgurl: 'https://picsum.photos/id/3/200', last_login_at: '2025-11-03 16:45:00' },
       { username: '普通用户李四', mail: 'user2@linlog.com', password: passwordHash, user_type: 'normal', imgurl: 'https://picsum.photos/id/4/200', last_login_at: '2025-11-03 14:20:00' },
@@ -434,9 +448,9 @@ async function seedDemoData() {
     const userIds = [];
     for (const user of users) {
       const result = await baseQuery(`
-        INSERT INTO users (username, mail, password, user_type, imgurl, last_login_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [user.username, user.mail, user.password, user.user_type, user.imgurl, user.last_login_at]);
+        INSERT INTO users (username, mail, password, user_type, is_super_admin, imgurl, last_login_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [user.username, user.mail, user.password, user.user_type, user.is_super_admin || 0, user.imgurl, user.last_login_at]);
       userIds.push(result.insertId);
     }
     console.log(`[DB] 插入 ${users.length} 条用户数据（ID：${userIds.join(', ')}）`);
@@ -884,7 +898,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1336,6 +1350,37 @@ async function ensurePasswordResetVersionGuardSchema(exec = query) {
   });
 }
 
+async function ensureAccessControlSchema(exec = query) {
+  await ensureColumn(exec, 'users', 'is_super_admin', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 0',
+    comment: '是否为唯一超级管理员'
+  })
+  await ensureColumn(exec, 'users', 'super_admin_slot', {
+    definition: 'TINYINT GENERATED ALWAYS AS (IF(is_super_admin = 1, 1, NULL)) STORED',
+    comment: '超级管理员唯一槽位'
+  })
+
+  const [superAdminIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'users'
+      AND INDEX_NAME = 'uk_single_super_admin'
+    LIMIT 1
+  `)
+  if (!superAdminIndex) {
+    await exec('ALTER TABLE users ADD UNIQUE KEY uk_single_super_admin (super_admin_slot)')
+  }
+
+  await exec(tablesSql.role_permission)
+
+  // 固定账号只做提升，不自动创建账号或重置密码。
+  await exec(
+    "UPDATE users SET is_super_admin = 1 WHERE LOWER(TRIM(mail)) = LOWER(TRIM(?)) LIMIT 1",
+    ['admin@linlog.com']
+  )
+}
+
 // 随笔归属：新随笔按作者隔离，历史随笔统一归到最早的管理员名下，
 // 否则非管理员登录后会看到别人（主账号）的随笔。
 async function ensureDiaryOwnerSchema(exec = query) {
@@ -1444,6 +1489,10 @@ const migrations = [
   {
     version: '20261028_diary_owner',
     up: ensureDiaryOwnerSchema
+  },
+  {
+    version: '20261028_access_control',
+    up: ensureAccessControlSchema
   }
 ];
 

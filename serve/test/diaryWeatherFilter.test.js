@@ -202,6 +202,7 @@ test('控制器：weather 参数透传到模型并返回分面', async () => {
 
     try {
         const res = makeRes()
+        // 未登录前台：随笔归属维度按游客处理，列表仍需照常返回
         await diaryController.getDiaries(
             { query: { weather: '晴天', page: '1', pageSize: '9' } },
             res
@@ -209,12 +210,12 @@ test('控制器：weather 参数透传到模型并返回分面', async () => {
 
         assert.equal(res.statusCode, 200)
         assert.equal(getArgs.weather, '晴天')
-        // 控制器把登录用户的归属范围透传给模型，普通用户只看自己名下随笔
+        // 控制器把登录用户的归属范围透传给模型，游客只看已发布内容
         assert.deepEqual(countArgs, {
             keyword: '',
-            ownerScope: { userId: null, userType: null }
+            ownerScope: { userId: null, userType: 'visitor' }
         })
-        assert.deepEqual(getArgs.ownerScope, { userId: null, userType: null })
+        assert.deepEqual(getArgs.ownerScope, { userId: null, userType: 'visitor' })
         assert.deepEqual(res.payload.data.weatherFacet, [
             { weatherName: '晴天', count: 2 }
         ])

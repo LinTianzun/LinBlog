@@ -1,6 +1,7 @@
 const { verifyToken } = require('../utils/jwtutil')
 const userModel = require('../model/dbModel/users/index')
 const { consumeUploadTicket } = require('../utils/uploadTicket')
+const { isSuperAdmin, getPermissionsForUser } = require('../utils/accessControl')
 
 /**
  * 用已确认的用户 ID 加载账号并校验状态。
@@ -26,11 +27,15 @@ async function resolveAuthUserById(userId, req, res, next) {
             })
         }
 
+        const isSuper = isSuperAdmin(user)
         req.user = {
             userId,
             user_type: user.user_type,
             userType: user.user_type,
-            tokenVersion: Number(user.token_version || 0)
+            tokenVersion: Number(user.token_version || 0),
+            isSuperAdmin: isSuper,
+            is_super_admin: isSuper,
+            permissions: getPermissionsForUser({ ...user, userId, isSuperAdmin: isSuper })
         }
         return next()
     } catch (err) {
@@ -81,13 +86,19 @@ async function resolveAuthUser(req) {
             return { user: null, reason: '登录状态已失效，请重新登录', status: 401 }
         }
 
+        const isSuper = isSuperAdmin(user)
+        const authUser = {
+            userId: decoded.userId,
+            user_type: user.user_type,
+            userType: user.user_type,
+            tokenVersion: Number(user.token_version || 0),
+            isSuperAdmin: isSuper,
+            is_super_admin: isSuper,
+            permissions: getPermissionsForUser({ ...user, userId: decoded.userId, isSuperAdmin: isSuper })
+        }
+
         return {
-            user: {
-                userId: decoded.userId,
-                user_type: user.user_type,
-                userType: user.user_type,
-                tokenVersion: Number(user.token_version || 0)
-            },
+            user: authUser,
             reason: null,
             status: 200
         }
@@ -128,7 +139,14 @@ async function optionalAuthMiddleware(req, res, next) {
         // 无 Token 按游客放行；但携带了无效 Token 或禁用账号时明确拒绝，
         // 避免前端误以为游客态而隐藏登录态功能
         if (!user && !req.headers.authorization) {
-            req.user = { userId: null, user_type: 'visitor', userType: 'visitor' }
+            req.user = {
+                userId: null,
+                user_type: 'visitor',
+                userType: 'visitor',
+                isSuperAdmin: false,
+                is_super_admin: false,
+                permissions: []
+            }
             return next()
         }
         if (!user) {

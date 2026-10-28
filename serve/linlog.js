@@ -21,6 +21,7 @@ const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandl
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
+const { refreshPermissionCache } = require('./utils/accessControl')
 
 app.disable('x-powered-by')
 
@@ -68,7 +69,8 @@ app.use(createErrorHandler())
 
 // 等待数据库初始化后启动服务
 db.initDatabase()
-    .then(() => {
+    .then(async () => {
+        await refreshPermissionCache();
         const port = config.port;
         const server = app.listen(port, () => {
             console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);

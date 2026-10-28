@@ -15,7 +15,7 @@ function countActiveAdmins(admins) {
 
 async function lockAdminAccounts(exec) {
     return exec(`
-        SELECT id, user_type, status
+        SELECT id, mail, user_type, status, is_super_admin
         FROM users
         WHERE user_type = ?
         ORDER BY id
@@ -25,7 +25,7 @@ async function lockAdminAccounts(exec) {
 
 async function lockUserById(exec, userId) {
     return exec(`
-        SELECT id, user_type, status
+        SELECT id, mail, username, user_type, status, is_super_admin
         FROM users
         WHERE id = ?
         FOR UPDATE
@@ -36,7 +36,7 @@ async function lockUserById(exec, userId) {
 async function findUserByAccount(account) {
     // 用 OR 同时匹配 username 和 mail，兼容双登录
     const sql = `
-        SELECT id, username, mail, password, imgurl, user_type, status, token_version
+        SELECT id, username, mail, password, imgurl, user_type, is_super_admin, status, token_version
         FROM users 
         WHERE username = ? OR mail = ?
     `;
@@ -71,7 +71,7 @@ async function findUserConflictForUpdate(username, mail, userId) {
 // 按 ID 查询用户（获取信息用）
 async function findUserById(userId) {
     const sql = `
-        SELECT id, username, mail, password, imgurl, user_type, status, token_version, created_at, last_login_at
+        SELECT id, username, mail, password, imgurl, user_type, is_super_admin, status, token_version, created_at, last_login_at
         FROM users 
         WHERE id = ?
     `;
@@ -218,7 +218,7 @@ async function findUsersByPage(page, pageSize, offset, keyword = '', statusFilte
 
     // 1. 查询当前页用户（不返回密码）
     const userSql = `
-        SELECT id, username, mail, imgurl, user_type,
+        SELECT id, username, mail, imgurl, user_type, is_super_admin,
                status, created_at, last_login_at
         FROM users
         ${combinedWhere}
@@ -300,6 +300,24 @@ async function countAdminUsers() {
     return Number(result.total);
 }
 
+async function countRoleDistribution() {
+    const rows = await query(`
+        SELECT
+            CASE
+                WHEN is_super_admin = 1 THEN 'super_admin'
+                ELSE user_type
+            END AS role_key,
+            COUNT(*) AS total
+        FROM users
+        GROUP BY role_key
+    `)
+
+    return rows.reduce((result, row) => {
+        result[row.role_key] = Number(row.total)
+        return result
+    }, {})
+}
+
 // 根据用户 ID 删除用户
 async function deleteUserByAdmin(userId, exec = query) {
     return exec(
@@ -319,6 +337,16 @@ async function updateUserByAdminGuarded(userId, userInfo, currentUserId) {
         }
 
         const target = targetRows[0]
+
+        if (
+            Number(target.is_super_admin) === 1 &&
+            (
+                String(userId) !== String(currentUserId) ||
+                userInfo.user_type !== 'admin'
+            )
+        ) {
+            return { ok: false, reason: 'super_admin_protected' }
+        }
 
         if (
             String(userId) === String(currentUserId) &&
@@ -356,6 +384,10 @@ async function updateUserStatusGuarded(userId, status, currentUserId) {
         }
 
         const target = targetRows[0]
+        if (Number(target.is_super_admin) === 1) {
+            return { ok: false, reason: 'super_admin_protected' }
+        }
+
         const disablesLastActiveAdmin =
             status === 0 &&
             target.user_type === 'admin' &&
@@ -386,6 +418,10 @@ async function deleteUserByAdminGuarded(userId, currentUserId) {
         }
 
         const target = targetRows[0]
+        if (Number(target.is_super_admin) === 1) {
+            return { ok: false, reason: 'super_admin_protected' }
+        }
+
         const deletesLastActiveAdmin =
             target.user_type === 'admin' &&
             Number(target.status) === 1 &&
@@ -419,6 +455,7 @@ module.exports = {
     updateUserAvatar,
     findUsersByPage,
     countAdminUsers,
+    countRoleDistribution,
     deleteUserByAdmin,
     deleteUserByAdminGuarded
 }

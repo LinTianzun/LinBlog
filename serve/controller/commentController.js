@@ -3,6 +3,7 @@ const articleModel = require('../model/dbModel/article/index') // 用于校验�
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { query } = require('../model/db/dbnew')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission, getCommentViewType } = require('../utils/accessControl')
 /**
  * 分页查询评论（支持一级/二级评论，关联文章信息）
  */
@@ -36,8 +37,8 @@ async function getComments(req, res) {
             offset,
             articleId,
             req.user?.userId ?? null,
-            // 后台评论按登录用户收窄：管理员/编辑看全站，其余只看与自己相关的评论
-            { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+            // 后台评论按权限收窄：评论管理员看全站，其余只看与自己相关的评论
+            { userId: req.user?.userId ?? null, userType: getCommentViewType(req.user) }
         )
         res.json({
             code: 200,
@@ -186,6 +187,10 @@ async function submitComment(body, userId) {
  */
 async function createComment(req, res) {
     try {
+        if (!hasPermission(req.user, 'comment.create')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发表评论的权限' })
+        }
+
         const { userId } = req.user // 从Token获取当前用户ID和类型
         const normalized = await submitComment(req.body, userId)
         if (normalized.error) {
@@ -225,9 +230,12 @@ async function createComment(req, res) {
  */
 async function createPublicComment(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再发表评论' })
+        }
+        if (!hasPermission(req.user, 'comment.create')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有发表评论的权限' })
         }
 
         const normalized = await submitComment(req.body, userId)
@@ -272,15 +280,20 @@ async function createPublicComment(req, res) {
 async function deleteComment(req, res) {
     try {
         const { id: commentId } = req.params // 从URL获取评论ID
-        const { userId, userType } = req.user // 从Token获取当前用户信息
+        const { userId } = req.user // 从Token获取当前用户信息
 
         // 1. 校验评论ID是否有效
         if (!commentId || isNaN(commentId)) {
             return res.status(400).json({ code: 400, message: '请传入有效的评论ID' })
         }
 
+        if (!hasPermission(req.user, 'comment.moderate') && !hasPermission(req.user, 'comment.manageOwn')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有删除评论的权限' })
+        }
+
         // 2. 调用模型删除评论（权限校验在模型层）
-        const affectedRows = await commentModel.deleteComment(commentId, userId, userType)
+        const accessType = hasPermission(req.user, 'comment.moderate') ? 'admin' : 'normal'
+        const affectedRows = await commentModel.deleteComment(commentId, userId, accessType)
         if (affectedRows === 0) {
             return res.status(403).json({ code: 403, message: '无权限删除该评论（评论不存在/已删除/非本人评论）' })
         }

@@ -1,6 +1,7 @@
 const userController = require('../controller/userController')
 const passwordResetController = require('../controller/passwordResetController')
 const { authMiddleware } = require('../middleware/auth')    //  引入中间件
+const { requirePermission } = require('../utils/accessControl')
 const {
     passwordResetRequestLimit,
     passwordResetSubmitLimit,
@@ -37,17 +38,17 @@ module.exports = (app) => {
     app.put('/api/user/avatar', authMiddleware, userController.updateAvatar)
 
     //  获取所有的用户信息 用作用户管理（POST）
-    app.post('/api/user/allUser', authMiddleware, userController.getAllUsers)
+    app.post('/api/user/allUser', authMiddleware, requirePermission('user.view'), userController.getAllUsers)
 
     // 管理员创建用户（POST）
-    app.post('/api/user/createUser', authMiddleware, userController.createUser)
+    app.post('/api/user/createUser', authMiddleware, requirePermission('user.create'), userController.createUser)
 
     // 管理员编辑用户（PUT）
-    app.put('/api/user/updateUser/:id', authMiddleware, userController.updateUser)
+    app.put('/api/user/updateUser/:id', authMiddleware, requirePermission('user.edit'), userController.updateUser)
 
     // 管理员删除用户（DELETE）
-    app.delete('/api/user/deleteUser/:id', authMiddleware, userController.deleteUser)
+    app.delete('/api/user/deleteUser/:id', authMiddleware, requirePermission('user.delete'), userController.deleteUser)
 
     // 管理员修改用户启用/禁用状态（PUT）
-    app.put('/api/user/updateUserStatus/:id',authMiddleware,userController.updateUserStatus)
+    app.put('/api/user/updateUserStatus/:id',authMiddleware,requirePermission('user.disable'),userController.updateUserStatus)
 }

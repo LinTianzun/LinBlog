@@ -1,5 +1,6 @@
 const praiseModel = require('../model/dbModel/praise/index')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 
 function parseArticleId(value) {
     const parsed = Number(value)
@@ -40,9 +41,12 @@ async function getLikeState(req, res) {
  */
 async function toggleLike(req, res) {
     try {
-        const { userId, userType } = req.user
-        if (userType === 'visitor' || !userId) {
+        const { userId } = req.user
+        if (!userId) {
             return res.status(401).json({ code: 401, message: '请先登录后再点赞' })
+        }
+        if (!hasPermission(req.user, 'comment.like')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有点赞权限' })
         }
 
         const articleId = parseArticleId(req.params.id)

@@ -1,6 +1,11 @@
 const diaryModel = require('../model/dbModel/diary/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
+const {
+    hasPermission,
+    getDiaryViewType,
+    getDiaryAccessType
+} = require('../utils/accessControl')
 
 /**
  * 将图片字段解析为数组（数据库以逗号分隔存储）
@@ -36,7 +41,7 @@ async function getDiaries(req, res) {
         // 门户公开接口要看到完整内容，因此显式放开归属过滤。
         const ownerScope = req.publicRead === true
             ? null
-            : { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+            : { userId: req.user?.userId ?? null, userType: getDiaryViewType(req.user) }
 
         const [pageResult, facetResult] = await Promise.all([
             diaryModel.getDiariesByPage({ keyword, weather, pageSize, offset, sort, ownerScope }),
@@ -140,6 +145,10 @@ async function normalizeDiaryPayload(body) {
  */
 async function createDiary(req, res) {
     try {
+        if (!hasPermission(req.user, 'diary.create')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有创建随笔的权限' })
+        }
+
         const normalized = await normalizeDiaryPayload(req.body)
         if (normalized.error) {
             return res.status(normalized.error.code).json({ code: normalized.error.code, message: normalized.error.message })
@@ -180,7 +189,10 @@ async function deleteDiary(req, res) {
             return res.status(400).json({ code: 400, message: '日记ID必须是有效数字' })
         }
 
-        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+        const ownerScope = {
+            userId: req.user?.userId ?? null,
+            userType: getDiaryAccessType(req.user)
+        }
         const diary = await diaryModel.findDiaryById(diaryId, ownerScope)
         if (!diary) {
             return res.status(404).json({ code: 404, message: '日记不存在或已删除' })
@@ -214,7 +226,10 @@ async function updateDiary(req, res) {
             return res.status(400).json({ code: 400, message: '日记ID必须是有效数字' })
         }
 
-        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+        const ownerScope = {
+            userId: req.user?.userId ?? null,
+            userType: getDiaryAccessType(req.user)
+        }
         const diary = await diaryModel.findDiaryById(diaryId, ownerScope)
         if (!diary) {
             return res.status(404).json({ code: 404, message: '日记不存在或已删除' })

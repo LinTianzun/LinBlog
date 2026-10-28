@@ -5,6 +5,7 @@ const multer = require('multer')
 const fileModel = require('../model/dbModel/file/index')
 const subsetModel = require('../model/dbModel/subset/index')
 const { writeSystemLog } = require('../utils/logHelper')
+const { hasPermission } = require('../utils/accessControl')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const fileStorage = require('../utils/fileStorage')
 const { runFileLifecycleCleanup } = require('../utils/fileLifecycle')
@@ -488,8 +489,8 @@ async function restoreFiles(req, res) {
  */
 async function cleanupFiles(req, res) {
     try {
-        if (!req.user || req.user.user_type !== 'admin') {
-            return res.status(403).json({ code: 403, message: '仅管理员可以执行文件清理' })
+        if (!hasPermission(req.user, 'file.purge')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有执行文件清理的权限' })
         }
 
         const result = await runFileLifecycleCleanup({
@@ -519,8 +520,8 @@ async function cleanupFiles(req, res) {
  */
 async function purgeTrashFiles(req, res) {
     try {
-        if (!req.user || req.user.user_type !== 'admin') {
-            return res.status(403).json({ code: 403, message: '仅管理员可以彻底删除文件' })
+        if (!hasPermission(req.user, 'file.purge')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有彻底删除文件的权限' })
         }
 
         const ids = normalizeIdList(req.body.fileIds)
@@ -598,8 +599,8 @@ async function purgeTrashFiles(req, res) {
  */
 async function getStorageStatus(req, res) {
     try {
-        if (!req.user || req.user.user_type !== 'admin') {
-            return res.status(403).json({ code: 403, message: '仅管理员可以查看备份存储状态' })
+        if (!hasPermission(req.user, 'file.purge')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看备份存储状态的权限' })
         }
 
         const capacity = await getBackupCapacity({ offsite: offsiteStorage })

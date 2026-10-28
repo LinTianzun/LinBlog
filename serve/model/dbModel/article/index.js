@@ -1,6 +1,27 @@
 const { query } = require('../../db/dbnew')
 const labelModel = require('../label/index')
 
+function normalizeAccess(access) {
+    if (access && typeof access === 'object') {
+        return {
+            viewAll: Boolean(access.viewAll),
+            viewOwn: Boolean(access.viewOwn),
+            manageAll: Boolean(access.manageAll),
+            manageOwn: Boolean(access.manageOwn),
+            publish: Boolean(access.publish)
+        }
+    }
+
+    const isAdmin = access === 'admin' || access === 'editor'
+    return {
+        viewAll: isAdmin,
+        viewOwn: isAdmin || access === 'normal',
+        manageAll: isAdmin,
+        manageOwn: isAdmin || access === 'normal',
+        publish: isAdmin
+    }
+}
+
 /**
  * 校验文章是否存在（仅查ID和状态）
  * @param {number} articleId  - 文章ID
@@ -44,20 +65,19 @@ async function insertArticle(articleInfo) {
 async function findArticlesByPage(params) {
     const {
         page, pageSize, offset, state, classify, subsetId, withContent,
-        uncategorized, label, keyword, userId, userType, sort
+        uncategorized, label, keyword, userId, userType, userAccess, sort
     } = params
+    const access = normalizeAccess(userAccess || userType)
     let whereClause = 'a.state != ?'  //  排除已删除文章
     const whereParams = ['deleted']
 
     //  权限控制 普通用户只能查自己的文章
-    if (userType === 'normal') {
+    if (!access.viewAll && access.viewOwn) {
         whereClause += ' AND a.user_id = ?'
         whereParams.push(userId)
-    } else if (userType === 'visitor') {
+    } else if (!access.viewAll && !access.viewOwn) {
         whereClause += ' AND a.state = ?'
         whereParams.push('published')
-    } else if (!['admin', 'editor'].includes(userType)) {
-        whereClause += ' AND 1 = 0'
     }
 
     //  筛选条件：状态
@@ -163,18 +183,17 @@ async function findArticlesByPage(params) {
  * @returns {Promise<Object>} 各状态数量汇总
  */
 async function countArticlesByState(params) {
-    const { classify, userId, userType } = params
+    const { classify, userId, userType, userAccess } = params
+    const access = normalizeAccess(userAccess || userType)
     let whereClause = 'a.state != ?'  //  排除已删除文章
     const whereParams = ['deleted']
 
-    if (userType === 'normal') {
+    if (!access.viewAll && access.viewOwn) {
         whereClause += ' AND a.user_id = ?'
         whereParams.push(userId)
-    } else if (userType === 'visitor') {
+    } else if (!access.viewAll && !access.viewOwn) {
         whereClause += ' AND a.state = ?'
         whereParams.push('published')
-    } else if (!['admin', 'editor'].includes(userType)) {
-        whereClause += ' AND 1 = 0'
     }
 
     if (classify && ['article', 'image'].includes(classify)) {
@@ -210,18 +229,17 @@ async function countArticlesByState(params) {
  * @returns {Promise<Object|null>} 文章详情
  */
 async function findAtricleById(articleId, userId, userType) {
+    const access = normalizeAccess(userType)
     let whereClause = 'a.id = ? AND a.state != ?' // 排除已删除
     const whereParams = [articleId, 'deleted']
 
     //  普通用户只能查自己的或已发布的文章
-    if (userType === 'normal') {
+    if (!access.viewAll && access.viewOwn) {
         whereClause += ' AND (a.user_id = ? OR a.state = ?)'
         whereParams.push(userId, 'published')
-    } else if (userType === 'visitor') {
+    } else if (!access.viewAll && !access.viewOwn) {
         whereClause += ' AND a.state = ?'
         whereParams.push('published')
-    } else if (!['admin', 'editor'].includes(userType)) {
-        return null
     }
 
     const sql = `
@@ -262,8 +280,9 @@ async function findAtricleById(articleId, userId, userType) {
  * 避免把“字段值未变化”产生的 0 影响行数误判为无权限。
  */
 async function findArticleMutationAccess(articleId, userId, userType, action = 'update') {
+    const access = normalizeAccess(userType)
     const rows = await query(
-        'SELECT id, user_id, state FROM article WHERE id = ? LIMIT 1',
+        'SELECT id, user_id, state, classify FROM article WHERE id = ? LIMIT 1',
         [articleId]
     )
 
@@ -272,12 +291,12 @@ async function findArticleMutationAccess(articleId, userId, userType, action = '
     }
 
     const article = rows[0]
-    let allowed = ['admin', 'editor'].includes(userType)
+    let allowed = access.manageAll
 
-    if (userType === 'normal') {
+    if (!allowed && access.manageOwn) {
         const editableStates = action === 'status' ? ['rejected'] : ['draft', 'rejected']
         allowed = Number(article.user_id) === Number(userId) &&
-            editableStates.includes(article.state)
+            (access.publish || editableStates.includes(article.state))
     }
 
     return { exists: true, allowed, article }
@@ -292,10 +311,11 @@ async function findArticleMutationAccess(articleId, userId, userType, action = '
  * @returns {Promise<number>} 影响行数
  */
 async function updateArticle(articleId, updateData, userId, userType) {
-    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    const access = normalizeAccess(userType)
+    if (!access.manageAll && !access.manageOwn) return 0
 
     // 权限在模型层再次兜底：普通用户不能设置 published/rejected。
-    if (userType === 'normal' && updateData.state !== undefined && updateData.state !== 'draft') return 0
+    if (!access.manageAll && !access.publish && updateData.state !== undefined && updateData.state !== 'draft') return 0
 
     // 筛选非空的更新字段，映射前端驼峰→数据库下划线
     const fieldMap = {
@@ -339,10 +359,13 @@ async function updateArticle(articleId, updateData, userId, userType) {
     let whereClause = 'id = ? AND state != ?'
     const whereParams = [articleId, 'deleted'] // 条件参数：先放 ID 和状态
     // 普通用户：只能更新自己的文章（追加 user_id 条件）
-    if (userType === 'normal') {
+    if (!access.manageAll && access.manageOwn) {
         // 普通用户只能编辑自己的草稿/驳回文章，不能直接修改已发布文章。
-        whereClause += " AND user_id = ? AND state IN ('draft', 'rejected')"
+        whereClause += ' AND user_id = ?'
         whereParams.push(userId)
+        if (!access.publish) {
+            whereClause += " AND state IN ('draft', 'rejected')"
+        }
     }
 
     // 发布时自动填充 published_at
@@ -377,12 +400,13 @@ async function updateArticle(articleId, updateData, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function deleteArticle(articleId, userId, userType) {
-    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    const access = normalizeAccess(userType)
+    if (!access.manageAll && !access.manageOwn) return 0
 
     let whereClause = 'id = ? AND state != ?'
     const whereParams = [articleId, 'deleted']
 
-    if (userType === 'normal') {
+    if (!access.manageAll && access.manageOwn) {
         whereClause += ' AND user_id = ?'
         whereParams.push(userId)
     }
@@ -406,10 +430,11 @@ async function deleteArticle(articleId, userId, userType) {
  * @returns {Promise<number>} 影响行数
  */
 async function updateArticleStatus(articleId, state, userId, userType) {
-    if (userType === 'visitor' || !['admin', 'editor', 'normal'].includes(userType)) return 0
+    const access = normalizeAccess(userType)
+    if (!access.manageAll && !access.manageOwn) return 0
 
     // 普通用户只能把被驳回的自己的文章退回草稿。
-    if (userType === 'normal' && state !== 'draft') return 0
+    if (!access.manageAll && !access.publish && state !== 'draft') return 0
 
     //  状态合法性校验（适配数据库enum）
     if (!['draft', 'published', 'rejected'].includes(state)) {
@@ -422,9 +447,12 @@ async function updateArticleStatus(articleId, state, userId, userType) {
     const whereParams = [articleId, 'deleted'];
 
     // 权限控制：普通用户只能修改自己的文章
-    if (userType === 'normal') {
-        whereClause += " AND article.user_id = ? AND article.state = 'rejected'";
+    if (!access.manageAll && access.manageOwn) {
+        whereClause += ' AND article.user_id = ?';
         whereParams.push(userId);
+        if (!access.publish) {
+            whereClause += " AND article.state = 'rejected'";
+        }
     }
 
     //  发布/驳回时处理published_at

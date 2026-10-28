@@ -1,9 +1,6 @@
 const subsetModel = require('../model/dbModel/subset/index')
 const { writeSystemLog } = require('../utils/logHelper')
-
-function canManageSubsets(userType) {
-    return ['admin', 'editor'].includes(userType)
-}
+const { hasPermission, isSuperAdmin } = require('../utils/accessControl')
 
 function formatSubset(row) {
     return {
@@ -23,7 +20,10 @@ async function getSubsets(req, res) {
         //  公开接口（门户）只统计已发布内容，草稿/已驳回不计入分类计数
         const countState = req.publicRead === true ? 'published' : undefined
         //  普通用户的后台分类计数只统计自己名下的文章/图库
-        const countUserId = req.publicRead !== true && req.user?.userType === 'normal'
+        const canViewAllContent = isSuperAdmin(req.user) ||
+            hasPermission(req.user, 'article.viewAll') ||
+            hasPermission(req.user, 'gallery.viewAll')
+        const countUserId = req.publicRead !== true && !canViewAllContent && req.user?.userId
             ? req.user.userId
             : undefined
         //  图库共用文章分组：展示 article 分组，但计数只统计图片集
@@ -53,7 +53,7 @@ async function createSubset(req, res) {
     try {
         const { name, classify, sort } = req.body
 
-        if (!canManageSubsets(req.user.userType)) {
+        if (!hasPermission(req.user, 'category.manage')) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以创建分类' })
         }
         if (typeof name !== 'string' || !name.trim()) {
@@ -117,7 +117,7 @@ async function updateSubset(req, res) {
         const { id } = req.params
         const { name, sort } = req.body
 
-        if (!canManageSubsets(req.user.userType)) {
+        if (!hasPermission(req.user, 'category.manage')) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以修改分类' })
         }
         if (!id || isNaN(id)) {
@@ -180,7 +180,7 @@ async function deleteSubset(req, res) {
     try {
         const { id } = req.params
 
-        if (!canManageSubsets(req.user.userType)) {
+        if (!hasPermission(req.user, 'category.manage')) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以删除分类' })
         }
         if (!id || isNaN(id)) {
