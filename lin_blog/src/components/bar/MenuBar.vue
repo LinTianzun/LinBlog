@@ -94,7 +94,8 @@ const menuGroups = computed(() => {
     const groupConfig = [
         {
             label: '运营',
-            paths: ['overView', 'userManagement', 'systemLog'],
+            // 权限管理紧跟用户管理：同一入口组，超级管理员改完矩阵能立刻回用户列表看成员
+            paths: ['overView', 'userManagement', 'permissionManagement', 'systemLog'],
         },
         {
             label: '内容',

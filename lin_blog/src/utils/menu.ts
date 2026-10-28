@@ -54,21 +54,23 @@ export const navLinks: MenuItem[] = [
     }
 ]
 
+// 按 path 取菜单项：避免用数组下标引用，新增菜单时不会串位
+const pickNav = (...paths: string[]): MenuItem[] =>
+    paths.map(path => navLinks.find(item => item.path === path)).filter(Boolean) as MenuItem[]
+
 // 编辑、普通用户可见的菜单
-export const contentLinks: MenuItem[] = [
-    navLinks[0],
-    navLinks[4],
-    navLinks[5],
-    navLinks[6],
+export const contentLinks: MenuItem[] = pickNav(
+    'overView',
+    'localfile',
+    'article',
+    'gallery',
+    'diary',
     // 系统设置每个人都可访问：改密码、头像与主题偏好
-    navLinks[7]
-]
+    'setting'
+)
 
 // 游客可见的菜单
-export const visitorLinks: MenuItem[] = [
-    navLinks[0],
-    navLinks[7]
-]
+export const visitorLinks: MenuItem[] = pickNav('overView', 'setting')
 
 //  总览总数
 export const overLink = [
