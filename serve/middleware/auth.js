@@ -29,7 +29,8 @@ async function resolveAuthUserById(userId, req, res, next) {
         req.user = {
             userId,
             user_type: user.user_type,
-            userType: user.user_type
+            userType: user.user_type,
+            tokenVersion: Number(user.token_version || 0)
         }
         return next()
     } catch (err) {
@@ -75,11 +76,17 @@ async function resolveAuthUser(req) {
             return { user: null, reason: '该账号已被禁用，请重新登录或联系管理员', status: 401 }
         }
 
+        // 改密/重置密码后 token_version 递增，旧 JWT 立即失效
+        if (Number(decoded.tokenVersion || 0) !== Number(user.token_version || 0)) {
+            return { user: null, reason: '登录状态已失效，请重新登录', status: 401 }
+        }
+
         return {
             user: {
                 userId: decoded.userId,
                 user_type: user.user_type,
-                userType: user.user_type
+                userType: user.user_type,
+                tokenVersion: Number(user.token_version || 0)
             },
             reason: null,
             status: 200

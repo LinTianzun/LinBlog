@@ -8,7 +8,18 @@ function loadConfig(env) {
     const saved = { ...process.env }
     Object.assign(process.env, env)
     // 用例必须从干净环境出发，否则宿主 shell 注入的变量会干扰断言
-    for (const key of ['LINBLOG_JWT_SECRET', 'LINBLOG_ALLOWED_ORIGINS', 'LINBLOG_PORT']) {
+    for (const key of [
+        'LINBLOG_JWT_SECRET',
+        'LINBLOG_ALLOWED_ORIGINS',
+        'LINBLOG_PORT',
+        'LINBLOG_PUBLIC_URL',
+        'LINBLOG_SMTP_HOST',
+        'LINBLOG_SMTP_PORT',
+        'LINBLOG_SMTP_SECURE',
+        'LINBLOG_SMTP_USER',
+        'LINBLOG_SMTP_PASSWORD',
+        'LINBLOG_SMTP_FROM',
+    ]) {
         if (!(key in env)) {
             delete process.env[key]
         }
@@ -72,6 +83,38 @@ test('trust proxy supports boolean, hop count and preset values', () => {
         () => loadConfig({ ...base, LINBLOG_TRUST_PROXY: 'nginx' }),
         (err) => {
             assert.match(err.message, /LINBLOG_TRUST_PROXY/)
+            return true
+        }
+    )
+})
+
+test('password reset public URL and SMTP settings are validated', () => {
+    const base = {
+        LINBLOG_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+        LINBLOG_ALLOWED_ORIGINS: 'http://localhost:5173'
+    }
+
+    const config = loadConfig({
+        ...base,
+        LINBLOG_PUBLIC_URL: 'https://blog.example.com',
+        LINBLOG_SMTP_HOST: 'smtp.example.com',
+        LINBLOG_SMTP_FROM: 'LinBlog <no-reply@example.com>',
+    })
+    assert.equal(config.publicUrl, 'https://blog.example.com')
+    assert.equal(config.smtp.host, 'smtp.example.com')
+    assert.equal(config.smtp.port, 587)
+
+    assert.throws(
+        () => loadConfig({ ...base, LINBLOG_PUBLIC_URL: 'https://blog.example.com/path' }),
+        (err) => {
+            assert.match(err.message, /LINBLOG_PUBLIC_URL/)
+            return true
+        }
+    )
+    assert.throws(
+        () => loadConfig({ ...base, LINBLOG_SMTP_HOST: 'smtp.example.com' }),
+        (err) => {
+            assert.match(err.message, /LINBLOG_SMTP_FROM/)
             return true
         }
     )

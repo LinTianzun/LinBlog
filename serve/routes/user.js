@@ -1,5 +1,11 @@
 const userController = require('../controller/userController')
+const passwordResetController = require('../controller/passwordResetController')
 const { authMiddleware } = require('../middleware/auth')    //  引入中间件
+const {
+    passwordResetRequestLimit,
+    passwordResetSubmitLimit,
+    loginLimit,
+} = require('../middleware/rateLimit')
 
 //  导出路由处理接口
 module.exports = (app) => {
@@ -11,7 +17,12 @@ module.exports = (app) => {
     app.post('/api/user/register', userController.register)
 
     //  登录接口（POST）
-    app.post('/api/user/login', userController.login)
+    app.post('/api/user/login', loginLimit, userController.login)
+
+    // 忘记密码：申请、校验一次性令牌、设置新密码
+    app.post('/api/user/password/reset/request', passwordResetRequestLimit, passwordResetController.requestPasswordReset)
+    app.get('/api/user/password/reset/validate', passwordResetController.validatePasswordResetToken)
+    app.post('/api/user/password/reset', passwordResetSubmitLimit, passwordResetController.resetPassword)
 
     //  需要登录的接口（添加 Token 校验中间件）
     //  获取用户信息根据id（POST）

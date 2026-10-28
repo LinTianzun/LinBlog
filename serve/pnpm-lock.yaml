@@ -29,6 +29,9 @@ importers:
       mysql2:
         specifier: ^3.24.5
         version: 3.24.5(@types/node@26.6.5)
+      nodemailer:
+        specifier: 7.0.0
+        version: 7.0.0
     devDependencies:
       mysql:
         specifier: ^2.18.1
@@ -325,6 +328,10 @@ packages:
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
+
+  nodemailer@7.0.0:
+    resolution: {integrity: sha512-9QyEp969UmUWVDB2gVQvxHm1bqkyuC5YZIyX/ySJUpIVyXpuEFyBAuoFFs+G5/C2ZaUp9F5A65DPfxedfVHXXQ==}
+    engines: {node: '>=6.0.0'}
 
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -776,6 +783,8 @@ snapshots:
   node-addon-api@8.5.0: {}
 
   node-gyp-build@4.8.4: {}
+
+  nodemailer@7.0.0: {}
 
   object-assign@4.1.1: {}
 

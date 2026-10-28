@@ -84,6 +84,21 @@ export function changePassword(oldPassword: string, newPassword: string) {
   return request.put('/user/password', { oldPassword, newPassword });
 }
 
+// 忘记密码：申请重置邮件（无论邮箱是否存在都返回相同提示）
+export function requestPasswordReset(mail: string) {
+  return request.post('/user/password/reset/request', { mail });
+}
+
+// 校验重置链接，获取账号名与剩余有效时长
+export function validatePasswordResetToken(token: string) {
+  return request.get('/user/password/reset/validate', { params: { token } });
+}
+
+// 使用一次性令牌设置新密码
+export function resetPassword(token: string, newPassword: string) {
+  return request.post('/user/password/reset', { token, newPassword });
+}
+
 // 获取当前登录用户信息
 export function getUserInfo() {
   return request.post('/user/userInfo');

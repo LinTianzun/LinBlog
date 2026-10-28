@@ -44,6 +44,31 @@ if (typeof trustProxyValue === 'string' && trustProxyValue.trim() !== '') {
     }
 }
 
+const publicUrl = (process.env.LINBLOG_PUBLIC_URL || allowedOrigins[0] || '').replace(/\/+$/, '')
+if (publicUrl) {
+    try {
+        const parsed = new URL(publicUrl)
+        if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== publicUrl) {
+            configErrors.push('LINBLOG_PUBLIC_URL 必须是完整的 http(s) 来源，不要添加路径或尾部斜杠')
+        }
+    } catch {
+        configErrors.push('LINBLOG_PUBLIC_URL 必须是完整的 http(s) 来源')
+    }
+}
+
+const smtp = {
+    host: process.env.LINBLOG_SMTP_HOST || '',
+    port: Number.parseInt(process.env.LINBLOG_SMTP_PORT || '587', 10),
+    secure: process.env.LINBLOG_SMTP_SECURE === 'true',
+    user: process.env.LINBLOG_SMTP_USER || '',
+    password: process.env.LINBLOG_SMTP_PASSWORD || '',
+    from: process.env.LINBLOG_SMTP_FROM || process.env.LINBLOG_SMTP_USER || '',
+}
+
+if (smtp.host && (!smtp.from || !Number.isInteger(smtp.port) || smtp.port < 1 || smtp.port > 65535)) {
+    configErrors.push('配置 SMTP 时 LINBLOG_SMTP_FROM 必填，LINBLOG_SMTP_PORT 必须是 1-65535 的整数')
+}
+
 if (configErrors.length > 0) {
     throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
 }
@@ -58,6 +83,8 @@ const config = {
     },
     allowedOrigins,
     trustProxy,
+    publicUrl,
+    smtp,
     jsonLimit: process.env.LINBLOG_JSON_LIMIT || '1mb',
     jwt: {
         secret: jwtSecret,

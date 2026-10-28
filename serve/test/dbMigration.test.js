@@ -18,7 +18,9 @@ const ALL_MIGRATIONS = [
     '20261027_diary_interaction',
     '20261027_comment_interaction',
     '20261027_comment_reply_target',
-    '20261028_diary_comment_reply'
+    '20261028_diary_comment_reply',
+    '20261028_password_reset',
+    '20261028_password_reset_version_guard'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -174,5 +176,53 @@ test('diary comment reply migration adds two-level reply columns', async () => {
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261028_diary_comment_reply'
+    ))
+})
+
+test('password reset migration adds token version and reset token table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_password_reset')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE users ADD COLUMN token_version INT UNSIGNED NOT NULL DEFAULT 0')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS password_reset_token')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261028_password_reset'
+    ))
+})
+
+test('password reset version guard migration binds tokens to token_version', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_password_reset_version_guard')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE password_reset_token ADD COLUMN token_version INT UNSIGNED NOT NULL DEFAULT 0')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261028_password_reset_version_guard'
     ))
 })

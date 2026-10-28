@@ -176,6 +176,91 @@ if (!targetDb) {
             fileColumns.map(row => row.COLUMN_NAME).sort(),
             ['backup_deleted_at', 'deleted_at']
         )
+
+        const passwordResetSchema = await db.query(
+            `SELECT
+                (SELECT COUNT(*) FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'token_version') AS token_version,
+                (SELECT COUNT(*) FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'password_reset_token' AND COLUMN_NAME = 'token_version') AS reset_token_version,
+                (SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'password_reset_token') AS reset_table`,
+            [targetDb, targetDb, targetDb]
+        )
+        assert.equal(Number(passwordResetSchema[0].token_version), 1)
+        assert.equal(Number(passwordResetSchema[0].reset_token_version), 1)
+        assert.equal(Number(passwordResetSchema[0].reset_table), 1)
+    })
+
+    test('password reset stores only hashes and invalidates the old token', async () => {
+        const passwordResetModel = require('../model/dbModel/passwordReset/index')
+        const { verifyToken } = require('../utils/jwtutil')
+
+        const oldLogin = await db.query(
+            'SELECT id, user_type, token_version FROM users WHERE id = ?',
+            [ids.normal]
+        )
+        const oldToken = require('../utils/jwtutil').generateToken({
+            userId: ids.normal,
+            user_Type: oldLogin[0].user_type,
+            tokenVersion: Number(oldLogin[0].token_version),
+        })
+
+        const rawToken = await passwordResetModel.createResetToken(ids.normal, '127.0.0.1')
+        assert.equal(rawToken.length, 64)
+
+        const rows = await db.query(
+            `SELECT token_hash, used_at,
+                    TIMESTAMPDIFF(MINUTE, NOW(), expires_at) AS minutes_left
+             FROM password_reset_token
+             WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
+            [ids.normal]
+        )
+        assert.equal(rows.length, 1)
+        assert.equal(rows[0].token_hash, passwordResetModel.hashToken(rawToken))
+        assert.notEqual(rows[0].token_hash, rawToken)
+        assert.equal(rows[0].used_at, null)
+        assert.ok(Number(rows[0].minutes_left) >= 29)
+
+        const hash = await require('bcrypt').hash('{{SECRET_efpvj2qm}}', 10)
+        const consumed = await passwordResetModel.consumeResetToken(
+            (await db.query(
+                'SELECT id FROM password_reset_token WHERE token_hash = ?',
+                [passwordResetModel.hashToken(rawToken)]
+            ))[0].id,
+            ids.normal,
+            hash
+        )
+        assert.equal(consumed, true)
+
+        const reused = await passwordResetModel.consumeResetToken(
+            (await db.query(
+                'SELECT id FROM password_reset_token WHERE token_hash = ?',
+                [passwordResetModel.hashToken(rawToken)]
+            ))[0].id,
+            ids.normal,
+            hash
+        )
+        assert.equal(reused, false)
+
+        const updated = await db.query(
+            'SELECT token_version FROM users WHERE id = ?',
+            [ids.normal]
+        )
+        assert.equal(Number(updated[0].token_version), Number(oldLogin[0].token_version) + 1)
+
+        // 旧重置链接绑定旧 token_version；即使未被使用，改密后也应失效
+        const staleToken = await passwordResetModel.createResetToken(ids.normal, '127.0.0.1')
+        await userModel.updateUserPassword(
+            ids.normal,
+            await require('bcrypt').hash('{{SECRET_qdxz6caj}}', 10)
+        )
+        assert.equal(await passwordResetModel.findValidToken(staleToken), null)
+
+        // 模拟认证中间件的版本比较：旧令牌版本与新版本不一致
+        const decoded = verifyToken(oldToken)
+        assert.equal(Number(decoded.tokenVersion), Number(oldLogin[0].token_version))
+        assert.notEqual(Number(decoded.tokenVersion), Number(updated[0].token_version))
     })
 
     test('staff role filter excludes visitors and respects status', async () => {

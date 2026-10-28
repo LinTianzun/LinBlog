@@ -665,6 +665,7 @@ async function login(req, res) {
         const token = generateToken({
             userId: user.id,
             user_Type: user.user_type,
+            tokenVersion: Number(user.token_version || 0),
         })
 
         // 剔除密码，返回完整用户信息（含 user_type 等字段）

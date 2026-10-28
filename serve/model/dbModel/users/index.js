@@ -36,7 +36,7 @@ async function lockUserById(exec, userId) {
 async function findUserByAccount(account) {
     // 用 OR 同时匹配 username 和 mail，兼容双登录
     const sql = `
-        SELECT id, username, mail, password, imgurl, user_type, status 
+        SELECT id, username, mail, password, imgurl, user_type, status, token_version
         FROM users 
         WHERE username = ? OR mail = ?
     `;
@@ -71,7 +71,7 @@ async function findUserConflictForUpdate(username, mail, userId) {
 // 按 ID 查询用户（获取信息用）
 async function findUserById(userId) {
     const sql = `
-        SELECT id, username, mail, imgurl, user_type, status, created_at, last_login_at 
+        SELECT id, username, mail, password, imgurl, user_type, status, token_version, created_at, last_login_at
         FROM users 
         WHERE id = ?
     `;
@@ -131,15 +131,27 @@ async function updateUserStatus(userId, status, exec = query) {
     return exec(sql, [status, userId]);
 }
 
-// 用户自助修改密码（仅更新密码哈希，不改其他字段）
+// 用户自助修改密码（更新密码哈希并递增令牌版本，使旧 JWT 立即失效）
 async function updateUserPassword(userId, passwordHash, exec = query) {
     const sql = `
         UPDATE users
-        SET password = ?
+        SET password = ?, token_version = token_version + 1
         WHERE id = ?
     `;
 
     return exec(sql, [passwordHash, userId]);
+}
+
+// 密码重置成功后更新密码、递增令牌版本并作废该用户全部重置令牌。
+async function resetUserPassword(userId, passwordHash, exec = query) {
+    await exec(
+        'UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?',
+        [passwordHash, userId]
+    )
+    await exec(
+        'UPDATE password_reset_token SET used_at = COALESCE(used_at, NOW()) WHERE user_id = ? AND used_at IS NULL',
+        [userId]
+    )
 }
 
 // 用户自助更新头像
@@ -403,6 +415,7 @@ module.exports = {
     updateUserByAdminGuarded,
     updateUserStatusGuarded,
     updateUserPassword,
+    resetUserPassword,
     updateUserAvatar,
     findUsersByPage,
     countAdminUsers,

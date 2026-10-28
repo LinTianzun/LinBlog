@@ -104,6 +104,11 @@ const routes = [
         component: () => import('../views/LoginRegister.vue'),
         meta: { hideHeader: true, requiresAuth: false }
     },
+    {
+        path: '/resetPassword',
+        component: () => import('../views/ResetPassword.vue'),
+        meta: { hideHeader: true, requiresAuth: false }
+    },
 ]
 
 const router = createRouter({

@@ -8,16 +8,20 @@ const originalLoad = Module._load
 let accountStatus = 1
 let findUserError = null
 let userExists = true
+let tokenVersion = 0
+let decodedTokenVersion = 0
 
 Module._load = function (request, parent, isMain) {
     if (parent && parent.filename === authPath && request === '../utils/jwtutil') {
-        return { verifyToken: () => ({ userId: 7 }) }
+        return { verifyToken: () => ({ userId: 7, tokenVersion: decodedTokenVersion }) }
     }
     if (parent && parent.filename === authPath && request === '../model/dbModel/users/index') {
         return {
             async findUserById() {
                 if (findUserError) throw findUserError
-                return userExists ? [{ id: 7, user_type: 'normal', status: accountStatus }] : []
+                return userExists
+                    ? [{ id: 7, user_type: 'normal', status: accountStatus, token_version: tokenVersion }]
+                    : []
             }
         }
     }
@@ -36,7 +40,13 @@ function makeResponse() {
     }
 }
 
-test.beforeEach(() => { accountStatus = 1; findUserError = null; userExists = true })
+test.beforeEach(() => {
+    accountStatus = 1
+    findUserError = null
+    userExists = true
+    tokenVersion = 0
+    decodedTokenVersion = 0
+})
 
 test('missing or empty token is rejected with 401', async () => {
     const res = makeResponse()
@@ -106,9 +116,31 @@ test('enabled account can continue through authentication', async () => {
     assert.equal(req.user.userType, 'normal')
 })
 
+test('a password change invalidates tokens issued with an older version', async () => {
+    tokenVersion = 1
+    decodedTokenVersion = 0
+    const res = makeResponse()
+    let nextCalled = false
+
+    await authMiddleware(
+        { headers: { authorization: 'Bearer valid-token' } },
+        res,
+        () => { nextCalled = true }
+    )
+
+    assert.equal(nextCalled, false)
+    assert.equal(res.statusCode, 401)
+    assert.match(res.body.message, /登录状态已失效/)
+})
+
 // ---- 上传接口的 query 认证：凭证必须走短期票据，而不是长期 JWT ----
 
-test.beforeEach(() => { _reset() })
+test.beforeEach(() => {
+    _reset()
+    // 上传票据认证不携带 JWT 版本，重置上一组用例留下的版本状态
+    tokenVersion = 0
+    decodedTokenVersion = 0
+})
 
 test('upload auth rejects a request with no ticket', async () => {
     const res = makeResponse()

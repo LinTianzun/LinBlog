@@ -108,6 +108,7 @@ const tablesSql = {
     user_type ENUM('admin', 'editor', 'normal', 'visitor') NOT NULL DEFAULT 'normal' COMMENT '用户类型：管理员/编辑/普通用户/游客',
     imgurl VARCHAR(255) COMMENT '头像地址',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '账号状态：1-正常，0-禁用',
+    token_version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '登录令牌版本（改密后递增）',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     last_login_at DATETIME COMMENT '最后登录时间',
@@ -386,6 +387,22 @@ const tablesSql = {
     INDEX idx_system_log_module (module),
     INDEX idx_system_log_action (action)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统操作日志表';`
+
+  ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    token_hash CHAR(64) NOT NULL COMMENT '令牌SHA-256哈希',
+    requested_ip VARCHAR(64) COMMENT '请求IP',
+    expires_at DATETIME NOT NULL COMMENT '过期时间',
+    token_version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '签发时的登录令牌版本',
+    used_at DATETIME NULL COMMENT '使用时间',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_password_reset_token_hash (token_hash),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_password_reset_user (user_id, created_at),
+    INDEX idx_password_reset_expires (expires_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密码重置令牌表';`
 };
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -864,7 +881,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
+    const createOrder = ['users', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1300,6 +1317,22 @@ async function ensureDiaryCommentReplySchema(exec = query) {
   });
 }
 
+// 密码重置：令牌只存哈希，并给登录 JWT 增加可失效的版本号。
+async function ensurePasswordResetSchema(exec = query) {
+  await ensureColumn(exec, 'users', 'token_version', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '登录令牌版本（改密后递增）'
+  });
+  await exec(tablesSql.password_reset_token);
+}
+
+async function ensurePasswordResetVersionGuardSchema(exec = query) {
+  await ensureColumn(exec, 'password_reset_token', 'token_version', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '签发时的登录令牌版本'
+  });
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1342,6 +1375,14 @@ const migrations = [
   {
     version: '20261028_diary_comment_reply',
     up: ensureDiaryCommentReplySchema
+  },
+  {
+    version: '20261028_password_reset',
+    up: ensurePasswordResetSchema
+  },
+  {
+    version: '20261028_password_reset_version_guard',
+    up: ensurePasswordResetVersionGuardSchema
   }
 ];
 

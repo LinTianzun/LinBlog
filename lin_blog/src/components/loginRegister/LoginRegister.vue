@@ -14,7 +14,7 @@
                         <i class="bx bxs-lock-alt"></i>
                     </div>
                     <div class="forgot-link">
-                        <a>忘记密码?</a>
+                        <button type="button" @click="openForgotPassword">忘记密码?</button>
                     </div>
                     <!-- <button type="submit" @click="" class="btn">登录</button> -->
                     <yk-button type="submit" class="btn" long>登录</yk-button>
@@ -76,12 +76,31 @@
                 </div>
             </transition>
         </div>
+
+        <div v-if="forgotVisible" class="forgot-modal" @click.self="forgotVisible = false">
+            <form class="forgot-card" @submit.prevent="sendResetMail">
+                <button type="button" class="forgot-close" aria-label="关闭" @click="forgotVisible = false">×</button>
+                <p class="forgot-kicker">PASSWORD RECOVERY</p>
+                <h2>找回密码</h2>
+                <p class="forgot-copy">
+                    输入注册邮箱。如果账号存在，我们会发送一封 30 分钟内有效的重置邮件。
+                </p>
+                <label for="forgot-mail">注册邮箱</label>
+                <input id="forgot-mail" v-model.trim="forgotMail" type="email" autocomplete="email"
+                    placeholder="name@example.com" required />
+                <p v-if="forgotMessage" class="forgot-message">{{ forgotMessage }}</p>
+                <button class="forgot-submit" type="submit" :disabled="forgotSubmitting">
+                    {{ forgotSubmitting ? '正在发送...' : '发送重置邮件' }}
+                </button>
+            </form>
+        </div>
     </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, getCurrentInstance } from "vue";
 import { useRouter } from "vue-router";
+import { requestPasswordReset } from "../../api/user";
 
 const router = useRouter();
 
@@ -104,6 +123,35 @@ const registerUser = ref({
     mail: "",
     password: "",
 });
+
+const forgotVisible = ref(false);
+const forgotMail = ref("");
+const forgotSubmitting = ref(false);
+const forgotMessage = ref("");
+
+const openForgotPassword = () => {
+    forgotMail.value = user.value.name.includes("@") ? user.value.name.trim() : "";
+    forgotMessage.value = "";
+    forgotVisible.value = true;
+};
+
+const sendResetMail = async () => {
+    forgotMessage.value = "";
+    if (!forgotMail.value) {
+        forgotMessage.value = "请输入注册邮箱";
+        return;
+    }
+
+    forgotSubmitting.value = true;
+    try {
+        const result = await requestPasswordReset(forgotMail.value);
+        forgotMessage.value = result.message || "如果该邮箱已注册，重置邮件将很快送达";
+    } catch (error: any) {
+        forgotMessage.value = error.response?.data?.message || "发送失败，请稍后重试";
+    } finally {
+        forgotSubmitting.value = false;
+    }
+};
 
 //  登录
 const login = async () => {
@@ -327,12 +375,127 @@ h1 {
 
 .forgot-link {
     margin: -15px 0 15px;
+    text-align: right;
 }
 
-.forgot-link a {
+.forgot-link button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
     font-size: 14.5px;
     color: #333;
     text-decoration: none;
+}
+
+.forgot-link button:hover {
+    color: #2b5aed;
+}
+
+.forgot-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(18, 29, 51, 0.48);
+    backdrop-filter: blur(6px);
+}
+
+.forgot-card {
+    position: relative;
+    box-sizing: border-box;
+    width: min(100%, 390px);
+    padding: 30px;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 24px 70px rgba(15, 28, 54, 0.24);
+    text-align: left;
+}
+
+.forgot-kicker {
+    margin: 0 0 8px;
+    color: #2b5aed;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+}
+
+.forgot-card h2 {
+    margin: 0 0 12px;
+    color: #172033;
+    font: 700 28px/1.2 Georgia, serif;
+}
+
+.forgot-copy {
+    margin: 0 0 20px;
+    color: #687386;
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.forgot-card label {
+    display: block;
+    margin-bottom: 8px;
+    color: #172033;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.forgot-card input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 46px;
+    padding: 0 13px;
+    border: 1px solid #d8deeb;
+    border-radius: 10px;
+    outline: none;
+    background: #f8faff;
+    color: #172033;
+    font-size: 15px;
+}
+
+.forgot-card input:focus {
+    border-color: #2b5aed;
+    box-shadow: 0 0 0 3px rgba(43, 90, 237, 0.12);
+}
+
+.forgot-submit {
+    width: 100%;
+    height: 46px;
+    margin-top: 16px;
+    border: 0;
+    border-radius: 10px;
+    background: #2b5aed;
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.forgot-submit:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.forgot-message {
+    margin: 12px 0 0;
+    color: #4f5d75;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.forgot-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    border: 0;
+    background: transparent;
+    color: #687386;
+    cursor: pointer;
+    font-size: 25px;
+    line-height: 1;
 }
 
 .btn {
