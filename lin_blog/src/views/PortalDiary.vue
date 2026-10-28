@@ -3,30 +3,32 @@
         <PortalPageHeader index="03" kicker="MICRO JOURNAL" title="随笔"
             :description="`共 ${total} 篇。每一篇都记着那天的天气——点开任意一篇，可以在当前页读完整内容。`"
             aside-label="DAYS & WEATHER" :aside-value="`${total} 篇`" aside-note="天气是日子的注脚，短句、照片和当时的心情一起留在这里。">
-            <div v-if="weatherFilters.length" class="weather-bar">
-                <button type="button" class="weather-pill" :class="{ active: !activeWeather }"
-                    @click="selectWeather('')">
-                    全部天气
-                    <span>{{ allTotal }}</span>
-                </button>
-                <button v-for="item in weatherFilters" :key="item.name" type="button" class="weather-pill"
-                    :class="{ active: activeWeather === item.name }" @click="selectWeather(item.name)">
-                    <img v-if="item.iconUrl" :src="item.iconUrl" :alt="item.name" />
-                    {{ item.name }}
-                    <span>{{ item.count }}</span>
-                </button>
-            </div>
+            <div class="diary-toolbar">
+                <div v-if="weatherFilters.length" class="weather-rail" aria-label="按天气筛选随笔">
+                    <button type="button" class="weather-pill" :class="{ active: !activeWeather }"
+                        @click="selectWeather('')">
+                        <span class="weather-name">全部天气</span>
+                        <span class="weather-count">{{ allTotal }}</span>
+                    </button>
+                    <button v-for="item in weatherFilters" :key="item.name" type="button" class="weather-pill"
+                        :class="{ active: activeWeather === item.name }" @click="selectWeather(item.name)">
+                        <img v-if="item.iconUrl" :src="item.iconUrl" :alt="item.name" />
+                        <span class="weather-name">{{ item.name }}</span>
+                        <span class="weather-count">{{ item.count }}</span>
+                    </button>
+                </div>
 
-            <div class="sort-bar">
-                <span class="filter-caption">SORT</span>
-                <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
-                    @click="setSort('latest')">
-                    最新
-                </button>
-                <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
-                    @click="setSort('hot')">
-                    最热
-                </button>
+                <div class="sort-bar">
+                    <span class="filter-caption">排序</span>
+                    <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
+                        @click="setSort('latest')">
+                        最新
+                    </button>
+                    <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
+                        @click="setSort('hot')">
+                        最热
+                    </button>
+                </div>
             </div>
         </PortalPageHeader>
 
@@ -35,36 +37,57 @@
                 <yk-spinner size="m" />
             </div>
 
-            <div v-else-if="diaryList.length" class="diary-wall">
-                <article v-for="(diary, i) in diaryList" :key="diary.id" class="diary-card"
-                    :style="{ animationDelay: `${Math.min(i, 8) * 50}ms` }">
-                    <button type="button" class="diary-trigger" @click="openDiary(diary)">
-                        <div class="diary-head">
-                            <time class="diary-date">{{ formatDate(diary.createdAt) }}</time>
-                            <span v-if="diary.weatherName" class="diary-weather">
+            <div v-else-if="diaryList.length" class="journal-stream">
+                <article v-for="(diary, i) in diaryList" :key="diary.id"
+                    class="journal-entry" :class="{
+                        'has-pictures': diary.picture.length > 0,
+                        'image-left': diary.picture.length > 0 && i % 2 === 1
+                    }" :style="{ '--stagger': `${Math.min(i, 8) * 55}ms` }">
+                    <button type="button" class="journal-trigger" :aria-label="`阅读随笔：${diary.title}`"
+                        @click="openDiary(diary)">
+                        <span class="journal-date">
+                            <span class="journal-day">{{ dateParts(diary.createdAt).day }}</span>
+                            <span class="journal-month">{{ dateParts(diary.createdAt).month }}</span>
+                            <span class="journal-weekday">{{ dateParts(diary.createdAt).weekday }}</span>
+                            <span v-if="diary.weatherName" class="journal-weather">
                                 <img v-if="weatherIcon(diary.weatherName)" :src="weatherIcon(diary.weatherName)"
                                     :alt="diary.weatherName" />
                                 {{ diary.weatherName }}
                             </span>
-                        </div>
-
-                        <h2 class="diary-title">{{ diary.title }}</h2>
-                        <p class="diary-text">{{ diary.content }}</p>
-
-                        <div v-if="diary.picture.length" class="diary-thumbs">
-                            <img v-for="(pic, pi) in diary.picture.slice(0, 3)" :key="pi" :src="pic" alt=""
-                                loading="lazy" />
-                            <span v-if="diary.picture.length > 3" class="thumb-more">
-                                +{{ diary.picture.length - 3 }}
-                            </span>
-                        </div>
-
-                        <span class="diary-more">
-                            读全文
-                            <IconRightOutline />
                         </span>
-                        <span class="diary-views">
-                            <IconEyeOutline />{{ diary.views }}
+
+                        <span class="journal-content">
+                            <span class="journal-topline">
+                                <span class="journal-kicker">日志 {{ journalNumber(i) }}</span>
+                                <span class="journal-year">{{ dateParts(diary.createdAt).year }}</span>
+                            </span>
+
+                            <span class="journal-main">
+                                <span class="journal-copy">
+                                    <span class="journal-title">{{ diary.title }}</span>
+                                    <span class="journal-text">{{ diary.content }}</span>
+                                    <span class="journal-footer">
+                                        <span class="journal-more">
+                                            阅读全文
+                                            <IconRightOutline />
+                                        </span>
+                                        <span class="journal-stats">
+                                            <span><IconEyeOutline />{{ diary.views }}</span>
+                                            <span><IconHeartOutline />{{ diary.likes }}</span>
+                                            <span><IconCommentOutline />{{ diary.comments }}</span>
+                                        </span>
+                                    </span>
+                                </span>
+
+                                <span v-if="diary.picture.length" class="journal-pictures"
+                                    :class="`pictures-${Math.min(diary.picture.length, 4)}`">
+                                    <img v-for="(pic, pi) in diary.picture.slice(0, 4)" :key="pi" :src="pic"
+                                        alt="" loading="lazy" />
+                                    <span v-if="diary.picture.length > 4" class="picture-more">
+                                        +{{ diary.picture.length - 4 }}
+                                    </span>
+                                </span>
+                            </span>
                         </span>
                     </button>
                 </article>
@@ -131,9 +154,21 @@ const weatherIcon = (name: string | null): string => {
     return weathers.find(item => item.name === name)?.iconUrl || ''
 }
 
-const formatDate = (value: string): string => {
+const dateParts = (value: string): { day: string; month: string; weekday: string; year: string } => {
     const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
+    if (Number.isNaN(date.getTime())) {
+        return { day: '--', month: '', weekday: '', year: '' }
+    }
+    return {
+        day: String(date.getDate()).padStart(2, '0'),
+        month: `${date.getMonth() + 1}月`,
+        weekday: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()],
+        year: String(date.getFullYear())
+    }
+}
+
+const journalNumber = (index: number): string => {
+    return String((page.value - 1) * pageSize + index + 1).padStart(2, '0')
 }
 
 const loadDiaries = async () => {
@@ -232,43 +267,54 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
-.weather-bar {
+.diary-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 16px 18px;
-    border: 1px solid var(--portal-surface-border);
-    border-radius: var(--portal-radius-card);
-    background: var(--portal-surface);
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.weather-rail {
+    display: flex;
+    flex: 1;
+    gap: 7px;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--portal-accent-soft) transparent;
 }
 
 .weather-pill {
     display: inline-flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 6px;
-    padding: 7px 16px;
+    padding: 7px 12px;
     border: 1px solid @line-color-s;
     border-radius: 999px;
     background: transparent;
     font-size: 13px;
     color: @font-color-m;
     cursor: pointer;
-    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease,
+        transform 0.2s ease;
 
     img {
         width: 16px;
         height: 16px;
     }
 
-    span {
+    .weather-count {
         font-size: 11px;
-        color: @font-color-s;
         font-variant-numeric: tabular-nums;
+        color: var(--portal-text-tertiary);
     }
 
     &:hover {
         border-color: @pcolor;
         color: @pcolor;
+        transform: translateY(-1px);
     }
 
     &.active {
@@ -276,6 +322,10 @@ onMounted(async () => {
         background: var(--pcolor1);
         color: @pcolor;
         font-weight: 500;
+
+        .weather-count {
+            color: @pcolor;
+        }
     }
 }
 
@@ -286,6 +336,7 @@ onMounted(async () => {
 .sort-bar {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 6px;
 }
 
@@ -328,78 +379,81 @@ onMounted(async () => {
     min-height: 300px;
 }
 
-// 随笔墙：卡片大小错落，像贴满照片的软木板
-.diary-wall {
+// 随笔日志：用日期书脊串起每一篇，而不是随机高矮的卡片墙
+.journal-stream {
+    border-top: 1px solid var(--portal-line-soft);
+}
+
+.journal-entry {
+    border-bottom: 1px solid var(--portal-line-soft);
+    animation: journal-in 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+    animation-delay: var(--stagger, 0ms);
+}
+
+.journal-trigger {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    grid-auto-flow: dense;
-    gap: 22px;
-    align-items: start;
-}
-
-.diary-card {
-    grid-column: span 4;
-    border: 1px solid @line-color-s;
-    border-radius: 2px;
-    background: @bg-color-l;
-    animation: card-in 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
-    transition: border-color 0.2s ease, transform 0.25s ease, box-shadow 0.25s ease;
-
-    // 每三张里有一张横跨两列，避免整版过于规整
-    &:nth-child(3n + 1) {
-        grid-column: span 8;
-    }
-
-    &:hover {
-        border-color: @pcolor;
-        transform: translateY(-3px);
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-
-        .diary-title {
-            color: @pcolor;
-        }
-
-        .diary-more {
-            gap: 8px;
-        }
-    }
-}
-
-.diary-trigger {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    grid-template-columns: 94px minmax(0, 1fr);
     width: 100%;
-    padding: 24px;
+    padding: 0;
     border: none;
     background: transparent;
+    color: inherit;
     text-align: left;
     cursor: pointer;
 }
 
-.diary-head {
+.journal-date {
+    position: relative;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    padding: 30px 20px 30px 0;
+    border-right: 1px solid var(--portal-line-soft);
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 42px;
+        right: -4px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--portal-page-bg);
+        box-shadow: 0 0 0 1px var(--portal-accent);
+        transition: background var(--portal-transition-fast), transform var(--portal-transition-fast);
+    }
 }
 
-.diary-date {
-    font-size: 12px;
-    color: @font-color-s;
+.journal-day {
+    color: var(--portal-text-primary);
+    font-family: var(--portal-serif);
+    font-size: 44px;
+    font-weight: 600;
+    line-height: 0.92;
     font-variant-numeric: tabular-nums;
 }
 
-.diary-weather {
+.journal-month {
+    color: var(--portal-text-secondary);
+    font-family: var(--portal-serif);
+    font-size: 14px;
+}
+
+.journal-weekday,
+.journal-year {
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+
+.journal-weather {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: var(--pcolor1);
-    color: @pcolor;
-    font-size: 12px;
-    font-weight: 500;
+    gap: 4px;
+    margin-top: 10px;
+    color: var(--portal-text-secondary);
+    font-size: 11px;
 
     img {
         width: 15px;
@@ -407,75 +461,184 @@ onMounted(async () => {
     }
 }
 
-.diary-title {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: 19px;
-    font-weight: 600;
-    line-height: 1.5;
-    color: @font-color-l;
-    transition: color 0.2s ease;
+.journal-content {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 14px;
+    padding: 24px 0 26px 34px;
 }
 
-.diary-text {
-    margin: 0;
+.journal-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.journal-kicker {
+    color: var(--portal-accent-strong);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+}
+
+.journal-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 30px;
+    align-items: center;
+}
+
+.journal-entry.has-pictures .journal-main {
+    grid-template-columns: minmax(0, 0.82fr) minmax(300px, 1.18fr);
+}
+
+.journal-copy {
+    display: flex;
+    min-width: 0;
+    min-height: 128px;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.journal-title {
+    max-width: 22ch;
+    color: var(--portal-text-primary);
+    font-family: var(--portal-serif);
+    font-size: clamp(25px, 2.3vw, 36px);
+    font-weight: 600;
+    line-height: 1.32;
+    letter-spacing: -0.015em;
+    transition: color var(--portal-transition-fast);
+}
+
+.journal-text {
+    max-width: 64ch;
+    color: var(--portal-text-secondary);
     font-size: 14px;
-    line-height: 1.85;
-    color: @font-color-s;
+    line-height: 1.9;
     display: -webkit-box;
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.diary-thumbs {
+.journal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid var(--portal-line-soft);
+}
+
+.journal-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--portal-text-secondary);
+    font-size: 13px;
+    transition: color var(--portal-transition-fast), gap var(--portal-transition-fast);
+}
+
+.journal-stats {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    color: var(--portal-text-tertiary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+
+    span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+}
+
+.journal-pictures {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
+    aspect-ratio: 16 / 10;
+    min-width: 0;
+    overflow: hidden;
 
-    img,
-    .thumb-more {
+    img {
         display: block;
         width: 100%;
-        aspect-ratio: 1 / 1;
-        border-radius: 2px;
+        height: 100%;
+        min-height: 0;
+        border-radius: 3px;
         object-fit: cover;
+        transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1);
     }
 
-    // “+N” 压在最后一张缩略图上，不另起一行
-    .thumb-more {
-        position: absolute;
-        right: 8px;
-        bottom: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px !important;
-        height: 40px !important;
-        aspect-ratio: auto;
-        background: rgba(0, 0, 0, 0.55);
-        color: #fff;
-        font-size: 13px;
+    &.pictures-1 {
+        grid-template-columns: 1fr;
+        aspect-ratio: 16 / 9;
+    }
+
+    &.pictures-2 {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    &.pictures-3 {
+        grid-template-columns: 1.45fr 1fr;
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+
+        img:first-child {
+            grid-row: 1 / span 2;
+        }
+    }
+
+    &.pictures-4 {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: repeat(2, minmax(0, 1fr));
     }
 }
 
-.diary-more {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: @font-color-s;
-    transition: gap 0.2s ease, color 0.2s ease;
+.picture-more {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 50%;
+    background: rgba(8, 12, 20, 0.62);
+    color: #fff;
+    font-size: 12px;
+    backdrop-filter: blur(8px);
 }
 
-.diary-views {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: @font-color-s;
-    font-variant-numeric: tabular-nums;
+.journal-entry.image-left .journal-pictures {
+    order: -1;
+}
+
+.journal-trigger:hover {
+    .journal-title {
+        color: @pcolor;
+    }
+
+    .journal-more {
+        gap: 8px;
+        color: @pcolor;
+    }
+
+    .journal-pictures img {
+        transform: scale(1.018);
+    }
+
+    .journal-date::after {
+        background: var(--portal-accent);
+        transform: scale(1.35);
+    }
 }
 
 .list-pagination {
@@ -484,10 +647,10 @@ onMounted(async () => {
     padding-top: 28px;
 }
 
-@keyframes card-in {
+@keyframes journal-in {
     from {
         opacity: 0;
-        transform: translateY(14px);
+        transform: translateY(16px);
     }
 
     to {
@@ -497,16 +660,88 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
-    .diary-card,
-    .diary-card:nth-child(3n + 1) {
-        grid-column: span 6;
+    .journal-entry.has-pictures .journal-main,
+    .journal-entry.image-left .journal-main {
+        grid-template-columns: 1fr;
+    }
+
+    .journal-entry.image-left .journal-pictures {
+        order: 0;
+    }
+
+    .journal-copy {
+        min-height: 0;
     }
 }
 
-@media (max-width: 560px) {
-    .diary-card,
-    .diary-card:nth-child(3n + 1) {
-        grid-column: span 12;
+@media (max-width: 720px) {
+    .diary-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .weather-rail {
+        width: 100%;
+    }
+
+    .journal-trigger {
+        grid-template-columns: 1fr;
+    }
+
+    .journal-date {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+        padding: 20px 0 10px;
+        border-right: none;
+        border-bottom: 1px solid var(--portal-line-soft);
+
+        &::after {
+            display: none;
+        }
+    }
+
+    .journal-day {
+        font-size: 30px;
+    }
+
+    .journal-weather {
+        margin-top: 0;
+        margin-left: auto;
+    }
+
+    .journal-content {
+        padding: 18px 0 28px;
+    }
+
+    .journal-title {
+        max-width: none;
+        font-size: clamp(24px, 6vw, 31px);
+    }
+
+    .journal-pictures.pictures-3 {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1.3fr 1fr;
+
+        img:first-child {
+            grid-column: 1 / -1;
+            grid-row: auto;
+        }
+
+        img {
+            min-height: 0;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .journal-entry {
+        animation: none;
+    }
+
+    .journal-pictures img {
+        transition: none;
     }
 }
 </style>
