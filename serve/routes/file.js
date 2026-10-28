@@ -1,5 +1,6 @@
 const fileController = require('../controller/fileController')
 const { authMiddleware, authMiddlewareFromQuery } = require('../middleware/auth')
+const { uploadLimit } = require('../middleware/rateLimit')
 
 module.exports = (app) => {
     // 文件分页查询
@@ -16,7 +17,7 @@ module.exports = (app) => {
     app.post('/api/file/maintenance/cleanup', authMiddleware, fileController.cleanupFiles)
 
     // 文件上传（yk-upload 走 query token）
-    app.post('/api/file/upload', authMiddlewareFromQuery, fileController.uploadFile)
+    app.post('/api/file/upload', authMiddlewareFromQuery, uploadLimit, fileController.uploadFile)
 
     // 批量移动分组
     app.patch('/api/file/move', authMiddleware, fileController.moveFiles)

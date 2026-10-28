@@ -10,15 +10,32 @@ const config = require('./config/default')
 const db = require('./model/db/dbnew')
 const { normalizeJsonBody } = require('./middleware/normalizeBody')
 const recordMiddleware = require('./middleware/record')
+const {
+    requestContext,
+    securityHeaders,
+    permissionsPolicy,
+    createRequestLogger,
+} = require('./middleware/security')
+const { writeMethodLimit } = require('./middleware/rateLimit')
+const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandler')
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
+const { createGracefulShutdown } = require('./utils/gracefulShutdown')
+
+app.disable('x-powered-by')
 
 // 反向代理部署时按配置信任代理头，保证 req.ip 是真实客户端 IP
 if (config.trustProxy !== false) {
     app.set('trust proxy', config.trustProxy)
 }
 
-// 1. 配置跨域（OPTIONS 预检在进入 API 路由前由 cors 中间件处理）
+// 1. 请求标识、安全响应头与脱敏访问日志
+app.use(requestContext)
+app.use(securityHeaders())
+app.use(permissionsPolicy)
+app.use(createRequestLogger())
+
+// 2. 配置跨域（OPTIONS 预检在进入 API 路由前由 cors 中间件处理）
 const corsOptions = {
     origin: config.allowedOrigins, // 从配置文件获取允许的域名
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
@@ -29,52 +46,57 @@ const corsOptions = {
 }
 app.use(cors(corsOptions))
 
-// 2. 解析请求体
+// 3. 解析请求体
 app.use(express.json({ limit: config.jsonLimit }))
 app.use(normalizeJsonBody)
 
-// 4. 记录 API 访问（登录后接口与公开接口，异步写入不阻塞请求）
+// 4. 所有 API 写请求先经过全局兜底限流，敏感接口再叠加分路由限流
+app.use('/api', writeMethodLimit)
+
+// 5. 记录 API 访问（登录后接口与公开接口，异步写入不阻塞请求）
 app.use(recordMiddleware)
 
-// 5. 托管静态文件
+// 6. 托管静态文件
 app.use(express.static(path.join(__dirname, 'data')))
-
-// 6. 自定义响应头（仅保留必要的）
-app.use((req, res, next) => {
-    res.header("X-Powered-By", "3.2.1") // 可选，可删除
-    next()
-})
 
 // 7. 引入路由
 require('./routes/index')(app)
 
-// 错误处理中间件（放在所有路由之后）
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-
-    if (err.type === 'entity.too.large') {
-        return res.status(413).json({
-            code: 413,
-            message: '请求体过大'
-        });
-    }
-
-    res.status(500).json({
-        code: 500,
-        message: '服务器内部错误'
-    });
-});
+// 8. 统一 404 与异常响应
+app.use(notFoundHandler)
+app.use(createErrorHandler())
 
 // 等待数据库初始化后启动服务
 db.initDatabase()
     .then(() => {
         const port = config.port;
-        app.listen(port, () => {
+        const server = app.listen(port, () => {
             console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);
             // 访问记录按保留期滚动清理，避免 record 表无限增长
-            startRecordRetention();
+            const recordRetention = startRecordRetention();
             // 文件备份按保留期清理，并回收数据库已无引用的磁盘孤儿文件
-            startFileLifecycle();
+            const fileLifecycle = startFileLifecycle();
+
+            const shutdown = createGracefulShutdown({
+                server,
+                cleanupTasks: [
+                    () => recordRetention.stop(),
+                    () => fileLifecycle.stop(),
+                ],
+                closeDatabase: db.closeDatabase,
+            })
+
+            process.once('SIGINT', () => void shutdown('SIGINT'))
+            process.once('SIGTERM', () => void shutdown('SIGTERM'))
+            process.once('uncaughtException', (err) => {
+                console.error('[Server] 未捕获异常：', err)
+                void shutdown('uncaughtException', err)
+            })
+            process.on('unhandledRejection', (reason) => {
+                const err = reason instanceof Error ? reason : new Error(String(reason))
+                console.error('[Server] 未处理的 Promise 拒绝：', err)
+                void shutdown('unhandledRejection', err)
+            })
         });
     })
     .catch((err) => {

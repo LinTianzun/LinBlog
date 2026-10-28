@@ -1,6 +1,11 @@
 const commentController = require('../controller/commentController')
 const commentInteractionController = require('../controller/commentInteractionController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
+const {
+    commentWriteLimit,
+    reportLimit,
+    interactionLimit,
+} = require('../middleware/rateLimit')
 
 module.exports = (app) => {
     // 分页查询评论（需登录，如需公开可移除authMiddleware）
@@ -10,19 +15,19 @@ module.exports = (app) => {
     app.get('/api/public/comment', optionalAuthMiddleware, commentController.getPublicComments)
 
     // 门户公开评论发表（需登录；匿名返回 401 提示登录）
-    app.post('/api/public/comment', optionalAuthMiddleware, commentController.createPublicComment)
+    app.post('/api/public/comment', optionalAuthMiddleware, commentWriteLimit, commentController.createPublicComment)
 
     // 评论点赞（门户与后台共用；需登录，匿名返回 401）
-    app.post('/api/public/comment/like', optionalAuthMiddleware, commentInteractionController.toggleLike)
+    app.post('/api/public/comment/like', optionalAuthMiddleware, interactionLimit, commentInteractionController.toggleLike)
 
     // 举报评论（同一用户重复举报只记一次）
-    app.post('/api/public/comment/report', optionalAuthMiddleware, commentInteractionController.report)
+    app.post('/api/public/comment/report', optionalAuthMiddleware, reportLimit, commentInteractionController.report)
 
     // 删除评论（文章与随笔共用；需登录，仅本人或管理员可删）
     app.post('/api/public/comment/delete', optionalAuthMiddleware, commentInteractionController.deleteComment)
 
     // 新增评论（需登录）
-    app.post('/api/comment', authMiddleware, commentController.createComment)
+    app.post('/api/comment', authMiddleware, commentWriteLimit, commentController.createComment)
 
     // 删除评论（需登录，URL传评论ID）
     app.delete('/api/comment/:id', authMiddleware, commentController.deleteComment)

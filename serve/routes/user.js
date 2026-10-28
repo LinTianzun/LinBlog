@@ -5,6 +5,8 @@ const {
     passwordResetRequestLimit,
     passwordResetSubmitLimit,
     loginLimit,
+    loginIpLimit,
+    registerLimit,
 } = require('../middleware/rateLimit')
 
 //  导出路由处理接口
@@ -14,10 +16,10 @@ module.exports = (app) => {
     app.get('/api/user/isRegistered', userController.isRegistered)
 
     //  注册接口（POST）
-    app.post('/api/user/register', userController.register)
+    app.post('/api/user/register', registerLimit, userController.register)
 
     //  登录接口（POST）
-    app.post('/api/user/login', loginLimit, userController.login)
+    app.post('/api/user/login', loginIpLimit, loginLimit, userController.login)
 
     // 忘记密码：申请、校验一次性令牌、设置新密码
     app.post('/api/user/password/reset/request', passwordResetRequestLimit, passwordResetController.requestPasswordReset)
