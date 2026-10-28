@@ -22,11 +22,12 @@
 
                 <yk-space class="gallery-item-image-icons" :size="4">
                     <IconFillOutline @click="openEditor" />
-                    <!-- 浮层默认没有 z-index，会被卡片 hover 的 transform 层压住，这里显式抬高 -->
-                    <yk-popconfirm placement="topRight" trigger="click" title="确认删除" content="删除将不可恢复"
-                        :z-index="1300" overlay-class="gallery-item-popconfirm" @confirm="deleteGallery()">
-                        <IconDeleteOutline @click.stop />
-                    </yk-popconfirm>
+                    <!-- 卡片有 overflow:hidden + hover 的 transform 层叠上下文，
+                         就地渲染的浮层会被裁掉，统一用 Teleport 到 body 的确认面板 -->
+                    <ConfirmPopover title="确认删除" content="删除将不可恢复" placement="topRight"
+                        @confirm="deleteGallery()">
+                        <IconDeleteOutline class="gallery-item-delete" />
+                    </ConfirmPopover>
                 </yk-space>
             </div>
 
@@ -106,6 +107,7 @@ import {
     IconLeftOutline,
     IconRightOutline,
 } from '@yike-design/ui/es/components/svg-icon'
+import ConfirmPopover from '../common/ConfirmPopover.vue'
 import type { ArticleItem } from '../../api/article.ts'
 import {
     formatArticleDate,
@@ -284,6 +286,19 @@ const deleteGallery = (): void => {
 
                 &:hover {
                     color: color-mix(in srgb, var(--pcolor) 62%, #fff);
+                }
+            }
+
+            // 删除图标现在是确认面板的触发器，沿用同一套图标尺寸/悬停色
+            .gallery-item-delete {
+                width: 24px;
+                height: 24px;
+                padding: 5px;
+                color: #fff;
+                cursor: pointer;
+
+                &:hover {
+                    color: color-mix(in srgb, var(--ecolor) 70%, #fff);
                 }
             }
         }
@@ -538,10 +553,5 @@ const deleteGallery = (): void => {
     .yk-image__img {
         border-radius: 0;
     }
-}
-
-// 删除确认浮层：默认没有 z-index，会被卡片 hover 的 transform 层级压住
-.gallery-item-popconfirm {
-    z-index: 1300;
 }
 </style>

@@ -8,10 +8,12 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminPager: typeof import('./src/components/common/AdminPager.vue')['default']
     Artcle: typeof import('./src/components/article/artcle.vue')['default']
     ArtcleItem: typeof import('./src/components/article/artcleItem.vue')['default']
     Comment: typeof import('./src/components/reply/comment.vue')['default']
     CommentList: typeof import('./src/components/reply/commentList.vue')['default']
+    ConfirmPopover: typeof import('./src/components/common/ConfirmPopover.vue')['default']
     Datas: typeof import('./src/components/overview/datas.vue')['default']
     Diary: typeof import('./src/components/diary/diary.vue')['default']
     DiaryCommentList: typeof import('./src/components/diary/diaryCommentList.vue')['default']

@@ -26,10 +26,11 @@
 
                 <yk-space size="s">
                     <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
-                    <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
-                        :z-index="1300" overlay-class="diary-item-popconfirm" @confirm="deleteDiary()">
+                    <!-- 卡片有 hover 的 transform 层叠上下文，确认面板必须 Teleport 到 body -->
+                    <ConfirmPopover title="确认删除" content="删除将不可恢复" placement="leftTop"
+                        @confirm="deleteDiary()">
                         <IconDeleteOutline class="diary-item-top-delete" />
-                    </yk-popconfirm>
+                    </ConfirmPopover>
                 </yk-space>
             </div>
 
@@ -59,6 +60,7 @@ import {
 import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
 import { momentl } from '../../utils/moment'
+import ConfirmPopover from '../common/ConfirmPopover.vue'
 
 type DiaryItemProps = {
     data: DiaryData
@@ -188,8 +190,4 @@ const openDetail = (): void => {
         }
     }
 
-    // 删除确认浮层：默认没有 z-index，会被卡片 hover 的 transform 层级压住
-    .diary-item-popconfirm {
-        z-index: 1300;
-    }
 </style>
