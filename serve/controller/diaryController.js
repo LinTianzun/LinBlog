@@ -32,10 +32,13 @@ async function getDiaries(req, res) {
         const weather = typeof req.query.weather === 'string' ? req.query.weather.trim() : ''
         const sort = req.query.sort === 'hot' ? 'hot' : 'latest'
 
+        // 后台列表按登录用户收窄：管理员/编辑看全站，普通用户只看自己名下
+        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+
         const [pageResult, facetResult] = await Promise.all([
-            diaryModel.getDiariesByPage({ keyword, weather, pageSize, offset, sort }),
+            diaryModel.getDiariesByPage({ keyword, weather, pageSize, offset, sort, ownerScope }),
             // 分面计数跟随关键词但不受天气筛选影响，保证标签数量恒定
-            diaryModel.countDiariesByWeather({ keyword })
+            diaryModel.countDiariesByWeather({ keyword, ownerScope })
         ])
         const { list, total } = pageResult
 
@@ -139,7 +142,10 @@ async function createDiary(req, res) {
             return res.status(normalized.error.code).json({ code: normalized.error.code, message: normalized.error.message })
         }
 
-        const result = await diaryModel.insertDiary(normalized.data)
+        const result = await diaryModel.insertDiary({
+            ...normalized.data,
+            userId: req.user?.userId ?? null
+        })
 
         writeSystemLog({
             userId: req.user?.userId ?? null,
@@ -171,12 +177,13 @@ async function deleteDiary(req, res) {
             return res.status(400).json({ code: 400, message: '日记ID必须是有效数字' })
         }
 
-        const diary = await diaryModel.findDiaryById(diaryId)
+        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+        const diary = await diaryModel.findDiaryById(diaryId, ownerScope)
         if (!diary) {
             return res.status(404).json({ code: 404, message: '日记不存在或已删除' })
         }
 
-        await diaryModel.deleteDiary(diaryId)
+        await diaryModel.deleteDiary(diaryId, ownerScope)
 
         writeSystemLog({
             userId: req.user?.userId ?? null,
@@ -204,7 +211,8 @@ async function updateDiary(req, res) {
             return res.status(400).json({ code: 400, message: '日记ID必须是有效数字' })
         }
 
-        const diary = await diaryModel.findDiaryById(diaryId)
+        const ownerScope = { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
+        const diary = await diaryModel.findDiaryById(diaryId, ownerScope)
         if (!diary) {
             return res.status(404).json({ code: 404, message: '日记不存在或已删除' })
         }
@@ -214,7 +222,7 @@ async function updateDiary(req, res) {
             return res.status(normalized.error.code).json({ code: normalized.error.code, message: normalized.error.message })
         }
 
-        await diaryModel.updateDiary({ id: diaryId, ...normalized.data })
+        await diaryModel.updateDiary({ id: diaryId, ...normalized.data }, ownerScope)
 
         writeSystemLog({
             userId: req.user?.userId ?? null,

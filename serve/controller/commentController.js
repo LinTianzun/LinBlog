@@ -31,7 +31,13 @@ async function getComments(req, res) {
 
         // 调用模型分页查询（关联文章+用户信息）
         const result = await commentModel.getCommentsByPage(
-            page, pageSize, offset, articleId, req.user?.userId ?? null
+            page,
+            pageSize,
+            offset,
+            articleId,
+            req.user?.userId ?? null,
+            // 后台评论按登录用户收窄：管理员/编辑看全站，其余只看与自己相关的评论
+            { userId: req.user?.userId ?? null, userType: req.user?.userType ?? null }
         )
         res.json({
             code: 200,

@@ -20,7 +20,8 @@ const ALL_MIGRATIONS = [
     '20261027_comment_reply_target',
     '20261028_diary_comment_reply',
     '20261028_password_reset',
-    '20261028_password_reset_version_guard'
+    '20261028_password_reset_version_guard',
+    '20261028_diary_owner'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -225,4 +226,65 @@ test('password reset version guard migration binds tokens to token_version', asy
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261028_password_reset_version_guard'
     ))
+})
+
+test('diary owner migration adds owner column, index and backfills legacy rows', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_diary_owner')
+        }
+        // information_schema 查询一律返回空：列/索引/外键都不存在，触发补全
+        if (sql.includes('information_schema')) return []
+        // 回填归属时取到的最早管理员
+        if (sql.includes('FROM users')) return [{ id: 7 }]
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE diary ADD COLUMN user_id BIGINT UNSIGNED NULL')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE diary ADD INDEX idx_diary_user (user_id)')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('ADD CONSTRAINT fk_diary_user')
+    ))
+    // 历史随笔必须落到某个真实用户名下，否则普通用户会看到别人的内容
+    assert.ok(calls.some(call =>
+        call.sql.includes('UPDATE diary SET user_id = ? WHERE user_id IS NULL')
+        && call.values[0] === 7
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261028_diary_owner'
+    ))
+})
+
+test('diary owner migration keeps NULL owner when no user exists yet', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261028_diary_owner')
+        }
+        if (sql.includes('information_schema')) return []
+        // 空库：没有任何用户可归属
+        if (sql.includes('FROM users')) return []
+
+        return []
+    }
+
+    await db.runMigrations(exec)
+    assert.equal(
+        calls.some(call => call.sql.includes('UPDATE diary SET user_id')),
+        false
+    )
 })

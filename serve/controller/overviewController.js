@@ -12,6 +12,8 @@ const recordModel = require('../model/dbModel/record/index')
 async function getOverviewSummary(req, res) {
     try {
         const { userId, userType } = req.user
+        // 非管理员只看与自己相关的内容：随笔按作者，评论按「我的作品/我的评论」
+        const ownerScope = { userId, userType }
 
         // 文章 / 图库各自走 countArticlesByState 并按 classify 拆分
         const [articleSummary, gallerySummary, fileSummary, diaryResult, commentResult, messageUnread] =
@@ -19,8 +21,8 @@ async function getOverviewSummary(req, res) {
                 articleModel.countArticlesByState({ classify: 'article', userId, userType }),
                 articleModel.countArticlesByState({ classify: 'image', userId, userType }),
                 fileModel.countFilesSummary(),
-                diaryModel.getDiariesByPage({ pageSize: 1, offset: 0 }),
-                commentModel.getCommentsByPage(1, 1, 0),
+                diaryModel.getDiariesByPage({ pageSize: 1, offset: 0, ownerScope }),
+                commentModel.getCommentsByPage(1, 1, 0, null, userId, ownerScope),
                 messageModel.getUnreadCount(userId),
             ])
 

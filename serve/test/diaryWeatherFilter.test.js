@@ -209,7 +209,12 @@ test('控制器：weather 参数透传到模型并返回分面', async () => {
 
         assert.equal(res.statusCode, 200)
         assert.equal(getArgs.weather, '晴天')
-        assert.deepEqual(countArgs, { keyword: '' })
+        // 控制器把登录用户的归属范围透传给模型，普通用户只看自己名下随笔
+        assert.deepEqual(countArgs, {
+            keyword: '',
+            ownerScope: { userId: null, userType: null }
+        })
+        assert.deepEqual(getArgs.ownerScope, { userId: null, userType: null })
         assert.deepEqual(res.payload.data.weatherFacet, [
             { weatherName: '晴天', count: 2 }
         ])
