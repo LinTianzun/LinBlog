@@ -1,6 +1,9 @@
 // 真实 MySQL 集成测试：仅在显式提供 LINBLOG_INTEGRATION_DB 时运行。
 // 会创建独立的验证数据库并在结束后删除，绝不触碰默认业务库。
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 const test = require('node:test')
 
 const targetDb = process.env.LINBLOG_INTEGRATION_DB || ''
@@ -16,6 +19,12 @@ if (!targetDb) {
 
     process.env.LINBLOG_DB_NAME = targetDb
     process.env.LINBLOG_JWT_SECRET = process.env.LINBLOG_JWT_SECRET || 'integration-test-secret-at-least-32-chars'
+    // 文件磁盘操作全部落在临时目录，测试后统一清理，不污染仓库数据目录。
+    // 必须在引入 fileController（内部按模块加载读取环境变量）之前设置。
+    const integrationRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'linblog-integration-'))
+    process.env.LINBLOG_FILE_STORAGE_DIR = path.join(integrationRoot, 'files')
+    process.env.LINBLOG_FILE_BACKUP_DIR = path.join(integrationRoot, 'backups')
+    process.env.LINBLOG_FILE_BACKUP_MIRROR_DIR = path.join(integrationRoot, 'mirror')
 
     const db = require('../model/db/dbnew')
     const userModel = require('../model/dbModel/users/index')
@@ -24,8 +33,60 @@ if (!targetDb) {
     const fileModel = require('../model/dbModel/file/index')
     const commentController = require('../controller/commentController')
     const userController = require('../controller/userController')
+    const fileController = require('../controller/fileController')
+    const uploadController = require('../controller/uploadController')
+    const fileStorage = require('../utils/fileStorage')
 
     const ids = {}
+
+    function response() {
+        return {
+            // Express 成功路径默认就是 200（只调 json 不调 status）
+            statusCode: 200,
+            body: null,
+            status(code) { this.statusCode = code; return this },
+            json(body) { this.body = body; return this }
+        }
+    }
+
+    // multer/busboy 对非 IncomingMessage 的普通流不会解析出文件，
+    // 上传用例走真实 HTTP 服务器 + fetch/FormData，保持端到端语义。
+    async function uploadViaHttp(field, filename, type, data) {
+        // 控制器假设 res 是 Express response（有 .status/.json），
+        // 用 express() 而非裸 http.createServer，保持端到端语义。
+        const express = require('express')
+        const app = express()
+        app.post('/api/upload/image', (req, res) => uploadController.uploadImage(req, res))
+        const server = app.listen(0, '127.0.0.1')
+        await new Promise(resolve => server.once('listening', resolve))
+        // Express 默认错误处理对 multer 抛出的 415/413 会返回 HTML，
+        // 控制器设计为 yk-upload 仅看 HTTP 200 + 业务错误码，
+        // 这里统一用 200 业务码做断言；multer 错误在真实路由里另有 errorHandler。
+        app.use((err, _req, res, _next) => {
+            const code = err.status || 400
+            res.status(200).json({ code, error: err.message, message: err.message })
+        })
+        const form = new FormData()
+        form.append(field, new Blob([data], { type }), filename)
+        try {
+            const res = await fetch(`http://127.0.0.1:${server.address().port}/api/upload/image`, {
+                method: 'POST',
+                body: form,
+                signal: AbortSignal.timeout(10000)
+            })
+            const text = await res.text()
+            try {
+                return { status: res.status, body: JSON.parse(text) }
+            } catch {
+                return { status: res.status, body: { raw: text } }
+            }
+        } finally {
+            if (typeof server.closeAllConnections === 'function') {
+                server.closeAllConnections()
+            }
+            await new Promise(resolve => server.close(resolve))
+        }
+    }
 
     async function seedBaseData() {
         const password = '$2a$10$integrationfakehashintegrationfakehash0000000000000000000000'
@@ -242,6 +303,113 @@ if (!targetDb) {
         assert.equal(active.backup_deleted_at, null)
     })
 
+    test('image upload accepts valid files and rejects invalid branches', async () => {
+        // 正常分支：落库成功并返回可回读的 URL
+        const validPayload = Buffer.from('integration-upload-png-bytes')
+        const validRes = await uploadViaHttp('file', 'valid.png', 'image/png', validPayload)
+        assert.equal(validRes.status, 200)
+        assert.equal(validRes.body.code, 200)
+        assert.match(validRes.body.data.url, /^\/api\/uploads\//)
+        const savedName = validRes.body.data.url.replace('/api/uploads/', '')
+        const saved = await imageModel.findActiveImageByFilename(savedName)
+        assert.equal(saved.length, 1)
+        assert.ok(Buffer.from(saved[0].data).equals(validPayload))
+
+        // 非法 MIME：HTTP 200 + 业务错误码 415（yk-upload 只处理 200）
+        const badMimeRes = await uploadViaHttp('file', 'note.txt', 'text/plain', Buffer.from('hello'))
+        assert.equal(badMimeRes.status, 200)
+        assert.equal(badMimeRes.body.code, 415)
+
+        // 超过 8MB 上限：multer 中断并映射为 413
+        const oversizeRes = await uploadViaHttp('file', 'big.png', 'image/png', Buffer.alloc(8 * 1024 * 1024 + 1))
+        assert.equal(oversizeRes.status, 200)
+        assert.equal(oversizeRes.body.code, 413)
+
+        // 缺少 file 字段：400 且不写库
+        const emptyRes = await uploadViaHttp('other', 'none.txt', 'text/plain', Buffer.from('x'))
+        assert.equal(emptyRes.status, 200)
+        assert.equal(emptyRes.body.code, 400)
+    })
+
+    test('file delete backs up disk file and restore pulls from mirror when backup is lost', async () => {
+        const diskName = 'it-disk-lifecycle.txt'
+        await fs.promises.mkdir(process.env.LINBLOG_FILE_STORAGE_DIR, { recursive: true })
+        await fs.promises.writeFile(path.join(process.env.LINBLOG_FILE_STORAGE_DIR, diskName), 'integration-disk-content')
+
+        const inserted = await fileModel.insertFile({
+            fileName: '磁盘生命周期测试.txt',
+            format: 'txt',
+            size: 24,
+            url: diskName,
+            subsetId: null
+        })
+
+        const deleteRes = response()
+        await fileController.deleteFiles({
+            body: { fileIds: [inserted.fileId] },
+            user: { userId: ids.admin, user_type: 'admin' },
+            ip: '127.0.0.1'
+        }, deleteRes)
+        assert.equal(deleteRes.statusCode, 200)
+        assert.equal(deleteRes.body.data.backedUpCount, 1)
+        assert.equal(deleteRes.body.data.offsiteFailedCount, 0)
+        assert.equal(await fs.promises.access(path.join(process.env.LINBLOG_FILE_STORAGE_DIR, diskName)).then(() => true, () => false), false)
+        assert.equal(await fs.promises.access(path.join(process.env.LINBLOG_FILE_BACKUP_DIR, diskName)).then(() => true, () => false), true)
+        assert.equal(await fs.promises.access(path.join(process.env.LINBLOG_FILE_BACKUP_MIRROR_DIR, diskName)).then(() => true, () => false), true)
+
+        // 本地备份丢失：回收标记不可恢复，但恢复接口会先从跨盘镜像拉回再恢复
+        await fs.promises.unlink(path.join(process.env.LINBLOG_FILE_BACKUP_DIR, diskName))
+        const trashRes = response()
+        await fileController.getTrashFiles({ query: {} }, trashRes)
+        const trashItem = trashRes.body.data.list.find(item => Number(item.id) === Number(inserted.fileId))
+        assert.equal(trashItem.recoverable, false)
+
+        const restoreRes = response()
+        await fileController.restoreFiles({
+            body: { fileIds: [inserted.fileId] },
+            user: { userId: ids.admin, user_type: 'admin' },
+            ip: '127.0.0.1'
+        }, restoreRes)
+        assert.equal(restoreRes.statusCode, 200)
+        assert.equal(restoreRes.body.data.restoredCount, 1)
+        assert.equal(
+            await fs.promises.readFile(path.join(process.env.LINBLOG_FILE_STORAGE_DIR, diskName), 'utf8'),
+            'integration-disk-content'
+        )
+        const restored = await fileModel.findFileById(inserted.fileId)
+        assert.equal(Number(restored.status), 1)
+        assert.equal(restored.deleted_at, null)
+    })
+
+    test('restore returns 409 missing_backup when local and mirror copies are both gone', async () => {
+        const diskName = 'it-missing-backup.txt'
+        await fs.promises.writeFile(path.join(process.env.LINBLOG_FILE_STORAGE_DIR, diskName), 'will-be-lost')
+        const inserted = await fileModel.insertFile({
+            fileName: '双丢失测试.txt',
+            format: 'txt',
+            size: 12,
+            url: diskName,
+            subsetId: null
+        })
+
+        const deleteRes = response()
+        await fileController.deleteFiles({ body: { fileIds: [inserted.fileId] } }, deleteRes)
+        assert.equal(deleteRes.statusCode, 200)
+
+        await fs.promises.rm(path.join(process.env.LINBLOG_FILE_BACKUP_DIR, diskName), { force: true })
+        await fs.promises.rm(path.join(process.env.LINBLOG_FILE_BACKUP_MIRROR_DIR, diskName), { force: true })
+
+        const restoreRes = response()
+        await fileController.restoreFiles({ body: { fileIds: [inserted.fileId] } }, restoreRes)
+        assert.equal(restoreRes.statusCode, 409)
+        assert.equal(restoreRes.body.data.restoredCount, 0)
+        assert.deepEqual(restoreRes.body.data.failed, [{ id: inserted.fileId, reason: 'missing_backup' }])
+
+        // 数据库仍保持软删状态，不出现半恢复
+        const row = await fileModel.findFileById(inserted.fileId)
+        assert.equal(Number(row.status), 0)
+    })
+
     test('cover cleanup keeps referenced images and removes orphaned ones', async () => {
         await db.query(
             "UPDATE article SET cover = '/api/uploads/it-image.jpg' WHERE id = ?",
@@ -307,7 +475,13 @@ if (!targetDb) {
             user: { userId: ids.normal, userType: 'normal' },
             ip: '127.0.0.1'
         }, res3)
-        assert.equal(res3.statusCode, 400)
+        // 回复二级评论会被归一挂到根评论下（两级结构），应成功而非 400
+        assert.equal(res3.statusCode, 201)
+        const normalizedParent = await db.query(
+            'SELECT parent_id FROM comment WHERE id = ?',
+            [res3.body.data.commentId]
+        )
+        assert.equal(Number(normalizedParent[0].parent_id), Number(commentId))
 
         const res4 = response()
         await commentController.createComment({
@@ -321,7 +495,7 @@ if (!targetDb) {
             'SELECT COUNT(*) AS total FROM comment WHERE article_id = ? AND status = 1',
             [freshArticleId]
         )
-        assert.equal(Number(rows[0].total), 2)
+        assert.equal(Number(rows[0].total), 3)
     })
 
     test('disable and re-enable user through guarded status update', async () => {
@@ -356,5 +530,6 @@ if (!targetDb) {
         } finally {
             await connection.end()
         }
+        fs.rmSync(integrationRoot, { recursive: true, force: true })
     })
 }
