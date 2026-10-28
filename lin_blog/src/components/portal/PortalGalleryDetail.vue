@@ -11,7 +11,7 @@
                 <time>{{ formatDate(item.publishedAt || item.createdAt) }}</time>
                 <span><IconEyeOutline />{{ views }}</span>
                 <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
-                    :disabled="likeBusy || likePending" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                    :disabled="likeBusy || likePending" :title="canInteract ? '喜欢 / 取消喜欢' : '登录后即可喜欢'"
                     @click="handleLike">
                     <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
                     <template v-if="!likePending">
@@ -193,7 +193,7 @@ const handleLike = async () => {
     if (!galleryId || likeBusy.value) return
 
     if (!canInteract.value) {
-        proxy?.$message?.({ type: 'primary', message: '登录后可点赞' })
+        proxy?.$message?.({ type: 'primary', message: '登录后即可喜欢' })
         return
     }
 
@@ -211,7 +211,7 @@ const handleLike = async () => {
     } catch (error) {
         const message = (error as { response?: { data?: { message?: string } } })
             .response?.data?.message
-        proxy?.$message?.({ type: 'error', message: message || '点赞失败，请稍后重试' })
+        proxy?.$message?.({ type: 'error', message: message || '操作失败，请稍后重试' })
     } finally {
         likeBusy.value = false
     }
