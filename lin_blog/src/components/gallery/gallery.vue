@@ -22,8 +22,8 @@
             </div>
         </div>
         <div v-if="count > effectivePageSize" class="gallery-pagination">
-            <yk-pagination :current="page" :page-size="effectivePageSize" @change="changePage" :total="count"
-                size="m" />
+            <AdminPager v-model:page="page" :page-size="effectivePageSize" :total="count" :show-total="true"
+                :disabled="loading" @change="handlePagerChange" />
         </div>
     </div>
 
@@ -42,6 +42,7 @@ import {
 import galleryItem from './galleryItem.vue'
 import galleryDetailView from './galleryDetailView.vue'
 import { useRoute, useRouter } from 'vue-router'
+import AdminPager from '../common/AdminPager.vue'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 
 const props = defineProps({
@@ -147,10 +148,8 @@ const fetchGalleries = async (): Promise<void> => {
     }
 }
 
-// 分页
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 分页：页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchGalleries()
 }
 

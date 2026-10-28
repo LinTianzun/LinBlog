@@ -99,9 +99,9 @@
             </div>
 
             <div class="user-pagination">
-                <yk-pagination :current="currentPage" :page-size-options="[2, 5, 10, 20]" :total="total"
-                    :layouts="['prev', 'pager', 'next', 'pageSize']" size="m" @change="changePage"
-                    @page-size-change="changePageSize" />
+                <AdminPager v-model:page="currentPage" v-model:page-size="pageSize" :total="total"
+                    :page-size-options="[2, 5, 10, 20]" :show-page-size="true" :show-total="true"
+                    :disabled="loading" @change="handlePagerChange" />
             </div>
 
         </yk-space>
@@ -212,6 +212,7 @@
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import StatCard from '../components/common/StatCard.vue'
+import AdminPager from '../components/common/AdminPager.vue'
 import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
 
 const proxy: any = getCurrentInstance()?.proxy
@@ -770,21 +771,11 @@ const fetchUsersByRole = async (
     }
 }
 
-// 切换页码，包括通过 jumper 跳转
-const changePage = (page: number) => {
-    if (page === currentPage.value || loading.value) return
-    fetchUsers(page)
-}
-
-// 切换每页显示条数
-const changePageSize = (size: number) => {
-    if (loading.value || size === pageSize.value) return
-
-    pageSize.value = size
-    currentPage.value = 1
-
-    // 更改每页条数后，从第一页重新查询
-    fetchUsers(1, size)
+// 分页条：v-model 已经同步了页码/每页条数，这里只负责按最新值拉数据。
+// 加载期间由 :disabled 直接拦住点击，这里不能再加 loading 判断——
+// 否则页码已写入但请求没发，数据和高亮会对不上。
+const handlePagerChange = ({ page, pageSize: size }: { page: number; pageSize: number }) => {
+    fetchUsers(page, size)
 }
 
 // 搜索

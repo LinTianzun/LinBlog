@@ -25,8 +25,9 @@
             </yk-space>
         </yk-scrollbar>
 
-        <div v-if="!loading && !errorMessage && count > pageSize" class="comment-pagination">
-            <yk-pagination :current="page" :page-size="pageSize" @change="changePage" :total="count" size="m" />
+        <div class="comment-pagination">
+            <AdminPager v-model:page="page" :page-size="pageSize" :total="count" :show-total="true"
+                :disabled="loading" @change="handlePagerChange" />
         </div>
     </div>
 </template>
@@ -36,6 +37,7 @@ import { ref, onMounted, getCurrentInstance, type ComponentPublicInstance } from
 import { useRouter } from 'vue-router'
 import reply from './reply.vue'
 import type { ReplyDat } from '../../utils/interface'
+import AdminPager from '../common/AdminPager.vue'
 import {
     deleteComment,
     getRequestErrorMessage,
@@ -134,10 +136,8 @@ const formatMoment = (value: string): string => {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-// 分页
-const changePage = (nextPage: number) => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 分页：页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchComments()
 }
 

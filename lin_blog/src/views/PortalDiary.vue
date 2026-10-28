@@ -77,8 +77,9 @@
                 </yk-button>
             </div>
 
-            <div v-if="total > pageSize" class="list-pagination">
-                <yk-pagination :current="page" :total="total" :page-size="pageSize" @change="changePage" />
+            <div class="list-pagination">
+                <AdminPager v-model:page="page" :page-size="pageSize" :total="total" :disabled="loading"
+                    @change="handlePagerChange" />
             </div>
         </section>
 
@@ -96,6 +97,7 @@ import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import { getPublicDiaries, type PortalDiary, type PortalWeatherFacet } from '../api/portal'
 import type { PortalSort } from '../api/portal'
 import { weathers } from '../utils/weather'
+import AdminPager from '../components/common/AdminPager.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,8 +159,8 @@ const loadDiaries = async () => {
     }
 }
 
-const changePage = (next: number) => {
-    page.value = next
+// 页码已由 v-model 同步，这里重新加载并回到页顶
+const handlePagerChange = (): void => {
     void loadDiaries()
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }

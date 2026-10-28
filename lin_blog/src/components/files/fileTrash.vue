@@ -85,8 +85,8 @@
                 </yk-scrollbar>
 
                 <div class="file-trash-pagination">
-                    <yk-pagination size="s" :current="page" :total="count" :page-size="pageSize"
-                        @change="changePage" />
+                    <AdminPager v-model:page="page" :page-size="pageSize" :total="count" size="s"
+                        :show-total="true" :disabled="loading" @change="handlePagerChange" />
                 </div>
             </template>
         </div>
@@ -110,6 +110,7 @@ import {
     type TrashFileItem,
 } from '../../api/file'
 import './fileTrash.less'
+import AdminPager from '../common/AdminPager.vue'
 
 const props = defineProps<{ visible: boolean }>()
 
@@ -231,9 +232,8 @@ const capacityTip = computed(() => {
     return ''
 })
 
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchTrash()
 }
 

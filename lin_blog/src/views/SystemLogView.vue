@@ -59,7 +59,8 @@
             </div>
 
             <div class="system-log-pagination">
-                <yk-pagination @change="changePage" :current="page" :total="total" :page-size="pageSize" size="m" />
+                <AdminPager v-model:page="page" :page-size="pageSize" :total="total" :show-total="true"
+                    :disabled="loading" @change="handlePagerChange" />
             </div>
         </template>
     </yk-space>
@@ -68,6 +69,7 @@
 <script lang="ts" setup>
     import { ref, onMounted } from 'vue'
     import TopTitle from '../components/bar/TopTitle.vue'
+    import AdminPager from '../components/common/AdminPager.vue'
     import {
         getSystemLogs,
         getRequestErrorMessage,
@@ -159,9 +161,8 @@
         reload()
     }
 
-    const changePage = (nextPage: number): void => {
-        if (nextPage === page.value) return
-        page.value = nextPage
+    // 页码已由 v-model 同步，这里只按最新页码拉数据
+    const handlePagerChange = (): void => {
         void fetchLogs()
     }
 

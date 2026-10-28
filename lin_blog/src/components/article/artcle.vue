@@ -20,8 +20,8 @@
                 :can-delete="canDelete(item)" @delete="removeArticle"
                 @state="updateState" @view="openDetail" />
             <div class="artcle-pagination">
-                <yk-pagination :current="page" :page-size="props.pageSize" :total="count"
-                    size="m" @change="changePage" />
+                <AdminPager v-model:page="page" :page-size="props.pageSize" :total="count"
+                    :show-total="true" :disabled="loading" @change="handlePagerChange" />
             </div>
         </template>
 
@@ -44,6 +44,7 @@ import artcleItem from './artcleItem.vue'
 // 详情弹窗包含正文渲染与 DOMPurify，打开时再加载
 const ArticleDetailView = defineAsyncComponent(() => import('../../views/ArticleDetailView.vue'))
 import { useSubsetStore } from '../../store/subset'
+import AdminPager from '../common/AdminPager.vue'
 
 type Props = {
     pageSize?: number
@@ -157,9 +158,8 @@ const fetchArticles = async (): Promise<void> => {
     }
 }
 
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchArticles()
 }
 

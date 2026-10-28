@@ -15,7 +15,8 @@
             </yk-space>
         </yk-scrollbar>
         <div class="diary-pagination">
-            <yk-pagination @change="changePage" :current="page" :total="count" :page-size="pageSize" size="m" />
+            <AdminPager v-model:page="page" :page-size="pageSize" :total="count" :show-total="true"
+                :disabled="loading" @change="handlePagerChange" />
         </div>
     </div>
 
@@ -27,6 +28,7 @@
 import { ref, onMounted, getCurrentInstance, watch } from 'vue'
 import diaryItem from './diaryItem.vue'
 import type { DiaryData } from '../../utils/interface'
+import AdminPager from '../common/AdminPager.vue'
 import {
     getDiaries,
     deleteDiary as deleteDiaryApi,
@@ -133,10 +135,8 @@ const fetchDiaries = async (): Promise<void> => {
     }
 }
 
-// 分页
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 分页：页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchDiaries()
 }
 

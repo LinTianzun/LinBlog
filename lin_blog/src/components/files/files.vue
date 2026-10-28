@@ -49,8 +49,8 @@
         </div>
 
         <div class="files-pagination">
-            <yk-pagination @change="changePage" :current="page" :total="count" :page-size="effectivePageSize"
-                size="m" />
+            <AdminPager v-model:page="page" :page-size="effectivePageSize" :total="count" :show-total="true"
+                :disabled="loading" @change="handlePagerChange" />
         </div>
     </div>
 </template>
@@ -60,6 +60,7 @@ import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import fileItem from './filesItem.vue'
 import { useSubsetStore } from '../../store/subset.ts'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
+import AdminPager from '../common/AdminPager.vue'
 import type { FileData } from '../../utils/interface.ts'
 import {
     getFiles,
@@ -185,9 +186,8 @@ watch(effectivePageSize, () => {
     void fetchFiles()
 })
 
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchFiles()
 }
 

@@ -91,9 +91,9 @@
                     </button>
                 </article>
 
-                <div v-if="total > filters.pageSize" class="list-pagination">
-                    <yk-pagination :current="filters.page" :total="total" :page-size="filters.pageSize"
-                        @change="changePage" />
+                <div class="list-pagination">
+                    <AdminPager v-model:page="filters.page" :page-size="filters.pageSize" :total="total"
+                        :disabled="loading" @change="handlePagerChange" />
                 </div>
             </div>
 
@@ -126,6 +126,7 @@ import {
     type PortalLabel
 } from '../api/portal'
 import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
+import AdminPager from '../components/common/AdminPager.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -282,8 +283,8 @@ const clearKeyword = () => {
     void loadArticles()
 }
 
-const changePage = (page: number) => {
-    filters.page = page
+// 页码已由 v-model 写回 filters.page，这里同步 URL 并重新加载
+const handlePagerChange = (): void => {
     syncQuery()
     void loadArticles()
     window.scrollTo({ top: 0, behavior: 'smooth' })

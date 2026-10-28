@@ -39,9 +39,9 @@
             </div>
         </yk-scrollbar>
 
-        <div v-if="!loading && !errorMessage && count > pageSize" class="diary-comment-list-pagination">
-            <yk-pagination :current="page" :page-size="pageSize" @change="changePage" :total="count"
-                size="s" />
+        <div class="diary-comment-list-pagination">
+            <AdminPager v-model:page="page" :page-size="pageSize" :total="count" size="s"
+                :show-total="true" :disabled="loading" @change="handlePagerChange" />
         </div>
     </div>
 </template>
@@ -53,6 +53,7 @@ import type { ReplyDat } from '../../utils/interface'
 import type { DiaryComment } from '../../api/portal.ts'
 import { getDiaryComments } from '../../api/portal.ts'
 import { deleteInteractionComment, getRequestErrorMessage } from '../../api/comment.ts'
+import AdminPager from '../common/AdminPager.vue'
 
 type MessageOptions = {
     type: 'primary' | 'error'
@@ -163,9 +164,8 @@ const fetchComments = async (): Promise<void> => {
     }
 }
 
-const changePage = (nextPage: number): void => {
-    if (nextPage === page.value) return
-    page.value = nextPage
+// 分页：页码已由 v-model 同步，这里只按最新页码拉数据
+const handlePagerChange = (): void => {
     void fetchComments()
 }
 
