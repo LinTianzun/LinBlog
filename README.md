@@ -16,7 +16,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | `serve/` | Express 5 API、JWT 认证、MySQL 数据模型；路由覆盖用户、文章、评论、消息、日记、文件、图片上传、上传票据、分类、标签和总览统计。 |
 | `Documentation/` | 开发进度及数据库设计文档。 |
 | 门户（访客前台） | 拆成四个独立页面：`/portal` 首页、`/portal/articles` 文章归档、`/portal/gallery` 摄影图库、`/portal/diary` 随笔，均匿名可访问。共用 `PortalLayout`（顶栏、页脚、`#app` 顶栏补偿）与 `PortalPhotoWall`（12 栏错落照片墙）；详情统一为当前页弹窗（`PortalArticleDetail` / `PortalGalleryDetail` / `PortalDiaryDetail`）。见 `lin_blog/src/views/Portal*.vue`、`lin_blog/src/components/portal/`、`lin_blog/src/style/portal.less`。 |
-| 门户浏览量与热度 | 文章、摄影图库、随笔均支持真实浏览量统计：打开详情弹窗即计一次浏览，`view_log` 表按「登录用户 / 游客 IP」做 30 分钟去重后自增 `article.views` / `diary.views`，计数回写列表卡片；三个归档页均提供「最新 / 最热」排序切换，`sort=hot` 走 SQL 排序而非前端重排。见 `serve/controller/viewController.js`、`serve/model/dbModel/view/index.js`、`lin_blog/src/api/portal.ts`。 |
+| 门户浏览量与热度 | 文章、摄影图库、随笔均支持真实浏览量统计：打开详情弹窗即计一次浏览，`view_log` 表按「登录用户 / 游客 IP+UA 哈希」做 30 分钟去重后自增 `article.views` / `diary.views`（同 NAT 出口下不同浏览器/设备可区分），计数回写列表卡片；三个归档页均提供「最新 / 最热」排序切换，`sort=hot` 走 SQL 排序而非前端重排。反向代理部署可用 `LINBLOG_TRUST_PROXY` 透传真实客户端 IP。见 `serve/controller/viewController.js`、`serve/model/dbModel/view/index.js`、`lin_blog/src/api/portal.ts`。 |
 | 随笔天气筛选 | `/api/public/diary` 支持 `weather` 参数在 SQL 层过滤，翻页后筛选不失效；天气标签数量由后端全量统计后回传（`weatherFacet` / `facetTotal`），不再只统计当前页。筛选可与 `sort=hot` 叠加并同步到地址栏。见 `serve/model/dbModel/diary/index.js`、`lin_blog/src/views/PortalDiary.vue`。 |
 | 主题系统 | 11 套可切换主题，双层变量（`data-theme` + `data-theme-preset`）驱动，选择持久化并在启动恢复，与顶栏明暗开关联动。见 `lin_blog/src/utils/themes.ts`、`lin_blog/src/utils/themePreset.ts`、`lin_blog/src/style/theme-presets.less`。 |
 | 后台视觉与响应式 | `admin.less` 统一后台外壳、卡片、滚动区和大屏布局；`MenuBar` 分组导航，`StatCard` 可复用统计卡，`responsivePageSize` 处理文件、图库和消息列表分页。图库编辑左右等高，评论分页位于内容底线下方。见 `lin_blog/src/style/admin.less`、`lin_blog/src/components/common/StatCard.vue`、`lin_blog/src/utils/responsivePageSize.ts`。 |
@@ -67,7 +67,7 @@ npm start
 | 公开只读（门户） | `GET /api/public/article`（支持 `classify=article|image`）、`GET /api/public/article/:id`、`GET /api/public/comment?articleId=...`、`GET /api/public/subset`、`GET /api/public/label`、`GET /api/public/diary`（支持 `weather` 按天气名过滤、`sort=hot` 按浏览量排序，并回传 weatherFacet 分面计数） | 无需登录；无论是否携带 Token，都只能读取已发布文章、对应正常评论、分类/标签列表与状态正常的随笔，门户不会因登录而切回后台作者视角。 |
 | 门户互动（需登录） | `POST /api/public/comment`、`POST /api/public/comment/like`、`POST /api/public/comment/report`、`GET /api/public/praise/:id`、`POST /api/public/praise/:id` | 评论、评论点赞/举报与文章点赞需登录，匿名返回 401；点赞状态可匿名读取。只能互动已发布内容，回复仅支持两级，同一用户重复举报同一评论不重复计数。 |
 | 随笔互动（公开） | `GET/POST /api/public/diary/praise/:id`、`GET/POST /api/public/diary/comment` | 点赞状态与评论可匿名读取，点赞与发表评论需登录（匿名返回 401）；点赞/取消在事务内同步 `diary.likes`，评论同步 `diary.comments`。 |
-| 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
+| 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP+UA 哈希」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename` | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。 |
 | 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token；`GET /api/comment` 支持可选 `articleId` 过滤，后台文章详情用它只拉取本篇评论；回复仅支持两级。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |

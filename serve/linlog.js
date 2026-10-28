@@ -13,6 +13,11 @@ const recordMiddleware = require('./middleware/record')
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 
+// 反向代理部署时按配置信任代理头，保证 req.ip 是真实客户端 IP
+if (config.trustProxy !== false) {
+    app.set('trust proxy', config.trustProxy)
+}
+
 // 1. 配置跨域（OPTIONS 预检在进入 API 路由前由 cors 中间件处理）
 const corsOptions = {
     origin: config.allowedOrigins, // 从配置文件获取允许的域名

@@ -1,18 +1,22 @@
 const viewModel = require('../model/dbModel/view/index')
 const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
+const crypto = require('node:crypto')
 
 const TARGET_TYPES = ['article', 'image', 'diary']
 
 /**
- * 访客标识：登录用户按用户ID去重，游客按 IP 去重。
- * IP 会进数据库，因此截断到 120 字符上限内的安全长度。
+ * 访客标识：登录用户按用户ID去重，游客按「IP + UA 哈希」去重。
+ * 纯 IP 会把同一 NAT 出口下的多个真实访客合并计数，叠加 UA 可区分
+ * 不同浏览器/设备；哈希后固定 40 位，不落明文 IP，也不会超出列宽。
  */
 function buildIdentifier(req) {
     const userId = req.user?.userId
     if (userId) return `u:${userId}`
     const ip = typeof req.ip === 'string' ? req.ip.trim() : ''
-    return `ip:${ip || 'unknown'}`.slice(0, 120)
+    const userAgent = typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : ''
+    const digest = crypto.createHash('sha256').update(`${ip}\n${userAgent}`).digest('hex').slice(0, 40)
+    return `g:${digest}`
 }
 
 /**

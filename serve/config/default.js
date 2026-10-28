@@ -28,6 +28,22 @@ if (allowedOrigins.length === 0) {
     }
 }
 
+// 反向代理部署时必须开启，否则 req.ip 会拿到代理 IP，浏览量与访问记录全部落到同一来源
+const trustProxyValue = process.env.LINBLOG_TRUST_PROXY
+let trustProxy = false
+if (typeof trustProxyValue === 'string' && trustProxyValue.trim() !== '') {
+    const raw = trustProxyValue.trim()
+    if (raw === 'true' || raw === 'false') {
+        trustProxy = raw === 'true'
+    } else if (/^\d+$/.test(raw)) {
+        trustProxy = Number.parseInt(raw, 10)
+    } else if (['loopback', 'linklocal', 'uniquelocal'].includes(raw)) {
+        trustProxy = raw
+    } else {
+        configErrors.push('LINBLOG_TRUST_PROXY 仅支持 true/false、正整数或 loopback/linklocal/uniquelocal')
+    }
+}
+
 if (configErrors.length > 0) {
     throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
 }
@@ -41,6 +57,7 @@ const config = {
         DB: process.env.LINBLOG_DB_NAME || "linlog"
     },
     allowedOrigins,
+    trustProxy,
     jsonLimit: process.env.LINBLOG_JSON_LIMIT || '1mb',
     jwt: {
         secret: jwtSecret,

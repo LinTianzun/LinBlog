@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const Module = require('node:module')
 const path = require('node:path')
 const test = require('node:test')
@@ -61,12 +62,15 @@ function makeResponse() {
     }
 }
 
-const baseReq = (body, user = null) => ({
+const baseReq = (body, user = null, userAgent = 'Mozilla/5.0 Chrome/128') => ({
     body,
     user,
     ip: '127.0.0.1',
-    headers: {}
+    headers: { 'user-agent': userAgent }
 })
+
+const guestIdentifier = (ip, userAgent) =>
+    `g:${crypto.createHash('sha256').update(`${ip}\n${userAgent}`).digest('hex').slice(0, 40)}`
 
 test.beforeEach(() => {
     visible = { article: true, image: true, diary: true }
@@ -75,9 +79,29 @@ test.beforeEach(() => {
     callLog.inserts.length = 0
 })
 
-test('匿名用户按 IP 生成访客标识', () => {
+test('匿名用户按 IP+UA 哈希生成访客标识，不落明文 IP', () => {
     const identifier = buildIdentifier(baseReq({}))
-    assert.equal(identifier, 'ip:127.0.0.1')
+    assert.equal(identifier, guestIdentifier('127.0.0.1', 'Mozilla/5.0 Chrome/128'))
+    assert.ok(identifier.startsWith('g:'))
+    assert.ok(identifier.length <= 120)
+    assert.ok(!identifier.includes('127.0.0.1'))
+})
+
+test('同一 IP 不同 UA 视为不同访客，同 IP 同 UA 标识稳定', () => {
+    const first = buildIdentifier(baseReq({}, null, 'Mozilla/5.0 Chrome/128'))
+    const second = buildIdentifier(baseReq({}, null, 'Mozilla/5.0 Firefox/130'))
+    const repeat = buildIdentifier(baseReq({}, null, 'Mozilla/5.0 Chrome/128'))
+
+    assert.notEqual(first, second)
+    assert.equal(first, repeat)
+})
+
+test('缺少 User-Agent 时仍生成有效标识', () => {
+    const req = baseReq({})
+    delete req.headers['user-agent']
+    const identifier = buildIdentifier(req)
+
+    assert.equal(identifier, guestIdentifier('127.0.0.1', ''))
 })
 
 test('登录用户按用户ID生成访客标识', () => {
@@ -98,7 +122,7 @@ test('已发布文章记录浏览并返回浏览量', async () => {
     assert.deepEqual(callLog.inserts[0], {
         targetType: 'article',
         targetId: 5,
-        identifier: 'ip:127.0.0.1'
+        identifier: guestIdentifier('127.0.0.1', 'Mozilla/5.0 Chrome/128')
     })
 })
 

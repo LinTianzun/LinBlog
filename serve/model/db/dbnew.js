@@ -361,7 +361,7 @@ const tablesSql = {
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '浏览记录ID',
     target_type VARCHAR(20) NOT NULL COMMENT '目标类型（article/image/diary）',
     target_id BIGINT UNSIGNED NOT NULL COMMENT '目标ID',
-    identifier VARCHAR(120) NOT NULL COMMENT '访客标识（登录用户 u:{id}，游客 ip:{ip}）',
+    identifier VARCHAR(120) NOT NULL COMMENT '访客标识（登录用户 u:{id}，游客为 IP+UA 哈希）',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '浏览时间',
     PRIMARY KEY (id),
     INDEX idx_view_target (target_type, target_id, identifier, created_at)

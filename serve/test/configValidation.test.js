@@ -55,3 +55,24 @@ test('missing or malformed config fails with aggregated errors', () => {
         }
     )
 })
+
+test('trust proxy supports boolean, hop count and preset values', () => {
+    const base = {
+        LINBLOG_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+        LINBLOG_ALLOWED_ORIGINS: 'http://localhost:5173'
+    }
+
+    assert.equal(loadConfig({ ...base, LINBLOG_TRUST_PROXY: 'true' }).trustProxy, true)
+    assert.equal(loadConfig({ ...base, LINBLOG_TRUST_PROXY: 'false' }).trustProxy, false)
+    assert.equal(loadConfig({ ...base, LINBLOG_TRUST_PROXY: '2' }).trustProxy, 2)
+    assert.equal(loadConfig({ ...base, LINBLOG_TRUST_PROXY: 'loopback' }).trustProxy, 'loopback')
+    assert.equal(loadConfig(base).trustProxy, false)
+
+    assert.throws(
+        () => loadConfig({ ...base, LINBLOG_TRUST_PROXY: 'nginx' }),
+        (err) => {
+            assert.match(err.message, /LINBLOG_TRUST_PROXY/)
+            return true
+        }
+    )
+})
