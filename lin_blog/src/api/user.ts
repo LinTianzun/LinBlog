@@ -11,6 +11,9 @@ export interface UserInfo {
   created_at?: string;
   updated_at?: string;
   last_login_at?: string | null;
+  // 唯一超级管理员标记（后端 users.is_super_admin）
+  is_super_admin?: number | boolean;
+  isSuperAdmin?: boolean;
 }
 
 // 分页用户列表响应类型

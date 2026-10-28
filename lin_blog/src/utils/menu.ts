@@ -18,6 +18,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconAvatarFill'
     },
     {
+        path: 'permissionManagement',
+        name: '权限管理',
+        icon: 'IconSecurityOutline'
+    },
+    {
         path: 'systemLog',
         name: '系统日志',
         icon: 'IconStatisticsFill'

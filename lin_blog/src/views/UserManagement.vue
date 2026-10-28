@@ -35,9 +35,12 @@
                         共 {{ total }} 位用户
                     </yk-text>
 
-                    <button class="add-user-btn" @click="openAddUserModal">
+                    <button v-if="canCreateUser" class="add-user-btn" @click="openAddUserModal">
                         + 添加用户
                     </button>
+                    <router-link v-if="canViewPermissions" class="permission-entry" to="/permissionManagement">
+                        权限管理
+                    </router-link>
                 </yk-space>
             </yk-space>
 
@@ -61,26 +64,34 @@
                             <td>{{ user.mail }}</td>
                             <td>
                                 <span class="role-tag" :class="`role-${user.user_type}`">
+                                    <IconCrownFill v-if="isSuperAdminUser(user)" class="role-crown" />
                                     {{ roleName(user.user_type) }}
                                 </span>
+                                <yk-tag v-if="isSuperAdminUser(user)" size="s" type="danger" class="role-super">
+                                    超级管理员
+                                </yk-tag>
                             </td>
                             <td>
                                 <yk-switch :model-value="Number(user.status) === 1" :checked-value="true"
                                     :unchecked-value="false" checked-color="#1fb4a2" unchecked-color="#fa5247"
                                     :disabled="isCurrentUser(user) ||
-                                        updatingStatusIds.has(String(user.id))
+                                        updatingStatusIds.has(String(user.id)) ||
+                                        !canDisableUser ||
+                                        !canOperateUser(user)
                                         " :loading="updatingStatusIds.has(String(user.id))"
                                          @change="(checked:boolean | number | string) => handleStatusChange(user, checked)" />
                             </td>
                             <td>
                                 <div class="action-buttons">
-                                    <yk-button type="secondary" size="m" status="primary" @click="openEditUserModal(user)">
+                                    <yk-button type="secondary" size="m" status="primary" :disabled="!canEditTarget(user)"
+                                        @click="openEditUserModal(user)">
                                          编辑
                                     </yk-button>
 
                                     <yk-popconfirm placement="top"  trigger="click" title="确认删除" :content="`确定删除用户「${user.username}」吗？`"
                                         @confirm="handleDeleteUser(user)" >
-                                        <yk-button type="secondary" size="m" status="danger"  :disabled="deletingUserId === user.id">
+                                        <yk-button type="secondary" size="m" status="danger"
+                                            :disabled="deletingUserId === user.id || !canDeleteTarget(user)">
                                              {{ deletingUserId === user.id ? '正在删除...' : '删除' }}
                                         </yk-button>
                                         
@@ -139,11 +150,13 @@
                     <div class="form-item">
                         <label for="new-role">用户角色</label>
                         <select id="new-role" v-model="newUser.user_type">
-                            <option value="normal">普通用户</option>
-                            <option value="editor">编辑</option>
-                            <option value="visitor">游客</option>
-                            <option value="admin">管理员</option>
+                            <option v-for="option in assignableRoles" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
                         </select>
+                        <p v-if="!canAssignAdmin" class="form-hint">
+                            仅超级管理员可以创建管理员账号
+                        </p>
                     </div>
 
                     <div class="modal-actions">
@@ -185,10 +198,9 @@
                     <div class="form-item">
                         <label for="edit-role">用户角色</label>
                         <select id="edit-role" v-model="editUser.user_type">
-                            <option value="normal">普通用户</option>
-                            <option value="editor">编辑</option>
-                            <option value="visitor">游客</option>
-                            <option value="admin">管理员</option>
+                            <option v-for="option in assignableRoles" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
                         </select>
                     </div>
 
@@ -214,8 +226,48 @@ import TopTitle from '../components/bar/TopTitle.vue'
 import StatCard from '../components/common/StatCard.vue'
 import AdminPager from '../components/common/AdminPager.vue'
 import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
+import { useSessionStore } from '../store/session.ts'
 
 const proxy: any = getCurrentInstance()?.proxy
+const session = useSessionStore()
+
+// 用户管理的四个动作各自对应独立权限，被收权后入口与按钮一起隐藏
+const canCreateUser = computed(() => session.can('user.create'))
+const canEditUser = computed(() => session.can('user.edit'))
+const canDisableUser = computed(() => session.can('user.disable'))
+const canDeleteUser = computed(() => session.can('user.delete'))
+
+// 让「可删除」同时参与删除按钮的禁用判断，避免权限丢失后仍可点击
+const canDeleteTarget = (user: UserInfo): boolean =>
+    canDeleteUser.value && canOperateUser(user)
+const canViewPermissions = computed(() => session.can('permission.view'))
+// 授予管理员角色是极高风险权限，只有超级管理员能选「管理员」
+const canAssignAdmin = computed(() => session.isSuperAdmin)
+
+const assignableRoles = computed(() => {
+    const roles = [
+        { value: 'normal', label: '普通用户' },
+        { value: 'editor', label: '编辑' },
+        { value: 'visitor', label: '游客' },
+    ]
+    return canAssignAdmin.value
+        ? [{ value: 'admin', label: '管理员' }, ...roles]
+        : roles
+})
+
+// 超级管理员账号固定不可编辑/删除/禁用；管理员账号只能由超级管理员操作
+const isSuperAdminUser = (user: UserInfo): boolean =>
+    Number(user.is_super_admin) === 1 || user.isSuperAdmin === true
+
+const canOperateUser = (user: UserInfo): boolean => {
+    if (isSuperAdminUser(user)) return false
+    // 非超级管理员不能动其他管理员账号
+    if (user.user_type === 'admin' && !session.isSuperAdmin) return false
+    return true
+}
+
+const canEditTarget = (user: UserInfo): boolean =>
+    canEditUser.value && canOperateUser(user)
 
 // 用户列表与分页状态
 const users = ref<UserInfo[]>([])
@@ -873,6 +925,40 @@ td {
     padding: 4px 10px;
     border-radius: @radius-s;
     background: @bg-color-s;
+    font-size: 12px;
+}
+
+.role-crown {
+    margin-right: 4px;
+    color: var(--wcolor);
+    font-size: 12px;
+}
+
+.role-super {
+    margin-left: 6px;
+}
+
+.permission-entry {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 15px;
+    border: 1px solid @line-color-m;
+    border-radius: @radius-s;
+    color: @font-color-l;
+    font-size: 13px;
+    text-decoration: none;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+
+    &:hover {
+        border-color: var(--pcolor3);
+        background: var(--pcolor1);
+        color: var(--pcolor);
+    }
+}
+
+.form-hint {
+    margin: 0;
+    color: @font-color-s;
     font-size: 12px;
 }
 

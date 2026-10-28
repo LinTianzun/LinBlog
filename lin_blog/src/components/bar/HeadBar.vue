@@ -90,8 +90,10 @@ import { useThemeDark } from '../../utils/themeMode'
 import { onClickOutside } from '@vueuse/core'
 import { themePresets, findPreset } from '../../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
+import { useSessionStore } from '../../store/session'
 
 const isDark = useThemeDark()
+const session = useSessionStore()
 
 // 主题预设下拉：与门户同一套数据与切换逻辑
 const activePresetId = ref(getStoredPresetId())
@@ -137,6 +139,8 @@ const quit = () => {
     // 清除本地登录信息
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
+    // 同步清空权限快照，避免下一次登录前残留旧权限
+    session.clear()
 
     // 跳转到登录页
     router.push('/loginRegister')

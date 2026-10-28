@@ -38,6 +38,9 @@ import {
     visitorLinks
 } from '../../utils/menu.ts'
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
+import { useSessionStore } from '../../store/session.ts'
+
+const session = useSessionStore()
 
 // 获取当前登录用户信息
 const getUserInfo = () => {
@@ -50,25 +53,40 @@ const getUserInfo = () => {
     }
 }
 
-// 根据用户角色筛选菜单
+// 菜单权限映射：角色决定候选集，具体能力再按权限矩阵逐项收窄
+const MENU_PERMISSIONS: Record<string, string[]> = {
+    overView: [],
+    userManagement: ['user.view'],
+    permissionManagement: ['permission.view'],
+    systemLog: ['systemLog.view'],
+    localfile: ['file.view'],
+    article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
+    gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
+    diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
+    setting: [],
+}
+
+const hasMenuAccess = (path: string): boolean => {
+    const required = MENU_PERMISSIONS[path] || []
+    return required.length === 0 || required.some(key => session.can(key))
+}
+
 const visibleLinks = computed(() => {
     const userInfo = getUserInfo()
     const role = userInfo?.user_type
 
+    let links: typeof navLinks = []
+
     if (role === 'admin') {
-        return navLinks
+        links = navLinks
+    } else if (role === 'editor' || role === 'normal') {
+        links = contentLinks
+    } else if (role === 'visitor') {
+        links = visitorLinks
     }
 
-    if (role === 'editor' || role === 'normal') {
-        return contentLinks
-    }
-
-    if (role === 'visitor') {
-        return visitorLinks
-    }
-
-    // 没有有效用户信息时，不显示业务菜单
-    return []
+    // 权限矩阵优先：角色给了入口，但被收回权限的模块不再出现在侧栏
+    return links.filter(item => hasMenuAccess(item.path))
 })
 
 const menuGroups = computed(() => {

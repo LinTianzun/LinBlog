@@ -44,6 +44,7 @@ import { createLabel } from '../../api/label.ts'
 import { useLabelStore } from '../../store/label.ts'
 import type { LabelData } from '../../utils/interface.ts'
 import labelManage from './labelManage.vue'
+import { useSessionStore } from '../../store/session.ts'
 
 type MessageOptions = {
     type: 'primary' | 'warning'
@@ -56,15 +57,10 @@ type MessageInstance = ComponentPublicInstance & {
 
 const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
 const labelStore = useLabelStore()
+const session = useSessionStore()
 
-const canManageTaxonomy = computed((): boolean => {
-    try {
-        const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-        return ['admin', 'editor'].includes(userInfo?.user_type)
-    } catch {
-        return false
-    }
-})
+// 标签管理走 label.manage 权限，与后端 requirePermission 保持一致
+const canManageTaxonomy = computed((): boolean => session.can('label.manage'))
 
 // 新建标签内容
 const inputValue = ref('')

@@ -50,6 +50,9 @@ instance.interceptors.response.use(
         if (error.response?.status === 401) {
             localStorage.removeItem('token')
             localStorage.removeItem('userInfo')
+            // 权限快照随登录态一起失效，避免旧权限继续放行后台功能
+            localStorage.removeItem('linlogPermissions')
+            localStorage.removeItem('linlogSuperAdmin')
 
             if (window.location.pathname !== '/loginRegister') {
                 window.location.href = '/loginRegister'
