@@ -19,7 +19,7 @@
 
             <yk-empty v-if="logs.length === 0" description="暂无日志" />
 
-            <!-- 紧凑日志表：一页 10 条，操作人/动作/模块/详情/来源分行对齐 -->
+            <!-- 紧凑日志表：操作人/动作/模块/详情/来源分行对齐 -->
             <div v-else class="system-log-table">
                 <div class="system-log-row system-log-head">
                     <span class="log-col log-col-user">操作人</span>
@@ -59,7 +59,8 @@
             </div>
 
             <div class="system-log-pagination">
-                <AdminPager v-model:page="page" :page-size="pageSize" :total="total" :show-total="true"
+                <AdminPager v-model:page="page" v-model:page-size="pageSize" :total="total"
+                    :page-size-options="[5, 10, 20, 50]" :show-page-size="true" :show-total="true"
                     :disabled="loading" @change="handlePagerChange" />
             </div>
         </template>
@@ -80,8 +81,8 @@
     const logs = ref<SystemLogItem[]>([])
     const total = ref(0)
     const page = ref(1)
-    // 单页 20 条日志过长：改为 10 条 + 紧凑表格，一屏内可读完
-    const pageSize = 10
+    // 默认一页 10 条，用户可按 5/10/20/50 调整
+    const pageSize = ref(10)
     const loading = ref(false)
     const errorMessage = ref('')
     const keyword = ref('')
@@ -129,7 +130,7 @@
         try {
             const result = await getSystemLogs({
                 page: page.value,
-                pageSize,
+                pageSize: pageSize.value,
                 keyword: keyword.value.trim() || undefined,
                 module: moduleFilter.value || undefined,
                 action: actionFilter.value || undefined,
@@ -161,8 +162,13 @@
         reload()
     }
 
-    // 页码已由 v-model 同步，这里只按最新页码拉数据
-    const handlePagerChange = (): void => {
+    // 页码和每页条数已由 v-model 同步；切换条数时组件会把页码重置为 1
+    const handlePagerChange = ({ page: nextPage, pageSize: nextPageSize }: {
+        page: number
+        pageSize: number
+    }): void => {
+        page.value = nextPage
+        pageSize.value = nextPageSize
         void fetchLogs()
     }
 
