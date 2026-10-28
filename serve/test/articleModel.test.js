@@ -99,6 +99,25 @@ test('article list filters compose valid SQL and preserve parameter order', asyn
     assert.deepEqual(calls[1].values, ['deleted', 42, 'published', 'image', 3])
 })
 
+test('article list splits comment totals into root comments and replies', async () => {
+    await articleModel.findArticlesByPage({
+        page: 1,
+        pageSize: 10,
+        offset: 0,
+        userId: 1,
+        userType: 'admin'
+    })
+
+    // 一级评论与回复分别按 parent_id = 0 / > 0 统计，卡片才能分开显示两个口径
+    assert.match(calls[0].sql, /AS root_comments/)
+    assert.match(calls[0].sql, /AS reply_comments/)
+    assert.match(calls[0].sql, /c2\.parent_id = 0/)
+    assert.match(calls[0].sql, /c2\.parent_id > 0/)
+    // 子查询只看未删除评论，且不能引入额外的占位参数
+    assert.match(calls[0].sql, /c2\.status = 1/)
+    assert.deepEqual(calls[0].values, ['deleted', 10, 0])
+})
+
 test('article list supports keyword and uncategorized filters', async () => {
     await articleModel.findArticlesByPage({
         page: 1,

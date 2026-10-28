@@ -115,6 +115,8 @@ const fetchDiaries = async (): Promise<void> => {
             views: item.views,
             likes: item.likes,
             comments: item.comments,
+            rootComments: item.rootComments,
+            replyComments: item.replyComments,
         }))
         count.value = result.data.total
 

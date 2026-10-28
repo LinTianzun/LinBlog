@@ -29,6 +29,12 @@
                         <yk-text type="third">
                             <IconHeartOutline /> {{ article.likes }} 人喜欢
                         </yk-text>
+                        <yk-text type="third">
+                            <IconCommentOutline /> {{ rootComments }} 条评论
+                        </yk-text>
+                        <yk-text type="third">
+                            <IconRotateLeftOutline /> {{ replyComments }} 条回复
+                        </yk-text>
                         <yk-button type="secondary" size="s" @click="openEditor">
                             <IconFillOutline />编辑
                         </yk-button>
@@ -42,7 +48,9 @@
                 <p v-if="article.introduce" class="gallery-detail-introduce">{{ article.introduce }}</p>
 
                 <div class="gallery-detail-comment">
-                    <p class="gallery-detail-comment-title">评论 {{ article.comments }}</p>
+                    <p class="gallery-detail-comment-title">
+                        评论 {{ rootComments }} · 回复 {{ replyComments }}
+                    </p>
                     <reply-list :article-id="article.id" :page-size="20" @changed="handleCommentsChanged" />
                 </div>
             </template>
@@ -57,6 +65,8 @@ import { getArticleById, getArticleStateLabel, type ArticleItem } from '../../ap
 import {
     IconEyeOutline,
     IconFillOutline,
+    IconRotateLeftOutline,
+    IconCommentOutline,
     IconHeartOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 import ReplyList from '../reply/commentList.vue'
@@ -91,6 +101,10 @@ const photos = computed(() => {
 })
 
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
+
+// 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
+const rootComments = computed(() => article.value?.rootComments ?? article.value?.comments ?? 0)
+const replyComments = computed(() => article.value?.replyComments ?? 0)
 
 // 状态标签配色：与列表卡片保持一致
 const stateColor = computed(() => {

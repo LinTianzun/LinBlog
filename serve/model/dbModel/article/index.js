@@ -122,6 +122,11 @@ async function findArticlesByPage(params) {
             a.views,
             a.likes,
             a.comments,
+            -- 一级评论数：卡片要区分「评论」与「回复」两个口径
+            (SELECT COUNT(*) FROM comment c2
+              WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id = 0) AS root_comments,
+            (SELECT COUNT(*) FROM comment c2
+              WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
@@ -234,6 +239,11 @@ async function findAtricleById(articleId, userId, userType) {
             a.views,
             a.likes,
             a.comments,
+            -- 一级评论数与回复数：后台详情/卡片要区分「评论」与「回复」两个口径
+            (SELECT COUNT(*) FROM comment c2
+              WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id = 0) AS root_comments,
+            (SELECT COUNT(*) FROM comment c2
+              WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,

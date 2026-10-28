@@ -582,6 +582,62 @@ if (!targetDb) {
         assert.equal(afterPage.total, 2)
     })
 
+    test('article and diary lists split comment totals into root comments and replies', async () => {
+        const diaryModel = require('../model/dbModel/diary/index')
+
+        // 文章：1 条一级评论 + 2 条回复
+        const fresh = await db.query(
+            `INSERT INTO article (user_id, title, content, classify, state, created_at, updated_at)
+             VALUES (?, '统计口径文章', '正文', 'article', 'published', NOW(), NOW())`,
+            [ids.normal]
+        )
+        const articleId = fresh.insertId
+
+        const makeComment = async (content, parentId = 0) => {
+            const row = await db.query(
+                `INSERT INTO comment (user_id, article_id, parent_id, content, status, created_at)
+                 VALUES (?, ?, ?, ?, 1, NOW())`,
+                [ids.normal, articleId, parentId, content]
+            )
+            return row.insertId
+        }
+        const rootId = await makeComment('一级评论')
+        await makeComment('回复一', rootId)
+        await makeComment('回复二', rootId)
+
+        const articlePage = await articleModel.findArticlesByPage({
+            page: 1, pageSize: 10, offset: 0, classify: 'article', userId: ids.admin, userType: 'admin'
+        })
+        const row = articlePage.list.find(item => Number(item.id) === Number(articleId))
+        assert.equal(Number(row.root_comments), 1)
+        assert.equal(Number(row.reply_comments), 2)
+
+        // 随笔：1 条一级评论 + 1 条回复
+        const diary = await db.query(
+            `INSERT INTO diary (title, content, status, created_at, updated_at)
+             VALUES ('统计口径随笔', '正文', 1, NOW(), NOW())`
+        )
+        const diaryId = diary.insertId
+        await db.query(
+            `INSERT INTO diary_comment (user_id, diary_id, parent_id, content, status, created_at)
+             VALUES (?, ?, 0, '一级评论', 1, NOW())`,
+            [ids.normal, diaryId]
+        )
+        const diaryRoot = await db.query(
+            'SELECT id FROM diary_comment WHERE diary_id = ? ORDER BY id', [diaryId]
+        )
+        await db.query(
+            `INSERT INTO diary_comment (user_id, diary_id, parent_id, content, status, created_at)
+             VALUES (?, ?, ?, '回复', 1, NOW())`,
+            [ids.normal, diaryId, diaryRoot[0].id]
+        )
+
+        const diaryPage = await diaryModel.getDiariesByPage({ pageSize: 10, offset: 0 })
+        const diaryRow = diaryPage.list.find(item => Number(item.id) === Number(diaryId))
+        assert.equal(Number(diaryRow.root_comments), 1)
+        assert.equal(Number(diaryRow.reply_comments), 1)
+    })
+
     test.after(async () => {
         await db.closeDatabase()
         const mysql = require('mysql2/promise')

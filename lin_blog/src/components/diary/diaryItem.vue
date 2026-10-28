@@ -7,13 +7,27 @@
                         {{props.data.title}}
                         <img :src="weatherIcon" alt="">
                     </p>
-                    <yk-text type="third">{{momentl(props.data.moment)}}</yk-text>
+                    <yk-space :size="14" align="center" wrap>
+                        <yk-text type="third" class="diary-item-time">{{momentl(props.data.moment)}}</yk-text>
+                        <yk-text type="third" class="diary-item-stat">
+                            <IconEyeOutline />{{ views }}
+                        </yk-text>
+                        <yk-text type="third" class="diary-item-stat">
+                            <IconHeartOutline />{{ likes }}
+                        </yk-text>
+                        <yk-text type="third" class="diary-item-stat">
+                            <IconCommentOutline />{{ rootComments }}
+                        </yk-text>
+                        <yk-text type="third" class="diary-item-stat">
+                            <IconRotateLeftOutline />{{ replyComments }}
+                        </yk-text>
+                    </yk-space>
                 </yk-space>
 
                 <yk-space size="s">
                     <IconModifyOutline class="diary-item-top-delete" @click="editDiary()" />
                     <yk-popconfirm placement="leftTop" trigger="click" title="确认删除" content="删除将不可恢复"
-                        @confirm="deleteDiary()">
+                        :z-index="1300" overlay-class="diary-item-popconfirm" @confirm="deleteDiary()">
                         <IconDeleteOutline class="diary-item-top-delete" />
                     </yk-popconfirm>
                 </yk-space>
@@ -36,6 +50,12 @@
 
 
 <script lang="ts" setup>
+import {
+    IconRotateLeftOutline,
+    IconCommentOutline,
+    IconEyeOutline,
+    IconHeartOutline,
+} from '@yike-design/ui/es/components/svg-icon'
 import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
 import { momentl } from '../../utils/moment'
@@ -55,6 +75,12 @@ const emits = defineEmits<{
 // 按天气名称匹配前端图标，避免与数据库自增 ID 错位
 const weather = weathers.find(item => item.name === props.data.weatherName)
 const weatherIcon = weather?.iconUrl ?? weathers[0].iconUrl
+
+// 互动统计统一走「图标 + 数字」；一级评论与回复分开统计
+const views = props.data.views ?? 0
+const likes = props.data.likes ?? 0
+const rootComments = props.data.rootComments ?? props.data.comments ?? 0
+const replyComments = props.data.replyComments ?? 0
 
 // 删除日记
 const deleteDiary = (): void => {
@@ -130,6 +156,21 @@ const openDetail = (): void => {
             width: 100%;
             cursor: pointer;
         }
+
+        &-time,
+        &-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        &-stat :deep(.yk-icon) {
+            width: 15px;
+            height: 15px;
+            flex: none;
+        }
     }
 </style>
 <style lang="less">
@@ -145,5 +186,10 @@ const openDetail = (): void => {
                 border-radius: 8px;
             }
         }
+    }
+
+    // 删除确认浮层：默认没有 z-index，会被卡片 hover 的 transform 层级压住
+    .diary-item-popconfirm {
+        z-index: 1300;
     }
 </style>

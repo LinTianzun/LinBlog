@@ -18,6 +18,12 @@
                     <yk-text type="third">
                         <IconHeartOutline /> {{ diary.likes ?? 0 }} 人喜欢
                     </yk-text>
+                    <yk-text type="third">
+                        <IconCommentOutline /> {{ rootComments }} 条评论
+                    </yk-text>
+                    <yk-text type="third">
+                        <IconRotateLeftOutline /> {{ replyComments }} 条回复
+                    </yk-text>
                 </yk-space>
             </div>
 
@@ -27,7 +33,9 @@
                 fit="cover" />
 
             <div class="diary-detail-comment">
-                <p class="diary-detail-comment-title">评论 {{ diary.comments ?? 0 }}</p>
+                <p class="diary-detail-comment-title">
+                    评论 {{ rootComments }} · 回复 {{ replyComments }}
+                </p>
                 <diaryCommentList :diary-id="diary.id" :page-size="20" @changed="handleCommentsChanged" />
             </div>
         </div>
@@ -37,6 +45,8 @@
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
 import {
+    IconRotateLeftOutline,
+    IconCommentOutline,
     IconEyeOutline,
     IconHeartOutline,
 } from '@yike-design/ui/es/components/svg-icon'
@@ -60,6 +70,11 @@ const weatherIcon = computed(() =>
     weathers.find(item => item.name === weatherName.value)?.iconUrl || ''
 )
 const pictures = computed(() => props.diary?.picture || [])
+
+// 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
+const rootComments = computed(() => props.diary?.rootComments ?? props.diary?.comments ?? 0)
+const replyComments = computed(() => props.diary?.replyComments ?? 0)
+
 const momentText = computed(() =>
     props.diary?.moment ? momentl(props.diary.moment) : '暂无时间'
 )

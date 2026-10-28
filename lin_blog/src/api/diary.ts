@@ -10,6 +10,9 @@ export interface DiaryItem {
   views: number;
   likes: number;
   comments: number;
+  // 后台卡片区分「评论」与「回复」：一级评论数与回复数由后端按 parent_id 统计
+  rootComments: number;
+  replyComments: number;
   createdAt: string;
 }
 

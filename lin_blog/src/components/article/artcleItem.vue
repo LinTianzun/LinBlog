@@ -40,12 +40,16 @@
                                 {{ props.data.views }}
                             </yk-text>
                             <yk-text type="third">
-                                <IconLikeOutline />
+                                <IconHeartOutline />
                                 {{ props.data.likes }}
                             </yk-text>
                             <yk-text type="third">
                                 <IconCommentOutline />
-                                {{ props.data.comments }}
+                                {{ rootComments }}
+                            </yk-text>
+                            <yk-text type="third">
+                                <IconRotateLeftOutline />
+                                {{ replyComments }}
                             </yk-text>
                         </yk-space>
                     </yk-space>
@@ -80,6 +84,10 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import {
+    IconHeartOutline,
+    IconRotateLeftOutline,
+} from '@yike-design/ui/es/components/svg-icon'
 import type { ArticleItem, ArticleState } from '../../api/article'
 import {
     formatArticleDate,
@@ -117,6 +125,10 @@ const subsetName = computed(
     () => props.data.subsetName || subsetStore.subsetName(props.data.subsetId ?? undefined)
 )
 const coverText = computed(() => props.data.title.trim().slice(0, 1) || '文')
+
+// 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
+const rootComments = computed(() => props.data.rootComments ?? props.data.comments ?? 0)
+const replyComments = computed(() => props.data.replyComments ?? 0)
 
 const openDetail = (): void => {
     emits('view', props.data.id)

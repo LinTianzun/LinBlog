@@ -69,6 +69,60 @@ test('模型层：weather 走 SQL WHERE，参数为天气名', async () => {
     assert.ok(listSql.values.includes('晴天'))
 })
 
+test('模型层：随笔列表把评论拆成一级评论与回复两个口径', async () => {
+    listRows = [{
+        id: 5,
+        title: '午后',
+        content: '出门走走',
+        picture: null,
+        weather_id: 1,
+        weather_name: '晴天',
+        mood: 'calm',
+        views: 10,
+        likes: 2,
+        comments: 4,
+        root_comments: 3,
+        reply_comments: 1,
+        created_at: '2026-10-28 10:00:00'
+    }]
+
+    const result = await diaryModel.getDiariesByPage({ pageSize: 10, offset: 0 })
+
+    const listSql = queries.find(q => q.sql.includes('LIMIT ? OFFSET ?'))
+    assert.match(listSql.sql, /AS root_comments/)
+    assert.match(listSql.sql, /AS reply_comments/)
+    assert.match(listSql.sql, /c\.parent_id = 0/)
+    assert.match(listSql.sql, /c\.parent_id > 0/)
+    assert.deepEqual(result.list[0].root_comments, 3)
+    assert.deepEqual(result.list[0].reply_comments, 1)
+})
+
+test('控制器：随笔列表回传一级评论数与回复数', async () => {
+    listRows = [{
+        id: 5,
+        title: '午后',
+        content: '出门走走',
+        picture: 'a.jpg',
+        weather_id: 1,
+        weather_name: '晴天',
+        mood: 'calm',
+        views: 10,
+        likes: 2,
+        comments: 4,
+        root_comments: 0,
+        reply_comments: 0,
+        created_at: '2026-10-28 10:00:00'
+    }]
+
+    const res = makeRes()
+    await diaryController.getDiaries({ query: {} }, res)
+
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(res.payload.data.list[0].rootComments, 0)
+    assert.deepEqual(res.payload.data.list[0].replyComments, 0)
+    assert.deepEqual(res.payload.data.list[0].picture, ['a.jpg'])
+})
+
 test('模型层：总数查询带同样的天气条件（LEFT JOIN 保证 JOIN 生效）', async () => {
     await diaryModel.getDiariesByPage({ weather: '大雨', pageSize: 10, offset: 0 })
 

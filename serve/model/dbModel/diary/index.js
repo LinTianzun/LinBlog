@@ -36,7 +36,13 @@ async function getDiariesByPage({ keyword, weather, pageSize, offset, sort }) {
 
     const list = await query(
         `SELECT d.id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood,
-                d.views, d.likes, d.comments, d.created_at
+                d.views, d.likes, d.comments,
+                -- 一级评论数与回复数：后台卡片要区分「评论」与「回复」两个口径
+                (SELECT COUNT(*) FROM diary_comment c
+                  WHERE c.diary_id = d.id AND c.status = 1 AND c.parent_id = 0) AS root_comments,
+                (SELECT COUNT(*) FROM diary_comment c
+                  WHERE c.diary_id = d.id AND c.status = 1 AND c.parent_id > 0) AS reply_comments,
+                d.created_at
          FROM diary d
          LEFT JOIN weather w ON d.weather_id = w.id
          ${whereSql}

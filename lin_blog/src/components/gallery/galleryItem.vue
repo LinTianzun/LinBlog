@@ -22,8 +22,9 @@
 
                 <yk-space class="gallery-item-image-icons" :size="4">
                     <IconFillOutline @click="openEditor" />
+                    <!-- 浮层默认没有 z-index，会被卡片 hover 的 transform 层压住，这里显式抬高 -->
                     <yk-popconfirm placement="topRight" trigger="click" title="确认删除" content="删除将不可恢复"
-                        @confirm="deleteGallery()">
+                        :z-index="1300" overlay-class="gallery-item-popconfirm" @confirm="deleteGallery()">
                         <IconDeleteOutline @click.stop />
                     </yk-popconfirm>
                 </yk-space>
@@ -36,19 +37,21 @@
                 </p>
 
                 <div class="gallery-item-datas">
-                    <yk-space size="xl">
-                        <yk-space>
-                            <yk-text type="third">
-                                查看
-                                {{ props.data.views }}
-                            </yk-text>
-                            <yk-text type="third">
-                                喜欢
-                                {{ props.data.likes }}
-                            </yk-text>
-                        </yk-space>
+                    <yk-space class="gallery-item-stats" :size="14" align="center" wrap>
+                        <yk-text type="third" class="gallery-item-stat">
+                            <IconEyeOutline />{{ props.data.views }}
+                        </yk-text>
+                        <yk-text type="third" class="gallery-item-stat">
+                            <IconHeartOutline />{{ props.data.likes }}
+                        </yk-text>
+                        <yk-text type="third" class="gallery-item-stat">
+                            <IconCommentOutline />{{ rootComments }}
+                        </yk-text>
+                        <yk-text type="third" class="gallery-item-stat">
+                            <IconRotateLeftOutline />{{ replyComments }}
+                        </yk-text>
                     </yk-space>
-                    <yk-text type="third">{{ articleDate }}</yk-text>
+                    <yk-text type="third" class="gallery-item-date">{{ articleDate }}</yk-text>
                 </div>
             </div>
         </yk-space>
@@ -96,6 +99,10 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     IconCloseOutline,
+    IconRotateLeftOutline,
+    IconCommentOutline,
+    IconEyeOutline,
+    IconHeartOutline,
     IconLeftOutline,
     IconRightOutline,
 } from '@yike-design/ui/es/components/svg-icon'
@@ -126,6 +133,10 @@ const photos = computed(() => {
 })
 const articleDate = computed(() => formatArticleDate(props.data.createdAt))
 const stateLabel = computed(() => getArticleStateLabel(props.data.state))
+
+// 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
+const rootComments = computed(() => props.data.rootComments ?? props.data.comments ?? 0)
+const replyComments = computed(() => props.data.replyComments ?? 0)
 
 // 预览列表：封面在前，其余图片随后，点缩略图也能定位到正确的一张
 const previewList = computed(() => {
@@ -337,7 +348,33 @@ const deleteGallery = (): void => {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: @space-m;
         padding: 8px 14px 14px;
+    }
+
+    // 统计项统一走「图标 + 数字」，不再用「查看/喜欢」文字，避免和右侧日期挤在一起
+    &-stats {
+        min-width: 0;
+    }
+
+    &-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+
+        :deep(.yk-icon) {
+            width: 15px;
+            height: 15px;
+            flex: none;
+        }
+    }
+
+    &-date {
+        flex: none;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
 
     &:hover {
@@ -501,5 +538,10 @@ const deleteGallery = (): void => {
     .yk-image__img {
         border-radius: 0;
     }
+}
+
+// 删除确认浮层：默认没有 z-index，会被卡片 hover 的 transform 层级压住
+.gallery-item-popconfirm {
+    z-index: 1300;
 }
 </style>

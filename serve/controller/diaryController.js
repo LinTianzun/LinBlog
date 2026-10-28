@@ -60,6 +60,8 @@ async function getDiaries(req, res) {
                     views: Number(item.views || 0),
                     likes: Number(item.likes || 0),
                     comments: Number(item.comments || 0),
+                    rootComments: Number(item.root_comments || 0),
+                    replyComments: Number(item.reply_comments || 0),
                     createdAt: item.created_at
                 }))
             }
