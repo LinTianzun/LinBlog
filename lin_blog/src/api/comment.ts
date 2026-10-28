@@ -97,15 +97,20 @@ export function reportComment(data: {
   );
 }
 
+export interface DeleteCommentResult {
+  // 实际删除条数：删除一级评论时会包含其下所有回复
+  deleted: number;
+}
+
 // 删除评论（文章与随笔共用；后端校验仅本人或管理员可删）
 export function deleteInteractionComment(data: {
   commentType: CommentTargetType;
   commentId: number;
 }) {
-  return request.post<ApiResult<never>>("/public/comment/delete", data);
+  return request.post<ApiResult<DeleteCommentResult>>("/public/comment/delete", data);
 }
 
 // 删除评论（后端校验：仅本人或管理员）
 export function deleteComment(id: number) {
-  return request.delete<ApiResult<never>>(`/comment/${id}`);
+  return request.delete<ApiResult<DeleteCommentResult>>(`/comment/${id}`);
 }

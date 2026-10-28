@@ -81,9 +81,22 @@ function makeResponse() {
     }
 }
 
+// 删除评论现在走事务：把事务连接适配到现有 queryHandler，便于断言 SQL
+function useTransactionalQuery() {
+    transactionHandler = async (callback) => callback({
+        query(sql, values, done) {
+            queryCalls.push({ sql, values })
+            Promise.resolve(queryHandler(sql, values)).then(
+                result => done(null, result),
+                error => done(error)
+            )
+        }
+    })
+}
+
 test.beforeEach(() => {
     queryHandler = async () => []
-    transactionHandler = async (callback) => callback(null)
+    useTransactionalQuery()
     queryCalls = []
     transactionCount = 0
     toggleResult = null
@@ -238,43 +251,87 @@ test('重复举报返回 already 且不写重复日志', async () => {
 test('删除评论按 targetType 分发并回退对应计数', async () => {
     // 随笔评论：UPDATE diary_comment，再回退 diary.comments
     queryHandler = async (sql) => {
-        if (sql.includes('UPDATE diary_comment SET status = 0')) return { affectedRows: 1 }
+        if (sql.includes('SELECT id, parent_id FROM diary_comment')) {
+            return [{ id: 5, parent_id: 0 }]
+        }
+        if (/UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(sql)) return { affectedRows: 1 }
         if (sql.includes('UPDATE diary d')) return { affectedRows: 1 }
         return []
     }
     const diaryAffected = await interactionModel.deleteComment('diary', 5, 7, 'normal')
     assert.equal(diaryAffected, 1)
 
-    const update = queryCalls.find(call => call.sql.includes('UPDATE diary_comment SET status = 0'))
-    assert.deepEqual(update.values, [5, 7])
-    assert.match(update.sql, /user_id = \? AND status = 1/)
+    const update = queryCalls.find(call => /UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(call.sql))
+    assert.deepEqual(update.values, [5, 5])
+    assert.match(update.sql, /id = \? OR parent_id = \?/)
+    const targetSelect = queryCalls.find(call => call.sql.includes('SELECT id, parent_id FROM diary_comment'))
+    assert.deepEqual(targetSelect.values, [5, 7])
+    assert.match(targetSelect.sql, /user_id = \? AND status = 1/)
     assert.ok(queryCalls.some(call => call.sql.includes('UPDATE diary d')))
 
     // 文章评论：UPDATE comment，再回退 article.comments
     queryCalls = []
     queryHandler = async (sql) => {
-        if (sql.includes('UPDATE comment SET status = 0')) return { affectedRows: 1 }
-        if (sql.includes('UPDATE article a')) return { affectedRows: 1 }
+        if (sql.includes('SELECT id, parent_id FROM comment')) {
+            return [{ id: 6, parent_id: 0 }]
+        }
+        if (/UPDATE\s+comment\s+SET\s+status\s*=\s*0/.test(sql)) return { affectedRows: 1 }
+        if (sql.includes('UPDATE article')) return { affectedRows: 1 }
         return []
     }
     const articleAffected = await interactionModel.deleteComment('article', 6, 7, 'admin')
     assert.equal(articleAffected, 1)
 
-    const adminUpdate = queryCalls.find(call => call.sql.includes('UPDATE comment SET status = 0'))
-    assert.deepEqual(adminUpdate.values, [6])
-    assert.match(adminUpdate.sql, /WHERE id = \? AND status = 1/)
-    assert.ok(queryCalls.some(call => call.sql.includes('UPDATE article a')))
+    const adminUpdate = queryCalls.find(call => /UPDATE\s+comment\s+SET\s+status\s*=\s*0/.test(call.sql))
+    assert.deepEqual(adminUpdate.values, [6, 6])
+    assert.match(adminUpdate.sql, /id = \? OR parent_id = \?/)
+    assert.ok(queryCalls.some(call => call.sql.includes('UPDATE article')))
 })
 
 test('删除未命中时不回退计数，非法类型直接返回 0 且不查库', async () => {
-    queryHandler = async () => ({ affectedRows: 0 })
+    queryHandler = async () => []
     assert.equal(await interactionModel.deleteComment('article', 6, 7, 'normal'), 0)
-    assert.equal(queryCalls.length, 1, '未命中时不应执行计数回退')
+    assert.equal(queryCalls.length, 1, '未命中时只应执行目标查询')
 
     queryCalls = []
     assert.equal(await interactionModel.deleteComment('image', 6, 7, 'admin'), 0)
     assert.equal(await interactionModel.deleteComment('article', 0, 7, 'admin'), 0)
     assert.equal(queryCalls.length, 0)
+})
+
+test('删除一级评论会连带回复并按实际条数回退计数', async () => {
+    queryHandler = async (sql) => {
+        if (sql.includes('SELECT id, parent_id FROM diary_comment')) {
+            return [{ id: 5, parent_id: 0 }]
+        }
+        if (/UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(sql)) return { affectedRows: 3 }
+        if (sql.includes('UPDATE diary d')) return { affectedRows: 1 }
+        return []
+    }
+
+    const affected = await interactionModel.deleteComment('diary', 5, 7, 'admin')
+
+    assert.equal(affected, 3)
+    const countUpdate = queryCalls.find(call => call.sql.includes('UPDATE diary d'))
+    assert.deepEqual(countUpdate.values, [3, 5])
+})
+
+test('删除二级回复时只删除自身，不连带根评论', async () => {
+    queryHandler = async (sql) => {
+        if (sql.includes('SELECT id, parent_id FROM diary_comment')) {
+            return [{ id: 8, parent_id: 5 }]
+        }
+        if (/UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(sql)) return { affectedRows: 1 }
+        if (sql.includes('UPDATE diary d')) return { affectedRows: 1 }
+        return []
+    }
+
+    const affected = await interactionModel.deleteComment('diary', 8, 7, 'admin')
+
+    assert.equal(affected, 1)
+    const targetUpdate = queryCalls.find(call => /UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(call.sql))
+    assert.deepEqual(targetUpdate.values, [8])
+    assert.doesNotMatch(targetUpdate.sql, /parent_id/)
 })
 
 test('游客删除评论返回 401 且不写库', async () => {
@@ -290,7 +347,7 @@ test('游客删除评论返回 401 且不写库', async () => {
 })
 
 test('删除随笔评论成功并写系统日志', async () => {
-    deleteResult = 1
+    deleteResult = 3
     const res = makeResponse()
 
     await controller.deleteComment({
@@ -300,6 +357,8 @@ test('删除随笔评论成功并写系统日志', async () => {
     }, res)
 
     assert.equal(res.statusCode, 200)
+    assert.deepEqual(res.body.data, { deleted: 3 })
+    assert.match(res.body.message, /2 条回复/)
     assert.deepEqual(deleteCalls, [{ targetType: 'diary', commentId: 5, userId: 7, userType: 'normal' }])
     assert.equal(logCalls.length, 1)
     assert.equal(logCalls[0].action, 'delete')

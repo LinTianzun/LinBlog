@@ -667,10 +667,11 @@ const removeComment = async (commentId: number): Promise<void> => {
         }
         await loadComments()
         expandedThreads.value = new Set()
+        const deleted = Number(result.data?.deleted || 1)
         if (article.value) {
-            article.value.comments = Math.max(Number(article.value.comments || 0) - 1, 0)
+            article.value.comments = Math.max(Number(article.value.comments || 0) - deleted, 0)
         }
-        showMessage('success', '评论已删除')
+        showMessage('success', result.message || '评论已删除')
         if (article.value) {
             emits('changed', { type: 'updated', articleId: article.value.id })
         }

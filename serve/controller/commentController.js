@@ -289,7 +289,11 @@ async function deleteComment(req, res) {
             ip: req.ip || null,
         })
 
-        res.json({ code: 200, message: '评论删除成功' })
+        res.json({
+            code: 200,
+            message: affectedRows > 1 ? `评论及其 ${affectedRows - 1} 条回复已删除` : '评论删除成功',
+            data: { deleted: affectedRows }
+        })
     } catch (err) {
         res.status(500).json({ code: 500, message: '删除评论失败：' + err.message })
     }

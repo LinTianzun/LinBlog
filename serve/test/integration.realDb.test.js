@@ -496,6 +496,24 @@ if (!targetDb) {
             [freshArticleId]
         )
         assert.equal(Number(rows[0].total), 3)
+
+        // 删除一级评论应连带其下两条回复，文章冗余计数按实际删除 3 条回退
+        const deleteRes = response()
+        await commentController.deleteComment({
+            params: { id: commentId },
+            user: { userId: ids.admin, userType: 'admin' },
+            ip: '127.0.0.1'
+        }, deleteRes)
+        assert.equal(deleteRes.body.code, 200)
+        assert.equal(deleteRes.body.data.deleted, 3)
+
+        const remaining = await db.query(
+            'SELECT COUNT(*) AS total FROM comment WHERE article_id = ? AND status = 1',
+            [freshArticleId]
+        )
+        assert.equal(Number(remaining[0].total), 0)
+        const articleRows = await db.query('SELECT comments FROM article WHERE id = ?', [freshArticleId])
+        assert.equal(Number(articleRows[0].comments), 0)
     })
 
     test('disable and re-enable user through guarded status update', async () => {
@@ -566,7 +584,7 @@ if (!targetDb) {
         assert.equal(denied, 0)
         // 管理员删除：逻辑删除并回退 diary.comments
         const deleted = await interactionModel.deleteComment('diary', root.commentId, ids.admin, 'admin')
-        assert.equal(deleted, 1)
+        assert.equal(deleted, 3)
 
         const after = await db.query(
             'SELECT status FROM diary_comment WHERE id = ?',
@@ -575,11 +593,11 @@ if (!targetDb) {
         assert.equal(Number(after[0].status), 0)
 
         const diaryRows = await db.query('SELECT comments FROM diary WHERE id = ?', [diaryId])
-        assert.equal(Number(diaryRows[0].comments), 2)
+        assert.equal(Number(diaryRows[0].comments), 0)
 
-        // 删除后列表只返回未删除的两条
+        // 一级评论删除后，其下两条回复也一并删除
         const afterPage = await diaryInteractionModel.getCommentsByDiary(diaryId, 1, 50, 0, null)
-        assert.equal(afterPage.total, 2)
+        assert.equal(afterPage.total, 0)
     })
 
     test('article and diary lists split comment totals into root comments and replies', async () => {

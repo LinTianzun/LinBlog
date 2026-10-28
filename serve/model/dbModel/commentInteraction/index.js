@@ -184,38 +184,60 @@ async function deleteComment(targetType, commentId, userId, userType) {
     if (!type || !id) return 0
 
     const table = TARGETS[type].table
-    // 管理员可删除任意评论，普通用户只能删除自己的评论
-    const whereClause = userType === 'admin'
-        ? 'id = ? AND status = 1'
-        : 'id = ? AND user_id = ? AND status = 1'
-    const params = userType === 'admin' ? [id] : [id, userId]
+    return withTransaction(async (connection) => {
+        const run = (sql, values = []) => new Promise((resolve, reject) => {
+            connection.query(sql, values, (err, results) => {
+                if (err) reject(err)
+                else resolve(results)
+            })
+        })
 
-    const result = await query(
-        `UPDATE ${table} SET status = 0 WHERE ${whereClause}`,
-        params
-    )
-    const affected = Number(result?.affectedRows || 0)
-    if (affected === 0) return 0
+        // 先锁定目标评论并校验权限，防止并发删除或越权删除他人评论
+        const whereClause = userType === 'admin'
+            ? 'id = ? AND status = 1'
+            : 'id = ? AND user_id = ? AND status = 1'
+        const params = userType === 'admin' ? [id] : [id, userId]
+        const targets = await run(
+            `SELECT id, parent_id FROM ${table} WHERE ${whereClause} FOR UPDATE`,
+            params
+        )
+        if (targets.length === 0) return 0
 
-    // 同步回退所属内容的冗余评论计数；GREATEST 防止历史数据不一致时出现负数
-    if (type === 'diary') {
-        await query(
-            `UPDATE diary d
-             JOIN diary_comment c ON c.diary_id = d.id
-             SET d.comments = GREATEST(d.comments - 1, 0)
-             WHERE c.id = ?`,
-            [id]
-        )
-    } else {
-        await query(
-            `UPDATE article a
-             JOIN comment c ON c.article_id = a.id
-             SET a.comments = GREATEST(a.comments - 1, 0)
-             WHERE c.id = ?`,
-            [id]
-        )
-    }
-    return affected
+        // 一级评论连同其下回复一起逻辑删除；删除回复时只命中自身
+        const result = Number(targets[0].parent_id) === 0
+            ? await run(
+                `UPDATE ${table}
+                 SET status = 0
+                 WHERE status = 1 AND (id = ? OR parent_id = ?)`,
+                [id, id]
+            )
+            : await run(
+                `UPDATE ${table} SET status = 0 WHERE id = ? AND status = 1`,
+                [id]
+            )
+        const affected = Number(result?.affectedRows || 0)
+        if (affected === 0) return 0
+
+        // 同步回退所属内容的冗余评论计数，按实际删除条数扣减
+        if (type === 'diary') {
+            await run(
+                `UPDATE diary d
+                 JOIN ${table} c ON c.diary_id = d.id
+                 SET d.comments = GREATEST(d.comments - ?, 0)
+                 WHERE c.id = ?`,
+                [affected, id]
+            )
+        } else {
+            await run(
+                `UPDATE article a
+                 JOIN ${table} c ON c.article_id = a.id
+                 SET a.comments = GREATEST(a.comments - ?, 0)
+                 WHERE c.id = ?`,
+                [affected, id]
+            )
+        }
+        return affected
+    })
 }
 
 

@@ -148,6 +148,7 @@ const toReplyData = (item: AdminComment): ReplyDat => ({
         : item.content,
     moment: formatMoment(item.createdAt),
     complaint: item.complaint,
+    parentId: item.parentId,
 })
 
 const isExpanded = (commentId: number) => expandedThreads.value.has(commentId)

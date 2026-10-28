@@ -108,6 +108,7 @@ const formatComment = (item: {
     userName: string | null
     userAvatar: string | null
     article: { id: number | null; title: string; classify?: 'article' | 'image' | null }
+    parentId: number
     content: string
     complaint: number
     createdAt: string
@@ -126,6 +127,7 @@ const formatComment = (item: {
     comment: item.content,
     moment: formatMoment(item.createdAt),
     complaint: item.complaint,
+    parentId: item.parentId,
 })
 
 const formatMoment = (value: string): string => {

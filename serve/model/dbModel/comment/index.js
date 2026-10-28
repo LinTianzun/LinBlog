@@ -1,4 +1,4 @@
-const { query } = require('../../db/dbnew')
+const { query, withTransaction } = require('../../db/dbnew')
 const commentInteractionModel = require('../commentInteraction/index')
 
 /**
@@ -200,40 +200,57 @@ async function createComment(commentInfo) {
 }
 
 /**
- * 删除评论（物理删除→逻辑删除，更新status为0）
+ * 删除评论（逻辑删除，一级评论会连同其下回复一起删除）
  * @param {number} commentId - 评论ID
  * @param {number} userId - 操作人ID（用于权限校验）
  * @param {string} userType - 操作人类型（admin/normal等，用于权限校验）
- * @returns {Promise<number>} 影响的行数（0=无权限/评论不存在，1=删除成功）
+ * @returns {Promise<number>} 实际删除条数（0=无权限/评论不存在）
  */
 async function deleteComment(commentId, userId, userType) {
-    // 管理员可删除任意评论，普通用户只能删除自己的评论
-    const whereClause = userType === 'admin'
-        ? 'id = ? AND status = 1'
-        : 'id = ? AND user_id = ? AND status = 1'
+    return withTransaction(async (connection) => {
+        const run = (sql, values = []) => new Promise((resolve, reject) => {
+            connection.query(sql, values, (err, results) => {
+                if (err) reject(err)
+                else resolve(results)
+            })
+        })
 
-    const sql = `
-        UPDATE comment
-        SET status = 0
-        WHERE ${whereClause}
-    `   //   逻辑删除（0=已删除）
-
-    const params = userType === 'admin'
-        ? [commentId]
-        : [commentId, userId]
-
-    const result = await query(sql, params)
-    if (result.affectedRows > 0) {
-        // 同步回退文章评论计数；GREATEST 防止历史数据不一致时出现负数
-        await query(
-            `UPDATE article a
-             JOIN comment c ON c.article_id = a.id
-             SET a.comments = GREATEST(a.comments - 1, 0)
-             WHERE c.id = ?`,
-            [commentId]
+        // 先锁定并校验目标评论，避免并发删除或越权删除回复
+        const whereClause = userType === 'admin'
+            ? 'id = ? AND status = 1'
+            : 'id = ? AND user_id = ? AND status = 1'
+        const params = userType === 'admin' ? [commentId] : [commentId, userId]
+        const targets = await run(
+            `SELECT id, article_id, parent_id FROM comment WHERE ${whereClause} FOR UPDATE`,
+            params
         )
-    }
-    return result.affectedRows // 影响行数：1=成功，0=失败
+        if (targets.length === 0) return 0
+
+        const target = targets[0]
+        // 一级评论连同其下回复一起逻辑删除；删除回复时只命中自身
+        const result = Number(target.parent_id) === 0
+            ? await run(
+                `UPDATE comment
+                 SET status = 0
+                 WHERE status = 1 AND (id = ? OR parent_id = ?)`,
+                [commentId, commentId]
+            )
+            : await run(
+                'UPDATE comment SET status = 0 WHERE id = ? AND status = 1',
+                [commentId]
+            )
+        const affected = Number(result?.affectedRows || 0)
+        if (affected === 0) return 0
+
+        // 按实际删除条数回退文章评论计数，避免一级评论连带回复时少减
+        await run(
+            `UPDATE article
+             SET comments = GREATEST(comments - ?, 0)
+             WHERE id = ?`,
+            [affected, target.article_id]
+        )
+        return affected
+    })
 }
 
 /**

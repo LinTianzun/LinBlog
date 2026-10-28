@@ -127,6 +127,7 @@ const toReplyData = (item: DiaryComment): ReplyDat => ({
         : item.content,
     moment: formatMoment(item.createdAt),
     complaint: item.complaint,
+    parentId: item.parentId,
 })
 
 const isExpanded = (commentId: number) => expandedThreads.value.has(commentId)

@@ -19,7 +19,12 @@
                     举报 {{content.complaint}}
                 </yk-text>
             </yk-space>
-            <IconDeleteOutline class="reply-main-delete" @click.stop="deleteReply(content.id)" />
+            <div v-if="isComment" class="reply-main-delete">
+                <ConfirmPopover title="确认删除" :content="deleteHint"
+                    placement="leftTop" @confirm="deleteReply(content.id)">
+                    <IconDeleteOutline />
+                </ConfirmPopover>
+            </div>
 
         </yk-space>
     </yk-space>
@@ -28,6 +33,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import type { ReplyProps } from './reply.ts'
+import ConfirmPopover from '../common/ConfirmPopover.vue'
 
 const props = withDefaults(defineProps<ReplyProps>(), {
     isComment: true
@@ -40,6 +46,13 @@ const emits = defineEmits<{
 
 // 未读私信显示红点（响应式，标记已读后立即消失）
 const isUnread = computed(() => props.content.isUnread === true)
+
+// 一级评论会级联删除回复，二级回复只删除自身，确认文案要区分
+const deleteHint = computed(() =>
+    Number(props.content.parentId || 0) === 0
+        ? '删除后将不可恢复，并会同时删除该评论下的所有回复'
+        : '删除后将不可恢复'
+)
 
 // 删除回复
 const deleteReply = (id: string | number) => {
@@ -84,11 +97,14 @@ const handleClick = () => {
                 position: absolute;
                 right: 0;
                 top: 0;
-                width: 16px;
-                height: 16px;
-                cursor: pointer;
-                color: @font-color-s;
                 display: none;
+
+                .yk-icon {
+                    width: 16px;
+                    height: 16px;
+                    cursor: pointer;
+                    color: @font-color-s;
+                }
             }
         }
 
