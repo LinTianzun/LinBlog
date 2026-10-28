@@ -22,13 +22,18 @@ async function getSubsets(req, res) {
         const includeCount = req.query.withCount !== 'false'
         //  公开接口（门户）只统计已发布内容，草稿/已驳回不计入分类计数
         const countState = req.publicRead === true ? 'published' : undefined
+        //  普通用户的后台分类计数只统计自己名下的文章/图库
+        const countUserId = req.publicRead !== true && req.user?.userType === 'normal'
+            ? req.user.userId
+            : undefined
         //  图库共用文章分组：展示 article 分组，但计数只统计图片集
         const queryClassify = classify === 'image' ? 'article' : classify
         const rows = await subsetModel.findSubsets({
             classify: queryClassify,
             includeCount,
             countClassify: classify,
-            countState
+            countState,
+            countUserId
         })
 
         res.json({

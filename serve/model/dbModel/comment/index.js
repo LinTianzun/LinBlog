@@ -3,13 +3,26 @@ const commentInteractionModel = require('../commentInteraction/index')
 
 /**
  * 分页查询评论（关联用户+文章表，仅查正常状态）
+ *
+ * 范围口径（scope）：
+ * - admin/editor：全站评论
+ * - 其他登录用户：只看与自己相关的评论（自己作品下的评论，或自己发出的评论）
  * @param {number} page - 页码（默认1）
  * @param {number} pageSize - 每页条数（默认10）
  * @param {number} offset - 偏移量
  * @param {number|null} articleId - 只看某篇文章下的评论（可选）
+ * @param {number|null} userId - 当前登录用户（用于 liked 标记）
+ * @param {Object|null} scope - { userId, userType } 数据可见范围
  * @returns {Promise<Object>} 分页评论数据（含文章信息）
  */
-async function getCommentsByPage(page, pageSize, offset, articleId = null, userId = null) {
+async function getCommentsByPage(
+    page,
+    pageSize,
+    offset,
+    articleId = null,
+    userId = null,
+    scope = null
+) {
 
     // 后台文章详情需要按文章过滤；总览卡片不传则看全站
     const where = ['c.status = 1']
@@ -18,6 +31,19 @@ async function getCommentsByPage(page, pageSize, offset, articleId = null, userI
         where.push('c.article_id = ?')
         whereParams.push(articleId)
     }
+
+    // 非管理员只看到与自己相关的评论：自己作品下的，或自己发出的
+    const scopedUserId = Number(scope?.userId)
+    const canSeeAll = !scope || scope.userType === 'admin' || scope.userType === 'editor'
+    if (!canSeeAll) {
+        if (Number.isSafeInteger(scopedUserId) && scopedUserId > 0) {
+            where.push('(a.user_id = ? OR c.user_id = ?)')
+            whereParams.push(scopedUserId, scopedUserId)
+        } else {
+            where.push('1 = 0')
+        }
+    }
+
     const whereSql = where.join(' AND ')
 
     // 关联users表（查用户名）和article表（查文章标题），只查状态正常的评论
@@ -82,7 +108,13 @@ async function getCommentsByPage(page, pageSize, offset, articleId = null, userI
     }))
 
     // 查询总条数（用于分页计算）
-    const totalSql = `SELECT COUNT(*) AS total FROM comment c WHERE ${whereSql}`
+    // 归属过滤用到 article 表，这里必须和列表查询 JOIN 同一张表
+    const totalSql = `
+        SELECT COUNT(*) AS total
+        FROM comment c
+        LEFT JOIN article a ON c.article_id = a.id
+        WHERE ${whereSql}
+    `
     const [totalResult] = await query(totalSql, whereParams)
 
     return {

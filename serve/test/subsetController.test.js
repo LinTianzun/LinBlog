@@ -67,9 +67,38 @@ test('getSubsets reuses article subsets for gallery with image counts', async ()
             classify: 'article',
             includeCount: true,
             countClassify: 'image',
-            countState: undefined
+            countState: undefined,
+            countUserId: undefined
         })
         assert.equal(res.body.data.list[0].value, 2)
+    } finally {
+        subsetModel.findSubsets = originalFind
+    }
+})
+
+test('normal getSubsets counts only the current user content', async () => {
+    const originalFind = subsetModel.findSubsets
+    let received = null
+    subsetModel.findSubsets = async (params) => {
+        received = params
+        return [{ id: 1, name: '技术博客', classify: 'article', sort: 10, value: 1, moment: '2026-10-24' }]
+    }
+
+    try {
+        const res = createRes()
+        await subsetController.getSubsets(
+            { query: { classify: 'image' }, user: { userId: 42, userType: 'normal' } },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(received, {
+            classify: 'article',
+            includeCount: true,
+            countClassify: 'image',
+            countState: undefined,
+            countUserId: 42
+        })
     } finally {
         subsetModel.findSubsets = originalFind
     }

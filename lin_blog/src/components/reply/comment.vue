@@ -21,7 +21,8 @@
         <yk-scrollbar v-else ref="scrollbar" class="comment-scroll">
             <yk-space dir="vertical">
                 <reply v-for="item in comments" :key="item.id" :content="item" is-comment
-                    @delete="removeComment" @click="openTarget" />
+                    :class="{ 'comment-item-locked': !canOpenTarget }" @delete="removeComment"
+                    @click="canOpenTarget ? openTarget : noop" />
             </yk-space>
         </yk-scrollbar>
 
@@ -57,6 +58,16 @@ type CommentCardInstance = ComponentPublicInstance & {
 const proxy = getCurrentInstance()?.proxy as CommentCardInstance | null | undefined
 
 const router = useRouter()
+
+// 普通用户的总览评论不可跳转：后台列表已按自己名下收窄，跳转后也看不到对应作品
+const currentRole = (() => {
+    try {
+        return JSON.parse(localStorage.getItem('userInfo') || '{}')?.user_type || ''
+    } catch {
+        return ''
+    }
+})()
+const canOpenTarget = ['admin', 'editor'].includes(currentRole)
 
 const props = withDefaults(defineProps<CommentProps>(), {
     pageSize: 8,
@@ -144,7 +155,10 @@ const handlePagerChange = (): void => {
 }
 
 // 点评论跳到对应作品：图库进后台图库页，文章进文章页并直接打开详情
-const openTarget = (id: string | number) => {
+const openTarget = (id: string | number): void => {
+    // 普通用户在后台看不到他人作品，跳转只会落到空页面，这里先拦截
+    if (!canOpenTarget) return
+
     const target = comments.value.find(item => Number(item.id) === Number(id))
     const articleId = target?.article?.id
     if (!articleId) {
@@ -159,6 +173,9 @@ const openTarget = (id: string | number) => {
             : { path: '/article', query: { open: String(articleId) } }
     )
 }
+
+// 无跳转权限时占位：评论项不再响应点击
+const noop = (): void => {}
 
 // 删除评论
 const removeComment = async (id: string | number) => {
@@ -217,6 +234,11 @@ onMounted(() => {
         align-items: center;
         justify-content: center;
         gap: @space-m;
+    }
+
+    // 普通用户不跳转：去掉指针态，避免看起来仍可点击
+    :deep(.comment-item-locked) {
+        cursor: default;
     }
 
     &-pagination {

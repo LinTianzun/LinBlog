@@ -245,6 +245,7 @@ const tablesSql = {
 
   diary: `CREATE TABLE IF NOT EXISTS diary(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日记ID',
+    user_id BIGINT UNSIGNED NULL COMMENT '作者ID（NULL 表示迁移前的历史随笔）',
     title VARCHAR(100) NOT NULL COMMENT '日记标题',
     content TEXT NOT NULL COMMENT '日记内容',
     picture VARCHAR(2000) COMMENT '图片地址（多个用逗号分隔）',
@@ -256,7 +257,9 @@ const tablesSql = {
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     FOREIGN KEY (weather_id) REFERENCES weather(id) ON DELETE SET NULL,
+    CONSTRAINT fk_diary_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_created_at (created_at),
+    INDEX idx_diary_user (user_id),
     INDEX idx_mood (mood)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='个人日记表';`,
 
@@ -1333,6 +1336,60 @@ async function ensurePasswordResetVersionGuardSchema(exec = query) {
   });
 }
 
+// 随笔归属：新随笔按作者隔离，历史随笔统一归到最早的管理员名下，
+// 否则非管理员登录后会看到别人（主账号）的随笔。
+async function ensureDiaryOwnerSchema(exec = query) {
+  await ensureColumn(exec, 'diary', 'user_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '作者ID（NULL 表示迁移前的历史随笔）'
+  });
+
+  const [ownerIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'diary'
+      AND INDEX_NAME = 'idx_diary_user'
+      AND COLUMN_NAME = 'user_id'
+      AND SEQ_IN_INDEX = 1
+  `);
+  if (!ownerIndex) {
+    await exec('ALTER TABLE diary ADD INDEX idx_diary_user (user_id)');
+  }
+
+  const [ownerConstraint] = await exec(`
+    SELECT CONSTRAINT_NAME
+    FROM information_schema.KEY_COLUMN_USAGE
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'diary'
+      AND COLUMN_NAME = 'user_id'
+      AND REFERENCED_TABLE_NAME = 'users'
+      AND REFERENCED_COLUMN_NAME = 'id'
+  `);
+  if (!ownerConstraint) {
+    await exec(`
+      ALTER TABLE diary
+      ADD CONSTRAINT fk_diary_user
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    `);
+  }
+
+  const [fallbackOwner] = await exec(`
+    SELECT id FROM users
+    WHERE user_type = 'admin' AND status = 1
+    ORDER BY id ASC
+    LIMIT 1
+  `);
+  const [anyOwner] = fallbackOwner ? [fallbackOwner] : await exec(
+    'SELECT id FROM users ORDER BY id ASC LIMIT 1'
+  );
+
+  // 没有可归属的用户时保持 NULL，等用户创建后再手动认领，不臆造归属
+  if (!anyOwner) return;
+
+  await exec('UPDATE diary SET user_id = ? WHERE user_id IS NULL', [anyOwner.id]);
+}
+
 const migrations = [
   {
     version: '20261023_article_owner',
@@ -1383,6 +1440,10 @@ const migrations = [
   {
     version: '20261028_password_reset_version_guard',
     up: ensurePasswordResetVersionGuardSchema
+  },
+  {
+    version: '20261028_diary_owner',
+    up: ensureDiaryOwnerSchema
   }
 ];
 

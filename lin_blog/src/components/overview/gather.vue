@@ -2,7 +2,8 @@
     <yk-space class="gather">
         <stat-card v-for="(item, index) in gathers" :key="item.name" :name="item.name"
             :total="item.total" :bg-color="item.bgColor" :icon="iconOf(item.icon)"
-            :to="item.path || item.viewTo" :class="{ 'gather-dark': index === 0 }" />
+            :to="index === 0 && !canAccessLocalFiles ? '' : (item.path || item.viewTo)"
+            :class="{ 'gather-dark': index === 0 }" />
     </yk-space>
 </template>
 
@@ -16,11 +17,21 @@ import { resolveMenuIcon } from '../../utils/menuIcons.ts'
 // overLink 里存的是图标名字符串，这里转成真正的组件，否则卡片渲染不出图标
 const iconOf = (name: string) => resolveMenuIcon(name)
 
-//  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
-const gathers = ref(overLink)
+const currentRole = (() => {
+    try {
+        return JSON.parse(localStorage.getItem('userInfo') || '{}')?.user_type || ''
+    } catch {
+        return ''
+    }
+})()
+const canAccessLocalFiles = ['admin', 'editor'].includes(currentRole)
 
-//  字节数转可读体积；无文件或字段缺失时显示 0
-const formatFileSize = (bytes: number): string => {
+//  复用 overLink 作为卡片布局/颜色/跳转配置，total 初始为占位
+const gathers = ref(overLink.map(item => ({ ...item })))
+
+//  字节数转可读体积；无权限或字段缺失时给出明确提示
+const formatFileSize = (bytes: number | null): string => {
+    if (bytes === null) return '无权限'
     if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`

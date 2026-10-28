@@ -167,8 +167,58 @@ test('public diary route mounts optional auth and private diary routes stay stri
 
     const publicDiary = routes.find(route => route.path === '/api/public/diary')
     assert.ok(publicDiary, 'missing public diary route')
-    assert.equal(publicDiary.handlers[0].name, 'optionalAuthMiddleware')
+    const handlerNames = publicDiary.handlers.map(handler => handler.name)
+    // 门户随笔先打 publicRead 标记，让列表不按登录用户收窄
+    assert.ok(handlerNames.includes('publicRead'))
+    assert.ok(handlerNames.includes('optionalAuthMiddleware'))
 
     const privateDiary = routes.find(route => route.path === '/api/diary')
     assert.equal(privateDiary.handlers[0].name, 'authMiddleware')
+    assert.ok(!privateDiary.handlers.map(handler => handler.name).includes('publicRead'))
+})
+
+test('public diary list ignores owner scope so normal users still see full portal', async () => {
+    const captured = []
+    const diaryControllerPath = path.resolve(__dirname, '../controller/diaryController.js')
+    const stubs = {
+        '../model/dbModel/diary/index': {
+            getDiariesByPage: async (args) => {
+                captured.push(args)
+                return { list: [], total: 0 }
+            },
+            countDiariesByWeather: async () => ({ facet: [], total: 0 }),
+        },
+    }
+
+    Module._load = function (request, parent, isMain) {
+        if (parent && parent.filename === diaryControllerPath && stubs[request]) {
+            return stubs[request]
+        }
+        return originalLoad.call(this, request, parent, isMain)
+    }
+    delete require.cache[diaryControllerPath]
+    const diaryController = require(diaryControllerPath)
+    Module._load = originalLoad
+
+    const res = makeResponse()
+    await diaryController.getDiaries({
+        query: { page: '1', pageSize: '6' },
+        publicRead: true,
+        user: { userId: 7, userType: 'normal' },
+    }, res)
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(captured[0].ownerScope, null)
+
+    captured.length = 0
+    const adminRes = makeResponse()
+    await diaryController.getDiaries({
+        query: { page: '1', pageSize: '6' },
+        user: { userId: 7, userType: 'normal' },
+    }, adminRes)
+
+    assert.equal(adminRes.statusCode, 200)
+    assert.deepEqual(captured[0].ownerScope, { userId: 7, userType: 'normal' })
+
+    delete require.cache[diaryControllerPath]
 })

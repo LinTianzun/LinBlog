@@ -54,12 +54,15 @@ export const contentLinks: MenuItem[] = [
     navLinks[0],
     navLinks[4],
     navLinks[5],
-    navLinks[6]
+    navLinks[6],
+    // 系统设置每个人都可访问：改密码、头像与主题偏好
+    navLinks[7]
 ]
 
 // 游客可见的菜单
 export const visitorLinks: MenuItem[] = [
-    navLinks[0]
+    navLinks[0],
+    navLinks[7]
 ]
 
 //  总览总数

@@ -15,7 +15,7 @@
                 {{ menu.name }} {{ menu.value }}
             </div>
         </yk-space>
-        <yk-space style="flex:none">
+        <yk-space v-if="canManageTaxonomy" style="flex:none">
             <!-- 图库共用文章分组，分组只在文章页维护 -->
             <yk-popconfirm v-if="props.classify === 'article'" title="请输入分组名称" trigger="click"
                 placement="bottom" @cancel="cancel" @confirm="confirm">
@@ -56,6 +56,15 @@
 
     //  store
     const subsetStore = useSubsetStore()
+
+    const canManageTaxonomy = computed(() => {
+        try {
+            const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+            return ['admin', 'editor'].includes(userInfo?.user_type)
+        } catch {
+            return false
+        }
+    })
 
     const props = withDefaults(defineProps<{
         classify?: 'article' | 'image' | 'resource'
@@ -150,6 +159,7 @@ const changeSeleted = (id: string | number, type: SubsetType) => {
     //  显示管理分组
     const visible = ref < boolean > (false)
     const showModal = () => {
+        if (!canManageTaxonomy.value) return
         visible.value = !visible.value
     }
 
