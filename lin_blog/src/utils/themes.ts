@@ -97,6 +97,14 @@ export const themePresets: ThemePreset[] = [
         base: 'dark',
         primary: '#c8956c',
         background: '#201914'
+    },
+    {
+        id: 'garnet',
+        name: '暗夜绯',
+        base: 'dark',
+        primary: '#ee5a6f',
+        background: '#1a1216',
+        preview: 'linear-gradient(135deg, #2e1a20 0%, #6b2f3c 50%, #ee5a6f 100%)'
     }
 ]
 
