@@ -174,6 +174,26 @@ export const themePresets: ThemePreset[] = [
         background: '#1f1508',
         preview: 'linear-gradient(135deg, #78350f 0%, #d97706 50%, #fbbf24 100%)',
         gradient: 'linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%)'
+    },
+    {
+        id: 'mint-breeze',
+        name: '薄荷微风',
+        base: 'light',
+        kind: 'gradient',
+        primary: '#2dd4bf',
+        background: '#f0fbfa',
+        preview: 'linear-gradient(135deg, #d4fbf1 0%, #7fe7d2 48%, #3fc9b0 100%)',
+        gradient: 'linear-gradient(150deg, #f2fdfa 0%, #dcf6ef 40%, #c3ece2 100%)'
+    },
+    {
+        id: 'lavender-mist',
+        name: '薰衣草雾',
+        base: 'light',
+        kind: 'gradient',
+        primary: '#8b7cf6',
+        background: '#f6f4fe',
+        preview: 'linear-gradient(135deg, #e5dcff 0%, #b9a8f7 48%, #8b7cf6 100%)',
+        gradient: 'linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%)'
     }
 ]
 
