@@ -36,14 +36,16 @@
             </yk-space>
         </div>
 
-        <div v-if="loading" class="files-state">
+        <!-- 只有首屏（还没有数据）才用 spinner 占位；后续刷新保持网格挂载，
+             否则每次刷新整块列表被销毁重建，看起来就是闪一下 -->
+        <div v-if="loading && files.length === 0" class="files-state">
             <yk-spinner size="m" />
             <yk-text type="secondary">正在加载文件...</yk-text>
         </div>
 
         <yk-empty v-else-if="files.length === 0" description="暂无文件" />
 
-        <div v-else class="files-main">
+        <div v-else class="files-main" :class="{ 'is-refreshing': loading }">
             <fileItem v-for="item in files" :key="item.id" :data="item" @changeSubsetId="changeSubset"
                 @delete="deleteFile" @selected="selectFile" @download="downloadFile" />
         </div>
@@ -184,8 +186,15 @@ watch(() => [props.subsetId, props.uncategorized], () => {
     void fetchFiles()
 })
 
-// 大屏切换为更多列时自动增加每页条数，并回到第一页重新取数
+// 大屏切换为更多列时自动增加每页条数，并回到第一页重新取数。
+// 挂载后 measure() 测出真实宽度会改一次条数，那次不算用户触发的变化：
+// 放任它会与 onMounted 的首屏请求连着发两遍，列表刚出来又被清空重取。
+let pageSizeSettled = false
 watch(effectivePageSize, () => {
+    if (!pageSizeSettled) {
+        pageSizeSettled = true
+        return
+    }
     page.value = 1
     void fetchFiles()
 })
@@ -366,6 +375,12 @@ defineExpose({ refresh: fetchFiles })
             row-gap: 32px;
             column-gap: 24px;
             padding: 24px 0 32px;
+            // 刷新中只降低不透明度，不销毁 DOM：网格高度不变，不会有跳动
+            transition: opacity 160ms ease;
+
+            &.is-refreshing {
+                opacity: 0.55;
+            }
         }
 
         &-pagination {
