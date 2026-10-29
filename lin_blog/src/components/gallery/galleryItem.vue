@@ -61,7 +61,7 @@
                             <IconCommentOutline />{{ commentCount }}
                         </span>
                     </div>
-                    <yk-text type="third" class="gallery-item-date">{{ articleDate }}</yk-text>
+                    <span class="gallery-item-date">{{ articleDate }}</span>
                 </div>
             </div>
         </yk-space>
@@ -382,8 +382,8 @@ const deleteGallery = (): void => {
     &-datas {
         width: 100%;
         box-sizing: border-box;
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
         gap: 12px;
         padding: 8px 14px 14px;
@@ -397,6 +397,7 @@ const deleteGallery = (): void => {
         align-items: center;
         gap: 12px;
         min-width: 0;
+        width: 100%;
         overflow: hidden;
     }
 
@@ -415,8 +416,13 @@ const deleteGallery = (): void => {
     }
 
     &-date {
-        flex: none;
-        margin-left: auto;
+        display: inline-flex;
+        width: max-content;
+        align-items: center;
+        justify-content: flex-end;
+        justify-self: end;
+        color: var(--admin-muted, @font-color-s);
+        text-align: right;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }

@@ -73,7 +73,6 @@ declare module 'vue' {
     IconTickMinOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconTickMinOutline']
     IconTickOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconTickOutline']
     IconWarningOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconWarningOutline']
-    IconZoomInOutline: typeof import('@yike-design/ui/es/components/svg-icon')['IconZoomInOutline']
     Information: typeof import('./src/components/reply/information.vue')['default']
     Label: typeof import('./src/components/label/label.vue')['default']
     LabelManage: typeof import('./src/components/label/labelManage.vue')['default']
