@@ -582,6 +582,20 @@ onUnmounted(() => {
     pointer-events: none;
 }
 
+// 渐变主题：底部再叠一层页面渐变本尊，靠遮罩淡入，
+// 让 hero 直接融进渐变底而不是停在一块纯色上（纯色主题这层是全透明的，无副作用）
+// background-attachment: fixed 让这层渐变与 #app.is-portal 的页面渐变严格对齐，
+// 底部因此能与页面底色无缝接上（纯色主题下两者都是纯色，同样连续）
+.hero-fade::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--portal-page-gradient);
+    background-attachment: fixed;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.55) 55%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.55) 55%, #000 100%);
+}
+
 .hero-content {
     position: relative;
     z-index: 4;

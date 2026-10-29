@@ -13,6 +13,9 @@
     padding-top: 0;
     // 渐变主题给门户铺一层真实渐变底；纯色主题这里回落到 bgColor1 保持原样
     background: var(--portal-page-gradient);
+    // fixed 让渐变固定在视口上：纯色主题是纯色，固定与否无差别；
+    // 渐变主题则能和 hero / 环境背景里的同款渐变精确对齐，滚到任何位置都不出现色阶断层
+    background-attachment: fixed;
 }
 
 // ===== 门户设计 token（全部从主题变量派生，明暗双态自动跟随）=====

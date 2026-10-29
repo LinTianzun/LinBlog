@@ -88,6 +88,18 @@ onUnmounted(() => {
     );
 }
 
+// 渐变主题：与首页 hero 同手法——把页面渐变本尊按遮罩淡入，
+// 并固定到视口，保证与 #app.is-portal 的页面底色严格连续
+.portal-ambient-mask::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--portal-page-gradient);
+    background-attachment: fixed;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.5) 58%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.5) 58%, #000 100%);
+}
+
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
     .portal-ambient-mask {
         background: var(--portal-page-bg);
