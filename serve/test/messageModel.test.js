@@ -51,7 +51,7 @@ test('门户留言写入 wall 渠道', async () => {
     assert.deepEqual(insert.params, [3, 1, 'portal hello'])
 })
 
-test('门户留言墙按发送者只查询第一条私信', async () => {
+test('门户留言墙展示所有留言和每位用户的首条私信', async () => {
     await messageModel.getWallMessages({ page: 1, pageSize: 10, offset: 0 })
 
     const wallQueries = calls.filter(call =>
@@ -61,6 +61,7 @@ test('门户留言墙按发送者只查询第一条私信', async () => {
     assert.equal(wallQueries.length, 2)
     assert.ok(wallQueries[0].sql.includes('MIN(id) AS first_id'))
     assert.ok(wallQueries[0].sql.includes('GROUP BY sender_id'))
-    assert.ok(wallQueries[1].sql.includes('COUNT(DISTINCT sender_id)'))
-    assert.ok(wallQueries.every(call => !call.sql.includes("channel = 'wall'")))
+    assert.ok(wallQueries.every(call => call.sql.includes("channel = 'wall'")))
+    assert.ok(wallQueries.every(call => call.sql.includes('first_message.first_id IS NOT NULL')))
+    assert.ok(wallQueries[1].sql.includes('COUNT(*) AS total'))
 })

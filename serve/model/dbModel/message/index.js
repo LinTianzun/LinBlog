@@ -212,7 +212,8 @@ async function getWallMessages(params) {
     if (!ownerId) {
         return { list: [], total: 0, page, pageSize, totalPage: 0 }
     }
-    // 每个发送者只公开第一条私信；后续聊天只在后台会话中可见。
+    // 门户留言全部公开；另外保留每位用户的首条私信作为最初留言，
+    // 后续普通聊天只在后台会话中可见。
     const listSql = `
         SELECT
             m.id,
@@ -221,7 +222,7 @@ async function getWallMessages(params) {
             m.content,
             m.created_at AS createdAt
         FROM message m
-        JOIN (
+        LEFT JOIN (
             SELECT sender_id, MIN(id) AS first_id
             FROM message
             WHERE receiver_id = ? AND type = 'private' AND sender_id <> receiver_id
@@ -229,16 +230,24 @@ async function getWallMessages(params) {
         ) first_message ON first_message.first_id = m.id
         LEFT JOIN users s ON m.sender_id = s.id
         WHERE m.receiver_id = ? AND m.type = 'private'
+          AND (m.channel = 'wall' OR first_message.first_id IS NOT NULL)
         ORDER BY m.created_at DESC
         LIMIT ? OFFSET ?
     `
-    const list = await query(listSql, [ownerId, ownerId, pageSize, offset])
     const totalSql = `
-        SELECT COUNT(DISTINCT sender_id) AS total
-        FROM message
-        WHERE receiver_id = ? AND type = 'private' AND sender_id <> receiver_id
+        SELECT COUNT(*) AS total
+        FROM message m
+        LEFT JOIN (
+            SELECT sender_id, MIN(id) AS first_id
+            FROM message
+            WHERE receiver_id = ? AND type = 'private' AND sender_id <> receiver_id
+            GROUP BY sender_id
+        ) first_message ON first_message.first_id = m.id
+        WHERE m.receiver_id = ? AND m.type = 'private'
+          AND (m.channel = 'wall' OR first_message.first_id IS NOT NULL)
     `
-    const [totalResult] = await query(totalSql, [ownerId])
+    const list = await query(listSql, [ownerId, ownerId, pageSize, offset])
+    const [totalResult] = await query(totalSql, [ownerId, ownerId])
     return {
         list,
         total: totalResult.total,
