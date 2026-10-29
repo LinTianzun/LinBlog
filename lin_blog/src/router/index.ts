@@ -68,10 +68,19 @@ const routes = [
             {
                 path: 'localfile',
                 component: () => import('../views/FileView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['file.view']
+                }
             },
             {
                 path: 'article',
                 component: () => import('../views/ArticleView.vue'),
+                // 查看权限：能创建、查看或管理任一项即可进入列表页
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
+                }
             },
             {
                 path: 'article/:id',
@@ -80,14 +89,26 @@ const routes = [
             {
                 path: 'gallery',
                 component: () => import('../views/GalleryView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
+                }
             },
             {
                 path: 'diary',
                 component: () => import('../views/DiaryView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll']
+                }
             },
             {
                 path: 'setting',
                 component: () => import('../views/SettingView.vue'),
+                // 系统设置对所有登录用户开放，无需额外权限
+                meta: {
+                    requiresAuth: true,
+                }
             },
             {
                 // catch-all：未匹配的路径统一渲染 404 页面
@@ -99,14 +120,27 @@ const routes = [
     {
         path: '/editarticle/:id?',
         component: () => import('../views/EditArticle.vue'),
+        // 新建需 create，编辑现有需 manageOwn 或 manageAll
+        meta: {
+            requiresAuth: true,
+            permissions: ['article.create', 'article.manageOwn', 'article.manageAll']
+        }
     },
     {
         path: '/editgallery',
         component: () => import('../views/EditGallery.vue'),
+        meta: {
+            requiresAuth: true,
+            permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
+        }
     },
     {
         path: '/editgallery/:id',
         component: () => import('../views/EditGallery.vue'),
+        meta: {
+            requiresAuth: true,
+            permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
+        }
     },
     {
         path: '/loginRegister',
