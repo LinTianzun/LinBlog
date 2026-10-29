@@ -6,6 +6,9 @@
     --admin-gutter: clamp(16px, 2.2vw, 34px);
     --admin-surface: var(--bgColor1);
     --admin-surface-soft: color-mix(in srgb, var(--bgColor1) 72%, var(--bgColor2));
+    // 页面背景层：--bgGradient 只由渐变主题预设在 :root 上写入，
+    // 纯色主题没有这个变量，这里回落到 bgColor2。
+    // 必须保留这个回落——bgColor2 要参与 color-mix()，不能是渐变。
     --admin-surface-raised: color-mix(in srgb, var(--bgColor1) 88%, var(--bgColor5));
     --admin-line: color-mix(in srgb, var(--bgColor4) 62%, transparent);
     --admin-line-strong: color-mix(in srgb, var(--bgColor4) 88%, transparent);
@@ -24,7 +27,7 @@
     color: var(--admin-text);
     background:
         radial-gradient(circle at 92% 4%, var(--pcolor2), transparent 26rem),
-        linear-gradient(180deg, var(--bgColor2) 0%, var(--bgColor2) 100%);
+        var(--bgGradient, linear-gradient(180deg, var(--bgColor2) 0%, var(--bgColor2) 100%));
 
     ::selection {
         color: var(--bgColor1);

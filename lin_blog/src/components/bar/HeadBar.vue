@@ -56,6 +56,7 @@
                                         :style="{ background: preset.preview || `linear-gradient(135deg, ${preset.primary}, ${preset.background})` }"
                                         aria-hidden="true" />
                                     <span class="option-name">{{ preset.name }}</span>
+                                    <span v-if="preset.kind === 'gradient'" class="option-kind">渐变</span>
                                     <span class="option-tick" aria-hidden="true">
                                         <IconTickOutline />
                                     </span>
@@ -560,6 +561,17 @@ onUnmounted(() => {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    // 渐变主题的类型标记，与纯色主题区分
+    .option-kind {
+        flex-shrink: 0;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: var(--pcolor2);
+        color: var(--pcolor);
+        font-size: 11px;
+        line-height: 16px;
     }
 
     .option-tick {
