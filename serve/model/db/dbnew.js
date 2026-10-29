@@ -1508,8 +1508,8 @@ async function ensureCommentReportHandlingSchema(exec = query) {
   }
 }
 
-// message 表同时承载私信会话与门户留言，用 channel 记录来源。
-// 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
+// 私信与门户留言墙共用 message 表，用 channel 区分会话消息和公开留言，
+// 避免后台私信内容再次出现在门户留言墙。存量消息按 direct 处理，优先保护隐私。
 async function ensureMessageChannelSchema(exec = query) {
   await ensureColumn(exec, 'message', 'channel', {
     definition: "ENUM('direct', 'wall') NOT NULL DEFAULT 'direct'",

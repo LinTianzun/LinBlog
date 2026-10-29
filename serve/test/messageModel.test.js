@@ -12,9 +12,7 @@ const query = async (sql, params = []) => {
 
     if (sql.includes("user_type = 'admin'")) return [{ id: 1 }]
     if (sql.includes('SELECT id FROM users WHERE id = ? AND status = 1')) return [{ id: 1 }]
-    if (sql.includes('COUNT(') && sql.includes('total') && sql.includes('FROM message')) {
-        return [{ total: 0 }]
-    }
+    if (sql.includes('COUNT(*) AS total FROM message')) return [{ total: 0 }]
     return []
 }
 
@@ -32,7 +30,7 @@ test.beforeEach(() => {
     calls = []
 })
 
-test('直接私信写入 direct 来源标记', async () => {
+test('直接私信写入 direct 渠道，不进入门户留言墙', async () => {
     await messageModel.insertMessage(
         { receiverId: 2, type: 'private', content: 'hello' },
         3
@@ -51,7 +49,7 @@ test('门户留言写入 wall 渠道', async () => {
     assert.deepEqual(insert.params, [3, 1, 'portal hello'])
 })
 
-test('门户留言墙按发送者只查询第一条私信', async () => {
+test('门户留言墙列表与总数都只统计 wall 渠道', async () => {
     await messageModel.getWallMessages({ page: 1, pageSize: 10, offset: 0 })
 
     const wallQueries = calls.filter(call =>
@@ -59,8 +57,5 @@ test('门户留言墙按发送者只查询第一条私信', async () => {
         && call.sql.includes('receiver_id = ?')
     )
     assert.equal(wallQueries.length, 2)
-    assert.ok(wallQueries[0].sql.includes('MIN(id) AS first_id'))
-    assert.ok(wallQueries[0].sql.includes('GROUP BY sender_id'))
-    assert.ok(wallQueries[1].sql.includes('COUNT(DISTINCT sender_id)'))
-    assert.ok(wallQueries.every(call => !call.sql.includes("channel = 'wall'")))
+    assert.ok(wallQueries.every(call => call.sql.includes("channel = 'wall'")))
 })
