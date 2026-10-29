@@ -4,7 +4,8 @@
     plain 用于随笔（纯文字标题）。后台只额外挂管理操作，不改内容骨架。
 -->
 <template>
-    <header class="content-detail-hero" :class="[`is-${variant}`, { 'has-cover': Boolean(cover) }]">
+    <header class="content-detail-hero"
+        :class="[`is-${variant}`, `density-${density}`, { 'has-cover': Boolean(cover) }]">
         <figure v-if="variant === 'immersive' && cover" class="content-detail-hero-media is-clickable"
             @click="emit('cover-click')">
             <img :src="cover" :alt="title" loading="eager" @error="emit('cover-error')" />
@@ -68,6 +69,8 @@ withDefaults(defineProps<{
     introduce?: string
     cover?: string
     variant?: 'split' | 'immersive' | 'plain'
+    // compact 用于后台弹窗：保留共用视觉语言，但压缩首图高度与文字尺度
+    density?: 'comfortable' | 'compact'
     badges?: HeroBadge[]
     labels?: string[]
     coverHint?: string
@@ -75,6 +78,7 @@ withDefaults(defineProps<{
     introduce: '',
     cover: '',
     variant: 'split',
+    density: 'comfortable',
     badges: () => [],
     labels: () => [],
     coverHint: ''
@@ -241,6 +245,25 @@ const emit = defineEmits<{
     border-radius: var(--content-hero-radius, 20px);
 }
 
+.is-immersive.density-compact .content-detail-hero-media {
+    max-height: 280px;
+    aspect-ratio: 21 / 9;
+}
+
+.density-compact .content-detail-hero-caption {
+    gap: 7px;
+    padding: clamp(16px, 2vw, 24px);
+
+    .content-detail-hero-title {
+        max-width: 28ch;
+        font-size: clamp(22px, 2.4vw, 30px);
+    }
+
+    .content-detail-hero-introduce {
+        -webkit-line-clamp: 1;
+    }
+}
+
 .is-immersive .content-detail-hero-media.is-clickable {
     cursor: zoom-in;
 }
@@ -337,6 +360,11 @@ const emit = defineEmits<{
 
     .is-immersive .content-detail-hero-media {
         aspect-ratio: 4 / 3;
+    }
+
+    .is-immersive.density-compact .content-detail-hero-media {
+        max-height: 220px;
+        aspect-ratio: 16 / 9;
     }
 
     .content-detail-hero-caption .content-detail-hero-title {

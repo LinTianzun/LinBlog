@@ -1,7 +1,7 @@
 <template>
     <yk-modal :model-value="modelValue" :title="article?.title || '图库详情'" size="xl" :show-footer="false"
-        :closeable="true" @update:model-value="handleVisibleChange">
-        <div v-if="article" class="gallery-detail">
+        :closeable="true" content-height="calc(100vh - 120px)" @update:model-value="handleVisibleChange">
+        <div v-if="modelValue" class="gallery-detail">
             <div v-if="loading" class="gallery-detail-state">
                 <yk-spinner size="m" />
                 <yk-text type="secondary">正在加载图库...</yk-text>
@@ -14,14 +14,15 @@
                 </yk-empty>
             </div>
 
-            <template v-else>
+            <template v-else-if="article">
                 <!-- 与前台图库详情共用沉浸式头部：首图、标题、简介与元信息 -->
                 <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
-                    :cover="photos[0] || article.cover || ''" variant="immersive" :badges="heroBadges"
+                    :cover="photos[0] || article.cover || ''" variant="immersive" density="compact"
+                    :badges="heroBadges"
                     cover-hint="点击放大" @cover-click="openLightbox(0)" />
 
                 <!-- 与前台共用统计条：后台这是只读展示，故不传点赞按钮 -->
-                <ContentStatBar :views="article.views" :comments="rootComments"
+                <ContentStatBar :views="article.views" :comments="commentTotal"
                     :photo-count="photos.length" :meta-text="publishedText" :meta-chips="metaChips" />
 
                 <!-- 操作区与前台不同：后台保留管理动作 -->
@@ -130,6 +131,13 @@ const metaChips = computed(() => {
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
 const rootComments = computed(() => article.value?.rootComments ?? article.value?.comments ?? 0)
 const replyComments = computed(() => article.value?.replyComments ?? 0)
+// 统计条与卡片、门户统一展示评论总数；标题处再拆一级评论与回复
+const commentTotal = computed(() => {
+    const current = article.value
+    const hasSplitCounts = current?.rootComments !== undefined || current?.replyComments !== undefined
+    if (hasSplitCounts) return rootComments.value + replyComments.value
+    return current?.comments ?? 0
+})
 
 const publishedText = computed(() => {
     const value = article.value?.publishedAt || article.value?.createdAt

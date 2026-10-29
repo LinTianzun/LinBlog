@@ -1,6 +1,12 @@
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { createRouteGuard, type GuardSession, type GuardTarget } from '../src/router/guard.ts'
+import {
+    createRouteGuard,
+    resolveFallbackPath,
+    FALLBACK_ROUTES,
+    type GuardSession,
+    type GuardTarget,
+} from '../src/router/guard.ts'
 
 // node:test 没有浏览器环境，注入最小 localStorage polyfill
 const storage = new Map<string, string>()
@@ -50,7 +56,8 @@ function target(path: string, meta: Partial<GuardTarget['meta']> = {}): GuardTar
  * 值为数组：命中其中任意一项权限即可进入。
  */
 const PROTECTED_ROUTES: { path: string; permissions: string[] }[] = [
-    { path: '/overView', permissions: [] },
+    // 总览是全站统计，按 overview.viewAll 收窄（游客不能看文章/图库/随笔数量与访问趋势）
+    { path: '/overView', permissions: ['overview.viewAll'] },
     { path: '/userManagement', permissions: ['user.view'] },
     { path: '/permissionManagement', permissions: ['permission.view'] },
     { path: '/systemLog', permissions: ['systemLog.view'] },
@@ -128,9 +135,45 @@ describe('已登录用户访问登录页', () => {
         else localStorage.removeItem('token')
     })
 
-    it('已登录访问登录页重定向到总览', () => {
+    it('无任何权限时登录后落地到系统设置（总览需 overview.viewAll）', () => {
+        const result = guard(target('/loginRegister', { requiresAuth: false }))
+        assert.equal(result, '/setting')
+    })
+
+    it('有 overview.viewAll 时登录后落地到总览', () => {
+        guard = createRouteGuard(() => makeSession(['overview.viewAll']))
         const result = guard(target('/loginRegister', { requiresAuth: false }))
         assert.equal(result, '/overView')
+    })
+
+    it('权限不足时按可进入的页面回落，不再无条件跳总览', () => {
+        guard = createRouteGuard(() => makeSession(['comment.create']))
+        const result = guard(target('/article', {
+            permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
+        }))
+        assert.equal(result, '/setting')
+    })
+})
+
+// ─── 回落目标收敛（避免「被拒 → 回总览 → 再被拒」死循环）────────────
+
+describe('回落目标 resolveFallbackPath', () => {
+    it('无 overview.viewAll 时跳过总览，落到系统设置', () => {
+        assert.equal(resolveFallbackPath(makeSession([])), '/setting')
+        assert.equal(resolveFallbackPath(makeSession(['comment.create'])), '/setting')
+    })
+
+    it('有 overview.viewAll 时优先回总览', () => {
+        assert.equal(resolveFallbackPath(makeSession(['overview.viewAll'])), '/overView')
+    })
+
+    it('超级管理员回总览', () => {
+        assert.equal(resolveFallbackPath(makeSession([], true)), '/overView')
+    })
+
+    it('回落链末端对所有登录用户开放，保证一定收敛', () => {
+        const last = FALLBACK_ROUTES[FALLBACK_ROUTES.length - 1]
+        assert.equal(last.permissions?.length ?? 0, 0, '末端回落页必须无权限声明')
     })
 })
 
@@ -277,20 +320,20 @@ describe('普通用户', () => {
         assert.equal(result, undefined)
     })
 
-    it('无 file.view 权限，本地文件页重定向到总览', () => {
-        assert.equal(guard(target('/localfile', { permissions: ['file.view'] })), '/overView')
+    it('无 file.view 权限，本地文件页回落到系统设置', () => {
+        assert.equal(guard(target('/localfile', { permissions: ['file.view'] })), '/setting')
     })
 
-    it('无 user.view 权限，用户管理页重定向到总览', () => {
-        assert.equal(guard(target('/userManagement', { permissions: ['user.view'] })), '/overView')
+    it('无 user.view 权限，用户管理页回落到系统设置', () => {
+        assert.equal(guard(target('/userManagement', { permissions: ['user.view'] })), '/setting')
     })
 
-    it('无 permission.view，权限管理页重定向到总览', () => {
-        assert.equal(guard(target('/permissionManagement', { permissions: ['permission.view'] })), '/overView')
+    it('无 permission.view，权限管理页回落到系统设置', () => {
+        assert.equal(guard(target('/permissionManagement', { permissions: ['permission.view'] })), '/setting')
     })
 
-    it('无 systemLog.view，系统日志页重定向到总览', () => {
-        assert.equal(guard(target('/systemLog', { permissions: ['systemLog.view'] })), '/overView')
+    it('无 systemLog.view，系统日志页回落到系统设置', () => {
+        assert.equal(guard(target('/systemLog', { permissions: ['systemLog.view'] })), '/setting')
     })
 
     it('系统设置页可进入', () => {
@@ -316,28 +359,32 @@ describe('游客角色', () => {
         else localStorage.removeItem('token')
     })
 
-    it('无权进入文章列表，重定向到总览', () => {
+    it('无权进入文章列表，回落到系统设置', () => {
         assert.equal(guard(target('/article', {
             permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
-        })), '/overView')
+        })), '/setting')
     })
 
-    it('无权进入图库编辑页，重定向到总览', () => {
+    it('无权进入图库编辑页，回落到系统设置', () => {
         assert.equal(guard(target('/editgallery', {
             permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
-        })), '/overView')
+        })), '/setting')
     })
 
-    it('无权进入本地文件页，重定向到总览', () => {
-        assert.equal(guard(target('/localfile', { permissions: ['file.view'] })), '/overView')
+    it('无权进入本地文件页，回落到系统设置', () => {
+        assert.equal(guard(target('/localfile', { permissions: ['file.view'] })), '/setting')
     })
 
     it('系统设置页可进入', () => {
         assert.equal(guard(target('/setting', { requiresAuth: true })), undefined)
     })
 
-    it('总览页可进入（无权限声明）', () => {
-        assert.equal(guard(target('/overView', { permissions: [] })), undefined)
+    it('无 overview.viewAll 时无法进入总览页（全站统计不可见）', () => {
+        assert.equal(
+            guard(target('/overView', { permissions: ['overview.viewAll'] })),
+            '/setting',
+            '游客不应看到系统总览的文章/图库/随笔数量与访问趋势'
+        )
     })
 })
 
@@ -371,8 +418,15 @@ describe('多权限声明的 OR 语义', () => {
         })), undefined)
     })
 
-    it('全部不命中时重定向到总览', () => {
+    it('全部不命中时回落到系统设置', () => {
         guard = createRouteGuard(() => makeSession(['comment.create']))
+        assert.equal(guard(target('/article', {
+            permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
+        })), '/setting')
+    })
+
+    it('有 overview.viewAll 但无文章权限时回落到总览', () => {
+        guard = createRouteGuard(() => makeSession(['overview.viewAll', 'comment.create']))
         assert.equal(guard(target('/article', {
             permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
         })), '/overView')

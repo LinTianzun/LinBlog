@@ -41,8 +41,9 @@ import { useSessionStore } from '../../store/session.ts'
 const session = useSessionStore()
 
 // 菜单权限映射：入口是否出现完全由权限矩阵决定，不再按角色挑选候选集
+// 总览是全站统计，按 overview.viewAll 收窄；系统设置对所有登录用户开放
 const MENU_PERMISSIONS: Record<string, string[]> = {
-    overView: [],
+    overView: ['overview.viewAll'],
     userManagement: ['user.view'],
     permissionManagement: ['permission.view'],
     systemLog: ['systemLog.view'],
@@ -59,7 +60,7 @@ const hasMenuAccess = (path: string): boolean => {
 }
 
 const visibleLinks = computed(() => {
-    // 空权限声明的菜单（系统总览、系统设置）对所有登录用户可见
+    // 空权限声明的菜单（系统设置）对所有登录用户可见
     return navLinks.filter(item => hasMenuAccess(item.path))
 })
 
