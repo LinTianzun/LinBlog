@@ -169,50 +169,100 @@
         </div>
 
         <!-- 编辑用户弹窗 -->
-        <div v-if="editUserModalVisible" class="modal-mask" @click.self="closeEditUserModal">
-            <div class="user-modal">
-                <div class="modal-header">
-                    <h3>编辑用户</h3>
+        <Teleport to="body">
+            <div v-if="editUserModalVisible" class="ue-mask" @click.self="closeEditUserModal">
+                <div class="ue-panel" role="dialog" aria-label="编辑用户">
+                    <!-- 头部：身份卡 -->
+                    <header class="ue-head">
+                        <div class="ue-identity">
+                            <span class="ue-avatar" :aria-hidden="true">{{ avatarInitial }}</span>
+                            <span class="ue-identity-copy">
+                                <strong class="ue-identity-name">{{ editingUserProfile?.username }}</strong>
+                                <span class="ue-identity-mail">{{ editingUserProfile?.mail }}</span>
+                                <span class="ue-identity-tags">
+                                    <span class="ue-chip ue-chip-id">#{{ editingUserId }}</span>
+                                    <span class="ue-chip" :class="`ue-chip-${editUser.user_type}`">
+                                        {{ roleName(editUser.user_type) }}
+                                    </span>
+                                    <span v-if="editingUserProfile" class="ue-chip"
+                                        :class="Number(editingUserProfile.status) === 1 ? 'ue-chip-on' : 'ue-chip-off'">
+                                        {{ Number(editingUserProfile.status) === 1 ? '已启用' : '已封禁' }}
+                                    </span>
+                                </span>
+                            </span>
+                        </div>
 
-                    <button type="button" class="modal-close" @click="closeEditUserModal">
-                        ×
-                    </button>
+                        <button type="button" class="ue-close" aria-label="关闭" @click="closeEditUserModal">
+                            <IconCrossOutline />
+                        </button>
+                    </header>
+
+                    <form class="ue-body" @submit.prevent="submitEditUser">
+                        <!-- 用户名 -->
+                        <div class="ue-field">
+                            <label class="ue-label" for="edit-username">
+                                <IconAvatarFill class="ue-label-icon" />用户名
+                            </label>
+                            <input id="edit-username" v-model.trim="editUser.username" class="ue-input" type="text"
+                                placeholder="请输入用户名" autocomplete="off" required />
+                        </div>
+
+                        <!-- 邮箱 -->
+                        <div class="ue-field">
+                            <label class="ue-label" for="edit-mail">
+                                <IconMailOutline class="ue-label-icon" />邮箱
+                            </label>
+                            <input id="edit-mail" v-model.trim="editUser.mail" class="ue-input" type="email"
+                                placeholder="请输入邮箱" autocomplete="off" required />
+                        </div>
+
+                        <!-- 角色：卡片选择，带职责说明 -->
+                        <div class="ue-field">
+                            <span class="ue-label">
+                                <IconCrownFill class="ue-label-icon" />用户角色
+                            </span>
+                            <div class="ue-roles">
+                                <button v-for="option in assignableRoles" :key="option.value" type="button"
+                                    class="ue-role" :class="[`ue-role-${option.value}`, {
+                                        'is-active': editUser.user_type === option.value
+                                    }]" @click="editUser.user_type = option.value">
+                                    <span class="ue-role-name">{{ option.label }}</span>
+                                    <span class="ue-role-desc">{{ roleDesc(option.value) }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 变更摘要：仅在实际有改动时出现 -->
+                        <div v-if="isEditChanged" class="ue-diff">
+                            <p class="ue-diff-title">
+                                <IconWarningOutline class="ue-diff-icon" />本次变更
+                            </p>
+                            <ul class="ue-diff-list">
+                                <li v-for="item in changeSummary" :key="item.label">
+                                    <span class="ue-diff-label">{{ item.label }}</span>
+                                    <span class="ue-diff-from">{{ item.from }}</span>
+                                    <IconRightOutline class="ue-diff-arrow" />
+                                    <span class="ue-diff-to">{{ item.to }}</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- 操作区 -->
+                        <footer class="ue-foot">
+                            <button type="button" class="ue-btn ue-btn-ghost" :disabled="editSubmitting"
+                                @click="closeEditUserModal">
+                                取消
+                            </button>
+                            <button type="submit" class="ue-btn ue-btn-primary"
+                                :disabled="editSubmitting || !isEditChanged">
+                                <span v-if="editSubmitting" class="ue-spinner" aria-hidden="true" />
+                                {{ editSubmitting ? '正在保存...' : '保存修改' }}
+                            </button>
+                        </footer>
+                    </form>
                 </div>
-
-                <form @submit.prevent="submitEditUser">
-
-                    <div class="form-item">
-                        <label for="edit-username">用户名</label>
-                        <input id="edit-username" v-model.trim="editUser.username" type="text" placeholder="请输入用户名"
-                            required />
-                    </div>
-
-                    <div class="form-item">
-                        <label for="edit-mail">邮箱</label>
-                        <input id="edit-mail" v-model.trim="editUser.mail" type="email" placeholder="请输入邮箱" required />
-                    </div>
-
-                    <div class="form-item">
-                        <label for="edit-role">用户角色</label>
-                        <select id="edit-role" v-model="editUser.user_type">
-                            <option v-for="option in assignableRoles" :key="option.value" :value="option.value">
-                                {{ option.label }}
-                            </option>
-                        </select>
-                    </div>
-
-                    <div class="modal-actions">
-                        <button type="button" class="cancel-btn" @click="closeEditUserModal">
-                            取消
-                        </button>
-
-                       <button type="submit" class="add-user-btn" :disabled="editSubmitting || !isEditChanged">
-                            {{ editSubmitting ? '正在保存...' : '保存修改' }}
-                        </button>
-                    </div>
-                </form>
             </div>
-        </div>
+        </Teleport>
     </yk-space>
 </template>
 
@@ -325,6 +375,48 @@ const editSubmitting = ref(false)
 const editMessage = ref('')
 const editMessageType = ref<'success' | 'error'>('success')
 
+// 正在编辑的用户行快照：仅用于头部身份卡展示原始资料
+const editingUserProfile = ref<UserInfo | null>(null)
+
+// 头像首字：取用户名首字符，空值时回退到「用」
+const avatarInitial = computed(() => {
+    const name = editUser.value.username.trim() || editingUserProfile.value?.username || ''
+    return name.trim().charAt(0) || '用'
+})
+
+// 角色职责说明：选角色时给出即时反馈，避免选错高危角色
+const roleDesc = (role: string): string => {
+    const map: Record<string, string> = {
+        admin: '管理账号与系统日常运营',
+        editor: '管理全站内容、审核与分类标签',
+        normal: '创作并管理自己的内容',
+        visitor: '仅浏览与使用个人账号设置',
+    }
+    return map[role] || ''
+}
+
+// 变更摘要：把三个字段的旧值/新值折叠成可读列表，保存前可自查
+const changeSummary = computed(() => {
+    const list: { label: string; from: string; to: string }[] = []
+    const original = originalEditUser.value
+    const current = editUser.value
+
+    if (current.username.trim() !== original.username) {
+        list.push({ label: '用户名', from: original.username, to: current.username.trim() })
+    }
+    if (current.mail.trim() !== original.mail) {
+        list.push({ label: '邮箱', from: original.mail, to: current.mail.trim() })
+    }
+    if (current.user_type !== original.user_type) {
+        list.push({
+            label: '角色',
+            from: roleName(original.user_type),
+            to: roleName(current.user_type),
+        })
+    }
+    return list
+})
+
 // 编辑用户表单
 const editUser = ref({
     username: '',
@@ -380,6 +472,8 @@ const openAddUserModal = () => {
 // 打开编辑用户弹窗，并填入当前用户信息
 const openEditUserModal = (user: UserInfo) => {
     editingUserId.value = user.id
+    // 保存行快照：头部身份卡始终展示原始资料，避免随输入框内容跳动
+    editingUserProfile.value = { ...user }
     editUser.value = {
         username: user.username,
         mail: user.mail,
@@ -403,6 +497,7 @@ const closeEditUserModal = () => {
 
     editUserModalVisible.value = false
     editingUserId.value = null
+    editingUserProfile.value = null
     editMessage.value = ''
 }
 
@@ -623,6 +718,7 @@ const submitEditUser = async () => {
         // 关闭弹窗并清理编辑状态
         editUserModalVisible.value = false
         editingUserId.value = null
+        editingUserProfile.value = null
         editMessage.value = ''
 
         // 显示全局成功提示
@@ -1129,5 +1225,445 @@ td {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+// ===== 编辑用户弹窗（重新设计）=====
+// 挂到 body 避免被表格容器的层叠上下文裁切；配色统一走后台 token
+.ue-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: color-mix(in srgb, #0b0f18 46%, transparent);
+    backdrop-filter: blur(3px);
+    animation: ue-mask-in 0.18s ease;
+}
+
+@keyframes ue-mask-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.ue-panel {
+    width: 100%;
+    max-width: 520px;
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius, 18px);
+    background: var(--admin-surface-raised, var(--bgColor1));
+    box-shadow: var(--admin-shadow-md);
+    animation: ue-panel-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ue-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+// 头部身份卡
+.ue-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 20px 22px 18px;
+    border-bottom: 1px solid var(--admin-line, var(--gray1));
+    background:
+        radial-gradient(circle at 100% 0%, var(--pcolor2), transparent 60%),
+        var(--admin-surface-soft, var(--bgColor1));
+}
+
+.ue-identity {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+}
+
+.ue-avatar {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    flex: none;
+    place-items: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--pcolor), var(--pcolor8));
+    box-shadow: 0 6px 18px var(--pcolor3);
+    color: #fff;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.ue-identity-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ue-identity-name {
+    overflow: hidden;
+    color: var(--admin-text, var(--gray));
+    font-size: 17px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ue-identity-mail {
+    overflow: hidden;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ue-identity-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.ue-chip {
+    padding: 2px 9px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 999px;
+    background: var(--bgColor1);
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ue-chip-id {
+    color: var(--admin-accent, var(--pcolor));
+    border-color: var(--pcolor3);
+    background: var(--pcolor1);
+}
+
+.ue-chip-on {
+    color: #1fb4a2;
+    border-color: color-mix(in srgb, #1fb4a2 30%, transparent);
+    background: color-mix(in srgb, #1fb4a2 12%, transparent);
+}
+
+.ue-chip-off {
+    color: #fa5247;
+    border-color: color-mix(in srgb, #fa5247 30%, transparent);
+    background: color-mix(in srgb, #fa5247 12%, transparent);
+}
+
+.ue-chip-admin {
+    color: var(--pcolor);
+    background: var(--pcolor1);
+    border-color: var(--pcolor3);
+}
+
+.ue-chip-editor {
+    color: var(--scolor, #1fb4a2);
+    background: var(--scolor1);
+    border-color: color-mix(in srgb, var(--scolor, #1fb4a2) 30%, transparent);
+}
+
+.ue-chip-normal {
+    color: var(--wcolor, #ff9a2e);
+    background: var(--wcolor1);
+    border-color: color-mix(in srgb, var(--wcolor, #ff9a2e) 30%, transparent);
+}
+
+.ue-chip-visitor {
+    color: var(--admin-muted, var(--gray6));
+    background: var(--bgColor2);
+}
+
+.ue-close {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--admin-muted, var(--gray6));
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    .yk-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    &:hover {
+        border-color: var(--admin-line, var(--gray1));
+        background: var(--bgColor2);
+        color: var(--admin-text, var(--gray));
+    }
+}
+
+// 表单主体
+.ue-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+    padding: 20px 22px 22px;
+}
+
+.ue-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ue-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--admin-text, var(--gray));
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ue-label-icon {
+    width: 15px;
+    height: 15px;
+    color: var(--admin-accent, var(--pcolor));
+}
+
+.ue-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 13px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius-sm, 12px);
+    background: var(--bgColor1);
+    color: var(--admin-text, var(--gray));
+    font-size: 14px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+    &::placeholder {
+        color: var(--admin-muted, var(--gray6));
+    }
+
+    &:focus {
+        outline: none;
+        border-color: var(--admin-accent, var(--pcolor));
+        box-shadow: 0 0 0 3px var(--pcolor2);
+    }
+}
+
+// 角色卡片：替代原生 select，选中态带主色描边
+.ue-roles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.ue-role {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 11px 13px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius-sm, 12px);
+    background: var(--bgColor1);
+    color: var(--admin-text, var(--gray));
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    &:hover {
+        border-color: var(--pcolor3);
+        background: var(--pcolor1);
+    }
+
+    &.is-active {
+        border-color: var(--admin-accent, var(--pcolor));
+        background: var(--pcolor1);
+        box-shadow: 0 0 0 2px var(--pcolor2);
+    }
+}
+
+.ue-role-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.ue-role-desc {
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+// 变更摘要
+.ue-diff {
+    padding: 13px 15px;
+    border: 1px solid color-mix(in srgb, var(--wcolor, #ff9a2e) 26%, transparent);
+    border-radius: var(--admin-radius-sm, 12px);
+    background: color-mix(in srgb, var(--wcolor, #ff9a2e) 8%, transparent);
+}
+
+.ue-diff-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 9px;
+    color: var(--wcolor, #ff9a2e);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ue-diff-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.ue-diff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        flex-wrap: wrap;
+    }
+}
+
+.ue-diff-label {
+    flex: none;
+    min-width: 46px;
+    color: var(--admin-muted, var(--gray6));
+}
+
+.ue-diff-from {
+    color: var(--admin-muted, var(--gray6));
+    text-decoration: line-through;
+}
+
+.ue-diff-arrow {
+    width: 13px;
+    height: 13px;
+    flex: none;
+    color: var(--admin-muted, var(--gray6));
+}
+
+.ue-diff-to {
+    color: var(--admin-text, var(--gray));
+    font-weight: 600;
+}
+
+// 底部操作区
+.ue-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 2px;
+    padding-top: 16px;
+    border-top: 1px solid var(--admin-line, var(--gray1));
+}
+
+.ue-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 40px;
+    padding: 0 20px;
+    border: 1px solid transparent;
+    border-radius: var(--admin-radius-sm, 12px);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    &:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+}
+
+.ue-btn-ghost {
+    border-color: var(--admin-line, var(--gray1));
+    background: var(--bgColor1);
+    color: var(--admin-text, var(--gray));
+
+    &:hover:not(:disabled) {
+        border-color: var(--admin-accent, var(--pcolor));
+        color: var(--admin-accent, var(--pcolor));
+    }
+}
+
+.ue-btn-primary {
+    background: linear-gradient(135deg, var(--pcolor), var(--pcolor8));
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 6px 18px var(--pcolor3);
+
+    &:hover:not(:disabled) {
+        filter: brightness(1.06);
+    }
+}
+
+.ue-spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: ue-spin 0.7s linear infinite;
+}
+
+@keyframes ue-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+    .ue-mask {
+        padding: 12px;
+    }
+
+    .ue-roles {
+        grid-template-columns: 1fr;
+    }
+
+    .ue-foot {
+        flex-direction: column-reverse;
+    }
+
+    .ue-btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ue-mask,
+    .ue-panel {
+        animation: none;
+    }
+
+    .ue-spinner {
+        animation-duration: 1.6s;
+    }
 }
 </style>
