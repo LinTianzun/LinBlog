@@ -33,6 +33,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconWarningOutline'
     },
     {
+        path: 'messages',
+        name: '回复私信',
+        icon: 'IconMailOutline'
+    },
+    {
         path: 'localfile',
         name: '本地文件',
         icon: 'IconFolderCloseFill'

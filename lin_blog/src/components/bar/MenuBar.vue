@@ -48,6 +48,7 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     permissionManagement: ['permission.view'],
     systemLog: ['systemLog.view'],
     reportedComments: ['comment.moderate'],
+    messages: ['message.private'],
     localfile: ['file.view'],
     article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
@@ -71,7 +72,7 @@ const menuGroups = computed(() => {
         {
             label: '运营',
             // 权限管理紧跟用户管理：同一入口组，超级管理员改完矩阵能立刻回用户列表看成员
-            paths: ['overView', 'userManagement', 'permissionManagement', 'reportedComments', 'systemLog'],
+            paths: ['overView', 'userManagement', 'permissionManagement', 'reportedComments', 'messages', 'systemLog'],
         },
         {
             label: '内容',

@@ -10,6 +10,10 @@ module.exports = (app) => {
     //  收件箱查询
     app.get('/api/message/inbox', authMiddleware, requirePermission('message.private'), messageController.getInBox)
 
+    //  私信会话列表与单个会话（博主可看全部，其他账号只看与博主的会话）
+    app.get('/api/message/conversations', authMiddleware, requirePermission('message.private'), messageController.getConversations)
+    app.get('/api/message/conversation/:userId', authMiddleware, requirePermission('message.private'), messageController.getConversation)
+
     //  发件箱查询
     app.get('/api/message/outbox', authMiddleware, requirePermission('message.private'), messageController.getOutBox)
 

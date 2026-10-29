@@ -81,6 +81,14 @@ const routes = [
                 }
             },
             {
+                path: 'messages',
+                component: () => import('../views/MessagesView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['message.private']
+                }
+            },
+            {
                 path: 'localfile',
                 component: () => import('../views/FileView.vue'),
                 meta: {

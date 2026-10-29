@@ -357,6 +357,7 @@ const tablesSql = {
     content VARCHAR(512) NOT NULL COMMENT '消息内容',
     is_read TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已读：1-是，0-否',
     type ENUM('system', 'private', 'notice') NOT NULL DEFAULT 'notice' COMMENT '消息类型',
+    channel ENUM('direct', 'wall') NOT NULL DEFAULT 'direct' COMMENT '私信来源：direct-私信会话，wall-门户留言墙',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
     PRIMARY KEY (id),
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1507,6 +1508,15 @@ async function ensureCommentReportHandlingSchema(exec = query) {
   }
 }
 
+// 私信与门户留言墙共用 message 表，用 channel 区分会话消息和公开留言，
+// 避免后台私信内容再次出现在门户留言墙。存量消息按 direct 处理，优先保护隐私。
+async function ensureMessageChannelSchema(exec = query) {
+  await ensureColumn(exec, 'message', 'channel', {
+    definition: "ENUM('direct', 'wall') NOT NULL DEFAULT 'direct'",
+    comment: '私信来源：direct-私信会话，wall-门户留言墙'
+  });
+}
+
 // 两级评论仍统一挂在根评论下，另外记录“实际回复的是哪条评论/哪位用户”，
 // 用于二级回复之间继续回复且不产生三级嵌套。
 async function ensureCommentReplyTargetSchema(exec = query) {
@@ -1704,6 +1714,10 @@ const migrations = [
   {
     version: '20261029_comment_report_handling',
     up: ensureCommentReportHandlingSchema
+  },
+  {
+    version: '20261029_message_channel',
+    up: ensureMessageChannelSchema
   }
 ];
 

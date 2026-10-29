@@ -30,6 +30,7 @@
 
 <script lang="ts" setup>
 import { toRefs, ref, computed, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { useRouter } from 'vue-router'
 import type { InformationProps } from './reply.ts'
 import type { ReplyDat } from '../../utils/interface'
 import reply from './reply.vue'
@@ -67,6 +68,7 @@ const closes = () => {
 }
 
 const proxy = getCurrentInstance()?.proxy as InformationInstance | null | undefined
+const router = useRouter()
 const responsivePageSize = useResponsiveListPageSize(
     ({ height }) => Math.floor((height - 220) / 100),
     { min: 8, max: 20 }
@@ -153,20 +155,29 @@ const markAllRead = async (): Promise<void> => {
     }
 }
 
-// 点击单条私信：未读的标记为已读，红点消失
+// 点击单条私信：先清除未读状态，再跳到回复私信页并打开对应会话
 const handleMessageClick = async (id: string | number): Promise<void> => {
     const target = messages.value.find(item => item.id === Number(id))
-    if (!target || target.isRead !== 0) return
+    if (!target || target.senderId === null) return
 
-    try {
-        const result = await markMessagesRead(target.id)
-        if (result.code !== 200) throw new Error(result.message || '标记失败')
+    if (target.isRead === 0) {
+        try {
+            const result = await markMessagesRead(target.id)
+            if (result.code !== 200) throw new Error(result.message || '标记失败')
 
-        target.isRead = 1
-        emits('read')
-    } catch (error) {
-        proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记失败，请稍后重试') })
+            target.isRead = 1
+            emits('read')
+        } catch (error) {
+            // 已读状态失败不应阻止用户进入会话继续回复
+            proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记已读失败，仍将打开会话') })
+        }
     }
+
+    closes()
+    await router.push({
+        path: '/messages',
+        query: { userId: String(target.senderId) },
+    })
 }
 
 const formatMoment = (value: string): string => {

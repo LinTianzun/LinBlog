@@ -39,6 +39,20 @@ async function sendMessage(req, res) {
             return res.status(403).json({ code: 403, message: '当前账号没有发送系统消息或通知的权限' });
         }
 
+        // 私信只允许「博主 ↔ 用户」两端：博主可回复任何用户，其他账号只能发给博主
+        if (type === 'private') {
+            if (normalizedReceiverId === Number(userId)) {
+                return res.status(400).json({ code: 400, message: '不能给自己发送私信' });
+            }
+            const ownerId = await messageModel.getOwnerId()
+            if (!ownerId) {
+                return res.status(400).json({ code: 400, message: '博主账号不存在，暂时无法发送私信' });
+            }
+            if (Number(userId) !== Number(ownerId) && normalizedReceiverId !== Number(ownerId)) {
+                return res.status(403).json({ code: 403, message: '普通账号只能给博主发送私信' });
+            }
+        }
+
         //  调用模型发送消息
         const result = await messageModel.insertMessage({
             receiverId: normalizedReceiverId,
@@ -66,6 +80,94 @@ async function sendMessage(req, res) {
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '消息发送失败：' + err.message })
+    }
+}
+
+/**
+ * 私信会话列表（博主看全部，其他账号只看与博主的会话）
+ */
+async function getConversations(req, res) {
+    try {
+        const { userId } = req.user
+        if (!hasPermission(req.user, 'message.private')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看私信的权限' })
+        }
+
+        const ownerId = await messageModel.getOwnerId()
+        if (!ownerId) {
+            return res.status(400).json({ code: 400, message: '博主账号不存在' })
+        }
+
+        const result = await messageModel.getConversations(
+            userId,
+            ownerId,
+            Number(userId) === Number(ownerId)
+        )
+        res.json({
+            code: 200,
+            message: result.conversations.length > 0 ? '会话查询成功' : '暂无私信会话',
+            data: result,
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '查询私信会话失败：' + err.message })
+    }
+}
+
+/**
+ * 单个会话的消息记录（分页，按时间正序返回当前页）
+ */
+async function getConversation(req, res) {
+    try {
+        const { userId } = req.user
+        if (!hasPermission(req.user, 'message.private')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看私信的权限' })
+        }
+
+        const targetUserId = Number(req.params.userId)
+        if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+            return res.status(400).json({ code: 400, message: '请传入有效的对话用户ID' })
+        }
+
+        const paginationResult = formatPaginationParams(req.query, {
+            defaultPageSize: 50,
+            maxPageSize: 100,
+        })
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
+        }
+        const { page, pageSize, offset } = paginationResult.data
+
+        const ownerId = await messageModel.getOwnerId()
+        if (!ownerId) {
+            return res.status(400).json({ code: 400, message: '博主账号不存在' })
+        }
+        const isOwner = Number(userId) === Number(ownerId)
+        if (!isOwner && targetUserId !== Number(ownerId)) {
+            return res.status(403).json({ code: 403, message: '普通账号只能查看与博主的私信' })
+        }
+
+        const target = await messageModel.findActiveUser(targetUserId)
+        if (!target) {
+            return res.status(404).json({ code: 404, message: '对话用户不存在或已禁用' })
+        }
+
+        const result = await messageModel.getConversationMessages(
+            userId,
+            targetUserId,
+            page,
+            pageSize,
+            offset
+        )
+        res.json({
+            code: 200,
+            message: '会话查询成功',
+            data: {
+                target,
+                ...result,
+            },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '查询会话消息失败：' + err.message })
     }
 }
 
@@ -313,6 +415,8 @@ async function createWallMessage(req, res) {
 
 module.exports = {
     sendMessage,
+    getConversations,
+    getConversation,
     getInBox,
     getOutBox,
     markAdRead,

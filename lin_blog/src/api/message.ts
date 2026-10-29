@@ -69,3 +69,63 @@ export function markMessagesRead(messageIds: number | number[]) {
 export function deleteMessage(id: number) {
   return request.delete<ApiResult<never>>(`/message/${id}`);
 }
+
+export interface ConversationUser {
+  id: number;
+  name: string;
+  avatar: string | null;
+}
+
+export interface ConversationSummary {
+  userId: number;
+  name: string;
+  avatar: string | null;
+  lastContent: string;
+  lastAt: string | null;
+  lastSenderId: number | null;
+  unreadCount: number;
+  total: number;
+  isOwner: boolean;
+}
+
+export interface ConversationListData {
+  owner: ConversationUser | null;
+  conversations: ConversationSummary[];
+}
+
+export interface ConversationMessagesData {
+  target: ConversationUser;
+  list: MessageItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+}
+
+// 私信会话列表：博主看全部读者，其他账号只看与博主的会话
+export function getConversations() {
+  return request.get<ApiResult<ConversationListData>>("/message/conversations");
+}
+
+// 单个会话的消息（按时间正序返回当前页）
+export function getConversation(
+  userId: number,
+  params: { page?: number; pageSize?: number } = {}
+) {
+  return request.get<ApiResult<ConversationMessagesData>>(
+    `/message/conversation/${userId}`,
+    { params }
+  );
+}
+
+// 发送私信（后端限制：博主可回复任意用户，其他账号只能发给博主）
+export function sendMessage(data: {
+  receiverId: number;
+  type: "private" | "system" | "notice";
+  content: string;
+}) {
+  return request.post<ApiResult<{ messageId: number; createAt: string }>>(
+    "/message",
+    data
+  );
+}

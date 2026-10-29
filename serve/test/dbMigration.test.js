@@ -24,7 +24,8 @@ const ALL_MIGRATIONS = [
     '20261028_diary_owner',
     '20261028_access_control',
     '20261029_comment_report_reason',
-    '20261029_comment_report_handling'
+    '20261029_comment_report_handling',
+    '20261029_message_channel'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -185,6 +186,30 @@ test('comment report handling migration adds status, handler and index', async (
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261029_comment_report_handling'
+    ))
+})
+
+test('message channel migration separates wall posts from direct messages', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261029_message_channel')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes("ALTER TABLE message ADD COLUMN channel ENUM('direct', 'wall') NOT NULL DEFAULT 'direct'")
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261029_message_channel'
     ))
 })
 
