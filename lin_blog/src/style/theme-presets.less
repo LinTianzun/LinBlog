@@ -196,3 +196,143 @@
     --bgColor5: #1a1216;
     --gray: #ffffff;
 }
+
+// ===== 渐变色系 =====
+// 额外写入 --bgGradient 供页面底色使用；--bgColor2 仍是纯色，
+// 因为它要参与 color-mix()，不接受渐变值。
+
+// 晨曦微光：暖橙粉渐变（浅色）
+:root[data-theme-preset='aurora-dream'] {
+    --portal-page-gradient: linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%);
+    --pcolor: #ff8a5c;
+    --pcolor1: rgba(255, 138, 92, 0.08);
+    --pcolor2: rgba(255, 138, 92, 0.12);
+    --pcolor3: rgba(255, 138, 92, 0.16);
+    --pcolor4: rgba(255, 138, 92, 0.24);
+    --pcolor5: rgba(255, 138, 92, 0.32);
+    --pcolor6: #ff9c74;
+    --pcolor8: #f07a4c;
+    --pcolor9: #d96b40;
+    --pcolor10: #b85835;
+    --lcolor: #ff8a5c;
+    --bgColor1: #fffaf6;
+    --bgColor2: #ffe0d0;
+    --bgColor3: #ffd2bd;
+    --bgColor4: #ffc4a9;
+    --bgColor5: #fffaf6;
+    --bgGradient: linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%);
+}
+
+// 极光之境：青绿极光渐变（深色）
+:root[data-theme-preset='aurora-boreal'] {
+    --portal-page-gradient: linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%);
+    --pcolor: #5eead4;
+    --pcolor1: rgba(94, 234, 212, 0.08);
+    --pcolor2: rgba(94, 234, 212, 0.12);
+    --pcolor3: rgba(94, 234, 212, 0.16);
+    --pcolor4: rgba(94, 234, 212, 0.24);
+    --pcolor5: rgba(94, 234, 212, 0.32);
+    --pcolor6: #7cefde;
+    --pcolor8: #4bd8c1;
+    --pcolor9: #42c1ad;
+    --pcolor10: #36a08f;
+    --lcolor: #5eead4;
+    --bgColor1: #14282b;
+    --bgColor2: #10312f;
+    --bgColor3: #1b3f3d;
+    --bgColor4: #234c49;
+    --bgColor5: #10312f;
+    --bgGradient: linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%);
+    --gray: #ffffff;
+}
+
+// 星云迷梦：紫调星云渐变（深色）
+:root[data-theme-preset='nebula-dream'] {
+    --portal-page-gradient: linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%);
+    --pcolor: #c084fc;
+    --pcolor1: rgba(192, 132, 252, 0.08);
+    --pcolor2: rgba(192, 132, 252, 0.12);
+    --pcolor3: rgba(192, 132, 252, 0.16);
+    --pcolor4: rgba(192, 132, 252, 0.24);
+    --pcolor5: rgba(192, 132, 252, 0.32);
+    --pcolor6: #cd9dfd;
+    --pcolor8: #b06ef5;
+    --pcolor9: #9c5fe0;
+    --pcolor10: #814dd8;
+    --lcolor: #c084fc;
+    --bgColor1: #25143a;
+    --bgColor2: #241539;
+    --bgColor3: #331f4d;
+    --bgColor4: #3d2759;
+    --bgColor5: #241539;
+    --bgGradient: linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%);
+    --gray: #ffffff;
+}
+
+// 深海幽蓝：深海蓝渐变（深色）
+:root[data-theme-preset='ocean-deep'] {
+    --portal-page-gradient: linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%);
+    --pcolor: #38bdf8;
+    --pcolor1: rgba(56, 189, 248, 0.08);
+    --pcolor2: rgba(56, 189, 248, 0.12);
+    --pcolor3: rgba(56, 189, 248, 0.16);
+    --pcolor4: rgba(56, 189, 248, 0.24);
+    --pcolor5: rgba(56, 189, 248, 0.32);
+    --pcolor6: #55c8f9;
+    --pcolor8: #2ba9e0;
+    --pcolor9: #2696c7;
+    --pcolor10: #1e7ba3;
+    --lcolor: #38bdf8;
+    --bgColor1: #122838;
+    --bgColor2: #0d2436;
+    --bgColor3: #173648;
+    --bgColor4: #1e4257;
+    --bgColor5: #0d2436;
+    --bgGradient: linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%);
+    --gray: #ffffff;
+}
+
+// 糖果梦境：粉紫糖果渐变（浅色）
+:root[data-theme-preset='candy-pop'] {
+    --portal-page-gradient: linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%);
+    --pcolor: #f472b6;
+    --pcolor1: rgba(244, 114, 182, 0.08);
+    --pcolor2: rgba(244, 114, 182, 0.12);
+    --pcolor3: rgba(244, 114, 182, 0.16);
+    --pcolor4: rgba(244, 114, 182, 0.24);
+    --pcolor5: rgba(244, 114, 182, 0.32);
+    --pcolor6: #f68bc2;
+    --pcolor8: #e35da3;
+    --pcolor9: #cc5292;
+    --pcolor10: #a84278;
+    --lcolor: #f472b6;
+    --bgColor1: #fffafd;
+    --bgColor2: #fdeaf4;
+    --bgColor3: #fbdcee;
+    --bgColor4: #f9cee8;
+    --bgColor5: #fffafd;
+    --bgGradient: linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%);
+}
+
+// 暮色流金：琥珀暮色渐变（深色）
+:root[data-theme-preset='sunset-glow'] {
+    --portal-page-gradient: linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%);
+    --pcolor: #fbbf24;
+    --pcolor1: rgba(251, 191, 36, 0.08);
+    --pcolor2: rgba(251, 191, 36, 0.12);
+    --pcolor3: rgba(251, 191, 36, 0.16);
+    --pcolor4: rgba(251, 191, 36, 0.24);
+    --pcolor5: rgba(251, 191, 36, 0.32);
+    --pcolor6: #fcc94f;
+    --pcolor8: #e0a51b;
+    --pcolor9: #c79118;
+    --pcolor10: #a37613;
+    --lcolor: #fbbf24;
+    --bgColor1: #2e1e0c;
+    --bgColor2: #2a1c0a;
+    --bgColor3: #3a2812;
+    --bgColor4: #45311a;
+    --bgColor5: #2a1c0a;
+    --bgGradient: linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%);
+    --gray: #ffffff;
+}

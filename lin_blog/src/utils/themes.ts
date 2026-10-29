@@ -1,5 +1,8 @@
 export type ThemeMode = 'light' | 'dark'
 
+// 主题类型：solid 为纯色底，gradient 为渐变底（--bgGradient 生效）
+export type ThemeKind = 'solid' | 'gradient'
+
 export interface ThemePreset {
     id: string
     name: string
@@ -10,6 +13,10 @@ export interface ThemePreset {
     background: string
     // CSS background 值；渐变主题用 linear-gradient，预览卡与横幅共用
     preview?: string
+    // 主题类型，默认 solid；gradient 时才写入 --bgGradient
+    kind?: ThemeKind
+    // 页面背景的 CSS background 值（渐变主题用；不传时由 gradientFrom/To 合成）
+    gradient?: string
 }
 
 /*
@@ -105,6 +112,68 @@ export const themePresets: ThemePreset[] = [
         primary: '#ee5a6f',
         background: '#1a1216',
         preview: 'linear-gradient(135deg, #2e1a20 0%, #6b2f3c 50%, #ee5a6f 100%)'
+    },
+
+    // ── 渐变色系：--bgGradient 生效，页面底色为真实渐变 ──
+    {
+        id: 'aurora-dream',
+        name: '晨曦微光',
+        base: 'light',
+        kind: 'gradient',
+        primary: '#ff8a5c',
+        background: '#fdf4ee',
+        preview: 'linear-gradient(135deg, #ffd6a5 0%, #ff9a8b 45%, #ff6a88 100%)',
+        gradient: 'linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%)'
+    },
+    {
+        id: 'aurora-boreal',
+        name: '极光之境',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#5eead4',
+        background: '#0d1b1e',
+        preview: 'linear-gradient(135deg, #0f2027 0%, #134e4a 45%, #5eead4 100%)',
+        gradient: 'linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%)'
+    },
+    {
+        id: 'nebula-dream',
+        name: '星云迷梦',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#c084fc',
+        background: '#170f24',
+        preview: 'linear-gradient(135deg, #2e1065 0%, #7e22ce 50%, #c084fc 100%)',
+        gradient: 'linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%)'
+    },
+    {
+        id: 'ocean-deep',
+        name: '深海幽蓝',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#38bdf8',
+        background: '#0b1622',
+        preview: 'linear-gradient(135deg, #0c4a6e 0%, #0284c7 50%, #38bdf8 100%)',
+        gradient: 'linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%)'
+    },
+    {
+        id: 'candy-pop',
+        name: '糖果梦境',
+        base: 'light',
+        kind: 'gradient',
+        primary: '#f472b6',
+        background: '#fef4f9',
+        preview: 'linear-gradient(135deg, #fce7f3 0%, #f9a8d4 50%, #c084fc 100%)',
+        gradient: 'linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%)'
+    },
+    {
+        id: 'sunset-glow',
+        name: '暮色流金',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#fbbf24',
+        background: '#1f1508',
+        preview: 'linear-gradient(135deg, #78350f 0%, #d97706 50%, #fbbf24 100%)',
+        gradient: 'linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%)'
     }
 ]
 

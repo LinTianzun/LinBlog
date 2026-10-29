@@ -11,6 +11,8 @@
 // 门户使用自己的顶栏，抵消全局 #app 为后台固定顶栏预留的 64px
 #app.is-portal {
     padding-top: 0;
+    // 渐变主题给门户铺一层真实渐变底；纯色主题这里回落到 bgColor1 保持原样
+    background: var(--portal-page-gradient);
 }
 
 // ===== 门户设计 token（全部从主题变量派生，明暗双态自动跟随）=====
@@ -74,6 +76,9 @@
 
     // 页面底色（从 --bgColor1 派生，确保 hero 底部渐变能停靠）
     --portal-page-bg: var(--bgColor1);
+    // 渐变主题覆盖成真实渐变；纯色主题回落到 bgColor1。
+    // 独立变量：--portal-page-bg 要参与 color-mix()，不能是渐变。
+    --portal-page-gradient: var(--bgColor1);
 }
 
 // 暗态覆盖：深色下用 --pcolor9（深色变体）作文字，--bgColor1 仍由 data-theme-preset 切换为深色
@@ -96,6 +101,7 @@
 
     --portal-ambient-opacity: 0.22;
     --portal-page-bg: var(--bgColor1);
+    --portal-page-gradient: var(--bgColor1);
 }
 
 // 响应式 Hero 高度

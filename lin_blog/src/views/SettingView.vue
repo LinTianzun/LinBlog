@@ -166,23 +166,28 @@
                             </div>
                         </div>
 
-                        <div class="set-subhead">
-                            <span class="set-label">主题配色</span>
-            <yk-text type="tertiary">
-                {{ isDark ? '深色' : '浅色' }}系 · 共 {{ visiblePresets.length }} 套
-            </yk-text>
-                        </div>
+                        <div v-for="group in presetGroups" :key="group.key" class="set-theme-group">
+                            <div class="set-subhead">
+                                <span class="set-label">{{ group.label }}</span>
+                                <yk-text type="tertiary">
+                                    {{ isDark ? '深色' : '浅色' }}系 · 共 {{ group.items.length }} 套
+                                </yk-text>
+                            </div>
 
-                        <div class="set-themes">
-            <button v-for="preset in visiblePresets" :key="preset.id" type="button" class="set-theme"
-                :class="{ 'is-active': preset.id === activePresetId }"
-                                @click="selectTheme(preset.id)">
-                                <span class="set-theme-swatch" :style="swatchStyle(preset)">
-                                    <span class="set-theme-dot" :style="{ background: preset.primary }" />
-                                </span>
-                                <span class="set-theme-name">{{ preset.name }}</span>
-                                <IconTickOutline v-if="preset.id === activePresetId" class="set-theme-check" />
-                            </button>
+                            <div class="set-themes">
+                                <button v-for="preset in group.items" :key="preset.id" type="button"
+                                    class="set-theme" :class="{
+                                        'is-active': preset.id === activePresetId,
+                                        'is-gradient': preset.kind === 'gradient'
+                                    }" @click="selectTheme(preset.id)">
+                                    <span class="set-theme-swatch" :style="swatchStyle(preset)">
+                                        <span class="set-theme-dot" :style="{ background: preset.primary }" />
+                                        <span v-if="preset.kind === 'gradient'" class="set-theme-kind">渐变</span>
+                                    </span>
+                                    <span class="set-theme-name">{{ preset.name }}</span>
+                                    <IconTickOutline v-if="preset.id === activePresetId" class="set-theme-check" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -371,10 +376,15 @@ const activePreset = computed(() =>
 )
 const isDark = computed(() => activePreset.value.base === 'dark')
 
-// 主题配色按当前基调过滤：浅色 tab 只出浅色系，深色 tab 只出深色系
-const visiblePresets = computed(() =>
-    themePresets.filter(p => p.base === activePreset.value.base)
-)
+// 主题配色先按当前基调过滤，再按纯色/渐变分段：
+// 浅色 tab 只出浅色系，深色 tab 只出深色系，同基调内渐变色系单独成组
+const presetGroups = computed(() => {
+    const matched = themePresets.filter(p => p.base === activePreset.value.base)
+    return [
+        { key: 'solid', label: '纯色系', items: matched.filter(p => (p.kind || 'solid') === 'solid') },
+        { key: 'gradient', label: '渐变系', items: matched.filter(p => p.kind === 'gradient') }
+    ].filter(group => group.items.length > 0)
+})
 
 // 顶栏快捷明暗切换会回落到默认主题，这里同步卡片选中态
 const onPresetChange = (event: Event) => {
@@ -1182,6 +1192,10 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     }
 }
 
+.set-theme-group+.set-theme-group {
+    margin-top: @space-m;
+}
+
 .set-themes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
@@ -1229,6 +1243,19 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     transform: translate(-50%, -50%);
     border-radius: 50%;
     box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35);
+}
+
+.set-theme-kind {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.42);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
 }
 
 .set-theme-name {
