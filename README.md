@@ -43,6 +43,8 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 ```sh
 npm run dev
 npm run build
+npm test
+npm run test:e2e          # Playwright 端到端回归（需先 npm run test:e2e:install）
 ```
 
 `build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-27 本地验证构建通过；已安装 `vite-plugin-html`、`vite-plugin-vue-devtools` 与 `@types/node`，补齐 Vite 配置所需依赖和 Node 类型。MockJS 已移除，`eval` 警告消失。经图标按需注册与 echarts 特性裁剪后，仅剩 `editor`（约 812 KB，只在编辑页按需加载）一个超阈值 chunk，`yike-design` 与 `echarts` 已压到阈值内，`chunkSizeWarningLimit` 为 600，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
@@ -57,6 +59,20 @@ npm start
 ```
 
 `serve/.env.example` 提供 JWT、数据库连接、CORS、JSON 请求体限制、备份容量、跨盘镜像与 S3 兼容对象存储的配置模板；`serve/linlog.js` 会通过 Node.js 的 `loadEnvFile` 加载 `.env`。`LINBLOG_JWT_SECRET` 至少需要 32 个字符。前端 Vite 开发服务器将 `/api` 代理到 `http://localhost:3030`。
+
+#### 自动化测试与 CI
+
+三层回归均可本地复现：
+
+```sh
+npm --prefix serve test          # 后端模型/控制器单测（使用模型替身）
+npm --prefix lin_blog test       # 前端纯函数与路由守卫单测
+npm --prefix lin_blog run test:e2e   # Playwright 端到端（自动拉起 Vite dev server）
+```
+
+E2E 覆盖 5 条主链路：登录与权限守卫、评论举报选原因、私信回复、主题切换持久化、门户详情深链接。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
+
+`.github/workflows/ci.yml` 在 push / PR 到 `main` 时依次执行后端测试、前端单测与生产构建、Playwright E2E，并上传 `playwright-report/` 与 `test-results/` 作为构建产物。见 `lin_blog/playwright.config.ts`、`lin_blog/e2e/`。
 
 #### CORS 跨域配置
 
