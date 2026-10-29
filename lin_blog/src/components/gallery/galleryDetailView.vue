@@ -15,6 +15,11 @@
             </div>
 
             <template v-else>
+                <!-- 与前台图库详情共用沉浸式头部：首图、标题、简介与元信息 -->
+                <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
+                    :cover="photos[0] || article.cover || ''" variant="immersive" :badges="heroBadges"
+                    cover-hint="点击放大" @cover-click="openLightbox(0)" />
+
                 <!-- 与前台共用统计条：后台这是只读展示，故不传点赞按钮 -->
                 <ContentStatBar :views="article.views" :comments="rootComments"
                     :photo-count="photos.length" :meta-text="publishedText" :meta-chips="metaChips" />
@@ -25,8 +30,6 @@
                         <IconFillOutline />编辑
                     </yk-button>
                 </div>
-
-                <p v-if="article.introduce" class="gallery-detail-introduce">{{ article.introduce }}</p>
 
                 <!-- 图片集：与前台共用排版，点击后打开共用灯箱 -->
                 <ContentPhotoGrid :photos="photos" layout="masonry" :show-index="true"
@@ -55,6 +58,7 @@ import {
 } from '@yike-design/ui/es/components/svg-icon'
 import ReplyList from '../reply/commentList.vue'
 import { useContentAccess } from '../../utils/contentAccess.ts'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
@@ -99,6 +103,18 @@ const photos = computed(() => {
 })
 
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
+
+// 头部与前台图库详情共用同一组标签语义：分类、图片数、状态
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (article.value?.subsetName) badges.push({ text: article.value.subsetName, tone: 'accent' })
+    badges.push({ text: `${photos.value.length} 张`, tone: 'plain' })
+    badges.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    return badges
+})
 
 // 统计条左侧的分类与状态标签
 const metaChips = computed(() => {
@@ -199,13 +215,6 @@ watch(loadKey, async (key, previousKey) => {
         display: flex;
         flex-wrap: wrap;
         gap: @space-s;
-    }
-
-    &-introduce {
-        margin: 0;
-        color: var(--gray6);
-        font-size: 14px;
-        line-height: 1.9;
     }
 
     &-comment {

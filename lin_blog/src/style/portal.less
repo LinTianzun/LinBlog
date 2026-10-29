@@ -166,6 +166,24 @@
     --content-photo-shadow: var(--portal-shadow-hover);
 }
 
+// 共享详情头部（ContentDetailHero）在门户侧的 token 覆盖。
+// 门户保留刊物感：衬线标题、纸张底色、克制的强调色标签，
+// 后台側则沿用 --admin-* 的管理面板观感，同一组件两侧同构但各自贴合。
+.content-detail-hero {
+    --content-hero-radius: 4px;
+    --content-hero-surface: var(--portal-surface);
+    --content-hero-surface-soft: var(--portal-line-soft);
+    --content-hero-accent: var(--portal-accent);
+    --content-hero-accent-soft: var(--portal-accent-soft);
+    --content-hero-ink: var(--portal-text-primary);
+    --content-hero-muted: var(--portal-text-secondary);
+    --content-hero-line: var(--portal-surface-border);
+    --content-hero-success: var(--portal-accent);
+    --content-hero-warning: var(--portal-accent-strong);
+    --content-hero-shadow: var(--portal-shadow-soft);
+    --content-hero-title-font: var(--portal-serif);
+}
+
 // 玻璃面卡片：明暗双态自动跟随
 .portal-glass {
     position: relative;

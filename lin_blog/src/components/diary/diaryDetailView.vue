@@ -2,6 +2,9 @@
     <yk-modal :model-value="modelValue" :title="diary?.title || '随笔详情'" size="l" :show-footer="false"
         :closeable="true" @update:model-value="handleVisibleChange">
         <div v-if="diary" class="diary-detail">
+            <!-- 与前台随笔详情共用纯文字头部：标题 + 天气/日期标签 -->
+            <ContentDetailHero :title="diary.title" variant="plain" :badges="heroBadges" />
+
             <!-- 与前台随笔详情共用统计条 -->
             <ContentStatBar :views="diary.views ?? 0" :comments="rootComments"
                 :meta-text="momentText" :meta-chips="metaChips" />
@@ -30,6 +33,7 @@ import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
 import { momentl } from '../../utils/moment'
 import diaryCommentList from './diaryCommentList.vue'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
@@ -65,6 +69,16 @@ const metaChips = computed(() => {
         chips.push({ text: weatherName.value, tone: 'accent', icon: weatherIcon.value || undefined })
     }
     return chips
+})
+
+// 头部与前台随笔详情共用同一组标签语义：天气、日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning'; icon?: string }[] = []
+    if (weatherName.value) {
+        badges.push({ text: weatherName.value, tone: 'accent', icon: weatherIcon.value || undefined })
+    }
+    if (momentText.value) badges.push({ text: momentText.value, tone: 'plain' })
+    return badges
 })
 
 // 灯箱：与前台/图库共用同一个组件

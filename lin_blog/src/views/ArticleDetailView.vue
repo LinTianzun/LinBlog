@@ -19,32 +19,8 @@
 
             <article v-else-if="article" class="article-detail-article">
                 <!-- 顶部：标题信息 + 封面 -->
-                <header class="article-detail-hero" :class="{ 'is-text-only': !article.cover }">
-                    <div class="article-detail-heading">
-                        <div class="article-detail-kicker">
-                            <yk-tag :class="`state-${article.state}`">{{ stateLabel }}</yk-tag>
-                            <span>{{ subsetName }}</span>
-                            <span class="article-detail-dot"></span>
-                            <span>{{ articleDate }}</span>
-                        </div>
-
-                        <h1>{{ article.title }}</h1>
-                        <p v-if="article.introduce" class="article-detail-introduce">
-                            {{ article.introduce }}
-                        </p>
-
-                        <yk-space v-if="labels.length" wrap size="s" class="article-detail-labels">
-                            <yk-tag v-for="label in labels" :key="label" shape="round">
-                                {{ label }}
-                            </yk-tag>
-                        </yk-space>
-                    </div>
-
-                    <figure v-if="article.cover" class="article-detail-cover">
-                        <yk-image :src="article.cover" width="100%" height="100%" fit="cover"
-                            :preview="true" :is-lazy="true" />
-                    </figure>
-                </header>
+                <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
+                    :cover="article.cover || ''" :badges="heroBadges" :labels="labels" />
 
                 <!-- 数据概览：与前台文章详情共用统计条 -->
                 <ContentStatBar class="article-detail-stats" :views="article.views"
@@ -311,6 +287,7 @@ import {
 import { useSubsetStore } from '../store/subset'
 import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import ContentDetailHero from '../components/content/ContentDetailHero.vue'
 import ContentStatBar from '../components/content/ContentStatBar.vue'
 
 type Props = {
@@ -404,6 +381,19 @@ const metaChips = computed(() => {
         tone: article.value?.state === 'published' ? 'success' : 'warning'
     })
     return chips
+})
+
+// 头部与前台文章详情共用同一组标签语义：分类、状态、日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = [
+        { text: subsetName.value, tone: 'accent' }
+    ]
+    badges.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    badges.push({ text: articleDate.value, tone: 'plain' })
+    return badges
 })
 
 const access = useContentAccess('article')
@@ -773,68 +763,6 @@ watch(
         gap: @space-xl;
     }
 
-    // 顶部：信息区与封面并排，封面比例固定，避免超宽铺满
-    &-hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
-        gap: clamp(20px, 3vw, 44px);
-        align-items: center;
-        padding: clamp(22px, 3vw, 36px);
-        border-radius: 20px;
-        // 用主题色与背景变量代替写死的蓝色，跟随渐变/纯色主题一起变
-        background:
-            radial-gradient(circle at 94% 2%, var(--pcolor3), transparent 42%),
-            linear-gradient(135deg, var(--admin-surface) 0%, var(--admin-surface-soft) 100%);
-
-        &.is-text-only {
-            grid-template-columns: minmax(0, 1fr);
-        }
-    }
-
-    &-heading {
-        min-width: 0;
-
-        h1 {
-            margin: @space-m 0 @space-s;
-            color: @font-color-l;
-            font-size: clamp(22px, 2.4vw, 30px);
-            line-height: 1.32;
-            letter-spacing: -0.01em;
-            overflow-wrap: anywhere;
-        }
-    }
-
-    &-kicker {
-        display: flex;
-        flex-wrap: wrap;
-        gap: @space-s;
-        align-items: center;
-        color: @font-color-s;
-        font-size: @size-s;
-        letter-spacing: 0.03em;
-    }
-
-    &-dot {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: @font-color-s;
-        opacity: 0.5;
-    }
-
-    &-introduce {
-        max-width: 720px;
-        margin: 0;
-        .font-m();
-        color: @font-color-s;
-        line-height: 1.8;
-        overflow-wrap: anywhere;
-    }
-
-    &-labels {
-        margin-top: @space-m;
-    }
-
     // 统计条：与操作区之间用细线分隔，形成「数据 / 操作」两段
     &-stats {
         padding-bottom: @space-m;
@@ -846,19 +774,6 @@ watch(
         display: flex;
         justify-content: flex-end;
         margin-top: calc(@space-m * -1);
-    }
-
-    &-cover {
-        margin: 0;
-        overflow: hidden;
-        aspect-ratio: 4 / 3;
-        border-radius: 14px;
-        background: @bg-color-s;
-        box-shadow: var(--admin-shadow-md, 0 14px 34px rgba(21, 38, 79, 0.14));
-
-        :deep(.yk-image) {
-            height: 100%;
-        }
     }
 
     // 工具栏：浅底色让数据与操作从正文中分离出来
@@ -1343,28 +1258,12 @@ watch(
         min-width: 0;
     }
 
-    .state-published {
-        color: #1f8a5b;
-        background: rgba(31, 157, 99, 0.12);
-    }
-
-    .state-rejected {
-        color: #c63e32;
-        background: rgba(218, 80, 66, 0.12);
-    }
 }
 
 @media (max-width: 900px) {
     .article-detail {
-        &-hero,
         &-layout {
             grid-template-columns: minmax(0, 1fr);
-        }
-
-        &-cover {
-            order: -1;
-            width: 100%;
-            max-width: 420px;
         }
 
         &-toolbar {
@@ -1387,10 +1286,6 @@ watch(
 
 @media (max-width: 560px) {
     .article-detail {
-        &-hero {
-            padding: @space-l;
-        }
-
         &-aside {
             grid-template-columns: minmax(0, 1fr);
         }

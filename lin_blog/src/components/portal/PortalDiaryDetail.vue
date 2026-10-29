@@ -6,6 +6,8 @@
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
             </div>
+            <!-- 与后台随笔详情共用纯文字头部：标题 + 天气/日期标签 -->
+            <ContentDetailHero :title="item.title" variant="plain" :badges="heroBadges" />
             <!-- 与后台随笔详情共用统计条，点赞按钮走插槽 -->
             <ContentStatBar :views="views" :comments="commentTotal"
                 :meta-text="formatDate(item.createdAt)" :meta-chips="metaChips">
@@ -54,6 +56,7 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
@@ -81,6 +84,17 @@ const metaChips = computed(() => {
         chips.push({ text: weatherName.value, tone: 'accent', icon: weatherIcon.value || undefined })
     }
     return chips
+})
+
+// 头部与后台随笔详情共用同一组标签语义：天气、日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning'; icon?: string }[] = []
+    if (weatherName.value) {
+        badges.push({ text: weatherName.value, tone: 'accent', icon: weatherIcon.value || undefined })
+    }
+    const date = formatDate(props.item?.createdAt || '')
+    if (date) badges.push({ text: date, tone: 'plain' })
+    return badges
 })
 
 // 灯箱：与后台随笔/图库共用
@@ -247,6 +261,11 @@ const formatDate = (value: string) => {
     color: @font-color-l;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+// 标题与正文之间留一档间距，与后台随笔的排版节奏一致
+.diary-detail > :deep(.content-detail-hero) {
+    padding-bottom: 4px;
 }
 
 // 点赞按钮：与只读 meta 并排，但保留可点击的视觉反馈

@@ -33,8 +33,20 @@
 
             <!-- 卡片下半部分整体可点：打开后台详情弹窗看图与评论 -->
             <div class="gallery-item-body" @click="openDetail">
+                <!-- 分类与图片数：与前台图库卡片的 kicker + count 信息对齐 -->
+                <div class="gallery-item-kicker">
+                    <span class="gallery-item-subset">{{ props.data.subsetName || '未分类' }}</span>
+                    <span class="gallery-item-count">
+                        <IconCameraOutline />{{ photos.length }} 张
+                    </span>
+                </div>
+
                 <p class="gallery-item-title">
                     {{ props.data.title }}
+                </p>
+
+                <p v-if="props.data.introduce" class="gallery-item-intro">
+                    {{ props.data.introduce }}
                 </p>
 
                 <div class="gallery-item-datas">
@@ -58,56 +70,23 @@
         </yk-space>
     </div>
 
-    <!-- 图库预览：点击封面或缩略图打开大图，支持左右切换与缩略图导航 -->
-    <Teleport to="body">
-        <div v-if="previewIndex !== null" class="gallery-lightbox" role="dialog" aria-modal="true"
-            aria-label="图库预览" @click.self="closePreview">
-            <button type="button" class="gallery-lightbox-close" aria-label="关闭预览" @click="closePreview">
-                <IconCloseOutline />
-            </button>
-
-            <button v-if="previewList.length > 1" type="button" class="gallery-lightbox-nav is-prev"
-                aria-label="上一张" @click="stepPreview(-1)">
-                <IconLeftOutline />
-            </button>
-
-            <figure class="gallery-lightbox-stage">
-                <img :src="previewList[previewIndex]" :alt="props.data.title" />
-                <figcaption>
-                    {{ props.data.title }}
-                    <span>{{ previewIndex + 1 }} / {{ previewList.length }}</span>
-                </figcaption>
-            </figure>
-
-            <button v-if="previewList.length > 1" type="button" class="gallery-lightbox-nav is-next"
-                aria-label="下一张" @click="stepPreview(1)">
-                <IconRightOutline />
-            </button>
-
-            <div v-if="previewList.length > 1" class="gallery-lightbox-thumbs">
-                <button v-for="(url, index) in previewList" :key="url" type="button"
-                    class="gallery-lightbox-thumb" :class="{ active: index === previewIndex }"
-                    :aria-label="`查看第 ${index + 1} 张`" @click="previewIndex = index">
-                    <img :src="url" :alt="`缩略图 ${index + 1}`" />
-                </button>
-            </div>
-        </div>
-    </Teleport>
+    <!-- 预览：与前后台详情共用同一个灯箱组件 -->
+    <ContentLightbox :open="previewIndex !== null" :photos="previewList" :index="previewIndex ?? 0"
+        :title="props.data.title" @close="closePreview" @update:index="previewIndex = $event" />
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-    IconCloseOutline,
+    IconCameraOutline,
     IconRotateLeftOutline,
     IconCommentOutline,
     IconEyeOutline,
     IconHeartOutline,
-    IconLeftOutline,
-    IconRightOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 import ConfirmPopover from '../common/ConfirmPopover.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
 import type { ArticleItem } from '../../api/article.ts'
 import {
     formatArticleDate,
@@ -161,35 +140,6 @@ const openPreview = (index: number): void => {
 const closePreview = (): void => {
     previewIndex.value = null
 }
-
-const stepPreview = (step: number): void => {
-    if (previewIndex.value === null) return
-
-    const total = previewList.value.length
-    previewIndex.value = (previewIndex.value + step + total) % total
-}
-
-const onKeydown = (event: KeyboardEvent): void => {
-    if (previewIndex.value === null) return
-
-    if (event.key === 'Escape') closePreview()
-    if (event.key === 'ArrowLeft') stepPreview(-1)
-    if (event.key === 'ArrowRight') stepPreview(1)
-}
-
-// 打开预览时才监听键盘，关闭后立刻解绑
-watch(previewIndex, value => {
-    if (value === null) {
-        window.removeEventListener('keydown', onKeydown)
-        return
-    }
-
-    window.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onKeydown)
-})
 
 const openEditor = (): void => {
     router.push(`/editgallery/${props.data.id}`)
@@ -366,15 +316,62 @@ const deleteGallery = (): void => {
         }
     }
 
+    // 分类 + 图片数：卡片顶部的信息行，与前台的 kicker/count 对齐
+    &-kicker {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: @space-s;
+        padding: 12px 14px 0;
+        color: var(--admin-muted, @font-color-s);
+        font-size: 12px;
+    }
+
+    &-subset {
+        overflow: hidden;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--admin-accent-soft, var(--pcolor2));
+        color: var(--admin-accent, @pcolor);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &-count {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex: none;
+        font-variant-numeric: tabular-nums;
+
+        :deep(.yk-icon) {
+            width: 14px;
+            height: 14px;
+        }
+    }
+
     &-title {
         .font-l();
-        padding: 14px 14px 0;
+        padding: 8px 14px 0;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
         text-overflow: ellipsis;
         font-weight: 600;
+    }
+
+    // 简介：两行截断，让卡片内容更接近前台的图文卡而不是纯标题
+    &-intro {
+        margin: 6px 0 0;
+        padding: 0 14px;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        color: var(--admin-muted, @font-color-s);
+        font-size: 12px;
+        line-height: 1.6;
     }
 
     &-body {
@@ -425,154 +422,6 @@ const deleteGallery = (): void => {
 }
 </style>
 <style lang="less">
-
-.gallery-lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 1200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(12px, 3vw, 36px);
-    padding: clamp(24px, 5vh, 64px);
-    box-sizing: border-box;
-    background: rgba(10, 12, 16, 0.82);
-    backdrop-filter: blur(6px);
-    animation: gallery-lightbox-in 180ms ease;
-
-    &-stage {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 14px;
-        max-width: min(1100px, 84vw);
-        max-height: 76vh;
-        margin: 0;
-
-        img {
-            max-width: 100%;
-            max-height: 64vh;
-            object-fit: contain;
-            border-radius: 14px;
-            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-        }
-
-        figcaption {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: rgba(255, 255, 255, 0.92);
-            font-size: 14px;
-
-            span {
-                padding: 2px 10px;
-                border-radius: 999px;
-                background: rgba(255, 255, 255, 0.16);
-                font-size: 12px;
-            }
-        }
-    }
-
-    &-close,
-    &-nav {
-        display: grid;
-        place-items: center;
-        width: 42px;
-        height: 42px;
-        flex: none;
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        cursor: pointer;
-        transition: background 160ms ease, transform 160ms ease;
-
-        &:hover {
-            background: rgba(255, 255, 255, 0.24);
-            transform: scale(1.06);
-        }
-    }
-
-    &-close {
-        position: absolute;
-        top: clamp(16px, 3vh, 32px);
-        right: clamp(16px, 3vw, 36px);
-    }
-
-    &-thumbs {
-        position: absolute;
-        bottom: clamp(16px, 3vh, 32px);
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 8px;
-        max-width: min(720px, 88vw);
-        padding: 8px;
-        overflow-x: auto;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    &-thumb {
-        width: 58px;
-        height: 58px;
-        flex: none;
-        padding: 0;
-        overflow: hidden;
-        border: 2px solid transparent;
-        border-radius: 10px;
-        background: transparent;
-        cursor: pointer;
-        opacity: 0.62;
-        transition: opacity 160ms ease, border-color 160ms ease;
-
-        img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        &:hover {
-            opacity: 0.9;
-        }
-
-        &.active {
-            border-color: #fff;
-            opacity: 1;
-        }
-    }
-
-    @keyframes gallery-lightbox-in {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
-    }
-}
-
-@media (max-width: 640px) {
-    .gallery-lightbox {
-        flex-direction: column;
-        gap: 12px;
-
-        &-nav {
-            order: 2;
-        }
-
-        &-stage {
-            order: 1;
-            max-height: 62vh;
-
-            img {
-                max-height: 52vh;
-            }
-        }
-    }
-}
 .gallery-item {
     .yk-image__img {
         border-radius: 0;
