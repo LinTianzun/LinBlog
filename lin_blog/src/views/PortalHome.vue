@@ -104,8 +104,12 @@
                     <button type="button" class="story-feature-link" @click="openArticle(featuredArticle.id)">
                         <span class="story-feature-media portal-media-box"
                             :class="{ 'is-empty': !articleCover(featuredArticle), 'portal-edge': true }">
-                            <img v-if="articleCover(featuredArticle)" :src="articleCover(featuredArticle)"
-                                :alt="featuredArticle.title" loading="lazy" />
+                            <img v-if="articleCover(featuredArticle)"
+                                v-bind="responsiveImageAttrs(articleCover(featuredArticle), {
+                                    widths: IMAGE_WIDTHS.hero,
+                                    sizes: '(max-width: 900px) 100vw, 65vw'
+                                })"
+                                :alt="featuredArticle.title" />
                             <span v-else class="story-placeholder">
                                 {{ (featuredArticle.title || '文').trim().charAt(0) }}
                             </span>
@@ -257,6 +261,7 @@ import {
 } from '../api/portal'
 import { extractArticleCover, parseGalleryContent, type ArticleItem } from '../api/article'
 import { weathers } from '../utils/weather'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
 
 const articleList = ref<ArticleItem[]>([])
 const articleLoading = ref(false)

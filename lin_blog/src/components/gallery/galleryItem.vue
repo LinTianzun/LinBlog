@@ -3,7 +3,8 @@
         <yk-space size="s" dir="vertical">
             <div class="gallery-item-image">
                 <div class="gallery-item-cover" @click="openPreview(0)">
-                    <yk-image :src="cover" fit="cover" :preview="false" width="100%" height="100%"
+                    <yk-image :src="optimizedImageUrl(cover, 480)" fit="cover" :preview="false" width="100%"
+                        height="100%"
                         :is-lazy="true" />
                     <p class="gallery-item-state" :class="`is-${props.data.state}`">
                         {{ stateLabel }}
@@ -14,8 +15,8 @@
                         :class="`gallery-item-image-${n === 1 ? 'left' : n === 3 ? 'right' : 'center'}`">
                         <button v-if="photos[n - 1]" type="button" class="gallery-item-thumb-button"
                             :aria-label="`预览第 ${n} 张图片`" @click="openPreview(n)">
-                            <yk-image :src="photos[n - 1]" fit="cover" :preview="false" width="100%" height="100%"
-                                :is-lazy="true" />
+                            <yk-image :src="optimizedImageUrl(photos[n - 1], 240)" fit="cover" :preview="false"
+                                width="100%" height="100%" :is-lazy="true" />
                         </button>
                     </div>
                 </yk-space>
@@ -89,6 +90,7 @@ import {
     getArticleStateLabel,
     parseGalleryContent,
 } from '../../api/article.ts'
+import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
 
 const props = withDefaults(defineProps<{
     data: ArticleItem

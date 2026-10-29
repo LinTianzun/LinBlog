@@ -4,7 +4,7 @@
             :class="[`is-${item.span}`, `tone-${item.tone ?? 0}`]"
             :style="{ animationDelay: `${Math.min(index, 11) * 55}ms` }" @click="emit('select', item.id)">
             <div class="print-frame portal-edge">
-                <img v-if="item.image" :src="item.image" :alt="item.alt" loading="lazy" />
+                <img v-if="item.image" v-bind="wallImageAttrs(item)" :alt="item.alt" />
                 <div v-else class="print-blank" :class="`tone-${item.tone ?? 0}`">
                     <span>{{ item.glyph }}</span>
                 </div>
@@ -23,6 +23,8 @@
 </template>
 
 <script lang="ts" setup>
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../../utils/imageOptimization'
+
 export interface WallPrint {
     id: number | string
     title: string
@@ -47,6 +49,14 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
     (e: 'select', id: WallPrint['id']): void
 }>()
+
+const wallImageAttrs = (item: WallPrint) =>
+    responsiveImageAttrs(item.image, {
+        widths: IMAGE_WIDTHS.content,
+        sizes: item.span === 'wide'
+            ? '(max-width: 560px) 100vw, (max-width: 900px) 100vw, 62vw'
+            : '(max-width: 560px) 100vw, (max-width: 900px) 50vw, 32vw'
+    })
 </script>
 
 <style lang="less" scoped>

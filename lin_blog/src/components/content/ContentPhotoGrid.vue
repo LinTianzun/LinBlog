@@ -7,7 +7,12 @@
         <button v-for="(photo, index) in photos" :key="`${photo}-${index}`" type="button"
             class="content-photo-cell" :aria-label="`查看第 ${startIndex + index + 1} 张`"
             @click="emit('preview', startIndex + index)">
-            <img :src="photo" :alt="`第 ${startIndex + index + 1} 张`" loading="lazy" />
+            <img
+                v-bind="responsiveImageAttrs(photo, {
+                    widths: IMAGE_WIDTHS.content,
+                    sizes: '(max-width: 640px) 100vw, (max-width: 900px) 48vw, 30vw'
+                })"
+                :alt="`第 ${startIndex + index + 1} 张`" />
             <span v-if="showIndex" class="content-photo-index">
                 {{ String(startIndex + index + 1).padStart(2, '0') }}
             </span>
@@ -22,6 +27,7 @@
 
 <script lang="ts" setup>
 import { IconImageOutline } from '@yike-design/ui/es/components/svg-icon'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../../utils/imageOptimization'
 
 withDefaults(defineProps<{
     photos: string[]

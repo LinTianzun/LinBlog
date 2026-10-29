@@ -29,7 +29,7 @@
             </ContentStatBar>
             <!-- 正文：独立阅读区，行宽收窄，图片改为居中卡片 -->
             <article class="detail-reader">
-                <div class="detail-html" v-html="article.content"></div>
+                <div class="detail-html" v-html="optimizedContent"></div>
             </article>
 
             <!-- 评论区：与图库/随笔详情共用同一套两级评论组件 -->
@@ -66,6 +66,7 @@ import { useSessionStore } from '../../store/session.ts'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
+import { optimizeRichContentImages } from '../../utils/imageOptimization'
 
 const props = defineProps<{
     open: boolean
@@ -112,6 +113,9 @@ const metaChips = computed(() => {
 })
 
 const labels = computed(() => parseArticleLabels(props.article?.label))
+const optimizedContent = computed(() =>
+    optimizeRichContentImages(props.article?.content || '')
+)
 
 // 头部与后台文章详情共用同一组标签语义：分类、状态、发布日期
 const heroBadges = computed(() => {

@@ -168,6 +168,7 @@
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
+import { optimizeRichContentImages } from '../utils/imageOptimization'
 import type { ArticleItem, ArticleState } from '../api/article'
 import {
     deleteArticle,
@@ -314,9 +315,10 @@ const canDeleteComment = (comment: CommentItem): boolean => {
 
 const safeContent = computed(() => {
     const html = article.value?.content || '<p>暂无正文</p>'
-    return DOMPurify.sanitize(html, {
+    const sanitized = DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
     })
+    return optimizeRichContentImages(sanitized)
 })
 
 // 一级评论按最新在前，二级回复按时间正序挂在所属评论下

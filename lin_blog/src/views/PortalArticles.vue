@@ -70,8 +70,12 @@
                     <button type="button" class="post-link" @click="openArticle(article.id)">
                         <!-- 封面：有图显示图，无图用主题色排印占位，不重复展示误导性默认图 -->
                         <span class="post-cover portal-media-box" :class="{ 'is-empty': !articleCover(article) }">
-                            <img v-if="articleCover(article)" :src="articleCover(article)" :alt="article.title"
-                                loading="lazy" />
+                            <img v-if="articleCover(article)"
+                                v-bind="responsiveImageAttrs(articleCover(article), {
+                                    widths: IMAGE_WIDTHS.card,
+                                    sizes: '(max-width: 720px) 100vw, 168px'
+                                })"
+                                :alt="article.title" />
                             <span v-else class="post-cover-glyph">{{ (article.title || '文').trim().charAt(0) }}</span>
                         </span>
                         <span class="post-body">
@@ -127,6 +131,7 @@ import {
 } from '../api/portal'
 import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
 
 const route = useRoute()
 const router = useRouter()

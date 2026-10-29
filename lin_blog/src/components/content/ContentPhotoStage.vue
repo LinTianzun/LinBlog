@@ -8,7 +8,16 @@
             <button v-for="(photo, index) in visiblePhotos" :key="`${photo}-${index}`" type="button"
                 class="content-photo-stage-cell" :class="{ 'is-lead': index === 0 }"
                 :aria-label="`查看第 ${startIndex + index + 1} 张`" @click="emit('preview', startIndex + index)">
-                <img :src="photo" :alt="`第 ${startIndex + index + 1} 张`" :loading="index === 0 ? 'eager' : 'lazy'" />
+                <img
+                    v-bind="responsiveImageAttrs(photo, {
+                        widths: IMAGE_WIDTHS.hero,
+                        sizes: index === 0
+                            ? '(max-width: 760px) 100vw, 60vw'
+                            : '(max-width: 760px) 50vw, 30vw',
+                        loading: index === 0 ? 'eager' : 'lazy',
+                        fetchPriority: index === 0 ? 'high' : undefined
+                    })"
+                    :alt="`第 ${startIndex + index + 1} 张`" />
                 <span class="content-photo-stage-zoom" aria-hidden="true">
                     <IconZoomInOutline />
                 </span>
@@ -28,6 +37,7 @@ import {
     IconImageOutline,
     IconZoomInOutline,
 } from '@yike-design/ui/es/components/svg-icon'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../../utils/imageOptimization'
 
 const props = withDefaults(defineProps<{
     photos: string[]

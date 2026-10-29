@@ -2,8 +2,8 @@
     <div class="article-item">
         <yk-space size="xl" align="start">
             <div class="article-item-cover" @click="openDetail">
-                <yk-image v-if="props.data.cover" :src="props.data.cover" fit="cover" :preview="false" width="160"
-                    height="120" :is-lazy="true" />
+                <yk-image v-if="props.data.cover" :src="optimizedImageUrl(props.data.cover, 480)" fit="cover"
+                    :preview="false" width="160" height="120" :is-lazy="true" />
                 <div v-else class="article-item-cover-placeholder">
                     {{ coverText }}
                 </div>
@@ -95,6 +95,7 @@ import {
     parseArticleLabels,
 } from '../../api/article'
 import { useSubsetStore } from '../../store/subset'
+import { optimizedImageUrl } from '../../utils/imageOptimization'
 
 type ArticleItemProps = {
     data: ArticleItem

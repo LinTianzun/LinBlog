@@ -10,7 +10,14 @@
             class="content-detail-hero-media is-clickable"
             :class="`is-fit-${coverFit}`"
             @click="emit('cover-click')">
-            <img :src="cover" :alt="title" loading="eager" @error="emit('cover-error')" />
+            <img
+                v-bind="responsiveImageAttrs(cover, {
+                    widths: IMAGE_WIDTHS.hero,
+                    sizes: '(max-width: 760px) 100vw, 1200px',
+                    loading: 'eager',
+                    fetchPriority: 'high'
+                })"
+                :alt="title" @error="emit('cover-error')" />
             <span class="content-detail-hero-veil" aria-hidden="true"></span>
             <figcaption class="content-detail-hero-caption">
                 <span v-if="badges.length" class="content-detail-hero-badges">
@@ -49,7 +56,12 @@
             <figure v-if="cover" class="content-detail-hero-media"
                 :class="[`is-fit-${coverFit}`, { 'is-clickable': Boolean(coverHint) }]"
                 @click="emit('cover-click')">
-                <img :src="cover" :alt="title" loading="lazy" @error="emit('cover-error')" />
+                <img
+                    v-bind="responsiveImageAttrs(cover, {
+                        widths: IMAGE_WIDTHS.card,
+                        sizes: '(max-width: 760px) 100vw, 320px'
+                    })"
+                    :alt="title" @error="emit('cover-error')" />
                 <span v-if="coverHint" class="content-detail-hero-hint">
                     <IconZoomInOutline />{{ coverHint }}
                 </span>
@@ -60,6 +72,7 @@
 
 <script lang="ts" setup>
 import { IconZoomInOutline } from '@yike-design/ui/es/components/svg-icon'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../../utils/imageOptimization'
 
 export interface HeroBadge {
     text: string

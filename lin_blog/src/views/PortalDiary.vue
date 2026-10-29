@@ -81,8 +81,11 @@
 
                                 <span v-if="diary.picture.length" class="journal-pictures"
                                     :class="`pictures-${Math.min(diary.picture.length, 4)}`">
-                                    <img v-for="(pic, pi) in diary.picture.slice(0, 4)" :key="pi" :src="pic"
-                                        alt="" loading="lazy" />
+                                    <img v-for="(pic, pi) in diary.picture.slice(0, 4)" :key="pi"
+                                        v-bind="responsiveImageAttrs(pic, {
+                                            widths: IMAGE_WIDTHS.card,
+                                            sizes: '(max-width: 720px) 50vw, 24vw'
+                                        })" alt="" />
                                     <span v-if="diary.picture.length > 4" class="picture-more">
                                         +{{ diary.picture.length - 4 }}
                                     </span>
@@ -121,6 +124,7 @@ import { getPublicDiaries, type PortalDiary, type PortalWeatherFacet } from '../
 import type { PortalSort } from '../api/portal'
 import { weathers } from '../utils/weather'
 import AdminPager from '../components/common/AdminPager.vue'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
 
 const route = useRoute()
 const router = useRouter()

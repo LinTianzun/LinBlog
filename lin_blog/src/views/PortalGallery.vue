@@ -31,7 +31,7 @@
                             <span v-if="!isCoverReady(item)" class="gallery-blank" :class="`tone-${toneOf(item)}`">
                                 <span>{{ glyphOf(item) }}</span>
                             </span>
-                            <img v-if="coverOf(item)" :src="coverOf(item)" :alt="item.title" loading="lazy"
+                            <img v-if="coverOf(item)" v-bind="galleryImageAttrs(item, i)" :alt="item.title"
                                 :class="{ 'is-loaded': isCoverReady(item) }" @load="markLoaded(item.id)"
                                 @error="markBroken(item.id)" />
                             <span class="gallery-sequence">{{ frameNumber(i) }}</span>
@@ -45,8 +45,8 @@
                             <span class="gallery-kicker">{{ item.subsetName || '未分类' }}</span>
                             <span v-if="i === 0 && contactImages(item).length" class="lead-contact"
                                 aria-hidden="true">
-                                <img v-for="(pic, pi) in contactImages(item)" :key="pi" :src="pic" alt=""
-                                    loading="lazy" />
+                                <img v-for="(pic, pi) in contactImages(item)" :key="pi"
+                                    v-bind="contactImageAttrs(pic)" alt="" />
                             </span>
                             <span class="gallery-name">{{ item.title }}</span>
                             <span class="gallery-stats">
@@ -84,6 +84,7 @@ import { getPublicArticles } from '../api/portal'
 import type { PortalSort } from '../api/portal'
 import { parseGalleryContent, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
+import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
 
 const route = useRoute()
 
@@ -128,6 +129,22 @@ const isCoverReady = (item: ArticleItem): boolean => {
 }
 
 const contactImages = (item: ArticleItem): string[] => imagesOf(item).filter(Boolean).slice(0, 3)
+
+const galleryImageAttrs = (item: ArticleItem, index: number) =>
+    responsiveImageAttrs(coverOf(item), {
+        widths: IMAGE_WIDTHS.hero,
+        sizes: index === 0
+            ? '(max-width: 900px) 100vw, 62vw'
+            : '(max-width: 560px) 100vw, (max-width: 900px) 50vw, 34vw',
+        loading: index === 0 ? 'eager' : 'lazy',
+        fetchPriority: index === 0 ? 'high' : undefined
+    })
+
+const contactImageAttrs = (url: string) =>
+    responsiveImageAttrs(url, {
+        widths: IMAGE_WIDTHS.thumb,
+        sizes: '(max-width: 560px) 28vw, 10vw'
+    })
 
 const markLoaded = (id: number) => {
     loadedIds.value = new Set(loadedIds.value).add(id)

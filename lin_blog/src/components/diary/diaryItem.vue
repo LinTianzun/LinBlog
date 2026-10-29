@@ -33,7 +33,8 @@
                     <!-- 配图与图库卡片一致：点击直接放大，不再依赖预览组的默认交互 -->
                     <button v-for="(url, index) in previewList" :key="`${url}-${index}`" type="button"
                         class="diary-item-thumb" :aria-label="`查看第 ${index + 1} 张`" @click="openPreview(index)">
-                        <img :src="url" :alt="`第 ${index + 1} 张`" loading="lazy" />
+                        <img :src="optimizedImageUrl(url, 240)" :alt="`第 ${index + 1} 张`" loading="lazy"
+                            decoding="async" />
                     </button>
                 </div>
             </div>
@@ -79,6 +80,7 @@ import { weathers } from '../../utils/weather'
 import { momentl } from '../../utils/moment'
 import ConfirmPopover from '../common/ConfirmPopover.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
+import { optimizedImageUrl } from '../../utils/imageOptimization'
 
 type DiaryItemProps = {
     data: DiaryData

@@ -15,7 +15,7 @@
         <yk-scrollbar v-else class="waterfallSc">
             <div class="waterfall">
                 <div class="waterfall-item" v-for="item in photos" :key="item">
-                    <img :src="item">
+                    <img :src="optimizedImageUrl(item, 480)" decoding="async">
                     <IconStarFill class="waterfall-item-cover" v-show="item === cover" />
                     <yk-space size="ss">
                         <p class="waterfall-item-tool" @click="changeCover(item)" v-show="item !== cover">设为封面
@@ -33,6 +33,7 @@
 <script lang="ts" setup>
 import { ref, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
+import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
 
 type UploadResponse = {
     data?: {
