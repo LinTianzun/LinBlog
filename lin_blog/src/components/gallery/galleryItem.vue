@@ -37,7 +37,7 @@
                 <div class="gallery-item-kicker">
                     <span class="gallery-item-subset">{{ props.data.subsetName || '未分类' }}</span>
                     <span class="gallery-item-count">
-                        <IconCameraOutline />{{ photos.length }} 张
+                        <IconCameraOutline />{{ allPhotos.length }} 张
                     </span>
                 </div>
 
@@ -50,20 +50,17 @@
                 </p>
 
                 <div class="gallery-item-datas">
-                    <yk-space class="gallery-item-stats" :size="14" align="center" wrap>
-                        <yk-text type="third" class="gallery-item-stat">
+                    <div class="gallery-item-stats">
+                        <span class="gallery-item-stat">
                             <IconEyeOutline />{{ props.data.views }}
-                        </yk-text>
-                        <yk-text type="third" class="gallery-item-stat">
+                        </span>
+                        <span class="gallery-item-stat">
                             <IconHeartOutline />{{ props.data.likes }}
-                        </yk-text>
-                        <yk-text type="third" class="gallery-item-stat">
-                            <IconCommentOutline />{{ rootComments }}
-                        </yk-text>
-                        <yk-text type="third" class="gallery-item-stat">
-                            <IconRotateLeftOutline />{{ replyComments }}
-                        </yk-text>
-                    </yk-space>
+                        </span>
+                        <span class="gallery-item-stat">
+                            <IconCommentOutline />{{ commentCount }}
+                        </span>
+                    </div>
                     <yk-text type="third" class="gallery-item-date">{{ articleDate }}</yk-text>
                 </div>
             </div>
@@ -80,7 +77,6 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     IconCameraOutline,
-    IconRotateLeftOutline,
     IconCommentOutline,
     IconEyeOutline,
     IconHeartOutline,
@@ -118,12 +114,17 @@ const photos = computed(() => {
     const filtered = cover.value ? allPhotos.value.filter(url => url !== cover.value) : allPhotos.value
     return filtered.slice(0, 3)
 })
-const articleDate = computed(() => formatArticleDate(props.data.createdAt))
+// 与详情统计条保持同一时间口径：优先展示发布时间，草稿才回落到创建时间
+const articleDate = computed(() => formatArticleDate(props.data.publishedAt || props.data.createdAt))
 const stateLabel = computed(() => getArticleStateLabel(props.data.state))
 
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
-const rootComments = computed(() => props.data.rootComments ?? props.data.comments ?? 0)
-const replyComments = computed(() => props.data.replyComments ?? 0)
+// 卡片与门户保持一致，只展示评论总数；详情里再拆分一级评论与回复
+const commentCount = computed(() => {
+    const hasSplitCounts = props.data.rootComments !== undefined || props.data.replyComments !== undefined
+    if (hasSplitCounts) return (props.data.rootComments ?? 0) + (props.data.replyComments ?? 0)
+    return props.data.comments ?? 0
+})
 
 // 预览列表：封面在前，其余图片随后，点缩略图也能定位到正确的一张
 const previewList = computed(() => {
@@ -367,7 +368,7 @@ const deleteGallery = (): void => {
         padding: 0 14px;
         overflow: hidden;
         display: -webkit-box;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
         color: var(--admin-muted, @font-color-s);
         font-size: 12px;
@@ -384,13 +385,19 @@ const deleteGallery = (): void => {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: @space-m;
+        gap: 12px;
         padding: 8px 14px 14px;
+        color: var(--admin-muted, @font-color-s);
+        font-size: 12px;
     }
 
-    // 统计项统一走「图标 + 数字」，不再用「查看/喜欢」文字，避免和右侧日期挤在一起
+    // 与门户图库卡片同口径：浏览、喜欢、评论总数；日期单独靠右
     &-stats {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         min-width: 0;
+        overflow: hidden;
     }
 
     &-stat {
@@ -401,14 +408,15 @@ const deleteGallery = (): void => {
         white-space: nowrap;
 
         :deep(.yk-icon) {
-            width: 15px;
-            height: 15px;
+            width: 14px;
+            height: 14px;
             flex: none;
         }
     }
 
     &-date {
         flex: none;
+        margin-left: auto;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }

@@ -32,6 +32,29 @@ export interface GuardTarget {
 export type GuardResult = string | void | undefined | false
 
 /**
+ * 权限不足 / 登录后的回落目标：按顺序取第一个当前会话可进入的页面。
+ *
+ * /overView 本身也受 overview.viewAll 保护（总览是全站统计），
+ * 所以不能再把它当无条件兜底——否则无该权限的用户会「被拒 → 回总览 → 再被拒」死循环。
+ * 末端 /setting 对所有登录用户开放，保证回落一定收敛。
+ */
+export const FALLBACK_ROUTES: { path: string; permissions?: string[] }[] = [
+    { path: '/overView', permissions: ['overview.viewAll'] },
+    { path: '/setting' },
+]
+
+/**
+ * 选出会话可进入的回落路径（纯函数，便于测试）。
+ */
+export function resolveFallbackPath(session: GuardSession): string {
+    for (const route of FALLBACK_ROUTES) {
+        if (!route.permissions?.length) return route.path
+        if (route.permissions.some(key => session.can(key))) return route.path
+    }
+    return FALLBACK_ROUTES[FALLBACK_ROUTES.length - 1].path
+}
+
+/**
  * 创建路由守卫工厂。
  *
  * @param getSession   回调返回当前会话能力（调用时实时读取，保证守卫拿到最新快照）
@@ -52,14 +75,14 @@ export function createRouteGuard(
 
         // 已登录访问登录页 → 跳总览
         if (to.path === '/loginRegister' && token) {
-            return '/overView'
+            return resolveFallbackPath(getSession())
         }
         // 按权限矩阵收窄：命中任意一项即可进入
         const requiredPermissions = to.meta.permissions
         if (requiredPermissions?.length) {
             const session = getSession()
             if (!requiredPermissions.some(key => session.can(key))) {
-                return '/overView'
+                return resolveFallbackPath(session)
             }
         }
     }

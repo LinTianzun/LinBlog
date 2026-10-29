@@ -41,6 +41,12 @@ const routes = [
                 // UserProfile 将被渲染到 User 的 <router-view> 内部
                 path: 'overView',
                 component: () => import('../views/OverView.vue'),
+                // 总览是全站统计（文章/图库/随笔数量、访问趋势），
+                // 按 overview.viewAll 收窄：无该权限的登录用户不再进入该页
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['overview.viewAll'],
+                },
             },
             {
     path: 'userManagement',
