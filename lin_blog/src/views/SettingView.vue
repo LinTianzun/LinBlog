@@ -898,7 +898,11 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 
 // ── 账号资料 ──
 .set-profile {
+    // 头像绝对定位的锚点：缺了它头像会脱离卡片去对齐更外层元素
+    position: relative;
     padding: 0;
+    // .set-card 的 gap 会在横幅与内容区之间插出一条底色缝，这里归零
+    gap: 0;
     overflow: hidden;
 }
 
@@ -909,7 +913,8 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     gap: 4px;
     min-height: 84px;
     justify-content: center;
-    padding: 0 24px;
+    // 左边距与正文区一致（144px），让标题让开头像并与下方资料列对齐
+    padding: 0 24px 0 144px;
     overflow: hidden;
     background:
         radial-gradient(circle at 84% 0%, rgba(255, 255, 255, 0.22), transparent 42%),
@@ -943,14 +948,15 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 .set-profile-body {
     // 左侧为头像预留空间：padding 24px + 头像 96px + 间距 24px
     display: flex;
-    min-height: 148px;
-    align-items: flex-end;
+    min-height: 104px;
+    align-items: center;
     padding: 16px 24px 24px 144px;
 }
 
 .set-avatar-box {
     position: absolute;
-    top: 60px;
+    // 横幅高 84px，头像上压 36px、下探 66px，压在交界处
+    top: 48px;
     left: 24px;
     z-index: 1;
     width: 96px;
@@ -958,7 +964,8 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     :deep(.yk-upload-picture) {
         width: 96px;
         height: 96px;
-        border: 3px solid @bg-color-l;
+        // 描边跟随卡片底色，避免深色主题下出现一圈亮白边
+        border: 3px solid var(--admin-surface, var(--bgColor1));
         box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
     }
 
@@ -1456,12 +1463,24 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
         padding: 18px 16px;
     }
 
+    .set-profile-banner {
+        // 窄屏头像缩到 76px，标题左边距同步收到 112px
+        padding: 0 16px 0 112px;
+        min-height: 74px;
+    }
+
+    .set-profile-banner-text {
+        font-size: 17px;
+    }
+
     .set-profile-body {
         padding: 16px 16px 20px 116px;
+        min-height: 92px;
     }
 
     .set-avatar-box {
         left: 16px;
+        top: 40px;
         width: 76px;
 
         :deep(.yk-upload-picture) {
