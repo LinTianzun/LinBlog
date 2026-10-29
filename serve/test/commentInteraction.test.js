@@ -17,6 +17,10 @@ let reportCalls = []
 let deleteResult = 0
 let deleteCalls = []
 let logCalls = []
+let listReportsResult = null
+let listReportsCalls = []
+let updateReportStatusResult = false
+let updateReportStatusCalls = []
 
 const interactionStub = {
     normalizeTargetType(value) {
@@ -36,6 +40,14 @@ const interactionStub = {
     async deleteComment(targetType, commentId, userId, userType) {
         deleteCalls.push({ targetType, commentId, userId, userType })
         return deleteResult
+    },
+    async listReports(options) {
+        listReportsCalls.push(options)
+        return listReportsResult
+    },
+    async updateReportStatus(id, status, handledBy) {
+        updateReportStatusCalls.push({ id, status, handledBy })
+        return updateReportStatusResult
     }
 }
 
@@ -107,6 +119,10 @@ test.beforeEach(() => {
     deleteResult = 0
     deleteCalls = []
     logCalls = []
+    listReportsResult = null
+    listReportsCalls = []
+    updateReportStatusResult = false
+    updateReportStatusCalls = []
 })
 
 test('评论互动只接受 article/diary 和正整数评论 ID', () => {
@@ -445,4 +461,212 @@ test('删除评论入参非法时返回 400 且不写库', async () => {
         assert.equal(res.statusCode, 400)
     }
     assert.equal(deleteCalls.length, 0)
+})
+
+test('举报处理列表按条件过滤并格式化评论与来源信息', async () => {
+    queryHandler = async (sql) => {
+        if (sql.includes('GROUP BY r.status, r.reason')) {
+            return [
+                { status: 0, reason: 'spam', total: 3 },
+                { status: 1, reason: 'abuse', total: 2 },
+                { status: 2, reason: 'spam', total: 1 }
+            ]
+        }
+        if (sql.includes('SELECT COUNT(*) AS total')) {
+            return [{ total: 4 }]
+        }
+        return [
+            {
+                id: 9,
+                target_type: 'article',
+                comment_id: 31,
+                reason: 'spam',
+                detail: '重复广告',
+                status: 0,
+                created_at: '2026-10-29T10:00:00.000Z',
+                handled_at: null,
+                reporter_id: 7,
+                reporter_name: '举报人',
+                comment_user_id: 8,
+                comment_user_name: '评论人',
+                comment_user_avatar: '/avatar.png',
+                comment_content: '加我微信',
+                comment_status: 1,
+                comment_likes: 2,
+                comment_complaint: 4,
+                comment_created_at: '2026-10-29T09:00:00.000Z',
+                article_id: 12,
+                article_title: '一篇文章',
+                article_classify: 'article',
+                diary_id: null,
+                diary_title: null,
+                handler_name: null
+            }
+        ]
+    }
+
+    const result = await interactionModel.listReports({
+        page: 2,
+        pageSize: 10,
+        offset: 10,
+        reason: 'spam',
+        targetType: 'article',
+        status: 0,
+        keyword: '微信'
+    })
+
+    assert.equal(result.total, 4)
+    assert.equal(result.totalPage, 1)
+    assert.deepEqual(result.summary, {
+        total: 6,
+        pending: 3,
+        resolved: 2,
+        dismissed: 1,
+        reasons: { spam: 4, abuse: 2 }
+    })
+    assert.equal(result.list[0].reporter.name, '举报人')
+    assert.equal(result.list[0].comment.user.name, '评论人')
+    assert.equal(result.list[0].source.title, '一篇文章')
+
+    const listCall = queryCalls.find(call => call.sql.includes('LIMIT ? OFFSET ?'))
+    assert.match(listCall.sql, /r\.reason = \?/)
+    assert.match(listCall.sql, /r\.status = \?/)
+    assert.deepEqual(listCall.values.slice(-2), [10, 10])
+
+    // comment_report 与 diary_comment 都有 status 列，统计查询必须限定表别名
+    const summaryCall = queryCalls.find(call => call.sql.includes('GROUP BY r.status, r.reason'))
+    assert.match(summaryCall.sql, /SELECT r\.status, r\.reason/)
+})
+
+test('举报来源筛选把图库从文章里独立出来', async () => {
+    queryHandler = async () => []
+
+    // SELECT 列表里本来就带 a.classify，断言只看 WHERE 条件
+    const findWhere = async (targetType) => {
+        queryCalls = []
+        await interactionModel.listReports({ targetType })
+        const sql = queryCalls.find(call => call.sql.includes('LIMIT ? OFFSET ?')).sql
+        return sql.slice(sql.indexOf('WHERE'))
+    }
+
+    // 图库内容在 article 表中 classify=image，来源仍按 target_type='article' 存
+    const articleSql = await findWhere('article')
+    assert.match(articleSql, /r\.target_type = 'article'/)
+    assert.match(articleSql, /a\.classify <> 'image'/)
+
+    const gallerySql = await findWhere('gallery')
+    assert.match(gallerySql, /r\.target_type = 'article'/)
+    assert.match(gallerySql, /a\.classify = 'image'/)
+
+    const diarySql = await findWhere('diary')
+    assert.match(diarySql, /r\.target_type = 'diary'/)
+    assert.doesNotMatch(diarySql, /a\.classify/)
+})
+
+test('更新举报状态只接受已处理或已忽略', async () => {
+    queryHandler = async () => ({ affectedRows: 1 })
+    assert.equal(await interactionModel.updateReportStatus(9, 1, 3), true)
+    const update = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.deepEqual(update.values, [1, 3, 9])
+
+    queryCalls = []
+    assert.equal(await interactionModel.updateReportStatus(9, 0, 3), false)
+    assert.equal(await interactionModel.updateReportStatus(9, 3, 3), false)
+    assert.equal(await interactionModel.updateReportStatus(0, 1, 3), false)
+    assert.equal(queryCalls.length, 0)
+})
+
+test('删除评论会把相关待处理举报标记为已处理', async () => {
+    queryHandler = async (sql) => {
+        if (sql.includes('SELECT id, parent_id FROM diary_comment')) {
+            return [{ id: 5, parent_id: 0 }]
+        }
+        if (/UPDATE\s+diary_comment\s+SET\s+status\s*=\s*0/.test(sql)) return { affectedRows: 1 }
+        if (sql.includes('UPDATE diary d')) return { affectedRows: 1 }
+        return { affectedRows: 1 }
+    }
+
+    await interactionModel.deleteComment('diary', 5, 7, 'admin')
+
+    const resolved = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.ok(resolved)
+    assert.match(resolved.sql, /status = 1/)
+    assert.deepEqual(resolved.values, [7, 'diary', 5])
+})
+
+test('举报处理接口按权限与参数校验', async () => {
+    const denied = makeResponse()
+    await controller.getReports({
+        query: {},
+        user: { userId: 7, userType: 'normal', permissions: [] }
+    }, denied)
+    assert.equal(denied.statusCode, 403)
+
+    const invalidReason = makeResponse()
+    await controller.getReports({
+        query: { reason: 'unknown' },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, invalidReason)
+    assert.equal(invalidReason.statusCode, 400)
+
+    const invalidSource = makeResponse()
+    await controller.getReports({
+        query: { targetType: 'gallery2' },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, invalidSource)
+    assert.equal(invalidSource.statusCode, 400)
+
+    listReportsResult = {
+        list: [], total: 0, page: 1, pageSize: 10, totalPage: 0,
+        summary: { total: 0, pending: 0, resolved: 0, dismissed: 0, reasons: {} }
+    }
+    const ok = makeResponse()
+    await controller.getReports({
+        query: { page: '2', pageSize: '5', status: '0', reason: 'spam', targetType: 'gallery', keyword: ' 广告 ' },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, ok)
+    assert.equal(ok.statusCode, 200)
+    assert.deepEqual(listReportsCalls[0], {
+        page: 2,
+        pageSize: 5,
+        offset: 5,
+        reason: 'spam',
+        targetType: 'gallery',
+        status: 0,
+        keyword: ' 广告 '
+    })
+})
+
+test('处理举报会写入日志，未命中返回 404', async () => {
+    const invalid = makeResponse()
+    await controller.updateReportStatus({
+        params: { id: '9' },
+        body: { status: 0 },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, invalid)
+    assert.equal(invalid.statusCode, 400)
+
+    updateReportStatusResult = false
+    const missing = makeResponse()
+    await controller.updateReportStatus({
+        params: { id: '9' },
+        body: { status: 1 },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, missing)
+    assert.equal(missing.statusCode, 404)
+
+    updateReportStatusResult = true
+    const ok = makeResponse()
+    await controller.updateReportStatus({
+        params: { id: '9' },
+        body: { status: 2 },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] },
+        ip: '127.0.0.1'
+    }, ok)
+
+    assert.equal(ok.statusCode, 200)
+    assert.deepEqual(updateReportStatusCalls[1], { id: 9, status: 2, handledBy: 7 })
+    assert.equal(logCalls.length, 1)
+    assert.equal(logCalls[0].targetType, 'comment_report')
+    assert.equal(logCalls[0].detail, '忽略举报')
 })

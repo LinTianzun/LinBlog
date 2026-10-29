@@ -34,4 +34,8 @@ module.exports = (app) => {
 
     // 分页查询当前用户发出的所有评论（需登录，无需传用户ID/评论ID）
     app.get('/api/comment/my', authMiddleware, commentController.getMyComments)
+
+    // 后台举报处理：列表与处理结果（需登录，控制器内校验 comment.moderate）
+    app.get('/api/comment/reports', authMiddleware, commentInteractionController.getReports)
+    app.patch('/api/comment/reports/:id', authMiddleware, commentInteractionController.updateReportStatus)
 }

@@ -73,6 +73,14 @@ const routes = [
                 }
             },
             {
+                path: 'reportedComments',
+                component: () => import('../views/CommentReportView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['comment.moderate']
+                }
+            },
+            {
                 path: 'localfile',
                 component: () => import('../views/FileView.vue'),
                 meta: {

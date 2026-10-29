@@ -1,6 +1,7 @@
 const commentInteractionModel = require('../model/dbModel/commentInteraction/index')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
+const { formatPaginationParams } = require('../utils/paginationUtil')
 
 const REPORT_REASONS = new Map([
     ['spam', '广告或引流'],
@@ -201,8 +202,114 @@ async function deleteComment(req, res) {
     }
 }
 
+/**
+ * 后台举报处理列表（需 comment.moderate）
+ * GET /api/comment/reports?page&pageSize&status&reason&targetType&keyword
+ */
+async function getReports(req, res) {
+    try {
+        if (!hasPermission(req.user, 'comment.moderate')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有处理举报的权限' })
+        }
+
+        const paginationResult = formatPaginationParams(req.query)
+        if (!paginationResult.success) {
+            return res.status(400).json({ code: 400, message: paginationResult.errorMsg })
+        }
+        const { page, pageSize, offset } = paginationResult.data
+
+        const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : ''
+        if (reason && !REPORT_REASONS.has(reason)) {
+            return res.status(400).json({ code: 400, message: '请选择有效的举报原因' })
+        }
+
+        const targetType = typeof req.query.targetType === 'string' ? req.query.targetType.trim() : ''
+        if (targetType && !['article', 'gallery', 'diary'].includes(targetType)) {
+            return res.status(400).json({ code: 400, message: '来源筛选仅支持 article、gallery 或 diary' })
+        }
+
+        let status = null
+        if (req.query.status !== undefined && req.query.status !== '' && req.query.status !== 'all') {
+            const parsed = Number(req.query.status)
+            if (!Number.isInteger(parsed) || ![0, 1, 2].includes(parsed)) {
+                return res.status(400).json({ code: 400, message: '举报状态仅支持 0、1、2' })
+            }
+            status = parsed
+        }
+
+        const result = await commentInteractionModel.listReports({
+            page,
+            pageSize,
+            offset,
+            reason: reason || null,
+            targetType: targetType || null,
+            status,
+            keyword: typeof req.query.keyword === 'string' ? req.query.keyword : '',
+        })
+
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: result,
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '查询举报失败：' + err.message })
+    }
+}
+
+/**
+ * 处理单条举报（需 comment.moderate）
+ * PATCH /api/comment/reports/:id  body: { status: 1 已处理 | 2 已忽略 }
+ */
+async function updateReportStatus(req, res) {
+    try {
+        if (!hasPermission(req.user, 'comment.moderate')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有处理举报的权限' })
+        }
+
+        const reportId = commentInteractionModel.parseCommentId(req.params.id)
+        if (!reportId) {
+            return res.status(400).json({ code: 400, message: '请传入有效的举报ID' })
+        }
+
+        const status = Number(req.body?.status)
+        if (![1, 2].includes(status)) {
+            return res.status(400).json({ code: 400, message: '处理结果仅支持 1（已处理）或 2（已忽略）' })
+        }
+
+        const updated = await commentInteractionModel.updateReportStatus(
+            reportId,
+            status,
+            req.user.userId
+        )
+        if (!updated) {
+            return res.status(404).json({ code: 404, message: '举报不存在' })
+        }
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'comment',
+            targetType: 'comment_report',
+            targetId: reportId,
+            detail: status === 1 ? '将举报标记为已处理' : '忽略举报',
+            ip: req.ip || null,
+        })
+
+        res.json({
+            code: 200,
+            message: status === 1 ? '已标记为已处理' : '已忽略该举报',
+            data: { id: reportId, status },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '处理举报失败：' + err.message })
+    }
+}
+
 module.exports = {
     toggleLike,
     report,
-    deleteComment
+    deleteComment,
+    getReports,
+    updateReportStatus,
 }

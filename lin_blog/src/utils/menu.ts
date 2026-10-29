@@ -28,6 +28,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconStatisticsFill'
     },
     {
+        path: 'reportedComments',
+        name: '举报处理',
+        icon: 'IconWarningOutline'
+    },
+    {
         path: 'localfile',
         name: '本地文件',
         icon: 'IconFolderCloseFill'

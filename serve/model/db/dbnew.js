@@ -330,11 +330,15 @@ const tablesSql = {
     user_id BIGINT UNSIGNED NOT NULL COMMENT '举报用户ID',
     reason VARCHAR(32) NOT NULL DEFAULT 'other' COMMENT '举报原因',
     detail VARCHAR(200) NULL COMMENT '补充说明',
+    status TINYINT(1) NOT NULL DEFAULT 0 COMMENT '处理状态：0-待处理，1-已处理，2-已忽略',
+    handled_by BIGINT UNSIGNED NULL COMMENT '处理人ID',
+    handled_at TIMESTAMP NULL COMMENT '处理时间',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '举报时间',
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uk_user_comment (target_type, comment_id, user_id),
-    INDEX idx_comment (target_type, comment_id)
+    INDEX idx_comment (target_type, comment_id),
+    INDEX idx_report_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论举报表';`,
 
   weather: `CREATE TABLE IF NOT EXISTS weather(
@@ -731,8 +735,10 @@ async function seedRichDemoData() {
     );
     const articleIds = articleRows.filter(a => a.classify === 'article').map(a => a.id);
     const galleryCount = articleRows.filter(a => a.classify === 'image').length;
+    // 图库与随笔的行：后续补演示评论与举报明细时要用
+    const galleryRows = articleRows.filter(a => a.classify === 'image');
 
-    const result = { comments: 0, messages: 0, galleries: 0, articles: 0 };
+    const result = { comments: 0, messages: 0, galleries: 0, articles: 0, reports: 0 };
 
     // 1. 评论：带举报数、已读/未读，挂在现有文章上
     if (articleIds.length > 0) {
@@ -876,8 +882,163 @@ async function seedRichDemoData() {
       }
     }
 
+    // 5. 举报明细：demo 数据只写了 comment.complaint 计数，没有 comment_report 行，
+    //    后台举报处理页此前只能看到用户真实举报的那一条。这里为高投诉评论补上明细，
+    //    覆盖三种来源（文章 / 图库 / 随笔）与全部六类原因，并让一部分进入已处理/已忽略。
+    const diaryRows = await baseQuery(
+      'SELECT id FROM diary WHERE status = 1 ORDER BY id ASC LIMIT 4'
+    );
+    await seedSourceComments(baseQuery, pickUser, galleryRows, diaryRows, result)
+    result.reports = await seedReportSeeds(baseQuery, admin);
+
     return result;
   });
+}
+
+/**
+ * 为图库与随笔补上带投诉计数的演示评论。
+ * 图库评论就是 classify=image 文章下的 comment 行；随笔评论独立落在 diary_comment。
+ * 没有这两类评论时，举报页的来源筛选永远只有「博客文章」一项。
+ */
+async function seedSourceComments(baseQuery, pickUser, galleryRows, diaryRows, result) {
+  const gallerySeeds = [
+    { content: '第二张的构图太好了，请问用的什么镜头？', complaint: 0 },
+    { content: '这套图疑似转载没标出处，已举报。', complaint: 4 },
+    { content: '色调很喜欢，收藏学习一下。', complaint: 0 },
+    { content: '图片带水印引流，举报了。', complaint: 2 },
+  ]
+  const diarySeeds = [
+    { content: '同款天气，今天也是阴天。', complaint: 0 },
+    { content: '这条评论在刷广告，举报一下。', complaint: 3 },
+    { content: '写得很有画面感，喜欢。', complaint: 0 },
+    { content: '误导信息，数据完全是编的。', complaint: 5 },
+  ]
+
+  // 图库评论：挂在 classify=image 的文章上，comment.comments 同步自增
+  for (let i = 0; i < galleryRows.length && i < gallerySeeds.length; i += 1) {
+    const seed = gallerySeeds[i]
+    const [duplicated] = await baseQuery(
+      'SELECT id FROM comment WHERE article_id = ? AND content = ? LIMIT 1',
+      [galleryRows[i].id, seed.content]
+    )
+    if (duplicated) continue
+
+    await baseQuery(
+      `INSERT INTO comment (user_id, article_id, parent_id, content, complaint, is_read, created_at)
+       VALUES (?, ?, 0, ?, ?, 1, DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+      [pickUser(i + 2), galleryRows[i].id, seed.content, seed.complaint, i * 6 + 3]
+    )
+    await baseQuery('UPDATE article SET comments = comments + 1 WHERE id = ?', [galleryRows[i].id])
+    result.comments += 1
+  }
+
+  // 随笔评论：独立表，diary.comments 同步自增
+  for (let i = 0; i < diaryRows.length && i < diarySeeds.length; i += 1) {
+    const seed = diarySeeds[i]
+    const [duplicated] = await baseQuery(
+      'SELECT id FROM diary_comment WHERE diary_id = ? AND content = ? LIMIT 1',
+      [diaryRows[i].id, seed.content]
+    )
+    if (duplicated) continue
+
+    await baseQuery(
+      `INSERT INTO diary_comment (user_id, diary_id, parent_id, content, complaint, status, created_at)
+       VALUES (?, ?, 0, ?, ?, 1, DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+      [pickUser(i + 3), diaryRows[i].id, seed.content, seed.complaint, i * 6 + 4]
+    )
+    await baseQuery('UPDATE diary SET comments = comments + 1 WHERE id = ?', [diaryRows[i].id])
+    result.comments += 1
+  }
+}
+
+/**
+ * 补写举报明细（幂等：comment_report 已有数据时整体跳过）。
+ * 举报人必须不是评论作者，否则 report() 会按「举报本人」拒绝，与线上行为不一致。
+ */
+async function seedReportSeeds(baseQuery, admin) {
+  const [existing] = await baseQuery('SELECT COUNT(*) AS total FROM comment_report');
+  if (Number(existing.total) >= 10) return 0;
+
+  // 取带投诉计数的文章评论与随笔评论，按投诉数从高到低排列
+  const articleComments = await baseQuery(
+    `SELECT c.id, c.user_id, c.article_id, c.complaint, c.content, a.classify
+     FROM comment c
+     LEFT JOIN article a ON a.id = c.article_id
+     WHERE c.status = 1 AND c.complaint > 0
+     ORDER BY c.complaint DESC, c.id ASC`
+  );
+  const diaryComments = await baseQuery(
+    `SELECT c.id, c.user_id, c.diary_id, c.complaint, c.content
+     FROM diary_comment c
+     WHERE c.status = 1
+     ORDER BY c.complaint DESC, c.id ASC`
+  );
+
+  // 图库评论与文章评论同为 target_type='article'，靠 classify=image 区分来源
+  const galleryComments = articleComments.filter(item => item.classify === 'image');
+  const articleOnly = articleComments.filter(item => item.classify !== 'image');
+
+  const users = await baseQuery('SELECT id FROM users ORDER BY id ASC');
+  if (users.length === 0) return 0;
+
+  const reasonPool = ['spam', 'abuse', 'porn', 'illegal', 'misinformation', 'other']
+  const detailPool = {
+    spam: '评论区刷二维码引流，和正文完全无关。',
+    abuse: '直接人身攻击，用词很难听。',
+    porn: '配图不适宜，建议下架。',
+    illegal: '疑似诈骗链接，点进去会跳外部站点。',
+    misinformation: '数据没有出处，和官方文档对不上。',
+    other: '内容明显与主题无关。',
+  }
+  // 状态分布：前 4 条待处理，之后交替已处理 / 已忽略
+  const statusPool = [0, 0, 0, 0, 1, 2, 0, 1, 2, 1]
+
+  const seeds = []
+  const push = (row, targetType, sourceId) => {
+    if (!row || !sourceId) return
+    const wanted = Math.min(Number(row.complaint || 1), 3)
+    for (let i = 0; i < wanted; i += 1) {
+      seeds.push({ row, targetType, sourceId })
+    }
+  }
+
+  // 覆盖三种来源：文章取投诉最多的 4 条，图库取 2 条，随笔取 3 条
+  articleOnly.slice(0, 4).forEach(row => push(row, 'article', row.article_id))
+  galleryComments.slice(0, 2).forEach(row => push(row, 'article', row.article_id))
+  diaryComments.slice(0, 3).forEach(row => push(row, 'diary', row.diary_id))
+
+  let inserted = 0
+  for (let i = 0; i < seeds.length; i += 1) {
+    const seed = seeds[i]
+    const reason = reasonPool[i % reasonPool.length]
+    const status = statusPool[i % statusPool.length]
+    // 举报人不能是评论作者，也不能是管理员（模拟真实访客举报）
+    const reporter = users.find(user => user.id !== seed.row.user_id && user.id !== admin.id)
+      || users.find(user => user.id !== seed.row.user_id)
+    if (!reporter) continue
+
+    const duplicated = await baseQuery(
+      'SELECT id FROM comment_report WHERE target_type = ? AND comment_id = ? AND user_id = ? LIMIT 1',
+      [seed.targetType, seed.row.id, reporter.id]
+    )
+    if (duplicated.length > 0) continue
+
+    await baseQuery(
+      `INSERT INTO comment_report
+       (target_type, comment_id, user_id, reason, detail, status, handled_by, handled_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+      [
+        seed.targetType, seed.row.id, reporter.id, reason,
+        detailPool[reason], status,
+        status === 0 ? null : admin.id,
+        status === 0 ? null : new Date(Date.now() - i * 1800 * 1000),
+        i * 7 + 2
+      ]
+    )
+    inserted += 1
+  }
+
+  return inserted
 }
 
 async function initializeSchema() {
@@ -1318,6 +1479,34 @@ async function ensureCommentReportReasonSchema(exec = query) {
   });
 }
 
+// 举报处理：给存量库补处理状态、处理人与处理时间，供后台举报处理页使用。
+async function ensureCommentReportHandlingSchema(exec = query) {
+  await ensureColumn(exec, 'comment_report', 'status', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 0',
+    comment: '处理状态：0-待处理，1-已处理，2-已忽略'
+  });
+  await ensureColumn(exec, 'comment_report', 'handled_by', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '处理人ID'
+  });
+  await ensureColumn(exec, 'comment_report', 'handled_at', {
+    definition: 'TIMESTAMP NULL',
+    comment: '处理时间'
+  });
+
+  const [index] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'comment_report'
+      AND INDEX_NAME = 'idx_report_status'
+    LIMIT 1
+  `);
+  if (!index) {
+    await exec('ALTER TABLE comment_report ADD INDEX idx_report_status (status)');
+  }
+}
+
 // 两级评论仍统一挂在根评论下，另外记录“实际回复的是哪条评论/哪位用户”，
 // 用于二级回复之间继续回复且不产生三级嵌套。
 async function ensureCommentReplyTargetSchema(exec = query) {
@@ -1511,6 +1700,10 @@ const migrations = [
   {
     version: '20261029_comment_report_reason',
     up: ensureCommentReportReasonSchema
+  },
+  {
+    version: '20261029_comment_report_handling',
+    up: ensureCommentReportHandlingSchema
   }
 ];
 

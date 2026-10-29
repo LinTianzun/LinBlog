@@ -207,7 +207,7 @@ const PERMISSIONS = [
         key: 'comment.moderate',
         group: 'interaction',
         label: '管理全部评论',
-        description: '查看并删除任何用户的评论',
+        description: '查看并删除任何用户的评论，处理评论举报',
         risk: 'high'
     },
     {

@@ -17,6 +17,7 @@ import {
     IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
+    IconWarningOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 
 const iconMap: Record<string, Component> = {
@@ -29,6 +30,7 @@ const iconMap: Record<string, Component> = {
     IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
+    IconWarningOutline,
 }
 
 // markRaw：图标组件不需要响应式代理，避免 Vue 对组件对象做无谓的深度代理

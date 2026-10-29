@@ -5,6 +5,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 
 * **访客门户（四页结构）**：`/portal` 首页（Hero + 分类索引 + 最新文章 + 摄影照片墙 + 随笔卡片 + 标签云）、`/portal/articles` 文章归档（分类/标签筛选 + 关键词搜索 + 分页，筛选条件同步到地址栏）、`/portal/gallery` 摄影图库（CSS columns 瀑布流 + 分页 + 当前页详情弹窗）、`/portal/diary` 随笔（天气筛选 + 错落卡片墙 + 当前页详情弹窗）。文章、图库、随笔三个详情弹窗共用 `PortalCommentSection`，统一为两级评论：一级按时间倒序、二级回复默认收起可展开，支持评论点赞、回复、举报、删除（本人或管理员，需二次确认）与「回复 @某人」展示，点赞数和评论数实时回写列表卡片。匿名访客可正常阅读，互动时引导登录。四页共用 `PortalLayout` 顶栏/页脚，正文详情一律当前页弹窗，不跳转页面。配色全部取自主题变量，11 套预设与深浅色自动联动；无封面内容用主题色排印占位，移动端自适应。
 * **评论举报可选择原因**：点击举报会弹出统一的举报弹窗（后台文章详情、后台图库/随笔评论区、门户评论区共用），提供 6 个原因（广告或引流、辱骂或攻击、色情或低俗、违法或危险、虚假或误导、其他原因）和选填的补充说明（最多 200 字）；原因会写入 `comment_report` 并记进系统日志。自己发表的评论不再显示举报项，后端也会拒绝举报本人评论。见 `lin_blog/src/components/content/CommentReportDialog.vue`、`serve/controller/commentInteractionController.js`。
+* **后台举报处理**：侧栏「运营 → 举报处理」提供独立的举报工作台（权限 `comment.moderate`）。顶部四张状态卡（待处理/已处理/已忽略/全部），支持按举报原因、来源（博客文章 / 摄影图库 / 随笔随记）、关键词筛选；每条举报展示原因、补充说明、被举报评论原文、评论作者、所属作品、举报人与累计举报次数，可直接「标记已处理」「忽略」或在二次确认后删除评论（删除后相关待处理举报自动归档）。见 `lin_blog/src/views/CommentReportView.vue`、`serve/controller/commentInteractionController.js`。
 * **图片按需缩略图**：`GET /api/uploads/:filename?w=320&format=webp` 用 sharp 在服务端按需生成 WebP 缩略图（白名单宽度 160–1600，不放大原图），带内存 LRU 缓存、并发请求合并、ETag/304 与长期浏览器缓存；列表卡片、详情大图与富文本正文都通过 `srcset`/`sizes` 按视口取合适尺寸，灯箱仍加载原图。旧图片无需重新上传。见 `serve/controller/uploadController.js`、`lin_blog/src/utils/imageOptimization.ts`。
 * **11 套主题**：默认浅色/深色，叠加海洋蓝、森林绿、樱花粉、极光绿、落日橙、星云紫、黑曜石、午夜蓝、摩卡棕；`data-theme` 驱动组件明暗，`data-theme-preset` 注入品牌色与背景，选择持久化并在启动时恢复。
 
@@ -26,7 +27,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | 后台视觉与响应式 | `admin.less` 统一后台外壳、卡片、滚动区和大屏布局；`MenuBar` 分组导航，`StatCard` 可复用统计卡，`responsivePageSize` 处理文件、图库和消息列表分页。图库编辑左右等高，评论分页位于内容底线下方。见 `lin_blog/src/style/admin.less`、`lin_blog/src/components/common/StatCard.vue`、`lin_blog/src/utils/responsivePageSize.ts`。 |
 | 用户管理 | 管理员用户列表/搜索/分页、创建、编辑、删除和启用/禁用已联调；统计卡（用户总数/管理员/编辑与普通用户/封禁用户）支持点击筛选与选中高亮，除总数外只统计启用用户。 |
 | 文章 | 已完成列表、筛选、搜索、新建、编辑、发布、撤回、删除及当前页详情弹窗联调；新建入口位于总览/Gather 页面。图片上传到本地目录，文章 `cover` 字段保存访问 URL。 |
-| 评论、消息 | 已接入真实 API：文章评论列表/两级回复/展开收起/删除、评论点赞与举报（举报需选择原因，本人评论不可举报）、举报数展示、私信收发、一键已读、未读红点提示均可用；前台与后台文章详情共用同一套评论互动能力。 |
+| 评论、消息 | 已接入真实 API：文章评论列表/两级回复/展开收起/删除、评论点赞与举报（举报需选择原因，本人评论不可举报）、举报数展示、后台举报处理页（原因/来源/状态筛选、标记已处理/忽略、删除评论）、私信收发、一键已读、未读红点提示均可用；前台与后台文章详情共用同一套评论互动能力。 |
 | 文件 | 本地文件已接入数据库：上传（多选、单文件 20MB 上限）、图片/文件/视频/压缩包分组、批量移动与删除、下载与缩略图。 |
 | 图库 | 摄影图库已接入数据库：图片集创建/编辑/发布/撤回、瀑布流展示、分组与文章分组共用（分组仅在文章页维护）。 |
 | 日记 | 随笔随记已接入数据库：天气图标字典与前端对齐（8 种）、图片上限 6 张、按天记录；公开列表支持按天气名在 SQL 层过滤。 |
@@ -73,7 +74,7 @@ npm start
 | 随笔互动（公开） | `GET/POST /api/public/diary/praise/:id`、`GET/POST /api/public/diary/comment` | 点赞状态与评论可匿名读取，点赞与发表评论需登录（匿名返回 401）；点赞/取消在事务内同步 `diary.likes`，评论同步 `diary.comments`。 |
 | 门户浏览计数 | `POST /api/public/view` | 匿名可调用；按「登录用户 / 游客 IP+UA 哈希」去重（30 分钟窗口），只统计已发布文章、图库与正常状态随笔，返回回读后的浏览量。 |
 | 图片上传 | `POST /api/upload/ticket`、`POST /api/upload/image?ticket=...`、`GET /api/uploads/:filename`（支持 `?w=160\|240\|320\|480\|640\|720\|960\|1280\|1600&format=webp`） | 上传需要认证，支持 JPG、PNG、WebP、GIF，单文件不超过 8 MB；返回的 URL 可通过静态路由公开访问。带 `w`/`format` 时返回按需生成的 WebP 缩略图（不放大原图，带 ETag/304），宽度不在白名单时返回 400，生成失败回退原图。 |
-| 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my` | 需要 Bearer Token；`GET /api/comment` 支持可选 `articleId` 过滤，后台文章详情用它只拉取本篇评论；回复仅支持两级。 |
+| 评论 | `GET/POST /api/comment`、`DELETE /api/comment/:id`、`GET /api/comment/my`、`GET /api/comment/reports`、`PATCH /api/comment/reports/:id` | 需要 Bearer Token；`GET /api/comment` 支持可选 `articleId` 过滤，后台文章详情用它只拉取本篇评论；回复仅支持两级。举报列表与处理接口需 `comment.moderate`，支持 `status=0\|1\|2\|all`、`reason`、`targetType=article|gallery|diary`、`keyword` 过滤，处理状态仅允许 1 已处理 / 2 已忽略。 |
 | 消息 | `POST /api/message`、`GET /api/message/inbox`、`GET /api/message/outbox`、`PATCH /api/message/read`、`DELETE /api/message/:id`、`GET /api/message/unread/count` | 需要 Bearer Token。 |
 | 日记 | `GET/POST /api/diary`、`GET/PUT/DELETE /api/diary/:id` | 需要 Bearer Token；天气按名称匹配前端字典，图片最多 6 张。 |
 | 文件 | `GET /api/file`、`GET /api/file/summary`、`GET /api/file/trash`、`PATCH /api/file/restore`、`DELETE /api/file/trash`（仅管理员，彻底删除）、`GET /api/file/storage/status`（仅管理员）、`POST /api/file/maintenance/cleanup`（仅管理员，支持 `dryRun`）、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；删除为软删并把本地文件移入非公开备份区，可在回收站恢复或由管理员彻底删除；下载公开，缩略图加 `?inline=true`。 |
@@ -98,7 +99,7 @@ npm start
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 后端 `npm test` 当前 `309/309` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `316/316` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与后台举报处理（状态机、原因/来源/状态筛选、图库来源按 a.classify 拆分、权限与系统日志）、门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 
@@ -116,6 +117,8 @@ npm start
 * 忘记密码与邮箱重置（2026-10-28）：登录页弹窗、重置页、后端 API、令牌哈希、版本绑定、登录限流、旧 JWT 失效全部实测通过。临时测试账号注册 → 申请重置 → 服务端日志获取链接 → 重置成功 → 重复链接失效 → 旧密码拒绝 → 新密码登录 → 修改密码 → 旧 JWT 401 → 新 JWT 正常 → 管理员删除临时账号，全流程走通。后端 `npm test` `270/270` 通过，前端 `vue-tsc` + Vite 生产构建通过。未配置真实 SMTP，因此外部邮件投递仍待部署环境验证。
 * 图片加载优化与响应式缩略图（2026-10-29）：后端为 `/api/uploads/:filename` 增加按需 WebP 缩略图能力，前端新增 `imageOptimization` 工具并把 12 处图片展示（后台文章/图库/随笔卡片、共享详情大图与图片网格、图库编辑缩略图、门户首页/文章/图库/随笔/照片墙、富文本正文）改为按视口取尺寸。后端 `npm test` `305/305` 通过，前端 `npm test` `41/41` 与 `vue-tsc` + Vite 生产构建通过。未做浏览器端图片体积实测。
 * 评论举报原因与本人评论保护（2026-10-29）：举报改为弹窗选择 6 类原因并可选补充说明，后台文章详情、后台图库/随笔评论区与门户评论区共用同一弹窗；自己发表的评论不再显示举报项。后端新增迁移 `20261029_comment_report_reason`，举报接口校验原因白名单与说明长度，并拒绝举报本人评论，系统日志记录具体原因。后端 `npm test` `309/309` 通过（新增 4 项举报用例与 1 项迁移用例），前端 `npm test` `42/42` 与 `vue-tsc` + Vite 生产构建通过。浏览器端交互未做人工复测。
+
+* 举报处理管理页（2026-10-29）：后台侧栏「运营 → 举报处理」新增工作台，支持状态统计卡、6 类原因筛选、来源过滤（博客文章 / 摄影图库 / 随笔随记）与关键词搜索；待处理举报可标记已处理、忽略或二次确认后删除评论，删除后相关待处理举报自动归档。新增迁移 `20261029_comment_report_handling`（已应用于本地开发库，`status`/`handled_by`/`handled_at` 与 `idx_report_status` 均就位）和 `GET /api/comment/reports`、`PATCH /api/comment/reports/:id`，两个接口均需 `comment.moderate`，处理结果写系统日志。演示数据此前只写 `comment.complaint` 计数不写举报明细，现补齐 `seedSourceComments` 与 `seedReportSeeds`：本地库已有 10 条举报（7 待处理 / 1 已处理 / 2 已忽略），按来源筛选分别命中 5 / 2 / 3 条。后端 `npm test` `316/316`、前端 `npm test` `44/44` 与 `vue-tsc` + Vite 生产构建通过，浏览器交互待复测。
 
 # LinBlog数据库
 

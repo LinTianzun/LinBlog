@@ -15,7 +15,7 @@
             </blockquote>
 
             <div class="report-reasons" role="radiogroup" aria-label="举报原因">
-                <button v-for="option in REPORT_REASON_OPTIONS" :key="option.value" type="button"
+                <button v-for="option in COMMENT_REPORT_REASONS" :key="option.value" type="button"
                     class="report-reason" :class="{ 'is-selected': reason === option.value }"
                     role="radio" :aria-checked="reason === option.value" :disabled="submitting"
                     @click="reason = option.value">
@@ -50,20 +50,7 @@ import { computed, ref, watch } from 'vue'
 import { IconWarningOutline } from '@yike-design/ui/es/components/svg-icon'
 import type { CommentReportReason } from '../../api/comment.ts'
 
-type ReportReasonOption = {
-    value: CommentReportReason
-    label: string
-    description: string
-}
-
-const REPORT_REASON_OPTIONS: ReportReasonOption[] = [
-    { value: 'spam', label: '广告或引流', description: '营销广告、二维码、联系方式等' },
-    { value: 'abuse', label: '辱骂或攻击', description: '人身攻击、歧视或恶意骚扰' },
-    { value: 'porn', label: '色情或低俗', description: '露骨内容或不适宜图片' },
-    { value: 'illegal', label: '违法或危险', description: '违法、诈骗或危险行为' },
-    { value: 'misinformation', label: '虚假或误导', description: '谣言、伪科学或严重误导' },
-    { value: 'other', label: '其他原因', description: '以上情况均不符合' },
-]
+import { COMMENT_REPORT_REASONS } from '../../utils/commentReport.ts'
 
 const props = withDefaults(defineProps<{
     open: boolean

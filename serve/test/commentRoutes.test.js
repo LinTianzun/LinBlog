@@ -42,7 +42,9 @@ test('评论路由挂载：公开写操作走可选认证，后台写操作走�
         ['get', '/api/comment'],
         ['post', '/api/comment'],
         ['delete', '/api/comment/:id'],
-        ['get', '/api/comment/my']
+        ['get', '/api/comment/my'],
+        ['get', '/api/comment/reports'],
+        ['patch', '/api/comment/reports/:id']
     ]) {
         const route = find(method, routePath)
         assert.ok(route, `缺少路由 ${method.toUpperCase()} ${routePath}`)

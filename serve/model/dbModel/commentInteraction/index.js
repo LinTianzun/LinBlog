@@ -242,10 +242,211 @@ async function deleteComment(targetType, commentId, userId, userType) {
                 [affected, id]
             )
         }
+
+        // 评论已删除，相关待处理举报一并落到「已处理」，避免后台留下无效待办
+        await run(
+            `UPDATE comment_report
+             SET status = 1, handled_by = ?, handled_at = NOW()
+             WHERE target_type = ? AND comment_id = ? AND status = 0`,
+            [userId, type, id]
+        )
         return affected
     })
 }
 
+function parseReportStatus(value) {
+    if (value === '' || value === null || value === undefined) return null
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && [0, 1, 2].includes(parsed) ? parsed : null
+}
+
+/**
+ * 后台举报处理列表：举报明细逐条分页，附带被举报评论与来源内容信息。
+ * 过滤条件只作用于目标类型/原因/处理状态/关键词；
+ * 统计卡忽略原因与状态，保证四个状态卡和六个原因数量始终可读。
+ */
+async function listReports({
+    page = 1,
+    pageSize = 10,
+    offset = 0,
+    reason = null,
+    targetType = null,
+    status = null,
+    keyword = ''
+} = {}) {
+    const baseJoin = `
+        FROM comment_report r
+        LEFT JOIN users ru ON ru.id = r.user_id
+        LEFT JOIN comment c ON r.target_type = 'article' AND c.id = r.comment_id
+        LEFT JOIN diary_comment dc ON r.target_type = 'diary' AND dc.id = r.comment_id
+        LEFT JOIN users cu ON cu.id = COALESCE(c.user_id, dc.user_id)
+        LEFT JOIN article a ON a.id = c.article_id
+        LEFT JOIN diary d ON d.id = dc.diary_id
+    `
+
+    // 统计卡只跟随来源与关键词，原因/状态由列表条件单独控制，
+    // 否则切到某个原因后其它原因的数量会全部归零，筛选体验很怪。
+    const summaryWhere = []
+    const summaryParams = []
+    // 前端来源筛选分三类：博客文章 / 摄影图库 / 随笔。
+    // 图库内容在 article 表里 classify=image，因此 article 与 gallery 共用 target_type='article'。
+    const sourceFilter = ['article', 'gallery', 'diary'].includes(targetType) ? targetType : null
+    if (sourceFilter === 'article') {
+        summaryWhere.push("r.target_type = 'article'", "(a.classify IS NULL OR a.classify <> 'image')")
+    } else if (sourceFilter === 'gallery') {
+        summaryWhere.push("r.target_type = 'article'", "a.classify = 'image'")
+    } else if (sourceFilter === 'diary') {
+        summaryWhere.push("r.target_type = 'diary'")
+    }
+    const trimmedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
+    if (trimmedKeyword) {
+        const like = `%${trimmedKeyword}%`
+        summaryWhere.push(`(
+            COALESCE(c.content, dc.content, '') LIKE ?
+            OR COALESCE(a.title, d.title, '') LIKE ?
+            OR COALESCE(cu.username, '') LIKE ?
+            OR COALESCE(ru.username, '') LIKE ?
+        )`)
+        summaryParams.push(like, like, like, like)
+    }
+
+    // 列表条件 = 统计基础条件 + 举报原因 + 处理状态
+    const listWhere = [...summaryWhere]
+    const listParams = [...summaryParams]
+    if (reason) {
+        listWhere.push('r.reason = ?')
+        listParams.push(reason)
+    }
+    const reportStatus = parseReportStatus(status)
+    if (reportStatus !== null) {
+        listWhere.push('r.status = ?')
+        listParams.push(reportStatus)
+    }
+    const whereSql = listWhere.length > 0 ? `WHERE ${listWhere.join(' AND ')}` : ''
+
+    const listSql = `
+        SELECT
+            r.id, r.target_type, r.comment_id, r.reason, r.detail, r.status,
+            r.created_at, r.handled_at,
+            r.user_id AS reporter_id,
+            ru.username AS reporter_name,
+            COALESCE(c.user_id, dc.user_id) AS comment_user_id,
+            cu.username AS comment_user_name,
+            cu.imgurl AS comment_user_avatar,
+            COALESCE(c.content, dc.content) AS comment_content,
+            COALESCE(c.status, dc.status) AS comment_status,
+            COALESCE(c.likes, dc.likes, 0) AS comment_likes,
+            COALESCE(c.complaint, dc.complaint, 0) AS comment_complaint,
+            COALESCE(c.created_at, dc.created_at) AS comment_created_at,
+            c.article_id AS article_id,
+            a.title AS article_title,
+            a.classify AS article_classify,
+            dc.diary_id AS diary_id,
+            d.title AS diary_title,
+            hu.username AS handler_name
+        ${baseJoin}
+        LEFT JOIN users hu ON hu.id = r.handled_by
+        ${whereSql}
+        ORDER BY CASE r.status WHEN 0 THEN 0 ELSE 1 END, r.created_at DESC
+        LIMIT ? OFFSET ?
+    `
+    const rows = await query(listSql, [...listParams, pageSize, offset])
+
+    const totalSql = `SELECT COUNT(*) AS total ${baseJoin} ${whereSql}`
+    const [totalResult] = await query(totalSql, listParams)
+
+    // 状态与原因统计忽略状态/原因过滤，让四个状态卡与六个原因数量始终可用
+    const summaryWhereSql = summaryWhere.length > 0 ? `WHERE ${summaryWhere.join(' AND ')}` : ''
+    const summaryRows = await query(
+        `SELECT r.status, r.reason, COUNT(*) AS total ${baseJoin} ${summaryWhereSql}
+         GROUP BY r.status, r.reason`,
+        summaryParams
+    )
+    const summary = { total: 0, pending: 0, resolved: 0, dismissed: 0, reasons: {} }
+    for (const row of summaryRows) {
+        const count = Number(row.total || 0)
+        summary.total += count
+        const reportStatusValue = Number(row.status)
+        const reasonKey = String(row.reason || 'other')
+        if (reportStatusValue === 0) summary.pending += count
+        if (reportStatusValue === 1) summary.resolved += count
+        if (reportStatusValue === 2) summary.dismissed += count
+        summary.reasons[reasonKey] = Number(summary.reasons[reasonKey] || 0) + count
+    }
+
+    const list = rows.map(item => {
+        const isArticle = item.target_type === 'article'
+        return {
+            id: Number(item.id),
+            targetType: item.target_type,
+            commentId: Number(item.comment_id),
+            reason: item.reason,
+            detail: item.detail || '',
+            status: Number(item.status || 0),
+            createdAt: item.created_at,
+            handledAt: item.handled_at,
+            handlerName: item.handler_name || null,
+            reporter: {
+                id: Number(item.reporter_id),
+                name: item.reporter_name || '已注销用户'
+            },
+            comment: {
+                id: Number(item.comment_id),
+                content: item.comment_content || '（评论已删除或不存在）',
+                status: item.comment_status === null ? null : Number(item.comment_status),
+                likes: Number(item.comment_likes || 0),
+                complaint: Number(item.comment_complaint || 0),
+                createdAt: item.comment_created_at,
+                user: {
+                    id: item.comment_user_id === null ? null : Number(item.comment_user_id),
+                    name: item.comment_user_name || '已注销用户',
+                    avatar: item.comment_user_avatar || null
+                }
+            },
+            source: isArticle
+                ? {
+                    type: 'article',
+                    id: item.article_id === null ? null : Number(item.article_id),
+                    title: item.article_title || '文章已删除',
+                    classify: item.article_classify || 'article'
+                }
+                : {
+                    type: 'diary',
+                    id: item.diary_id === null ? null : Number(item.diary_id),
+                    title: item.diary_title || '随笔已删除',
+                    classify: 'diary'
+                }
+        }
+    })
+
+    const total = Number(totalResult?.total || 0)
+    return {
+        list,
+        total,
+        page,
+        pageSize,
+        totalPage: Math.ceil(total / pageSize),
+        summary
+    }
+}
+
+/**
+ * 更新单条举报的处理状态。仅允许 1（已处理）/ 2（已忽略）。
+ * @returns {Promise<boolean>} 是否命中并更新
+ */
+async function updateReportStatus(reportId, status, handledBy) {
+    const id = parseCommentId(reportId)
+    const nextStatus = parseReportStatus(status)
+    if (!id || (nextStatus !== 1 && nextStatus !== 2)) return false
+
+    const result = await query(
+        `UPDATE comment_report
+         SET status = ?, handled_by = ?, handled_at = NOW()
+         WHERE id = ?`,
+        [nextStatus, handledBy, id]
+    )
+    return Number(result?.affectedRows || 0) > 0
+}
 
 module.exports = {
     normalizeTargetType,
@@ -254,5 +455,7 @@ module.exports = {
     findLikeState,
     toggleLike,
     report,
-    deleteComment
+    deleteComment,
+    listReports,
+    updateReportStatus
 }
