@@ -17,6 +17,10 @@
                             <component :is="item.icon" />
                         </span>
                         <span class="menu-bar-name">{{ item.name }}</span>
+                        <span v-if="item.path === 'reportedComments' && pendingReportCount > 0"
+                            class="menu-bar-badge" :aria-label="`${pendingReportCount} 条待处理举报`">
+                            {{ pendingReportBadge }}
+                        </span>
                     </router-link>
                 </section>
             </nav>
@@ -31,14 +35,23 @@
 
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
     navLinks
 } from '../../utils/menu.ts'
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
 import { useSessionStore } from '../../store/session.ts'
+import { getCommentReports } from '../../api/commentReport.ts'
+import { REPORT_STATE_EVENT } from '../../utils/commentReportWorkbench.ts'
 
 const session = useSessionStore()
+const route = useRoute()
+const pendingReportCount = ref(0)
+
+const pendingReportBadge = computed(() =>
+    pendingReportCount.value > 99 ? '99+' : String(pendingReportCount.value)
+)
 
 // 菜单权限映射：入口是否出现完全由权限矩阵决定，不再按角色挑选候选集
 // 总览是全站统计，按 overview.viewAll 收窄；系统设置对所有登录用户开放
@@ -97,6 +110,42 @@ const menuGroups = computed(() => {
         }))
         .filter(group => group.items.length > 0)
 })
+
+const refreshPendingReports = async (): Promise<void> => {
+    if (!session.can('comment.moderate')) {
+        pendingReportCount.value = 0
+        return
+    }
+
+    try {
+        const result = await getCommentReports({ page: 1, pageSize: 1, status: 0 })
+        if (result.code === 200 && result.data) {
+            pendingReportCount.value = Math.max(0, Number(result.data.summary.pending) || 0)
+        }
+    } catch {
+        // 角标失败不影响侧栏导航，下一次路由变化或举报状态更新会重试
+    }
+}
+
+const handleReportStateChange = (): void => {
+    void refreshPendingReports()
+}
+
+onMounted(() => {
+    window.addEventListener(REPORT_STATE_EVENT, handleReportStateChange)
+    void refreshPendingReports()
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener(REPORT_STATE_EVENT, handleReportStateChange)
+})
+
+watch(
+    () => [route.path, session.permissions.join('|'), session.isSuperAdmin],
+    () => {
+        void refreshPendingReports()
+    }
+)
 </script>
 
 <style lang="less" scoped>
@@ -224,6 +273,7 @@ const menuGroups = computed(() => {
 
             .menu-bar-name {
                 overflow: hidden;
+                flex: 1;
                 font-size: 13px;
                 font-weight: 550;
                 text-overflow: ellipsis;
@@ -258,11 +308,35 @@ const menuGroups = computed(() => {
                 font-weight: 700;
             }
 
+            .menu-bar-badge {
+                border-color: rgba(255, 255, 255, 0.24);
+                background: rgba(255, 255, 255, 0.18);
+                color: #fff;
+            }
+
             &:hover {
                 border-color: transparent;
                 color: #fff;
                 background: linear-gradient(135deg, var(--pcolor), var(--pcolor8));
             }
+        }
+
+        &-badge {
+            display: inline-grid;
+            min-width: 20px;
+            height: 20px;
+            box-sizing: border-box;
+            flex: none;
+            place-items: center;
+            padding: 0 6px;
+            border: 1px solid color-mix(in srgb, @ecolor 24%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, @ecolor 10%, transparent);
+            color: @ecolor;
+            font-size: 10px;
+            font-weight: 750;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
         }
 
         &-foot {

@@ -25,7 +25,8 @@ const ALL_MIGRATIONS = [
     '20261028_access_control',
     '20261029_comment_report_reason',
     '20261029_comment_report_handling',
-    '20261029_message_channel'
+    '20261029_message_channel',
+    '20261029_comment_report_note'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -411,5 +412,28 @@ test('access control migration creates the role permission matrix and promotes t
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261028_access_control'
+    ))
+})
+
+test('comment report note migration adds the handling note column', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261029_comment_report_note')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE comment_report ADD COLUMN handle_note VARCHAR(200) NULL')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261029_comment_report_note'
     ))
 })

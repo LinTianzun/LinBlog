@@ -333,6 +333,7 @@ const tablesSql = {
     status TINYINT(1) NOT NULL DEFAULT 0 COMMENT '处理状态：0-待处理，1-已处理，2-已忽略',
     handled_by BIGINT UNSIGNED NULL COMMENT '处理人ID',
     handled_at TIMESTAMP NULL COMMENT '处理时间',
+    handle_note VARCHAR(200) NULL COMMENT '处理备注',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '举报时间',
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1508,6 +1509,14 @@ async function ensureCommentReportHandlingSchema(exec = query) {
   }
 }
 
+// 举报处理备注：后台批量/单条处理时可以留下处置说明，便于后续复盘。
+async function ensureCommentReportNoteSchema(exec = query) {
+  await ensureColumn(exec, 'comment_report', 'handle_note', {
+    definition: 'VARCHAR(200) NULL',
+    comment: '处理备注'
+  });
+}
+
 // message 表同时承载私信会话与门户留言，用 channel 记录来源。
 // 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
 async function ensureMessageChannelSchema(exec = query) {
@@ -1718,6 +1727,10 @@ const migrations = [
   {
     version: '20261029_message_channel',
     up: ensureMessageChannelSchema
+  },
+  {
+    version: '20261029_comment_report_note',
+    up: ensureCommentReportNoteSchema
   }
 ];
 

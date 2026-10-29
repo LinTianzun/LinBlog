@@ -37,5 +37,7 @@ module.exports = (app) => {
 
     // 后台举报处理：列表与处理结果（需登录，控制器内校验 comment.moderate）
     app.get('/api/comment/reports', authMiddleware, commentInteractionController.getReports)
+    // 批量处理必须挂在 /:id 之前，否则会被 :id 路由先吃掉
+    app.patch('/api/comment/reports/batch', authMiddleware, commentInteractionController.updateReportStatusBatch)
     app.patch('/api/comment/reports/:id', authMiddleware, commentInteractionController.updateReportStatus)
 }

@@ -55,6 +55,26 @@ function parseReportPayload(body) {
     }
 }
 
+function REPORT_STATUS_TEXT(status) {
+    return status === 0 ? '已恢复为待处理' : status === 1 ? '已标记为已处理' : '已忽略该举报'
+}
+
+/**
+ * 处理备注：选填，最多 200 字。超长直接返回 400，避免悄悄截断后
+ * 运营以为备注完整保存了。
+ */
+function parseHandleNote(body) {
+    if (body?.note === undefined || body?.note === null) return { data: null }
+    if (typeof body.note !== 'string') {
+        return { error: { code: 400, message: '处理备注必须是字符串' } }
+    }
+    const note = body.note.trim()
+    if (note.length > 200) {
+        return { error: { code: 400, message: '处理备注不能超过 200 个字符' } }
+    }
+    return { data: note || null }
+}
+
 /**
  * 切换评论点赞（需登录）
  * POST /api/public/comment/like  body: { commentType, commentId }
@@ -237,6 +257,22 @@ async function getReports(req, res) {
             status = parsed
         }
 
+        const startDate = typeof req.query.startDate === 'string' ? req.query.startDate.trim() : ''
+        const endDate = typeof req.query.endDate === 'string' ? req.query.endDate.trim() : ''
+        const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+        const validDateText = (value) => {
+            if (!value) return true
+            if (!DATE_PATTERN.test(value)) return false
+            const date = new Date(`${value}T00:00:00Z`)
+            return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+        }
+        if (Boolean(startDate) !== Boolean(endDate)) {
+            return res.status(400).json({ code: 400, message: '起止日期需同时提供' })
+        }
+        if (!validDateText(startDate) || !validDateText(endDate)) {
+            return res.status(400).json({ code: 400, message: '时间范围请使用有效的 YYYY-MM-DD 格式' })
+        }
+
         const result = await commentInteractionModel.listReports({
             page,
             pageSize,
@@ -245,6 +281,8 @@ async function getReports(req, res) {
             targetType: targetType || null,
             status,
             keyword: typeof req.query.keyword === 'string' ? req.query.keyword : '',
+            startDate: startDate || null,
+            endDate: endDate || null,
         })
 
         res.json({
@@ -278,10 +316,16 @@ async function updateReportStatus(req, res) {
             return res.status(400).json({ code: 400, message: '处理结果仅支持 0（恢复待处理）、1（已处理）或 2（已忽略）' })
         }
 
+        const noteParsed = parseHandleNote(req.body)
+        if (noteParsed.error) {
+            return res.status(noteParsed.error.code).json({ code: noteParsed.error.code, message: noteParsed.error.message })
+        }
+
         const updated = await commentInteractionModel.updateReportStatus(
             reportId,
             status,
-            req.user.userId
+            req.user.userId,
+            noteParsed.data
         )
         if (!updated) {
             return res.status(404).json({ code: 404, message: '举报不存在' })
@@ -297,21 +341,77 @@ async function updateReportStatus(req, res) {
                 ? '将举报恢复为待处理'
                 : status === 1
                     ? '将举报标记为已处理'
-                    : '忽略举报',
+                    : `忽略举报${noteParsed.data ? `：${noteParsed.data}` : ''}`,
             ip: req.ip || null,
         })
 
         res.json({
             code: 200,
-            message: status === 0
-                ? '已恢复为待处理'
-                : status === 1
-                    ? '已标记为已处理'
-                    : '已忽略该举报',
+            message: REPORT_STATUS_TEXT(status),
             data: { id: reportId, status },
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '处理举报失败：' + err.message })
+    }
+}
+
+/**
+ * 批量处理举报（需 comment.moderate）
+ * PATCH /api/comment/reports/batch
+ * body: { ids: number[], status: 0 恢复待处理 | 1 已处理 | 2 已忽略 }
+ */
+async function updateReportStatusBatch(req, res) {
+    try {
+        if (!hasPermission(req.user, 'comment.moderate')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有处理举报的权限' })
+        }
+
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
+        if (!ids || ids.length === 0) {
+            return res.status(400).json({ code: 400, message: '请至少选择一条举报' })
+        }
+        if (ids.length > 200) {
+            return res.status(400).json({ code: 400, message: '一次最多处理 200 条举报' })
+        }
+
+        const status = Number(req.body?.status)
+        if (![0, 1, 2].includes(status)) {
+            return res.status(400).json({ code: 400, message: '处理结果仅支持 0（恢复待处理）、1（已处理）或 2（已忽略）' })
+        }
+
+        const noteParsed = parseHandleNote(req.body)
+        if (noteParsed.error) {
+            return res.status(noteParsed.error.code).json({ code: noteParsed.error.code, message: noteParsed.error.message })
+        }
+
+        const updated = await commentInteractionModel.updateReportStatusBatch(
+            ids,
+            status,
+            req.user.userId,
+            noteParsed.data
+        )
+        if (!updated) {
+            return res.status(404).json({ code: 404, message: '选中的举报没有可处理的记录' })
+        }
+
+        const action = status === 0 ? '批量恢复待处理' : status === 1 ? '批量标记为已处理' : '批量忽略'
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'comment',
+            targetType: 'comment_report',
+            targetId: null,
+            detail: `${action}：选中 ${ids.length} 条，实际处理 ${updated} 条${noteParsed.data ? `，备注：${noteParsed.data}` : ''}`,
+            ip: req.ip || null,
+        })
+
+        res.json({
+            code: 200,
+            message: `已${action.replace('批量', '')} ${updated} 条举报`,
+            data: { updated, requested: ids.length, status },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '批量处理举报失败：' + err.message })
     }
 }
 
@@ -321,4 +421,5 @@ module.exports = {
     deleteComment,
     getReports,
     updateReportStatus,
+    updateReportStatusBatch,
 }

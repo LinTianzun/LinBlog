@@ -261,6 +261,49 @@ function parseReportStatus(value) {
 }
 
 /**
+ * 处理备注：选填，最多 200 字；空值统一转成 NULL，避免留下空字符串。
+ */
+function normalizeHandleNote(value) {
+    if (typeof value !== 'string') return null
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    return trimmed.slice(0, 200)
+}
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * 校验 YYYY-MM-DD 日期，并把当天之外的输入直接判为非法，
+ * 避免把任意字符串拼进 SQL 的时间比较条件。
+ */
+function normalizeDateText(value) {
+    if (typeof value !== 'string') return null
+    const trimmed = value.trim()
+    if (!DATE_PATTERN.test(trimmed)) return null
+    const date = new Date(`${trimmed}T00:00:00Z`)
+    if (Number.isNaN(date.getTime())) return null
+    // 形如 2026-02-31 会被 Date 进位到下个月，这里按字符串回读再比对一次
+    return date.toISOString().slice(0, 10) === trimmed ? trimmed : null
+}
+
+/**
+ * 日期范围转 SQL 条件。结束日期按「次日零点」比较，
+ * 避免 MySQL 连接时区与本地时区不一致时把当天末尾的举报漏掉。
+ * @returns {null|{column: string, from: string, to: string}}
+ */
+function buildReportDateRange(startDate, endDate) {
+    const from = normalizeDateText(startDate)
+    const to = normalizeDateText(endDate)
+    if (!from && !to) return null
+    if (!from || !to) return null
+    // 起止顺序写反时不报错，直接按 min/max 归一，避免返回一个必然为空的结果
+    const [begin, finish] = from <= to ? [from, to] : [to, from]
+    const next = new Date(`${finish}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    return { column: 'r.created_at', from: begin, to: next.toISOString().slice(0, 10) }
+}
+
+/**
  * 后台举报处理列表：举报明细逐条分页，附带被举报评论与来源内容信息。
  * 过滤条件只作用于目标类型/原因/处理状态/关键词；
  * 统计卡忽略原因与状态，保证四个状态卡和六个原因数量始终可读。
@@ -272,7 +315,9 @@ async function listReports({
     reason = null,
     targetType = null,
     status = null,
-    keyword = ''
+    keyword = '',
+    startDate = null,
+    endDate = null
 } = {}) {
     const baseJoin = `
         FROM comment_report r
@@ -310,6 +355,14 @@ async function listReports({
         summaryParams.push(like, like, like, like)
     }
 
+    // 时间范围跟随统计与列表：运营按“最近新增的举报”处理时，
+    // 状态卡也应当同步到同一时间窗，否则数字和列表对不上。
+    const dateRange = buildReportDateRange(startDate, endDate)
+    if (dateRange) {
+        summaryWhere.push(`${dateRange.column} >= ?`, `${dateRange.column} < ?`)
+        summaryParams.push(dateRange.from, dateRange.to)
+    }
+
     // 列表条件 = 统计基础条件 + 举报原因 + 处理状态
     const listWhere = [...summaryWhere]
     const listParams = [...summaryParams]
@@ -328,6 +381,7 @@ async function listReports({
         SELECT
             r.id, r.target_type, r.comment_id, r.reason, r.detail, r.status,
             r.created_at, r.handled_at,
+            r.handle_note,
             r.user_id AS reporter_id,
             ru.username AS reporter_name,
             COALESCE(c.user_id, dc.user_id) AS comment_user_id,
@@ -385,6 +439,7 @@ async function listReports({
             status: Number(item.status || 0),
             createdAt: item.created_at,
             handledAt: item.handled_at,
+            handleNote: item.handle_note || '',
             handlerName: item.handler_name || null,
             reporter: {
                 id: Number(item.reporter_id),
@@ -426,25 +481,117 @@ async function listReports({
         page,
         pageSize,
         totalPage: Math.ceil(total / pageSize),
-        summary
+        summary,
+        trend: await listReportTrend({ targetType, keyword, startDate, endDate })
     }
+}
+
+/**
+ * 举报趋势：按天统计最近 N 天的新增举报与已处理量。
+ * 复用 listReports 的基础过滤（来源 + 关键词 + 时间范围），
+ * 忽略状态筛选，让趋势始终反映整体水位而不是某个状态。
+ * @returns {Promise<Array<{date: string, total: number, pending: number, resolved: number, dismissed: number}>>}
+ */
+async function listReportTrend({
+    targetType = null,
+    keyword = '',
+    startDate = null,
+    endDate = null,
+    days = 14
+} = {}) {
+    const totalDays = Number(days)
+    const safeDays = Number.isInteger(totalDays) && totalDays > 0 && totalDays <= 60
+        ? totalDays
+        : 14
+
+    // 日期轴在 Node 侧生成，避免依赖 MySQL 递归 CTE 或日历表
+    const today = new Date()
+    const buckets = new Map()
+    for (let index = safeDays - 1; index >= 0; index -= 1) {
+        const day = new Date(today.getTime())
+        day.setUTCDate(day.getUTCDate() - index)
+        const key = day.toISOString().slice(0, 10)
+        buckets.set(key, { date: key, total: 0, pending: 0, resolved: 0, dismissed: 0 })
+    }
+
+    const axis = [...buckets.keys()]
+    // 起始日期在 Node 侧算好作为普通参数传入，避免不同 MySQL 版本对
+    // INTERVAL 占位符（INTERVAL ? DAY）的预处理兼容性不一致。
+    const where = ["r.created_at >= ?"]
+    const params = [axis[0]]
+
+    const sourceFilter = ['article', 'gallery', 'diary'].includes(targetType) ? targetType : null
+    if (sourceFilter === 'article') {
+        where.push("r.target_type = 'article'", "(a.classify IS NULL OR a.classify <> 'image')")
+    } else if (sourceFilter === 'gallery') {
+        where.push("r.target_type = 'article'", "a.classify = 'image'")
+    } else if (sourceFilter === 'diary') {
+        where.push("r.target_type = 'diary'")
+    }
+
+    const trimmedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
+    if (trimmedKeyword) {
+        const like = `%${trimmedKeyword}%`
+        where.push(`(
+            COALESCE(c.content, dc.content, '') LIKE ?
+            OR COALESCE(a.title, d.title, '') LIKE ?
+            OR COALESCE(cu.username, '') LIKE ?
+            OR COALESCE(ru.username, '') LIKE ?
+        )`)
+        params.push(like, like, like, like)
+    }
+
+    const dateRange = buildReportDateRange(startDate, endDate)
+    if (dateRange) {
+        where.push(`${dateRange.column} >= ?`, `${dateRange.column} < ?`)
+        params.push(dateRange.from, dateRange.to)
+    }
+
+    const rows = await query(
+        `SELECT DATE(r.created_at) AS day, r.status, COUNT(*) AS total
+         FROM comment_report r
+         LEFT JOIN comment c ON r.target_type = 'article' AND c.id = r.comment_id
+         LEFT JOIN diary_comment dc ON r.target_type = 'diary' AND dc.id = r.comment_id
+         LEFT JOIN users cu ON cu.id = COALESCE(c.user_id, dc.user_id)
+         LEFT JOIN users ru ON ru.id = r.user_id
+         LEFT JOIN article a ON a.id = c.article_id
+         LEFT JOIN diary d ON d.id = dc.diary_id
+         WHERE ${where.join(' AND ')}
+         GROUP BY day, r.status`,
+        params
+    )
+
+    for (const row of rows) {
+        const raw = row.day instanceof Date ? row.day.toISOString().slice(0, 10) : String(row.day || '')
+        const bucket = buckets.get(raw)
+        if (!bucket) continue
+        const count = Number(row.total || 0)
+        const statusValue = Number(row.status)
+        bucket.total += count
+        if (statusValue === 0) bucket.pending += count
+        if (statusValue === 1) bucket.resolved += count
+        if (statusValue === 2) bucket.dismissed += count
+    }
+
+    return axis.map(key => buckets.get(key))
 }
 
 /**
  * 更新单条举报的处理状态。
  * 0（恢复待处理）仅允许从“已处理”回退，并清空原处理信息；
- * 1（已处理）/ 2（已忽略）用于正常处理。
+ * 1（已处理）/ 2（已忽略）用于正常处理，可附处理备注。
  * @returns {Promise<boolean>} 是否命中并更新
  */
-async function updateReportStatus(reportId, status, handledBy) {
+async function updateReportStatus(reportId, status, handledBy, note = null) {
     const id = parseCommentId(reportId)
     const nextStatus = parseReportStatus(status)
     if (!id || ![0, 1, 2].includes(nextStatus)) return false
 
+    const handleNote = normalizeHandleNote(note)
     if (nextStatus === 0) {
         const resetResult = await query(
             `UPDATE comment_report
-             SET status = 0, handled_by = NULL, handled_at = NULL
+             SET status = 0, handled_by = NULL, handled_at = NULL, handle_note = NULL
              WHERE id = ? AND status = 1`,
             [id]
         )
@@ -453,11 +600,57 @@ async function updateReportStatus(reportId, status, handledBy) {
 
     const result = await query(
         `UPDATE comment_report
-         SET status = ?, handled_by = ?, handled_at = NOW()
+         SET status = ?, handled_by = ?, handled_at = NOW(), handle_note = ?
          WHERE id = ?`,
-        [nextStatus, handledBy, id]
+        [nextStatus, handledBy, handleNote, id]
     )
     return Number(result?.affectedRows || 0) > 0
+}
+
+function parseReportIds(value) {
+    if (!Array.isArray(value)) return []
+    const unique = new Set()
+    for (const raw of value) {
+        const id = parseCommentId(raw)
+        if (id) unique.add(id)
+        if (unique.size >= 200) break
+    }
+    return [...unique]
+}
+
+/**
+ * 批量更新举报状态。
+ *
+ * 上限 200 条：后台勾选范围受当前页限制，这个上限只为防止异常入参打爆 SQL。
+ * 返回真实更新条数，前端据此提示“成功 N 条”，而不是假设全部命中。
+ * @returns {Promise<number>} 实际更新条数
+ */
+async function updateReportStatusBatch(ids, status, handledBy, note = null) {
+    const nextStatus = parseReportStatus(status)
+    const reportIds = parseReportIds(ids)
+    if (!reportIds.length || ![0, 1, 2].includes(nextStatus)) return 0
+
+    const placeholders = reportIds.map(() => '?').join(', ')
+    const handleNote = normalizeHandleNote(note)
+
+    // 恢复待处理只处理「已处理」的记录，和单条接口保持同一条状态机
+    if (nextStatus === 0) {
+        const result = await query(
+            `UPDATE comment_report
+             SET status = 0, handled_by = NULL, handled_at = NULL, handle_note = NULL
+             WHERE id IN (${placeholders}) AND status = 1`,
+            reportIds
+        )
+        return Number(result?.affectedRows || 0)
+    }
+
+    const result = await query(
+        `UPDATE comment_report
+         SET status = ?, handled_by = ?, handled_at = NOW(), handle_note = ?
+         WHERE id IN (${placeholders})`,
+        [nextStatus, handledBy, handleNote, ...reportIds]
+    )
+    return Number(result?.affectedRows || 0)
 }
 
 module.exports = {
@@ -469,5 +662,7 @@ module.exports = {
     report,
     deleteComment,
     listReports,
-    updateReportStatus
+    updateReportStatus,
+    updateReportStatusBatch,
+    listReportTrend
 }

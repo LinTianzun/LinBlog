@@ -21,6 +21,8 @@ let listReportsResult = null
 let listReportsCalls = []
 let updateReportStatusResult = false
 let updateReportStatusCalls = []
+let updateReportStatusBatchResult = 0
+let batchCalls = []
 
 const interactionStub = {
     normalizeTargetType(value) {
@@ -48,6 +50,10 @@ const interactionStub = {
     async updateReportStatus(id, status, handledBy) {
         updateReportStatusCalls.push({ id, status, handledBy })
         return updateReportStatusResult
+    },
+    async updateReportStatusBatch(ids, status, handledBy, note) {
+        batchCalls.push({ ids, status, handledBy, note })
+        return updateReportStatusBatchResult
     }
 }
 
@@ -123,6 +129,8 @@ test.beforeEach(() => {
     listReportsCalls = []
     updateReportStatusResult = false
     updateReportStatusCalls = []
+    updateReportStatusBatchResult = 0
+    batchCalls = []
 })
 
 test('评论互动只接受 article/diary 和正整数评论 ID', () => {
@@ -567,7 +575,8 @@ test('更新举报状态支持处理、忽略，以及已处理恢复为待处�
     queryHandler = async () => ({ affectedRows: 1 })
     assert.equal(await interactionModel.updateReportStatus(9, 1, 3), true)
     const update = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
-    assert.deepEqual(update.values, [1, 3, 9])
+    // 处理备注跟在处理人之后：未传时为 NULL
+    assert.deepEqual(update.values, [1, 3, null, 9])
 
     queryCalls = []
     assert.equal(await interactionModel.updateReportStatus(9, 0, 3), true)
@@ -580,6 +589,69 @@ test('更新举报状态支持处理、忽略，以及已处理恢复为待处�
     assert.equal(await interactionModel.updateReportStatus(9, 3, 3), false)
     assert.equal(await interactionModel.updateReportStatus(0, 1, 3), false)
     assert.equal(queryCalls.length, 0)
+})
+
+test('处理备注会被写入并在恢复待处理时清空', async () => {
+    queryHandler = async () => ({ affectedRows: 1 })
+
+    await interactionModel.updateReportStatus(9, 2, 3, '  已提醒作者  ')
+    const noted = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.deepEqual(noted.values, [2, 3, '已提醒作者', 9])
+
+    queryCalls = []
+    await interactionModel.updateReportStatus(9, 0, 3)
+    const reopened = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.match(reopened.sql, /handle_note = NULL/)
+
+    // 超长备注在模型层裁剪，避免整条 UPDATE 因列宽溢出失败
+    queryCalls = []
+    await interactionModel.updateReportStatus(9, 1, 3, 'x'.repeat(260))
+    const clipped = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.equal(clipped.values[2].length, 200)
+})
+
+test('批量处理状态去重后更新，并返回真实影响条数', async () => {
+    queryHandler = async () => ({ affectedRows: 2 })
+
+    const updated = await interactionModel.updateReportStatusBatch(
+        [9, '9', 10, 0, 'bad'],
+        1,
+        3
+    )
+
+    assert.equal(updated, 2)
+    const update = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.match(update.sql, /IN \(\?, \?\)/)
+    assert.deepEqual(update.values, [1, 3, null, 9, 10])
+
+    // 空列表与非法状态不查库
+    queryCalls = []
+    assert.equal(await interactionModel.updateReportStatusBatch([], 1, 3), 0)
+    assert.equal(await interactionModel.updateReportStatusBatch(['bad'], 1, 3), 0)
+    assert.equal(await interactionModel.updateReportStatusBatch([9], 5, 3), 0)
+    assert.equal(queryCalls.length, 0)
+
+    // 恢复待处理只覆盖「已处理」记录，避免把仍在等待的举报也一并回退
+    queryCalls = []
+    await interactionModel.updateReportStatusBatch([9, 10], 0, 3)
+    const reopen = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.match(reopen.sql, /handle_note = NULL/)
+    assert.match(reopen.sql, /AND status = 1/)
+})
+
+test('批量处理超过 200 条会被截断，避免超长 SQL', async () => {
+    queryHandler = async () => ({ affectedRows: 1 })
+
+    await interactionModel.updateReportStatusBatch(
+        Array.from({ length: 500 }, (_, index) => index + 1),
+        1,
+        3
+    )
+
+    const update = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    const placeholders = (update.sql.match(/\?/g) || []).length
+    // 状态 + 处理人 + 备注 + 200 个 ID
+    assert.equal(placeholders, 203)
 })
 
 test('删除评论会把相关待处理举报标记为已处理', async () => {
@@ -639,8 +711,91 @@ test('举报处理接口按权限与参数校验', async () => {
         reason: 'spam',
         targetType: 'gallery',
         status: 0,
-        keyword: ' 广告 '
+        keyword: ' 广告 ',
+        startDate: null,
+        endDate: null,
     })
+})
+
+test('举报列表支持时间范围，并拒绝非法日期', async () => {
+    listReportsResult = {
+        list: [], total: 0, page: 1, pageSize: 10, totalPage: 0,
+        summary: { total: 0, pending: 0, resolved: 0, dismissed: 0, reasons: {} }
+    }
+
+    for (const query of [
+        { startDate: '2026/10/01', endDate: '2026-10-31' },
+        { startDate: '2026-10-01', endDate: '10-31' },
+        { startDate: '2026-02-31', endDate: '2026-10-31' },
+        { startDate: '2026-13-01', endDate: '2026-10-31' },
+        { startDate: '2026-10-01' },
+        { endDate: '2026-10-31' }
+    ]) {
+        const res = makeResponse()
+        await controller.getReports({
+            query,
+            user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+        }, res)
+        assert.equal(res.statusCode, 400)
+        assert.match(res.body.message, /YYYY-MM-DD|起止日期/)
+    }
+    assert.equal(listReportsCalls.length, 0)
+
+    const ok = makeResponse()
+    await controller.getReports({
+        query: { startDate: '2026-10-01', endDate: '2026-10-31' },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, ok)
+    assert.equal(ok.statusCode, 200)
+    assert.deepEqual(listReportsCalls[0].startDate, '2026-10-01')
+    assert.deepEqual(listReportsCalls[0].endDate, '2026-10-31')
+})
+
+test('批量处理接口校验权限、数量与备注长度', async () => {
+    const denied = makeResponse()
+    await controller.updateReportStatusBatch({
+        body: { ids: [9], status: 1 },
+        user: { userId: 7, userType: 'normal', permissions: [] }
+    }, denied)
+    assert.equal(denied.statusCode, 403)
+
+    for (const body of [
+        { ids: [], status: 1 },
+        { status: 1 },
+        { ids: Array.from({ length: 201 }, (_, index) => index + 1), status: 1 },
+        { ids: [9], status: 3 },
+        { ids: [9], status: 1, note: 'x'.repeat(201) }
+    ]) {
+        const res = makeResponse()
+        await controller.updateReportStatusBatch({
+            body,
+            user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+        }, res)
+        assert.equal(res.statusCode, 400, `入参 ${JSON.stringify(body).slice(0, 60)} 应被拒绝`)
+    }
+    assert.equal(batchCalls.length, 0)
+
+    updateReportStatusBatchResult = 0
+    const missing = makeResponse()
+    await controller.updateReportStatusBatch({
+        body: { ids: [9], status: 1 },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, missing)
+    assert.equal(missing.statusCode, 404)
+
+    updateReportStatusBatchResult = 2
+    const ok = makeResponse()
+    await controller.updateReportStatusBatch({
+        body: { ids: [9, 10], status: 2, note: ' 不违规  ' },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] },
+        ip: '127.0.0.1'
+    }, ok)
+    assert.equal(ok.statusCode, 200)
+    assert.deepEqual(ok.body.data, { updated: 2, requested: 2, status: 2 })
+    assert.deepEqual(batchCalls[1], { ids: [9, 10], status: 2, handledBy: 7, note: '不违规' })
+    assert.equal(logCalls.length, 1)
+    assert.equal(logCalls[0].targetType, 'comment_report')
+    assert.match(logCalls[0].detail, /实际处理 2 条/)
 })
 
 test('处理举报会写入日志，未命中返回 404', async () => {

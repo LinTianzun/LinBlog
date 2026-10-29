@@ -38,6 +38,8 @@ export interface CommentReportItem {
   status: CommentReportStatus;
   createdAt: string;
   handledAt: string | null;
+  // 处理备注：运营处理举报时留下的说明，恢复待处理后清空
+  handleNote: string;
   handlerName: string | null;
   reporter: {
     id: number;
@@ -45,6 +47,14 @@ export interface CommentReportItem {
   };
   comment: ReportedComment;
   source: ReportedCommentSource;
+}
+
+export interface CommentReportTrendPoint {
+  date: string;
+  total: number;
+  pending: number;
+  resolved: number;
+  dismissed: number;
 }
 
 export interface CommentReportSummary {
@@ -62,6 +72,8 @@ export interface CommentReportPageData {
   totalPage: number;
   list: CommentReportItem[];
   summary: CommentReportSummary;
+  // 趋势为可选：后端尚未升级时前端退化为不展示图表，不阻塞列表
+  trend?: CommentReportTrendPoint[];
 }
 
 export interface ApiResult<T> {
@@ -93,6 +105,8 @@ export function getCommentReports(
     reason?: CommentReportReason | "";
     targetType?: CommentReportSourceFilter | "";
     keyword?: string;
+    startDate?: string;
+    endDate?: string;
   } = {}
 ) {
   return request.get<ApiResult<CommentReportPageData>>("/comment/reports", {
@@ -100,13 +114,29 @@ export function getCommentReports(
   });
 }
 
-// 处理单条举报：0 恢复待处理 / 1 已处理 / 2 已忽略
+// 处理单条举报：0 恢复待处理 / 1 已处理 / 2 已忽略，可附处理备注
 export function updateCommentReportStatus(
   id: number,
-  status: 0 | 1 | 2
+  status: 0 | 1 | 2,
+  note?: string
 ) {
   return request.patch<ApiResult<{ id: number; status: number }>>(
     `/comment/reports/${id}`,
-    { status }
+    { status, ...(note ? { note } : {}) }
   );
+}
+
+// 批量处理举报：一次最多 200 条，返回服务端真实处理条数
+export function updateCommentReportStatusBatch(
+  ids: number[],
+  status: 0 | 1 | 2,
+  note?: string
+) {
+  return request.patch<
+    ApiResult<{ updated: number; requested: number; status: number }>
+  >("/comment/reports/batch", {
+    ids,
+    status,
+    ...(note ? { note } : {}),
+  });
 }
