@@ -166,6 +166,28 @@
                             </div>
                         </div>
 
+                        <!-- 描边强度只对渐变主题生效，纯色主题下整段隐藏 -->
+                        <div v-if="isGradient" class="set-subhead">
+                            <span class="set-label">卡片描边</span>
+                            <yk-text type="tertiary">控制卡片边缘的渐变光圈</yk-text>
+                        </div>
+
+                        <div v-if="isGradient" class="set-card set-edge">
+                            <div class="set-edge-options">
+                                <button v-for="level in edgeLevels" :key="level" type="button" class="set-edge-option"
+                                    :class="{ 'is-active': level === edgeLevel }"
+                                    @click="selectEdgeLevel(level)">
+                                    <span class="set-edge-ring" :data-level="level">
+                                        <span class="set-edge-core" />
+                                    </span>
+                                    <span class="set-edge-name">{{ edgeLevelLabels[level] }}</span>
+                                </button>
+                            </div>
+                            <p class="set-edge-hint">
+                                {{ edgeLevel === 0 ? '已关闭，卡片为普通边框' : '描边随主题色在卡片边缘流动' }}
+                            </p>
+                        </div>
+
                         <div v-for="group in presetGroups" :key="group.key" class="set-theme-group">
                             <div class="set-subhead">
                                 <span class="set-label">{{ group.label }}</span>
@@ -314,7 +336,15 @@ import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
 import { getFileStorageStatus, type FileStorageStatus } from '../api/file'
 import { themePresets, type ThemePreset } from '../utils/themes'
-import { applyThemePreset, getStoredPresetId } from '../utils/themePreset'
+import {
+    applyThemePreset,
+    applyEdgeLevel,
+    getStoredPresetId,
+    getStoredEdgeLevel,
+    EDGE_LEVELS,
+    EDGE_LEVEL_LABELS,
+    type EdgeLevel
+} from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
 import { useSessionStore } from '../store/session.ts'
 import {
@@ -375,6 +405,8 @@ const activePreset = computed(() =>
     themePresets.find(p => p.id === activePresetId.value) || themePresets[0]
 )
 const isDark = computed(() => activePreset.value.base === 'dark')
+// 描边是渐变主题的专属装饰，纯色主题下没有可调节的对象
+const isGradient = computed(() => activePreset.value.kind === 'gradient')
 
 // 主题配色先按当前基调过滤，再按纯色/渐变分段：
 // 浅色 tab 只出浅色系，深色 tab 只出深色系，同基调内渐变色系单独成组
@@ -396,6 +428,16 @@ const selectTheme = (presetId: string) => {
     if (presetId === activePresetId.value) return
     applyThemePreset(presetId)
     activePresetId.value = presetId
+}
+
+// ── 卡片描边强度（仅渐变主题）──
+const edgeLevels = EDGE_LEVELS
+const edgeLevelLabels = EDGE_LEVEL_LABELS
+const edgeLevel = ref<EdgeLevel>(getStoredEdgeLevel())
+
+const selectEdgeLevel = (level: EdgeLevel) => {
+    if (level === edgeLevel.value) return
+    edgeLevel.value = applyEdgeLevel(level)
 }
 
 // 明暗切换：切到该基调的第一套配色，列表随之换成对应系别的卡片
@@ -911,6 +953,98 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+// ── 卡片描边强度 ──
+// 预览环复用真实的 --lin-edge-* 变量：切等级时预览与页面卡片同步变化，
+// 而不是另写一套仅供展示的色值
+.set-edge-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.set-edge-option {
+    display: flex;
+    flex: 1 1 96px;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 6px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: var(--admin-radius-sm, 12px);
+    background: var(--admin-surface-soft, var(--bgColor2));
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+    }
+
+    &.is-active {
+        border-color: var(--pcolor);
+        box-shadow: 0 0 0 3px var(--pcolor2);
+    }
+}
+
+.set-edge-ring {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--admin-surface, var(--bgColor1));
+}
+
+// 预览环按等级直接改宽度变量，让同一套 mask 规则画出粗细不同的边
+.set-edge-ring[data-level='0'] {
+    --lin-edge-width: 0px;
+}
+
+.set-edge-ring[data-level='1'] {
+    --lin-edge-width: 1px;
+}
+
+.set-edge-ring[data-level='2'] {
+    --lin-edge-width: 1.5px;
+}
+
+.set-edge-ring[data-level='3'] {
+    --lin-edge-width: 2px;
+}
+
+.set-edge-core {
+    position: relative;
+    isolation: isolate;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background: var(--admin-surface, var(--bgColor1));
+
+    &::before {
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        content: '';
+        border-radius: inherit;
+        padding: var(--lin-edge-width);
+        background: var(--lin-edge-gradient, transparent);
+        -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+        mask-composite: exclude;
+    }
+}
+
+.set-edge-name {
+    color: var(--admin-text, var(--gray));
+    font-size: 12px;
+}
+
+.set-edge-hint {
+    margin: 0;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 12px;
 }
 
 // ── 账号资料 ──

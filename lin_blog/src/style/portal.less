@@ -88,6 +88,14 @@
     // 宽度回落到 0 -> 描边整层不可见。border 不接受渐变，故用 mask 伪元素实现。
     --portal-edge-width: var(--lin-edge-width, 0px);
     --portal-edge-gradient: var(--lin-edge-gradient, transparent);
+    // 压在照片上的控件（hero 按钮等）底色是深色的，主题色描边在上面会发脏，
+    // 故单独用一条高亮描边，浓度同样由用户在设置页控制
+    --portal-edge-gradient-overlay: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--pcolor6) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 0%,
+        rgba(255, 255, 255, 0.9) 48%,
+        color-mix(in srgb, var(--pcolor6) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 100%
+    );
 }
 
 // 暗态覆盖：深色下用 --pcolor9（深色变体）作文字，--bgColor1 仍由 data-theme-preset 切换为深色
@@ -113,6 +121,12 @@
     --portal-page-gradient: var(--bgColor1);
     --portal-edge-width: var(--lin-edge-width, 0px);
     --portal-edge-gradient: var(--lin-edge-gradient, transparent);
+    --portal-edge-gradient-overlay: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--pcolor6) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 0%,
+        rgba(255, 255, 255, 0.9) 48%,
+        color-mix(in srgb, var(--pcolor6) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 100%
+    );
 }
 
 // 响应式 Hero 高度
@@ -176,6 +190,28 @@
     pointer-events: none;
 }
 
+// 压在照片/深色底上的控件（hero 按钮、卷首语卡）用高亮描边，
+// 否则主题色描边在深色底上会发脏。用法与 .portal-edge 完全一致。
+.portal-edge-overlay {
+    position: relative;
+    isolation: isolate;
+}
+
+.portal-edge-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: var(--portal-edge-width);
+    background: var(--portal-edge-gradient-overlay, transparent);
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
 // 比例容器：所有媒体必须有边界，避免原始尺寸撑破布局
 .portal-media-box {
     position: relative;
@@ -202,8 +238,10 @@
     opacity: 1;
 }
 
-// pill 按钮
+// pill 按钮：渐变主题下自带同款描边环
 .portal-pill {
+    position: relative;
+    isolation: isolate;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -219,6 +257,20 @@
         background: var(--portal-accent-soft);
         border-color: var(--portal-accent);
         transform: translateY(-1px);
+    }
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        padding: var(--portal-edge-width);
+        background: var(--portal-edge-gradient, transparent);
+        -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+        mask-composite: exclude;
+        pointer-events: none;
     }
 }
 

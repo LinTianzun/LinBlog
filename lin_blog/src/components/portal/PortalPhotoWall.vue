@@ -3,7 +3,7 @@
         <button v-for="(item, index) in items" :key="item.id" type="button" class="wall-print"
             :class="[`is-${item.span}`, `tone-${item.tone ?? 0}`]"
             :style="{ animationDelay: `${Math.min(index, 11) * 55}ms` }" @click="emit('select', item.id)">
-            <div class="print-frame">
+            <div class="print-frame portal-edge">
                 <img v-if="item.image" :src="item.image" :alt="item.alt" loading="lazy" />
                 <div v-else class="print-blank" :class="`tone-${item.tone ?? 0}`">
                     <span>{{ item.glyph }}</span>

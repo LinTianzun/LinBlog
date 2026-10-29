@@ -25,16 +25,16 @@
                         写成一份缓慢更新、但始终诚实的个人刊物。
                     </p>
                     <div class="hero-links">
-                        <RouterLink class="hero-pill hero-pill-primary" to="/portal/articles">
+                        <RouterLink class="hero-pill hero-pill-primary portal-edge-overlay" to="/portal/articles">
                             开始阅读
                             <IconRightOutline />
                         </RouterLink>
-                        <RouterLink class="hero-pill" to="/portal/gallery">浏览摄影集</RouterLink>
-                        <RouterLink class="hero-pill" to="/portal/diary">翻看随笔</RouterLink>
+                        <RouterLink class="hero-pill portal-edge-overlay" to="/portal/gallery">浏览摄影集</RouterLink>
+                        <RouterLink class="hero-pill portal-edge-overlay" to="/portal/diary">翻看随笔</RouterLink>
                     </div>
                 </div>
 
-                <aside class="hero-aside" aria-label="卷首语">
+                <aside class="hero-aside portal-edge-overlay" aria-label="卷首语">
                     <span class="hero-aside-kicker">EDITOR'S NOTE</span>
                     <blockquote>
                         记录不是为了证明什么，
@@ -223,7 +223,7 @@
             </div>
             <div class="closing-side">
                 <p>这里没有催促，也没有算法。更新随缘，阅读也一样。</p>
-                <RouterLink class="closing-link" to="/portal/messages">
+                <RouterLink class="closing-link portal-edge" to="/portal/messages">
                     去留言墙
                     <IconRightOutline />
                 </RouterLink>

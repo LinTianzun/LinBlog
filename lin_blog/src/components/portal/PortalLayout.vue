@@ -66,7 +66,7 @@
                         </Transition>
                     </div>
 
-                    <button type="button" class="nav-action" @click="goAdmin">
+                    <button type="button" class="nav-action portal-edge" @click="goAdmin">
                         进入后台
                     </button>
                 </div>
