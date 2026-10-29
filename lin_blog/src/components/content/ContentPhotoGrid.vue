@@ -5,9 +5,12 @@
 <template>
     <div v-if="photos.length" class="content-photo-grid" :class="`is-${layout}`">
         <button v-for="(photo, index) in photos" :key="`${photo}-${index}`" type="button"
-            class="content-photo-cell" :aria-label="`查看第 ${index + 1} 张`" @click="emit('preview', index)">
-            <img :src="photo" :alt="`第 ${index + 1} 张`" loading="lazy" />
-            <span v-if="showIndex" class="content-photo-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            class="content-photo-cell" :aria-label="`查看第 ${startIndex + index + 1} 张`"
+            @click="emit('preview', startIndex + index)">
+            <img :src="photo" :alt="`第 ${startIndex + index + 1} 张`" loading="lazy" />
+            <span v-if="showIndex" class="content-photo-index">
+                {{ String(startIndex + index + 1).padStart(2, '0') }}
+            </span>
         </button>
     </div>
 
@@ -26,10 +29,13 @@ withDefaults(defineProps<{
     layout?: 'masonry' | 'strip'
     showIndex?: boolean
     emptyText?: string
+    // 首图已在 Hero 展示时，网格从第 2 张开始编号与预览
+    startIndex?: number
 }>(), {
     layout: 'masonry',
     showIndex: false,
-    emptyText: '这里还没有图片'
+    emptyText: '这里还没有图片',
+    startIndex: 0
 })
 
 const emit = defineEmits<{
@@ -43,15 +49,35 @@ const emit = defineEmits<{
     gap: 12px;
 }
 
-// 图库：自适应列 + 不等高，保留照片原本比例
+// 图库：CSS 多列瀑布流。高度由图片原始比例决定，不再用固定行高裁切，
+// 避免横图被“拉平”或在网格里只显示中间一截。
 .content-photo-grid.is-masonry {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
-    grid-auto-rows: 180px;
+    display: block;
+    columns: 3 220px;
+    column-gap: 14px;
 
-    // 每 5 张里让第 1 张跨两格，形成错落的刊物排版
-    .content-photo-cell:nth-child(5n + 1) {
-        grid-column: span 2;
-        grid-row: span 2;
+    .content-photo-cell {
+        display: block;
+        width: 100%;
+        margin: 0 0 14px;
+        break-inside: avoid;
+        border: 1px solid var(--content-photo-line, var(--admin-line, var(--gray1)));
+        box-shadow: var(--content-photo-shadow-soft, 0 8px 24px rgba(18, 28, 45, 0.06));
+
+        img {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+
+        &:hover {
+            transform: translateY(-3px);
+            border-color: var(--content-photo-accent, var(--admin-accent, var(--pcolor)));
+
+            img {
+                transform: none;
+            }
+        }
     }
 }
 
@@ -71,7 +97,7 @@ const emit = defineEmits<{
     // 门户在 portal.less 里覆盖这些 token，不在这里写默认值（scoped 特异性会压过它）
     background: var(--content-photo-soft, var(--admin-accent-soft, var(--pcolor2)));
     cursor: zoom-in;
-    transition: transform 200ms ease, box-shadow 200ms ease;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 
     img {
         width: 100%;
@@ -127,13 +153,13 @@ const emit = defineEmits<{
 
 @media (max-width: 640px) {
     .content-photo-grid.is-masonry {
-        grid-auto-rows: 150px;
+        columns: 1;
+    }
+}
 
-        // 单列下跨格会撑破布局，取消错落
-        .content-photo-cell:nth-child(5n + 1) {
-            grid-column: span 1;
-            grid-row: span 1;
-        }
+@media (min-width: 641px) and (max-width: 900px) {
+    .content-photo-grid.is-masonry {
+        columns: 2;
     }
 }
 </style>

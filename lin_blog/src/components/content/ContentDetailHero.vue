@@ -6,7 +6,9 @@
 <template>
     <header class="content-detail-hero"
         :class="[`is-${variant}`, `density-${density}`, { 'has-cover': Boolean(cover) }]">
-        <figure v-if="variant === 'immersive' && cover" class="content-detail-hero-media is-clickable"
+        <figure v-if="variant === 'immersive' && cover"
+            class="content-detail-hero-media is-clickable"
+            :class="`is-fit-${coverFit}`"
             @click="emit('cover-click')">
             <img :src="cover" :alt="title" loading="eager" @error="emit('cover-error')" />
             <span class="content-detail-hero-veil" aria-hidden="true"></span>
@@ -45,7 +47,8 @@
             </div>
 
             <figure v-if="cover" class="content-detail-hero-media"
-                :class="{ 'is-clickable': Boolean(coverHint) }" @click="emit('cover-click')">
+                :class="[`is-fit-${coverFit}`, { 'is-clickable': Boolean(coverHint) }]"
+                @click="emit('cover-click')">
                 <img :src="cover" :alt="title" loading="lazy" @error="emit('cover-error')" />
                 <span v-if="coverHint" class="content-detail-hero-hint">
                     <IconZoomInOutline />{{ coverHint }}
@@ -74,6 +77,8 @@ withDefaults(defineProps<{
     badges?: HeroBadge[]
     labels?: string[]
     coverHint?: string
+    // 图库首图需要完整呈现，文章封面仍默认裁切填充
+    coverFit?: 'cover' | 'contain'
 }>(), {
     introduce: '',
     cover: '',
@@ -81,7 +86,8 @@ withDefaults(defineProps<{
     density: 'comfortable',
     badges: () => [],
     labels: () => [],
-    coverHint: ''
+    coverHint: '',
+    coverFit: 'cover'
 })
 
 const emit = defineEmits<{
@@ -226,8 +232,22 @@ const emit = defineEmits<{
         transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
+    &.is-fit-contain {
+        background:
+            radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.08), transparent 56%),
+            var(--content-hero-media-soft, var(--admin-surface-soft, var(--bgColor2)));
+
+        img {
+            object-fit: contain;
+        }
+    }
+
     &:hover img {
         transform: scale(1.025);
+    }
+
+    &.is-fit-contain:hover img {
+        transform: none;
     }
 }
 

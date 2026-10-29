@@ -6,7 +6,7 @@
             <ContentDetailHero :title="diary.title" variant="plain" :badges="heroBadges" />
 
             <!-- 与前台随笔详情共用统计条 -->
-            <ContentStatBar :views="diary.views ?? 0" :comments="rootComments"
+            <ContentStatBar :views="diary.views ?? 0" :comments="displayedCommentTotal"
                 :meta-text="momentText" :meta-chips="metaChips" />
 
             <p class="diary-detail-text">{{ diary.content }}</p>
@@ -14,12 +14,10 @@
             <ContentPhotoGrid :photos="pictures" layout="strip" empty-text="这篇随笔没有配图"
                 @preview="openLightbox" />
 
-            <div class="diary-detail-comment">
-                <p class="diary-detail-comment-title">
-                    评论 {{ rootComments }} · 回复 {{ replyComments }}
-                </p>
-                <diaryCommentList :diary-id="diary.id" :page-size="20" @changed="handleCommentsChanged" />
-            </div>
+            <!-- 评论区与后台文章详情保持同一套交互 -->
+            <AdminCommentSection target-type="diary" :target-id="diary.id"
+                :initial-total="displayedCommentTotal" @comments-change="handleCommentTotalChange"
+                @changed="handleCommentsChanged" />
         </div>
 
         <ContentLightbox :open="lightbox.open" :photos="pictures" :index="lightbox.index"
@@ -32,11 +30,11 @@ import { computed, ref, watch } from 'vue'
 import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
 import { momentl } from '../../utils/moment'
-import diaryCommentList from './diaryCommentList.vue'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
+import AdminCommentSection from '../content/AdminCommentSection.vue'
 
 const props = defineProps<{
     modelValue: boolean
@@ -57,6 +55,18 @@ const pictures = computed(() => props.diary?.picture || [])
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
 const rootComments = computed(() => props.diary?.rootComments ?? props.diary?.comments ?? 0)
 const replyComments = computed(() => props.diary?.replyComments ?? 0)
+// 统计条与后台文章/图库统一展示评论总数，评论区内部再按两级展开
+const commentTotal = computed(() => {
+    const current = props.diary
+    const hasSplitCounts = current?.rootComments !== undefined || current?.replyComments !== undefined
+    if (hasSplitCounts) return rootComments.value + replyComments.value
+    return current?.comments ?? 0
+})
+
+const commentTotalOverride = ref<number | null>(null)
+const displayedCommentTotal = computed(
+    () => commentTotalOverride.value ?? commentTotal.value
+)
 
 const momentText = computed(() =>
     props.diary?.moment ? momentl(props.diary.moment) : '暂无时间'
@@ -90,27 +100,29 @@ const closeLightbox = (): void => {
     lightbox.value.open = false
 }
 
-// 评论数由列表数据提供，删除评论后本地减一，避免再刷新整个列表
-const commentOffset = ref(0)
-
 const handleVisibleChange = (value: boolean): void => {
     emits('update:modelValue', value)
 }
 
-const handleCommentsChanged = (): void => {
-    commentOffset.value += 1
+const handleCommentTotalChange = (total: number): void => {
+    commentTotalOverride.value = total
+}
+
+const handleCommentsChanged = (total: number): void => {
+    commentTotalOverride.value = total
     emits('changed')
 }
 
-watch(() => props.modelValue, visible => {
-    // 每次打开重新计数，避免上一次的本地修正残留
-    if (visible) commentOffset.value = 0
-})
-
-defineExpose({
-    // 供父组件读取删除偏移后修正列表计数（无需额外请求）
-    offset: computed(() => commentOffset.value)
-})
+watch(
+    [() => props.modelValue, () => props.diary?.id],
+    ([visible, diaryId], previous) => {
+        const previousVisible = previous?.[0]
+        const previousId = previous?.[1]
+        if (!visible || previousVisible === false || diaryId !== previousId) {
+            commentTotalOverride.value = null
+        }
+    }
+)
 </script>
 
 <style lang="less" scoped>
@@ -129,17 +141,6 @@ defineExpose({
         word-break: break-word;
     }
 
-    &-comment {
-        padding-top: @space-m;
-        border-top: 1px solid var(--admin-line, var(--gray1));
-
-        &-title {
-            margin: 0 0 @space-m;
-            color: var(--gray);
-            font-size: 16px;
-            font-weight: 600;
-        }
-    }
 }
 
 @media (max-width: 640px) {

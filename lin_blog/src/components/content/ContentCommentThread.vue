@@ -317,8 +317,9 @@ const emit = defineEmits<{
     min-height: 24px;
     margin-top: 8px;
 
+    // 二级回复同样把三点菜单推到右侧，与一级评论对齐
     &.is-reply {
-        justify-content: flex-start;
+        justify-content: space-between;
     }
 }
 

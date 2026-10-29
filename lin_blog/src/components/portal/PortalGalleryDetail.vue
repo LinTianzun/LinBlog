@@ -6,39 +6,19 @@
                 <yk-spinner size="m" />
             </div>
 
-            <!-- ── Hero 区：与后台图库共用沉浸式首图头部 ── -->
-            <div class="gd-hero" v-if="images.length">
+            <!-- 开场：与后台图库共用多图接触印样，标题回到内容层而不是压在单张图上 -->
+            <div class="gd-intro">
                 <ContentDetailHero :title="item.title" :introduce="item.introduce || ''"
-                    :cover="images[heroIndex] || ''" variant="immersive" :badges="heroBadges"
-                    cover-hint="点击放大" @cover-click="openLightbox(heroIndex)"
-                    @cover-error="onHeroError" />
+                    variant="plain" :badges="heroBadges" />
 
-                <!-- 胶片条：水平滚动缩略图，当前帧高亮 -->
-                <div class="gd-filmstrip" v-if="images.length > 1">
-                    <button type="button" class="gd-strip-nav gd-strip-prev" :disabled="heroIndex === 0"
-                        @click="stepHero(-1)" aria-label="上一张">
-                        <IconRightOutline class="gd-icon-flip" />
-                    </button>
-                    <div class="gd-strip-track" ref="stripRef">
-                        <button v-for="(src, i) in images" :key="i" type="button"
-                            class="gd-strip-thumb" :class="{ active: i === heroIndex }"
-                            @click="heroIndex = i" :aria-label="`第 ${i + 1} 张`">
-                            <img :src="src" :alt="`缩略图 ${i + 1}`" loading="lazy" />
-                            <span class="gd-strip-num">{{ String(i + 1).padStart(2, '0') }}</span>
-                        </button>
-                    </div>
-                    <button type="button" class="gd-strip-nav gd-strip-next"
-                        :disabled="heroIndex === images.length - 1" @click="stepHero(1)"
-                        aria-label="下一张">
-                        <IconRightOutline />
-                    </button>
+                <ContentPhotoStage v-if="images.length" :photos="images"
+                    :visible-count="stagePhotoCount" @preview="openLightbox" />
+
+                <!-- 无图片时的空状态 -->
+                <div v-else class="gd-empty-photos">
+                    <IconImageOutline />
+                    <p>这组图库暂无图片</p>
                 </div>
-            </div>
-
-            <!-- 无图片时的空状态 -->
-            <div v-else class="gd-empty-photos">
-                <IconImageOutline />
-                <p>这组图库暂无图片</p>
             </div>
 
             <!-- ── 统计栏：与后台图库详情共用同一个组件，点赞按钮走插槽 ── -->
@@ -59,19 +39,15 @@
                 </template>
             </ContentStatBar>
 
-            <!-- ── 瀑布流照片墙 ── -->
-            <div class="gd-masonry" v-if="images.length > 1">
-                <figure v-for="(src, i) in images.slice(1)" :key="i"
-                    class="gd-masonry-item"
-                    :style="{ '--stagger': `${Math.min(i, 15) * 40}ms` }"
-                    @click="openLightbox(i + 1)">
-                    <img :src="src" :alt="`${item.title} - ${i + 2}`" loading="lazy" />
-                    <span class="gd-masonry-index">{{ String(i + 2).padStart(2, '0') }}</span>
-                    <div class="gd-masonry-overlay">
-                        <IconZoomInOutline />
-                    </div>
-                </figure>
-            </div>
+            <!-- 照片墙：开场已使用前 3 张，这里继续展示后续照片 -->
+            <section v-if="images.length > stagePhotoCount" class="gd-photos">
+                <header class="gd-photos-head">
+                    <h3>整组照片</h3>
+                    <span>还有 {{ images.length - stagePhotoCount }} 张</span>
+                </header>
+                <ContentPhotoGrid :photos="images.slice(stagePhotoCount)" layout="masonry"
+                    :show-index="true" :start-index="stagePhotoCount" @preview="openLightbox" />
+            </section>
 
             <!-- 评论区 -->
             <PortalCommentSection
@@ -88,7 +64,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue'
+import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { parseGalleryContent, type ArticleItem } from '../../api/article'
 import {
@@ -101,6 +77,8 @@ import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
+import ContentPhotoStage from '../content/ContentPhotoStage.vue'
+import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 
 const props = defineProps<{
@@ -115,6 +93,7 @@ const emit = defineEmits<{
 }>()
 
 const images = computed(() => (props.item ? parseGalleryContent(props.item.content) : []))
+const stagePhotoCount = computed(() => Math.min(images.value.length, 3))
 
 // 浏览量本地副本：接口回读后立即刷新
 const views = ref(0)
@@ -127,10 +106,6 @@ const likeState = ref<LikeState>({ liked: false, likes: 0 })
 const likeBusy = ref(false)
 // 点赞状态加载中：此期间不渲染图标，避免打开弹窗时图标与计数跳变
 const likePending = ref(false)
-
-// Hero 区当前帧
-const heroIndex = ref(0)
-const stripRef = ref<HTMLElement | null>(null)
 
 // Lightbox 状态
 const lightbox = ref({ open: false, index: 0 })
@@ -163,26 +138,6 @@ const heroBadges = computed(() => {
     return badges
 })
 
-// Hero 帧步进
-const stepHero = (delta: number) => {
-    const next = heroIndex.value + delta
-    if (next < 0 || next >= images.value.length) return
-    heroIndex.value = next
-    scrollStripIntoView()
-}
-
-// 胶片条自动滚动到当前帧
-const scrollStripIntoView = () => {
-    nextTick(() => {
-        const track = stripRef.value
-        if (!track) return
-        const active = track.querySelector('.gd-strip-thumb.active') as HTMLElement | null
-        if (active) {
-            active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-        }
-    })
-}
-
 // Lightbox 控制
 const openLightbox = (index: number) => {
     lightbox.value = { open: true, index }
@@ -190,13 +145,6 @@ const openLightbox = (index: number) => {
 
 const closeLightbox = () => {
     lightbox.value.open = false
-}
-
-// 首图加载失败时切换到下一张
-const onHeroError = () => {
-    if (heroIndex.value < images.value.length - 1) {
-        heroIndex.value++
-    }
 }
 
 // 打开图库即计一次浏览；后端按访客去重，失败不影响图片展示
@@ -272,7 +220,6 @@ watch(loadKey, async (key, previousKey) => {
         commentTotal.value = 0
         detailLoading.value = false
         likePending.value = false
-        heroIndex.value = 0
         lightbox.value.open = false
         return
     }
@@ -284,7 +231,6 @@ watch(loadKey, async (key, previousKey) => {
     likePending.value = true
     likeState.value = { liked: false, likes: props.item?.likes ?? 0 }
     views.value = props.item?.views ?? 0
-    heroIndex.value = 0
     await loadLikeState(galleryId)
     likePending.value = false
     await countView(galleryId)
@@ -314,104 +260,12 @@ watch(loadKey, async (key, previousKey) => {
     z-index: 10;
 }
 
-// ===== Hero 区 =====
-.gd-hero {
+// ===== 开场：标题 + 多图接触印样 =====
+.gd-intro {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     margin: -4px -4px 0;
-}
-
-// ===== 胶片条 =====
-.gd-filmstrip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 0 0;
-}
-
-.gd-strip-nav {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 50px;
-    border: 1px solid var(--portal-surface-border);
-    border-radius: 8px;
-    background: var(--portal-surface);
-    color: var(--portal-text-secondary);
-    cursor: pointer;
-    transition: all var(--portal-transition-fast);
-
-    .yk-icon {
-        width: 16px;
-        height: 16px;
-    }
-
-    &:hover:not(:disabled) {
-        border-color: var(--portal-accent);
-        color: var(--portal-accent);
-        background: var(--portal-accent-soft);
-    }
-
-    &:disabled {
-        opacity: 0.3;
-        cursor: default;
-    }
-}
-
-.gd-icon-flip {
-    transform: scaleX(-1);
-}
-
-.gd-strip-track {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    scroll-behavior: smooth;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-        display: none;
-    }
-}
-
-.gd-strip-thumb {
-    position: relative;
-    flex: none;
-    width: 64px;
-    height: 50px;
-    border: 2px solid transparent;
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--portal-line-soft);
-    cursor: pointer;
-    transition: border-color var(--portal-transition-fast), opacity var(--portal-transition-fast);
-    opacity: 0.6;
-
-    img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    &.active {
-        border-color: var(--portal-accent);
-        opacity: 1;
-    }
-
-    &:hover {
-        opacity: 1;
-    }
-}
-
-.gd-strip-num {
-    position: absolute;
-    bottom: 2px;
-    right: 4px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 9px;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 // ===== 统计栏 =====
@@ -464,87 +318,32 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
-// ===== 瀑布流照片墙 =====
-.gd-masonry {
-    columns: 3;
-    column-gap: 12px;
+// 照片墙区块：门户侧沿用共享网格，这里只补充标题层级与 token 覆盖
+.gd-photos {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     padding: 16px 0;
 }
 
-.gd-masonry-item {
-    position: relative;
-    display: block;
-    width: 100%;
-    margin: 0 0 12px;
-    break-inside: avoid;
-    border-radius: 6px;
-    overflow: hidden;
-    cursor: zoom-in;
-    background: var(--portal-line-soft);
-    box-shadow: var(--portal-shadow-soft);
-    animation: gd-masonry-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
-    animation-delay: var(--stagger, 0ms);
-
-    img {
-        display: block;
-        width: 100%;
-        height: auto;
-        transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
-    }
-
-    &:hover img {
-        transform: scale(1.04);
-    }
-
-    &:hover .gd-masonry-overlay {
-        opacity: 1;
-    }
-
-    &:hover .gd-masonry-index {
-        opacity: 1;
-    }
-}
-
-.gd-masonry-index {
-    position: absolute;
-    top: 8px;
-    left: 10px;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 11px;
-    font-family: var(--portal-serif);
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
-    opacity: 0;
-    transition: opacity var(--portal-transition-fast);
-    pointer-events: none;
-}
-
-.gd-masonry-overlay {
-    position: absolute;
-    inset: 0;
+.gd-photos-head {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.3));
-    opacity: 0;
-    transition: opacity var(--portal-transition-fast);
-    pointer-events: none;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
 
-    .yk-icon {
-        width: 28px;
-        height: 28px;
-        color: rgba(255, 255, 255, 0.85);
+    h3 {
+        margin: 0;
+        color: var(--portal-text-primary);
+        font-family: var(--portal-serif);
+        font-size: 16px;
+        font-weight: 600;
     }
-}
 
-@keyframes gd-masonry-in {
-    from {
-        opacity: 0;
-        transform: translateY(14px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
+    span {
+        color: var(--portal-text-tertiary);
+        font-size: 12px;
     }
 }
 
@@ -571,21 +370,12 @@ watch(loadKey, async (key, previousKey) => {
 
 // ===== 响应式 =====
 @media (max-width: 900px) {
-    .gd-masonry {
-        columns: 2;
+    .gd-photos {
+        padding: 14px 0;
     }
 }
 
 @media (max-width: 560px) {
-    .gd-masonry {
-        columns: 1;
-    }
-
-    .gd-strip-thumb {
-        width: 52px;
-        height: 42px;
-    }
-
     .gd-stats-bar {
         flex-direction: column;
         align-items: flex-start;
@@ -593,11 +383,11 @@ watch(loadKey, async (key, previousKey) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .gd-masonry-item img {
+    .gd-photos :deep(.content-photo-cell img) {
         transition: none;
     }
 
-    .gd-masonry-item {
+    .gd-photos :deep(.content-photo-cell) {
         animation: none;
     }
 
