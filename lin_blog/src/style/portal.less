@@ -1,6 +1,6 @@
 // 门户（访客前台）视觉基座
 // 颜色一律取自主题变量（--pcolor / --bgColor* / --gray*），
-// 保证 11 套主题预设与明暗切换时门户自动跟随，不写死任何色值。
+// 保证各套主题预设与明暗切换时门户自动跟随，不写死任何色值。
 
 :root {
     // 衬线字体栈：优先思源宋体族，退回系统宋体；无衬线仅用于说明性小字
@@ -21,7 +21,7 @@
 // ===== 门户设计 token（全部从主题变量派生，明暗双态自动跟随）=====
 // 借鉴 EdgeOne 竞赛 prompt 的设计语言：玻璃拟态、暖色圆角、pill 导航、
 // 但所有颜色取自 LinBlog 主题变量（--pcolor* / --bgColor* / --font-color* / --line-color*），
-// 不写死色值，确保 11 套主题预设 + 明暗切换时门户自动跟随。
+// 不写死色值，确保各套主题预设 + 明暗切换时门户自动跟随。
 :root {
     // 空间与圆角
     --portal-page-width: min(1240px, calc(100% - 48px));
@@ -82,6 +82,12 @@
     // 渐变主题覆盖成真实渐变；纯色主题回落到 bgColor1。
     // 独立变量：--portal-page-bg 要参与 color-mix()，不能是渐变。
     --portal-page-gradient: var(--bgColor1);
+
+    // 渐变主题专用：卡片/玻璃面的一圈主题色渐变描边。
+    // --lin-edge-* 由渐变主题预设在 :root 上写入，纯色主题没有这两个变量，
+    // 宽度回落到 0 -> 描边整层不可见。border 不接受渐变，故用 mask 伪元素实现。
+    --portal-edge-width: var(--lin-edge-width, 0px);
+    --portal-edge-gradient: var(--lin-edge-gradient, transparent);
 }
 
 // 暗态覆盖：深色下用 --pcolor9（深色变体）作文字，--bgColor1 仍由 data-theme-preset 切换为深色
@@ -105,6 +111,8 @@
     --portal-ambient-opacity: 0.22;
     --portal-page-bg: var(--bgColor1);
     --portal-page-gradient: var(--bgColor1);
+    --portal-edge-width: var(--lin-edge-width, 0px);
+    --portal-edge-gradient: var(--lin-edge-gradient, transparent);
 }
 
 // 响应式 Hero 高度
@@ -128,6 +136,9 @@
 
 // 玻璃面卡片：明暗双态自动跟随
 .portal-glass {
+    position: relative;
+    // 显式建立层叠上下文：描边伪元素用 z-index:-1 压在卡片底色之上、内容之下
+    isolation: isolate;
     background: var(--portal-surface);
     backdrop-filter: blur(var(--portal-blur-glass)) saturate(140%);
     -webkit-backdrop-filter: blur(var(--portal-blur-glass)) saturate(140%);
@@ -135,6 +146,34 @@
     border-radius: var(--portal-radius-card);
     box-shadow: var(--portal-shadow-soft);
     transition: transform var(--portal-transition-medium), box-shadow var(--portal-transition-medium), background var(--portal-transition-medium);
+}
+
+// 渐变主题的描边环：border 不支持渐变，改为在卡片内侧铺一层渐变并用 mask 只留边缘一圈。
+// 纯色主题 --portal-edge-width 为 0，mask 无留白 -> 整层不可见，零开销零视觉影响。
+// 渐变主题的描边环：border 不支持渐变，改为铺一层渐变再用 mask 只留边缘一圈。
+// 纯色主题 --portal-edge-width 为 0，mask 无留白 -> 整层不可见，零开销零视觉影响。
+// 卡片自身必须能定位，故先补 position/isolation（缺一不可，否则伪元素会飞到页面左上角）。
+.portal-glass,
+.portal-edge {
+    position: relative;
+    isolation: isolate;
+}
+
+.portal-glass::before,
+.portal-edge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: var(--portal-edge-width);
+    background: var(--portal-edge-gradient, transparent);
+    // 两条遮罩相减：border-box 全显 - content-box 全显 = 只剩边缘一圈
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    mask-composite: exclude;
+    pointer-events: none;
 }
 
 // 比例容器：所有媒体必须有边界，避免原始尺寸撑破布局

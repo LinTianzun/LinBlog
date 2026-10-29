@@ -748,7 +748,7 @@ const goAdmin = () => router.push('/overView')
 <!-- 非 scoped：门户根节点需要承载主题变量，scoped 选择器无法命中根级属性 -->
 <style lang="less">
 .portal-layout {
-    // 顶栏底色由主题的页面底色派生，保证 11 套预设都跟随；
+    // 顶栏底色由主题的页面底色派生，保证 各套预设都跟随；
     // color-mix 只降低不透明度，不引入写死色值
     --portal-header-bg: color-mix(in srgb, var(--bgColor1) 82%, transparent);
     --portal-logo-filter: none;
