@@ -11,9 +11,9 @@
         </button>
 
         <div class="head-actions">
-            <button v-if="canUseMessages" type="button" class="icon-button inbox-button" title="私信" aria-label="打开私信"
-                @click="openInbox">
-                <yk-badge :is-dot="hasUnread">
+            <button v-if="canUseMessages" type="button" class="icon-button inbox-button" :class="{ 'has-new': unreadPulse }"
+                :title="inboxTitle" :aria-label="inboxTitle" @click="openInbox">
+                <yk-badge :count="unreadCount" :overflow-count="99" :hidden="!hasUnread">
                     <IconMailOutline />
                 </yk-badge>
             </button>
@@ -80,9 +80,8 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
 import { information } from '../reply/index.ts'
@@ -92,6 +91,11 @@ import { onClickOutside } from '@vueuse/core'
 import { themePresets, findPreset } from '../../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
 import { useSessionStore } from '../../store/session'
+import {
+    MESSAGE_POLL_INTERVAL,
+    MESSAGE_STATE_EVENT,
+    isDocumentVisible,
+} from '../../utils/messageRealtime'
 
 const isDark = useThemeDark()
 const session = useSessionStore()
@@ -119,6 +123,7 @@ const onPresetChange = (event: Event) => {
 }
 
 const router = useRouter();
+const route = useRoute()
 
 //  返回总览
 const backHome = () => {
@@ -137,6 +142,8 @@ const goPortal = () => {
 
 // 退出登录
 const quit = () => {
+    stopUnreadPolling()
+    unreadCount.value = 0
     // 清除本地登录信息
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
@@ -176,23 +183,93 @@ const changeActive = (e: any) => {
     }
 }
 
-//  未读私信数：0 时不显示红点
-const hasUnread = ref(false)
+// 未读私信数：顶栏直接展示数字，0 条时隐藏角标
+const unreadCount = ref(0)
+const hasUnread = computed(() => unreadCount.value > 0)
+const unreadPulse = ref(false)
+const inboxTitle = computed(() =>
+    hasUnread.value ? `私信 · ${unreadCount.value} 条未读` : '私信'
+)
+let unreadTimer: number | undefined
+let unreadPulseTimer: number | undefined
+let unreadFetching = false
+let unreadInitialized = false
+let headerMounted = false
+
+const stopUnreadPolling = (): void => {
+    if (unreadTimer !== undefined) {
+        window.clearInterval(unreadTimer)
+        unreadTimer = undefined
+    }
+}
+
+const pulseInbox = (): void => {
+    unreadPulse.value = true
+    if (unreadPulseTimer !== undefined) window.clearTimeout(unreadPulseTimer)
+    unreadPulseTimer = window.setTimeout(() => {
+        unreadPulse.value = false
+    }, 1800)
+}
 
 const fetchUnread = async () => {
     // 匿名访问门户等公开页时不请求未读数，避免 401 触发登录跳转
     if (!localStorage.getItem('token') || !session.can('message.private')) {
-        hasUnread.value = false
+        stopUnreadPolling()
+        unreadCount.value = 0
+        unreadInitialized = false
         return
     }
+    if (unreadFetching) return
+
+    unreadFetching = true
+    const previousCount = unreadCount.value
     try {
         const result = await getUnreadCount('private')
         if (result.code === 200 && result.data) {
-            hasUnread.value = Number(result.data.unreadCount) > 0
+            const nextCount = Math.max(0, Number(result.data.unreadCount) || 0)
+            unreadCount.value = nextCount
+            if (
+                unreadInitialized
+                && nextCount > previousCount
+                && route.path !== '/messages'
+            ) {
+                pulseInbox()
+            }
+            unreadInitialized = true
         }
     } catch {
         // 查询失败时保持现状，不打扰用户
+    } finally {
+        unreadFetching = false
     }
+}
+
+const startUnreadPolling = (): void => {
+    stopUnreadPolling()
+    if (
+        !headerMounted
+        || !isDocumentVisible()
+        || !localStorage.getItem('token')
+        || !session.can('message.private')
+    ) {
+        return
+    }
+    void fetchUnread()
+    unreadTimer = window.setInterval(() => {
+        void fetchUnread()
+    }, MESSAGE_POLL_INTERVAL)
+}
+
+const handleVisibilityChange = (): void => {
+    if (isDocumentVisible()) {
+        startUnreadPolling()
+    } else {
+        stopUnreadPolling()
+    }
+}
+
+const handleMessageStateChange = (): void => {
+    void fetchUnread()
 }
 
 const openInbox = () => {
@@ -210,6 +287,7 @@ const onAvatarChange = (event: Event) => {
 }
 
 onMounted(() => {
+    headerMounted = true
     const savedUserInfo = localStorage.getItem('userInfo')
 
     if (savedUserInfo) {
@@ -221,21 +299,39 @@ onMounted(() => {
         }
     }
 
-    void fetchUnread()
+    startUnreadPolling()
 
     window.addEventListener('user:avatar-change', onAvatarChange)
     window.addEventListener('theme:preset-change', onPresetChange)
     window.addEventListener('keydown', onGlobalKeydown)
+    window.addEventListener('focus', startUnreadPolling)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 
 onUnmounted(() => {
+    headerMounted = false
+    stopUnreadPolling()
+    if (unreadPulseTimer !== undefined) window.clearTimeout(unreadPulseTimer)
     window.removeEventListener('user:avatar-change', onAvatarChange)
     window.removeEventListener('theme:preset-change', onPresetChange)
     window.removeEventListener('keydown', onGlobalKeydown)
+    window.removeEventListener('focus', startUnreadPolling)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.removeEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 
-
-
+// 权限快照首屏异步恢复后，顶栏要立即开始轮询，而不是等下一次路由切换。
+watch(canUseMessages, value => {
+    if (!headerMounted) return
+    if (value) {
+        startUnreadPolling()
+    } else {
+        stopUnreadPolling()
+        unreadCount.value = 0
+        unreadInitialized = false
+    }
+})
 </script>
 
 <style lang="less" scoped>
@@ -337,6 +433,22 @@ onUnmounted(() => {
             border-color: var(--pcolor3);
             background: var(--pcolor1);
             color: var(--pcolor);
+        }
+    }
+
+    .inbox-button.has-new {
+        animation: inbox-pulse 900ms ease 2;
+    }
+
+    @keyframes inbox-pulse {
+        0%, 100% {
+            border-color: var(--gray1);
+            transform: scale(1);
+        }
+        45% {
+            border-color: var(--pcolor);
+            box-shadow: 0 0 0 4px var(--pcolor1);
+            transform: scale(1.08);
         }
     }
 

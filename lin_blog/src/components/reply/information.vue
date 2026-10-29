@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts" setup>
-import { toRefs, ref, computed, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { toRefs, ref, computed, onMounted, onUnmounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import type { InformationProps } from './reply.ts'
 import type { ReplyDat } from '../../utils/interface'
@@ -42,6 +42,11 @@ import {
     getRequestErrorMessage,
     type MessageItem,
 } from '../../api/message.ts'
+import {
+    MESSAGE_POLL_INTERVAL,
+    emitMessageStateChange,
+    isDocumentVisible,
+} from '../../utils/messageRealtime.ts'
 
 type MessageOptions = {
     type: 'primary' | 'error'
@@ -83,13 +88,15 @@ const page = ref(1)
 const loading = ref(false)
 const messages = ref<MessageItem[]>([])
 const markingAll = ref(false)
+let drawerTimer: number | undefined
+let drawerPolling = false
 
 // 当前页未读数
 const unreadCount = computed(() => messages.value.filter(item => item.isRead === 0).length)
 
 // 获取收件箱（私信）
-const fetchMessages = async (): Promise<void> => {
-    loading.value = true
+const fetchMessages = async (showSpinner = true, reportError = true): Promise<void> => {
+    if (showSpinner) loading.value = true
 
     try {
         const result = await getInboxMessages({
@@ -107,14 +114,58 @@ const fetchMessages = async (): Promise<void> => {
 
         if (messages.value.length === 0 && page.value > 1) {
             page.value = 1
-            await fetchMessages()
+            await fetchMessages(showSpinner, reportError)
         }
     } catch (error) {
-        messages.value = []
-        count.value = 0
-        proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '私信加载失败，请稍后重试') })
+        if (reportError) {
+            messages.value = []
+            count.value = 0
+            proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '私信加载失败，请稍后重试') })
+        }
     } finally {
-        loading.value = false
+        if (showSpinner) loading.value = false
+    }
+}
+
+const stopDrawerPolling = (): void => {
+    if (drawerTimer !== undefined) {
+        window.clearInterval(drawerTimer)
+        drawerTimer = undefined
+    }
+}
+
+const pollMessages = async (): Promise<void> => {
+    if (
+        drawerPolling
+        || loading.value
+        || !active.value
+        || page.value !== 1
+        || !isDocumentVisible()
+    ) {
+        return
+    }
+    drawerPolling = true
+    try {
+        await fetchMessages(false, false)
+    } finally {
+        drawerPolling = false
+    }
+}
+
+const startDrawerPolling = (): void => {
+    stopDrawerPolling()
+    if (!active.value || !isDocumentVisible()) return
+    drawerTimer = window.setInterval(() => {
+        void pollMessages()
+    }, MESSAGE_POLL_INTERVAL)
+}
+
+const handleDrawerVisibilityChange = (): void => {
+    if (isDocumentVisible() && active.value) {
+        void pollMessages()
+        startDrawerPolling()
+    } else {
+        stopDrawerPolling()
     }
 }
 
@@ -148,6 +199,7 @@ const markAllRead = async (): Promise<void> => {
         proxy?.$message?.({ type: 'primary', message: result.message || '已全部标记为已读' })
         await fetchMessages()
         emits('read')
+        emitMessageStateChange()
     } catch (error) {
         proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记失败，请稍后重试') })
     } finally {
@@ -167,6 +219,7 @@ const handleMessageClick = async (id: string | number): Promise<void> => {
 
             target.isRead = 1
             emits('read')
+            emitMessageStateChange()
         } catch (error) {
             // 已读状态失败不应阻止用户进入会话继续回复
             proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '标记已读失败，仍将打开会话') })
@@ -208,6 +261,8 @@ const removeMessage = async (id: string | number) => {
         }
 
         await fetchMessages()
+        emits('read')
+        emitMessageStateChange()
     } catch (error) {
         proxy?.$message?.({ type: 'error', message: getRequestErrorMessage(error, '删除失败，请稍后重试') })
     }
@@ -218,6 +273,9 @@ watch(active, value => {
     if (value) {
         page.value = 1
         void fetchMessages()
+        startDrawerPolling()
+    } else {
+        stopDrawerPolling()
     }
 })
 
@@ -228,9 +286,16 @@ watch(effectivePageSize, () => {
 })
 
 onMounted(() => {
+    document.addEventListener('visibilitychange', handleDrawerVisibilityChange)
     if (active.value) {
         void fetchMessages()
+        startDrawerPolling()
     }
+})
+
+onUnmounted(() => {
+    stopDrawerPolling()
+    document.removeEventListener('visibilitychange', handleDrawerVisibilityChange)
 })
 </script>
 

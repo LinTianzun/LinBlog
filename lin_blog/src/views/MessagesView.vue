@@ -6,6 +6,7 @@
                     <yk-text type="third">
                         {{ isOwner ? `共 ${conversations.length} 个会话` : `与 ${owner?.name || '博主'} 对话` }}
                     </yk-text>
+                    <yk-text type="third" class="messages-live-hint">页面可见时自动刷新</yk-text>
                     <yk-button type="secondary" :disabled="loadingConversations" @click="loadConversations">
                         <IconRefreshOutline /> 刷新
                     </yk-button>
@@ -86,6 +87,11 @@
                                     </div>
                                 </div>
                             </div>
+                            <div v-if="pendingNewCount > 0" class="chat-new-anchor">
+                                <button type="button" class="chat-new-button" @click="jumpToLatest">
+                                    有 {{ pendingNewCount }} 条新私信
+                                </button>
+                            </div>
                         </template>
                     </div>
 
@@ -113,7 +119,16 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import {
+    computed,
+    getCurrentInstance,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    ref,
+    watch,
+    type ComponentPublicInstance,
+} from 'vue'
 import { IconRefreshOutline } from '@yike-design/ui/es/components/svg-icon'
 import TopTitle from '../components/bar/TopTitle.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -127,10 +142,26 @@ import {
     type ConversationUser,
     type MessageItem,
 } from '../api/message'
+import {
+    MESSAGE_POLL_INTERVAL,
+    MESSAGE_STATE_EVENT,
+    conversationFingerprint,
+    conversationIncomingFingerprint,
+    emitMessageStateChange,
+    findNewIncomingConversations,
+    isDocumentVisible,
+    mergeMessagePage,
+} from '../utils/messageRealtime'
 
 const PAGE_SIZE = 50
 const route = useRoute()
 const router = useRouter()
+const proxy = getCurrentInstance()?.proxy as
+    | (ComponentPublicInstance & {
+        $message?: (options: { type: 'primary' | 'error'; message: string }) => void
+    })
+    | null
+    | undefined
 
 const conversations = ref<ConversationSummary[]>([])
 const owner = ref<ConversationUser | null>(null)
@@ -146,6 +177,11 @@ const sending = ref(false)
 const pageError = ref('')
 const sendError = ref('')
 const threadRef = ref<HTMLElement | null>(null)
+const pendingNewCount = ref(0)
+let conversationTimer: number | undefined
+let conversationPolling = false
+let activityInitialized = false
+const activitySnapshot = new Map<number, string>()
 
 // 博主身份由后端返回：普通账号的会话列表里 owner 就是唯一的对话人
 const myId = (() => {
@@ -211,6 +247,55 @@ const scrollToBottom = async (): Promise<void> => {
     if (el) el.scrollTop = el.scrollHeight
 }
 
+const isNearThreadBottom = (): boolean => {
+    const el = threadRef.value
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+const jumpToLatest = async (): Promise<void> => {
+    pendingNewCount.value = 0
+    const unreadIds = messages.value
+        .filter(item => item.receiverId === myId && item.isRead === 0)
+        .map(item => item.id)
+    if (unreadIds.length > 0) {
+        try {
+            await markMessagesRead(unreadIds)
+            for (const item of messages.value) {
+                if (unreadIds.includes(item.id)) item.isRead = 1
+            }
+            const summary = conversations.value.find(
+                item => item.userId === activeUserId.value
+            )
+            if (summary) {
+                summary.unreadCount = Math.max(0, summary.unreadCount - unreadIds.length)
+            }
+            syncActivitySnapshot()
+            emitMessageStateChange()
+        } catch {
+            // 已读同步失败不影响跳转到最新消息
+        }
+    }
+    await scrollToBottom()
+}
+
+const syncActivitySnapshot = (): void => {
+    activitySnapshot.clear()
+    for (const item of conversations.value) {
+        activitySnapshot.set(item.userId, conversationIncomingFingerprint(item))
+    }
+}
+
+const notifyIncomingConversations = (items: ConversationSummary[]): void => {
+    const incoming = items.filter(item => item.userId !== activeUserId.value)
+    if (incoming.length === 0) return
+
+    const message = incoming.length === 1
+        ? `收到来自 ${incoming[0].name} 的新私信`
+        : `收到 ${incoming.length} 位读者的新私信`
+    proxy?.$message?.({ type: 'primary', message })
+}
+
 const loadConversations = async (): Promise<void> => {
     loadingConversations.value = true
     pageError.value = ''
@@ -219,6 +304,9 @@ const loadConversations = async (): Promise<void> => {
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '会话加载失败')
         }
+        const incoming = activityInitialized
+            ? findNewIncomingConversations(activitySnapshot, result.data.conversations, myId)
+            : []
         owner.value = result.data.owner
         conversations.value = result.data.conversations
 
@@ -237,6 +325,9 @@ const loadConversations = async (): Promise<void> => {
         } else {
             messages.value = []
         }
+        syncActivitySnapshot()
+        activityInitialized = true
+        notifyIncomingConversations(incoming)
     } catch (error) {
         pageError.value = getRequestErrorMessage(error, '会话加载失败，请稍后重试')
         conversations.value = []
@@ -250,6 +341,9 @@ const loadMessages = async (reset = true): Promise<void> => {
     const targetUserId = activeUserId.value
     if (!targetUserId) return
 
+    // 首次加载/切换会话默认从底部开始，应同步已读；加载更早记录时保持原未读状态。
+    const wasNearBottom = reset || isNearThreadBottom()
+    if (reset) pendingNewCount.value = 0
     loadingMessages.value = true
     sendError.value = ''
     try {
@@ -270,7 +364,8 @@ const loadMessages = async (reset = true): Promise<void> => {
         const unreadIds = result.data.list
             .filter(item => item.receiverId === myId && item.isRead === 0)
             .map(item => item.id)
-        if (unreadIds.length > 0) {
+        // 用户停留在历史记录时先保留未读，点击“新私信”后再统一标记已读
+        if (wasNearBottom && unreadIds.length > 0) {
             // 已读标记失败不影响消息本身展示
             try {
                 await markMessagesRead(unreadIds)
@@ -279,6 +374,8 @@ const loadMessages = async (reset = true): Promise<void> => {
                 }
                 const summary = conversations.value.find(item => item.userId === targetUserId)
                 if (summary) summary.unreadCount = Math.max(0, summary.unreadCount - unreadIds.length)
+                syncActivitySnapshot()
+                emitMessageStateChange()
             } catch {
                 // 忽略已读标记失败，下次进入会话会再次尝试
             }
@@ -292,10 +389,70 @@ const loadMessages = async (reset = true): Promise<void> => {
     }
 }
 
+// 后台轮询只合并最新一页，不打断已加载的历史记录与输入中的草稿
+const refreshActiveMessages = async (): Promise<void> => {
+    const targetUserId = activeUserId.value
+    if (!targetUserId) return
+
+    const wasNearBottom = isNearThreadBottom()
+    try {
+        const result = await getConversation(targetUserId, {
+            page: 1,
+            pageSize: PAGE_SIZE,
+        })
+        if (result.code !== 200 || !result.data) return
+        if (activeUserId.value !== targetUserId) return
+
+        const merged = mergeMessagePage(messages.value, result.data.list)
+        messages.value = merged.list
+        total.value = result.data.total
+        totalPage.value = result.data.totalPage
+
+        const newIncoming = merged.added.filter(
+            item => item.senderId !== null
+                && item.senderId !== myId
+                && item.receiverId === myId
+        )
+        if (newIncoming.length > 0) {
+            if (wasNearBottom) {
+                await scrollToBottom()
+            } else {
+                pendingNewCount.value += newIncoming.length
+            }
+        }
+
+        const unreadIds = result.data.list
+            .filter(item => item.receiverId === myId && item.isRead === 0)
+            .map(item => item.id)
+        if (wasNearBottom && unreadIds.length > 0) {
+            try {
+                await markMessagesRead(unreadIds)
+                for (const item of messages.value) {
+                    if (unreadIds.includes(item.id)) item.isRead = 1
+                }
+                const summary = conversations.value.find(item => item.userId === targetUserId)
+                if (summary) {
+                    summary.unreadCount = Math.max(0, summary.unreadCount - unreadIds.length)
+                }
+                syncActivitySnapshot()
+                emitMessageStateChange()
+            } catch {
+                // 后台已读失败时保留未读提示，下次轮询或进入会话会重试
+            }
+        }
+    } catch {
+        // 静默轮询失败时保留当前聊天内容，不打断用户
+    }
+}
+
 const selectConversation = async (userId: number): Promise<void> => {
-    if (activeUserId.value === userId) return
+    if (activeUserId.value === userId) {
+        await jumpToLatest()
+        return
+    }
     activeUserId.value = userId
     messages.value = []
+    pendingNewCount.value = 0
     draft.value = ''
     await router.replace({ path: '/messages', query: { userId: String(userId) } })
     await loadMessages(true)
@@ -310,6 +467,92 @@ const loadEarlier = async (): Promise<void> => {
     if (threadRef.value) {
         threadRef.value.scrollTop = threadRef.value.scrollHeight - previousHeight
     }
+}
+
+const stopConversationPolling = (): void => {
+    if (conversationTimer !== undefined) {
+        window.clearInterval(conversationTimer)
+        conversationTimer = undefined
+    }
+}
+
+const pollConversations = async (): Promise<void> => {
+    if (
+        conversationPolling
+        || loadingConversations.value
+        || !isDocumentVisible()
+    ) {
+        return
+    }
+
+    conversationPolling = true
+    try {
+        const result = await getConversations()
+        if (result.code !== 200 || !result.data) return
+
+        const incoming = activityInitialized
+            ? findNewIncomingConversations(activitySnapshot, result.data.conversations, myId)
+            : []
+        const previousActive = activeConversation.value
+        const previousFingerprint = previousActive
+            ? conversationFingerprint(previousActive)
+            : ''
+
+        owner.value = result.data.owner
+        conversations.value = result.data.conversations
+
+        const activeStillExists = conversations.value.some(
+            item => item.userId === activeUserId.value
+        )
+        if (!activeStillExists) {
+            const firstUserId = conversations.value[0]?.userId ?? null
+            if (firstUserId) {
+                await selectConversation(firstUserId)
+            } else {
+                activeUserId.value = null
+                messages.value = []
+            }
+        } else {
+            const nextActive = conversations.value.find(
+                item => item.userId === activeUserId.value
+            )
+            if (
+                nextActive
+                && previousFingerprint !== conversationFingerprint(nextActive)
+            ) {
+                await refreshActiveMessages()
+            }
+        }
+
+        syncActivitySnapshot()
+        activityInitialized = true
+        notifyIncomingConversations(incoming)
+    } catch {
+        // 轮询失败不打断当前会话，下一次可见或定时轮询会继续
+    } finally {
+        conversationPolling = false
+    }
+}
+
+const startConversationPolling = (): void => {
+    stopConversationPolling()
+    if (!isDocumentVisible()) return
+    conversationTimer = window.setInterval(() => {
+        void pollConversations()
+    }, MESSAGE_POLL_INTERVAL)
+}
+
+const handleConversationVisibility = (): void => {
+    if (isDocumentVisible()) {
+        void pollConversations()
+        startConversationPolling()
+    } else {
+        stopConversationPolling()
+    }
+}
+
+const handleMessageStateChange = (): void => {
+    if (isDocumentVisible()) void pollConversations()
 }
 
 const sendReply = async (): Promise<void> => {
@@ -336,7 +579,9 @@ const sendReply = async (): Promise<void> => {
             summary.lastContent = content
             summary.lastAt = new Date().toISOString()
             summary.lastSenderId = myId
+            summary.total += 1
         }
+        syncActivitySnapshot()
     } catch (error) {
         sendError.value = getRequestErrorMessage(error, '发送失败，请稍后重试')
     } finally {
@@ -352,7 +597,10 @@ const handleComposerKeydown = (event: KeyboardEvent): void => {
 }
 
 onMounted(() => {
-    void loadConversations()
+    void loadConversations().finally(startConversationPolling)
+    window.addEventListener('focus', pollConversations)
+    document.addEventListener('visibilitychange', handleConversationVisibility)
+    window.addEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 
 // 顶栏私信抽屉在页面内跳转时组件不会重新挂载，需要响应 userId 变化
@@ -362,11 +610,22 @@ watch(() => route.query.userId, () => {
     if (!conversations.value.some(item => item.userId === userId)) return
     void selectConversation(userId)
 })
+
+onUnmounted(() => {
+    stopConversationPolling()
+    window.removeEventListener('focus', pollConversations)
+    document.removeEventListener('visibilitychange', handleConversationVisibility)
+    window.removeEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
+})
 </script>
 
 <style lang="less" scoped>
     .messages-page {
         width: 100%;
+    }
+
+    .messages-live-hint {
+        white-space: nowrap;
     }
 
     .messages-shell {
@@ -541,6 +800,34 @@ watch(() => route.query.userId, () => {
             color-mix(in srgb, var(--bgColor2) 45%, transparent);
     }
 
+    .chat-new-anchor {
+        position: sticky;
+        bottom: 2px;
+        z-index: 2;
+        display: flex;
+        justify-content: center;
+        padding-top: 8px;
+        pointer-events: none;
+    }
+
+    .chat-new-button {
+        padding: 6px 14px;
+        border: 1px solid var(--pcolor3);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--admin-surface, var(--bgColor1)) 92%, transparent);
+        box-shadow: var(--admin-shadow-sm);
+        color: var(--pcolor);
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
+        backdrop-filter: blur(12px);
+        pointer-events: auto;
+
+        &:hover {
+            background: var(--pcolor1);
+        }
+    }
+
     .chat-load-earlier {
         display: block;
         margin: 0 auto 14px;
@@ -666,6 +953,10 @@ watch(() => route.query.userId, () => {
 
         .messages-side {
             max-height: 32vh;
+        }
+
+        .messages-live-hint {
+            display: none;
         }
     }
 </style>
