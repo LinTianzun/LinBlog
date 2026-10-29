@@ -6,28 +6,26 @@
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
             </div>
-            <div class="detail-meta">
-                <span v-if="weatherName" class="meta-weather">
-                    <img v-if="weatherIcon" :src="weatherIcon" :alt="weatherName" />
-                    {{ weatherName }}
-                </span>
-                <time>{{ formatDate(item.createdAt) }}</time>
-                <span><IconEyeOutline />{{ views }}</span>
-                <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
-                    :disabled="likeBusy || likePending" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
-                    @click="handleLike">
-                    <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
-                    <template v-if="!likePending">
-                        <IconLikeFill v-if="likeState.liked" />
-                        <IconLikeOutline v-else />
-                    </template>
-                    {{ likeState.likes }}
-                </button>
-            </div>
+            <!-- 与后台随笔详情共用统计条，点赞按钮走插槽 -->
+            <ContentStatBar :views="views" :comments="commentTotal"
+                :meta-text="formatDate(item.createdAt)" :meta-chips="metaChips">
+                <template #like>
+                    <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
+                        :disabled="likeBusy || likePending" :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                        @click="handleLike">
+                        <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
+                        <template v-if="!likePending">
+                            <IconLikeFill v-if="likeState.liked" />
+                            <IconLikeOutline v-else />
+                        </template>
+                        {{ likeState.likes }}
+                    </button>
+                </template>
+            </ContentStatBar>
             <p class="diary-text">{{ item.content }}</p>
-            <div v-if="item.picture.length" class="diary-images">
-                <yk-image-preview-group :src-list="item.picture" width="100%" height="180" fit="cover" />
-            </div>
+            <!-- 与后台随笔详情共用图片网格，点击进灯箱 -->
+            <ContentPhotoGrid v-if="item.picture.length" :photos="item.picture" layout="strip"
+                @preview="openLightbox" />
 
             <!-- 评论区：与文章/图库详情共用同一套两级评论组件 -->
             <PortalCommentSection
@@ -36,6 +34,10 @@
                 @comments-change="onCommentsChange"
                 @need-login="goLogin" />
         </div>
+
+        <!-- 灯箱：与后台随笔/图库共用同一个组件 -->
+        <ContentLightbox :open="lightbox.open" :photos="item?.picture || []" :index="lightbox.index"
+            :title="item?.title" @close="closeLightbox" @update:index="lightbox.index = $event" />
     </yk-modal>
 </template>
 
@@ -52,6 +54,9 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentStatBar from '../content/ContentStatBar.vue'
+import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
 
 const props = defineProps<{
     open: boolean
@@ -68,6 +73,24 @@ const weatherName = computed(() => props.item?.weatherName || '')
 const weatherIcon = computed(() =>
     weathers.find(w => w.name === weatherName.value)?.iconUrl || ''
 )
+
+// 统计条左侧：天气与标题，天气带图标语义但不塞进组件内部
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning'; icon?: string }[] = []
+    if (weatherName.value) {
+        chips.push({ text: weatherName.value, tone: 'accent', icon: weatherIcon.value || undefined })
+    }
+    return chips
+})
+
+// 灯箱：与后台随笔/图库共用
+const lightbox = ref({ open: false, index: 0 })
+const openLightbox = (index: number): void => {
+    lightbox.value = { open: true, index }
+}
+const closeLightbox = (): void => {
+    lightbox.value.open = false
+}
 
 // 浏览量本地副本：接口回读后立即刷新
 const views = ref(0)
@@ -217,32 +240,6 @@ const formatDate = (value: string) => {
     z-index: 2;
 }
 
-.detail-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid @line-color-s;
-    color: @font-color-s;
-    font-size: @size-s;
-
-    .meta-weather {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 2px 10px;
-        border-radius: 999px;
-        background: var(--pcolor1);
-        color: @pcolor;
-        font-weight: 500;
-
-        img {
-            width: 16px;
-            height: 16px;
-        }
-    }
-}
-
 .diary-text {
     margin: 0;
     font-size: 15px;
@@ -286,25 +283,4 @@ const formatDate = (value: string) => {
     }
 }
 
-// 评论区：与上方正文同宽，用边界线区分内容
-.diary-images {
-    // yk-image-preview-group 的根节点是 Fragment，外部 class 不会落到 yk-space 上，
-    // 因此这里用 wrapper + :deep 覆盖内部布局
-    :deep(.yk-space) {
-        display: grid !important;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
-        width: 100%;
-    }
-
-    :deep(.yk-image) {
-        width: 100% !important;
-    }
-}
-
-@media (max-width: 640px) {
-    .diary-images :deep(.yk-space) {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
 </style>

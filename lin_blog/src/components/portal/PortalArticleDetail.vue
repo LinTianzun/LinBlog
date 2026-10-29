@@ -5,22 +5,24 @@
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
             </div>
-            <div class="detail-meta">
-                <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
-                <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
-                <span><IconEyeOutline />{{ views }}</span>
-                <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
-                    :disabled="likeBusy || likePending"
-                    :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
-                    @click="handleLike">
-                    <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
-                    <template v-if="!likePending">
-                        <IconLikeFill v-if="likeState.liked" />
-                        <IconLikeOutline v-else />
-                    </template>
-                    {{ likeState.likes }}
-                </button>
-            </div>
+            <!-- 与后台文章详情共用统计条，点赞按钮走插槽 -->
+            <ContentStatBar :views="views" :comments="commentTotal"
+                :meta-text="formatArticleDate(article.publishedAt || article.createdAt)"
+                :meta-chips="metaChips">
+                <template #like>
+                    <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
+                        :disabled="likeBusy || likePending"
+                        :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                        @click="handleLike">
+                        <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
+                        <template v-if="!likePending">
+                            <IconLikeFill v-if="likeState.liked" />
+                            <IconLikeOutline v-else />
+                        </template>
+                        {{ likeState.likes }}
+                    </button>
+                </template>
+            </ContentStatBar>
             <!-- 头图：宽幅卡片居中，不再整条铺满弹窗 -->
             <figure v-if="article.cover" class="detail-cover-figure">
                 <img class="detail-cover" :src="article.cover" :alt="article.cover" />
@@ -57,6 +59,7 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentStatBar from '../content/ContentStatBar.vue'
 
 const props = defineProps<{
     open: boolean
@@ -93,6 +96,13 @@ const canInteract = computed(
 const onCommentsChange = (total: number) => {
     commentTotal.value = total
 }
+
+// 统计条左侧的分类标签
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (props.article?.subsetName) chips.push({ text: props.article.subsetName, tone: 'accent' })
+    return chips
+})
 
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
@@ -216,30 +226,11 @@ watch(loadKey, async (key, previousKey) => {
     z-index: 2;
 }
 
-// 元信息条：与正文阅读区同宽居中，视觉上与正文对齐
-.detail-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+// 统计条：与正文阅读区同宽居中，视觉上与正文对齐
+.content-stat-bar {
     max-width: 720px;
     margin: 0 auto;
     padding-bottom: 16px;
-    color: @font-color-s;
-    font-size: @size-s;
-
-    .meta-chip {
-        padding: 2px 10px;
-        border-radius: 999px;
-            background: var(--pcolor1);
-        color: @pcolor;
-        font-weight: 500;
-    }
-
-    span {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
 }
 
 // 点赞按钮：与只读 meta 并排，但保留可点击的视觉反馈
@@ -458,7 +449,7 @@ watch(loadKey, async (key, previousKey) => {
 // 窄屏：阅读区放开到容器宽度，头图改为 16:10 减少留白
 @media (max-width: 640px) {
     .detail-reader,
-    .detail-meta,
+    .content-stat-bar,
     .comment-wrap {
         max-width: 100%;
     }

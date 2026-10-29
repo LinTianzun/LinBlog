@@ -46,14 +46,12 @@
                     </figure>
                 </header>
 
-                <!-- 工具栏：数据概览 + 操作 -->
-                <div class="article-detail-toolbar">
-                    <div class="article-detail-metrics">
-                        <span><IconEyeOutline />{{ article.views }} 次浏览</span>
-                        <span><IconLikeOutline />{{ article.likes }} 次点赞</span>
-                        <span><IconCommentOutline />{{ article.comments }} 条评论</span>
-                    </div>
+                <!-- 数据概览：与前台文章详情共用统计条 -->
+                <ContentStatBar class="article-detail-stats" :views="article.views"
+                    :comments="commentTotal" :meta-chips="metaChips" />
 
+                <!-- 管理操作：前台没有这一组，后台按权限展示 -->
+                <div class="article-detail-toolbar">
                     <yk-space size="s" wrap>
                         <yk-button v-if="canEdit" type="secondary" @click="openEditor">
                             编辑
@@ -313,6 +311,7 @@ import {
 import { useSubsetStore } from '../store/subset'
 import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import ContentStatBar from '../components/content/ContentStatBar.vue'
 
 type Props = {
     modelValue?: boolean
@@ -390,10 +389,23 @@ const articleDate = computed(() => formatArticleDate(
     article.value?.publishedAt || article.value?.createdAt
 ))
 const subsetName = computed(
-    () => article.value?.subsetName ||
+    () => String(article.value?.subsetName ||
         subsetStore.subsetName(article.value?.subsetId ?? undefined) ||
-        '未分类'
+        '未分类')
 )
+
+// 统计条左侧：分类与状态，与前台文章详情保持同一套标签语言
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = [
+        { text: subsetName.value, tone: 'accent' }
+    ]
+    chips.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    return chips
+})
+
 const access = useContentAccess('article')
 const canPublish = access.canPublish
 const canEdit = computed(() => access.canEdit(article.value))
@@ -769,9 +781,10 @@ watch(
         align-items: center;
         padding: clamp(22px, 3vw, 36px);
         border-radius: 20px;
+        // 用主题色与背景变量代替写死的蓝色，跟随渐变/纯色主题一起变
         background:
-            radial-gradient(circle at 94% 2%, rgba(43, 90, 237, 0.16), transparent 42%),
-            linear-gradient(135deg, @bg-color-l 0%, @bg-color-s 100%);
+            radial-gradient(circle at 94% 2%, var(--pcolor3), transparent 42%),
+            linear-gradient(135deg, var(--admin-surface) 0%, var(--admin-surface-soft) 100%);
 
         &.is-text-only {
             grid-template-columns: minmax(0, 1fr);
@@ -822,13 +835,26 @@ watch(
         margin-top: @space-m;
     }
 
+    // 统计条：与操作区之间用细线分隔，形成「数据 / 操作」两段
+    &-stats {
+        padding-bottom: @space-m;
+        border-bottom: 1px solid var(--admin-line, var(--gray1));
+    }
+
+    // 操作区：靠右，不和数据抢注意力
+    &-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: calc(@space-m * -1);
+    }
+
     &-cover {
         margin: 0;
         overflow: hidden;
         aspect-ratio: 4 / 3;
         border-radius: 14px;
         background: @bg-color-s;
-        box-shadow: 0 14px 34px rgba(21, 38, 79, 0.14);
+        box-shadow: var(--admin-shadow-md, 0 14px 34px rgba(21, 38, 79, 0.14));
 
         :deep(.yk-image) {
             height: 100%;

@@ -148,6 +148,24 @@
     margin: 0 auto;
 }
 
+// 共享内容组件（ContentStatBar / ContentPhotoGrid）在门户侧的 token 覆盖。
+// 组件默认吃后台的 --admin-* 变量，这里换成门户自己的文字层级与强调色，
+// 保证同一个组件在两侧都贴合各自背景，而不是靠两套组件各写一遍。
+.content-stat-bar {
+    --content-stat-ink: var(--portal-text-tertiary);
+    --content-stat-accent: var(--portal-accent);
+    --content-stat-accent-soft: var(--portal-accent-soft);
+    --content-stat-success: var(--portal-accent);
+    --content-stat-warning: var(--portal-accent-strong);
+}
+
+.content-photo-grid {
+    --content-photo-soft: var(--portal-accent-soft);
+    --content-photo-line: var(--portal-surface-border);
+    --content-photo-muted: var(--portal-text-tertiary);
+    --content-photo-shadow: var(--portal-shadow-hover);
+}
+
 // 玻璃面卡片：明暗双态自动跟随
 .portal-glass {
     position: relative;

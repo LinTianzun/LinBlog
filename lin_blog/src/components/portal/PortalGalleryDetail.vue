@@ -50,12 +50,10 @@
                 <p>这组图库暂无图片</p>
             </div>
 
-            <!-- ── 统计栏 ── -->
-            <div class="gd-stats-bar">
-                <div class="gd-stats-left">
-                    <span class="gd-stat-item">
-                        <IconEyeOutline /> {{ views }}
-                    </span>
+            <!-- ── 统计栏：与后台图库详情共用同一个组件，点赞按钮走插槽 ── -->
+            <ContentStatBar class="gd-stats-bar" :views="views" :comments="commentTotal"
+                :photo-count="images.length" :meta-text="formatDate(item.publishedAt || item.createdAt)">
+                <template #like>
                     <button type="button" class="gd-like-btn"
                         :class="{ liked: likeState.liked, busy: likeBusy }"
                         :disabled="likeBusy || likePending"
@@ -67,15 +65,8 @@
                         </template>
                         {{ likeState.likes }}
                     </button>
-                    <span class="gd-stat-item">
-                        <IconCameraOutline /> {{ images.length }} 张
-                    </span>
-                    <span class="gd-stat-item">
-                        <IconCommentOutline /> {{ commentTotal }}
-                    </span>
-                </div>
-                <time class="gd-stats-date">{{ formatDate(item.publishedAt || item.createdAt) }}</time>
-            </div>
+                </template>
+            </ContentStatBar>
 
             <!-- ── 瀑布流照片墙 ── -->
             <div class="gd-masonry" v-if="images.length > 1">
@@ -99,34 +90,9 @@
                 @need-login="goLogin" />
         </div>
 
-        <!-- ── 自定义 Lightbox：全屏查看，键盘翻页 ── -->
-        <Teleport to="body">
-            <div v-if="lightbox.open" class="gd-lightbox" @click.self="closeLightbox"
-                @keydown.esc.prevent="closeLightbox"
-                @keydown.arrow-left.prevent="stepLightbox(-1)"
-                @keydown.arrow-right.prevent="stepLightbox(1)">
-                <button type="button" class="gd-lb-close" @click="closeLightbox"
-                    aria-label="关闭">
-                    <IconCrossOutline />
-                </button>
-                <button v-if="lightbox.index > 0" type="button" class="gd-lb-nav gd-lb-prev"
-                    @click="stepLightbox(-1)" aria-label="上一张">
-                    <IconRightOutline class="gd-icon-flip" />
-                </button>
-                <div class="gd-lb-stage" @click.self="closeLightbox">
-                    <img :src="images[lightbox.index]" :alt="`${item?.title} - ${lightbox.index + 1}`"
-                        :key="lightbox.index" />
-                </div>
-                <button v-if="lightbox.index < images.length - 1" type="button"
-                    class="gd-lb-nav gd-lb-next" @click="stepLightbox(1)"
-                    aria-label="下一张">
-                    <IconRightOutline />
-                </button>
-                <div class="gd-lb-counter">
-                    {{ lightbox.index + 1 }} / {{ images.length }}
-                </div>
-            </div>
-        </Teleport>
+        <!-- ── 灯箱：与后台共用同一个组件，这里只负责传入当前帧 ── -->
+        <ContentLightbox :open="lightbox.open" :photos="images" :index="lightbox.index"
+            :title="item?.title" @close="closeLightbox" @update:index="lightbox.index = $event" />
     </yk-modal>
 </template>
 
@@ -142,6 +108,8 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentStatBar from '../content/ContentStatBar.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
 
 const props = defineProps<{
     open: boolean
@@ -220,12 +188,6 @@ const openLightbox = (index: number) => {
 
 const closeLightbox = () => {
     lightbox.value.open = false
-}
-
-const stepLightbox = (delta: number) => {
-    const next = lightbox.value.index + delta
-    if (next < 0 || next >= images.value.length) return
-    lightbox.value.index = next
 }
 
 // 首图加载失败时切换到下一张
@@ -570,33 +532,6 @@ watch(loadKey, async (key, previousKey) => {
     flex-wrap: wrap;
 }
 
-.gd-stats-left {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-}
-
-.gd-stat-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--portal-text-tertiary);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-
-    .yk-icon {
-        width: 15px;
-        height: 15px;
-    }
-}
-
-.gd-stats-date {
-    color: var(--portal-text-tertiary);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-}
-
 .gd-like-btn {
     display: inline-flex;
     align-items: center;
@@ -740,131 +675,6 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
-// ===== Lightbox =====
-.gd-lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(8, 10, 14, 0.92);
-    backdrop-filter: blur(6px);
-    animation: gd-lb-fade 0.2s ease;
-}
-
-@keyframes gd-lb-fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-.gd-lb-close {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.85);
-    cursor: pointer;
-    transition: all var(--portal-transition-fast);
-
-    .yk-icon {
-        width: 20px;
-        height: 20px;
-    }
-
-    &:hover {
-        background: rgba(255, 255, 255, 0.15);
-        color: #fff;
-    }
-}
-
-.gd-lb-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 48px;
-    height: 72px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    transition: all var(--portal-transition-fast);
-
-    .yk-icon {
-        width: 22px;
-        height: 22px;
-    }
-
-    &:hover {
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        border-color: rgba(255, 255, 255, 0.3);
-    }
-}
-
-.gd-lb-prev {
-    left: 20px;
-}
-
-.gd-lb-next {
-    right: 20px;
-}
-
-.gd-lb-stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 40px 80px;
-    cursor: zoom-out;
-
-    img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        border-radius: 4px;
-        animation: gd-lb-img-in 0.25s ease;
-    }
-}
-
-@keyframes gd-lb-img-in {
-    from {
-        opacity: 0;
-        transform: scale(0.97);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.gd-lb-counter {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 6px 18px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(8px);
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-}
-
 // ===== 响应式 =====
 @media (max-width: 900px) {
     .gd-masonry {
@@ -875,9 +685,6 @@ watch(loadKey, async (key, previousKey) => {
         aspect-ratio: 3 / 2;
     }
 
-    .gd-lb-stage {
-        padding: 20px 56px;
-    }
 }
 
 @media (max-width: 560px) {
@@ -902,23 +709,6 @@ watch(loadKey, async (key, previousKey) => {
         height: 42px;
     }
 
-    .gd-lb-stage {
-        padding: 12px 8px;
-    }
-
-    .gd-lb-nav {
-        width: 40px;
-        height: 60px;
-    }
-
-    .gd-lb-prev {
-        left: 8px;
-    }
-
-    .gd-lb-next {
-        right: 8px;
-    }
-
     .gd-stats-bar {
         flex-direction: column;
         align-items: flex-start;
@@ -935,8 +725,5 @@ watch(loadKey, async (key, previousKey) => {
         animation: none;
     }
 
-    .gd-lb-stage img {
-        animation: none;
-    }
 }
 </style>
