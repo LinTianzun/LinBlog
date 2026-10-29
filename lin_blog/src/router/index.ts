@@ -4,6 +4,7 @@ import IndexView from '../views/IndexView.vue'
 import NotFound from '../components/NotFound.vue'
 import { useSessionStore } from '../store/session'
 import { createRouteGuard } from './guard'
+import { applyPrivateSeo } from '../utils/portalSeo'
 
 const routes = [
     {
@@ -195,5 +196,27 @@ const router = createRouter({
 
 // 全局路由守卫：未登录时禁止访问业务页面
 router.beforeEach(createRouteGuard(() => useSessionStore()))
+
+// 门户页面自行维护分享元信息；其余后台/认证页面统一禁止索引，避免
+// 从门户切回后台后仍残留上一篇公开内容的 canonical 与 OG 标题。
+router.afterEach((to) => {
+    if (to.path.startsWith('/portal')) return
+    const privateTitles: Record<string, string> = {
+        '/overView': '系统总览',
+        '/userManagement': '用户管理',
+        '/permissionManagement': '权限管理',
+        '/systemLog': '系统日志',
+        '/reportedComments': '举报处理',
+        '/messages': '回复私信',
+        '/localfile': '本地文件',
+        '/article': '博客文章',
+        '/gallery': '摄影图库',
+        '/diary': '随笔随记',
+        '/setting': '系统设置',
+        '/loginRegister': '登录',
+        '/resetPassword': '重置密码'
+    }
+    applyPrivateSeo(privateTitles[to.path] || 'LinBlog 管理后台')
+})
 
 export default router

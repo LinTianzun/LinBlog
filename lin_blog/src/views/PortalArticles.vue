@@ -115,7 +115,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
@@ -132,6 +132,12 @@ import {
 import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
+import {
+    applyPortalSeo,
+    archiveSeoConfig,
+    articleSeoConfig,
+    portalItemUrl
+} from '../utils/portalSeo'
 
 const route = useRoute()
 const router = useRouter()
@@ -229,13 +235,14 @@ const loadArchiveTotal = async () => {
 }
 
 // 筛选条件同步到地址栏，方便分享与刷新保持上下文
-const syncQuery = () => {
+const syncQuery = (openId: number | null = activeArticle.value?.id ?? null) => {
     const query: Record<string, string> = {}
     if (filters.keyword) query.keyword = filters.keyword
     if (filters.label) query.label = filters.label
     if (filters.subsetId !== null) query.subset = String(filters.subsetId)
     if (filters.page > 1) query.page = String(filters.page)
     if (filters.sort !== 'latest') query.sort = filters.sort
+    if (openId) query.open = String(openId)
     void router.replace({ path: '/portal/articles', query })
 }
 
@@ -295,19 +302,25 @@ const handlePagerChange = (): void => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const openArticle = async (id: number) => {
-    detailVisible.value = true
+const openArticle = async (id: number, sync = true) => {
     try {
         const result = await getPublicArticleById(id)
-        if (result.code === 200) activeArticle.value = result.data || null
+        if (result.code === 200 && result.data) {
+            activeArticle.value = result.data
+            detailVisible.value = true
+            applyPortalSeo(articleSeoConfig(result.data, portalItemUrl('article', id)))
+            if (sync) syncQuery(id)
+        }
     } catch {
         detailVisible.value = false
     }
 }
 
-const closeArticle = () => {
+const closeArticle = (sync = true) => {
     detailVisible.value = false
     activeArticle.value = null
+    applyPortalSeo(archiveSeoConfig('article'))
+    if (sync) syncQuery(null)
 }
 
 const handleInteractionChange = (payload: { likes: number; comments: number }) => {
@@ -333,6 +346,7 @@ const handleViewCounted = (payload: { views: number }) => {
 }
 
 onMounted(async () => {
+    applyPortalSeo(archiveSeoConfig('article'))
     // 支持从首页带参数跳转：?subset=3 / ?label=xxx / ?keyword=xxx
     const query = route.query
     if (typeof query.subset === 'string') filters.subsetId = Number(query.subset) || null
@@ -348,8 +362,18 @@ onMounted(async () => {
     // 支持直接打开某篇文章：?open=12
     if (typeof query.open === 'string') {
         const id = Number(query.open)
-        if (id) void openArticle(id)
+        if (id) void openArticle(id, false)
     }
+})
+
+// 浏览器前进/后退或手动改地址栏时，同步打开/关闭详情
+watch(() => route.query.open, (value) => {
+    const id = typeof value === 'string' ? Number(value) : 0
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        if (detailVisible.value) closeArticle(false)
+        return
+    }
+    if (activeArticle.value?.id !== id) void openArticle(id, false)
 })
 </script>
 

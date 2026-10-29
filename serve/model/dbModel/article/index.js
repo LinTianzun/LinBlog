@@ -277,6 +277,23 @@ async function findAtricleById(articleId, userId, userType) {
 }
 
 /**
+ * 站点地图与 RSS 使用的已发布内容摘要。
+ */
+async function listPublishedContentForFeed(limit = 5000) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 5000, 1), 5000)
+    return query(
+        `SELECT a.id, a.title, a.introduce, a.cover, a.classify,
+                a.published_at AS publishedAt, a.updated_at AS updatedAt,
+                a.created_at AS createdAt
+         FROM article a
+         WHERE a.state = 'published'
+         ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
+         LIMIT ?`,
+        [safeLimit]
+    )
+}
+
+/**
  * 更新前判断文章是否存在及当前用户是否有修改权限。
  * 避免把“字段值未变化”产生的 0 影响行数误判为无权限。
  */
@@ -481,6 +498,7 @@ module.exports = {
     findArticlesByPage,
     countArticlesByState,
     findAtricleById,
+    listPublishedContentForFeed,
     findArticleMutationAccess,
     updateArticle,
     deleteArticle,

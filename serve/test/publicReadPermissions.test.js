@@ -178,6 +178,25 @@ test('public diary route mounts optional auth and private diary routes stay stri
     assert.ok(!privateDiary.handlers.map(handler => handler.name).includes('publicRead'))
 })
 
+test('public diary interaction routes mount before the dynamic detail route', () => {
+    const express = require('express')
+    const app = express()
+    const getPaths = []
+    app.get = (routePath) => {
+        getPaths.push(routePath)
+        return app
+    }
+
+    require('../routes/index')(app)
+
+    const commentIndex = getPaths.indexOf('/api/public/diary/comment')
+    const detailIndex = getPaths.indexOf('/api/public/diary/:id')
+    assert.ok(commentIndex >= 0, 'missing public diary comment route')
+    assert.ok(detailIndex >= 0, 'missing public diary detail route')
+    // Express 按注册顺序匹配；详情动态参数不能抢在固定 comment 路径之前。
+    assert.ok(commentIndex < detailIndex)
+})
+
 test('public diary list ignores owner scope so normal users still see full portal', async () => {
     const captured = []
     const diaryControllerPath = path.resolve(__dirname, '../controller/diaryController.js')

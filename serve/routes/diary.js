@@ -14,6 +14,7 @@ function publicRead(req, res, next) {
 module.exports = (app) => {
     // 公开的随笔列表（访客门户展示；随笔无草稿状态，status=1 即对外可见）
     app.get('/api/public/diary', publicRead, optionalAuthMiddleware, diaryController.getDiaries)
+    app.get('/api/public/diary/:id', publicRead, optionalAuthMiddleware, diaryController.getPublicDiaryById)
 
     // 日记分页查询（支持关键词搜索）
     app.get('/api/diary', authMiddleware, diaryController.getDiaries)

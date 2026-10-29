@@ -84,6 +84,45 @@ async function getDiaries(req, res) {
 }
 
 /**
+ * 门户公开随笔详情：供详情深链接直接打开，不依赖当前分页列表。
+ */
+async function getPublicDiaryById(req, res) {
+    try {
+        const diaryId = Number(req.params.id)
+        if (!Number.isSafeInteger(diaryId) || diaryId <= 0) {
+            return res.status(400).json({ code: 400, message: '随笔ID必须是有效数字' })
+        }
+
+        const item = await diaryModel.findPublicDiaryById(diaryId)
+        if (!item) {
+            return res.status(404).json({ code: 404, message: '随笔不存在或已隐藏' })
+        }
+
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: {
+                id: item.id,
+                userId: item.user_id ?? null,
+                title: item.title,
+                content: item.content,
+                picture: parsePictures(item.picture),
+                weatherId: item.weather_id,
+                weatherName: item.weather_name,
+                views: Number(item.views || 0),
+                likes: Number(item.likes || 0),
+                comments: Number(item.comments || 0),
+                rootComments: Number(item.root_comments || 0),
+                replyComments: Number(item.reply_comments || 0),
+                createdAt: item.created_at
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '公开随笔查询失败：' + err.message })
+    }
+}
+
+/**
  * 校验并归一化日记表单字段（新建/编辑共用）
  * @returns {Object} { error: 响应对象 } 或 { data: { title, content, picture, weatherId } }
  */
@@ -259,4 +298,4 @@ async function updateDiary(req, res) {
     }
 }
 
-module.exports = { getDiaries, createDiary, updateDiary, deleteDiary }
+module.exports = { getDiaries, getPublicDiaryById, createDiary, updateDiary, deleteDiary }

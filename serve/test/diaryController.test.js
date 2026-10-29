@@ -14,7 +14,7 @@ const FRONTEND_WEATHER_NAMES = [
 
 function createRes() {
     return {
-        statusCode: 0,
+        statusCode: 200,
         body: null,
         status(code) {
             this.statusCode = code
@@ -120,4 +120,57 @@ test('createDiary rejects accounts without the diary create permission', async (
 
     assert.equal(res.statusCode, 403)
     assert.match(res.body.message, /创建随笔/)
+})
+
+test('getPublicDiaryById returns a public detail payload for deep links', async () => {
+    const originalFind = diaryModel.findPublicDiaryById
+    try {
+        diaryModel.findPublicDiaryById = async (id) => {
+            assert.equal(id, 9)
+            return {
+                id: 9,
+                user_id: 1,
+                title: '深链接随笔',
+                content: '正文',
+                picture: '/api/uploads/a.webp,/api/uploads/b.webp',
+                weather_id: 2,
+                weather_name: '多云',
+                views: 12,
+                likes: 3,
+                comments: 2,
+                root_comments: 1,
+                reply_comments: 1,
+                created_at: '2026-10-29T08:00:00.000Z'
+            }
+        }
+
+        const res = createRes()
+        await diaryController.getPublicDiaryById({ params: { id: '9' } }, res)
+
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.body.data.title, '深链接随笔')
+        assert.deepEqual(res.body.data.picture, [
+            '/api/uploads/a.webp',
+            '/api/uploads/b.webp'
+        ])
+        assert.equal(res.body.data.weatherName, '多云')
+    } finally {
+        diaryModel.findPublicDiaryById = originalFind
+    }
+})
+
+test('getPublicDiaryById rejects invalid ids and hidden diaries', async () => {
+    const originalFind = diaryModel.findPublicDiaryById
+    try {
+        const invalid = createRes()
+        await diaryController.getPublicDiaryById({ params: { id: '0' } }, invalid)
+        assert.equal(invalid.statusCode, 400)
+
+        diaryModel.findPublicDiaryById = async () => null
+        const missing = createRes()
+        await diaryController.getPublicDiaryById({ params: { id: '99' } }, missing)
+        assert.equal(missing.statusCode, 404)
+    } finally {
+        diaryModel.findPublicDiaryById = originalFind
+    }
 })

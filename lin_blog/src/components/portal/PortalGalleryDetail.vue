@@ -37,6 +37,10 @@
                         {{ likeState.likes }}
                     </button>
                 </template>
+                <template #actions>
+                    <PortalShareButton :url="shareUrl" :title="item?.title"
+                        :text="item?.introduce || ''" />
+                </template>
             </ContentStatBar>
 
             <!-- 照片墙：开场已使用前 3 张，这里继续展示后续照片 -->
@@ -80,6 +84,8 @@ import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoStage from '../content/ContentPhotoStage.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
+import PortalShareButton from './PortalShareButton.vue'
+import { portalItemUrl } from '../../utils/portalSeo'
 
 const props = defineProps<{
     open: boolean
@@ -94,6 +100,9 @@ const emit = defineEmits<{
 
 const images = computed(() => (props.item ? parseGalleryContent(props.item.content) : []))
 const stagePhotoCount = computed(() => Math.min(images.value.length, 3))
+const shareUrl = computed(() =>
+    props.item?.id ? portalItemUrl('gallery', props.item.id) : ''
+)
 
 // 浏览量本地副本：接口回读后立即刷新
 const views = ref(0)

@@ -75,18 +75,24 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
-import { getPublicArticles } from '../api/portal'
+import { getPublicArticleById, getPublicArticles } from '../api/portal'
 import type { PortalSort } from '../api/portal'
 import { parseGalleryContent, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
+import {
+    applyPortalSeo,
+    archiveSeoConfig,
+    gallerySeoConfig
+} from '../utils/portalSeo'
 
 const route = useRoute()
+const router = useRouter()
 
 const galleryList = ref<ArticleItem[]>([])
 const total = ref(0)
@@ -179,8 +185,17 @@ const loadGallery = async () => {
 
 // 页码已由 v-model 同步，这里重新加载并回到页顶
 const handlePagerChange = (): void => {
+    syncQuery()
     void loadGallery()
     window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const syncQuery = (openId: number | null = activeGallery.value?.id ?? null) => {
+    const query: Record<string, string> = {}
+    if (page.value > 1) query.page = String(page.value)
+    if (sort.value !== 'latest') query.sort = sort.value
+    if (openId) query.open = String(openId)
+    void router.replace({ path: '/portal/gallery', query })
 }
 
 // 排序切换：最新按发布时间，最热按浏览量
@@ -188,17 +203,39 @@ const setSort = (next: PortalSort) => {
     if (sort.value === next) return
     sort.value = next
     page.value = 1
+    syncQuery()
     void loadGallery()
 }
 
-const openGallery = (item: ArticleItem) => {
+const openGallery = (item: ArticleItem, sync = true) => {
     activeGallery.value = item
     detailVisible.value = true
+    applyPortalSeo(gallerySeoConfig(item))
+    if (sync) syncQuery(item.id)
 }
 
-const closeGallery = () => {
+const openGalleryById = async (id: number, sync = true): Promise<void> => {
+    const target = galleryList.value.find(item => item.id === id)
+    if (target) {
+        openGallery(target, sync)
+        return
+    }
+
+    try {
+        const result = await getPublicArticleById(id)
+        if (result.code === 200 && result.data?.classify === 'image') {
+            openGallery(result.data, sync)
+        }
+    } catch {
+        if (sync) syncQuery(null)
+    }
+}
+
+const closeGallery = (sync = true) => {
     detailVisible.value = false
     activeGallery.value = null
+    applyPortalSeo(archiveSeoConfig('gallery'))
+    if (sync) syncQuery(null)
 }
 
 // 详情回读的真实浏览量写回卡片计数
@@ -217,14 +254,25 @@ const handleInteractionChange = (payload: { id: number; likes: number; comments:
 }
 
 onMounted(async () => {
+    applyPortalSeo(archiveSeoConfig('gallery'))
+    if (route.query.sort === 'hot') sort.value = 'hot'
+    if (typeof route.query.page === 'string') page.value = Number(route.query.page) || 1
     await loadGallery()
 
     // 支持从首页直接打开某组图库：?open=12
     if (typeof route.query.open === 'string') {
         const id = Number(route.query.open)
-        const target = galleryList.value.find(item => item.id === id)
-        if (target) openGallery(target)
+        if (id) void openGalleryById(id, false)
     }
+})
+
+watch(() => route.query.open, (value) => {
+    const id = typeof value === 'string' ? Number(value) : 0
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        if (detailVisible.value) closeGallery(false)
+        return
+    }
+    if (activeGallery.value?.id !== id) void openGalleryById(id, false)
 })
 </script>
 

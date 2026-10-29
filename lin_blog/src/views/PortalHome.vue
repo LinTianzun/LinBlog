@@ -179,7 +179,7 @@
             <div v-if="galleryLoading" class="block-state">
                 <yk-spinner size="m" />
             </div>
-            <PortalPhotoWall v-else-if="galleryList.length" :items="galleryPrints" @select="openGallery" />
+            <PortalPhotoWall v-else-if="galleryList.length" :items="galleryPrints" @select="selectGalleryPrint" />
             <div v-else class="block-state">
                 <yk-empty description="还没有发布摄影图库" />
             </div>
@@ -243,7 +243,8 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
@@ -254,6 +255,7 @@ import { useThemeDark } from '../utils/themeMode'
 import {
     getPublicArticles,
     getPublicArticleById,
+    getPublicDiaryById,
     getPublicSubsets,
     getPublicDiaries,
     type PortalDiary,
@@ -262,6 +264,16 @@ import {
 import { extractArticleCover, parseGalleryContent, type ArticleItem } from '../api/article'
 import { weathers } from '../utils/weather'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
+import {
+    applyPortalSeo,
+    articleSeoConfig,
+    diarySeoConfig,
+    gallerySeoConfig,
+    homeSeoConfig
+} from '../utils/portalSeo'
+
+const route = useRoute()
+const router = useRouter()
 
 const articleList = ref<ArticleItem[]>([])
 const articleLoading = ref(false)
@@ -403,9 +415,24 @@ const loadSubsetCount = async () => {
     }
 }
 
-const closeArticle = () => {
+const applyHomeSeo = () => applyPortalSeo(homeSeoConfig())
+
+const syncHomeQuery = (kind: 'article' | 'gallery' | 'diary' | null, id?: number) => {
+    const query: Record<string, string> = {}
+    for (const [key, value] of Object.entries(route.query)) {
+        if (typeof value === 'string' && !['article', 'gallery', 'diary', 'open'].includes(key)) {
+            query[key] = value
+        }
+    }
+    if (kind && id) query[kind] = String(id)
+    void router.replace({ path: '/portal', query })
+}
+
+const closeArticle = (sync = true) => {
     articleVisible.value = false
     activeArticle.value = null
+    applyHomeSeo()
+    if (sync) syncHomeQuery(null)
 }
 
 const handleInteractionChange = (payload: { likes: number; comments: number }) => {
@@ -435,39 +462,94 @@ const handleDiaryViewCounted = (payload: { id: number; views: number }) => {
     if (target) target.views = payload.views
 }
 
-const openArticle = async (id: number) => {
+const openArticle = async (id: number, sync = true) => {
     // 先加载详情，数据就绪后再开 modal，避免 modal 先开空态再填内容造成的闪烁
     try {
         const result = await getPublicArticleById(id)
-        if (result.code === 200) {
-            activeArticle.value = result.data || null
+        if (result.code === 200 && result.data) {
+            closeGallery(false)
+            closeDiary(false)
+            activeArticle.value = result.data
             articleVisible.value = true
+            applyPortalSeo(articleSeoConfig(result.data))
+            if (sync) syncHomeQuery('article', id)
         }
     } catch {
         articleVisible.value = false
     }
 }
 
-const openDiary = (item: PortalDiary) => {
+const openDiary = (item: PortalDiary, sync = true) => {
+    closeArticle(false)
+    closeGallery(false)
     activeDiary.value = item
     diaryVisible.value = true
+    applyPortalSeo(diarySeoConfig(item))
+    if (sync) syncHomeQuery('diary', item.id)
 }
 
-const closeDiary = () => {
+const openDiaryById = async (id: number, sync = true): Promise<void> => {
+    const target = diaryList.value.find(item => item.id === id)
+    if (target) {
+        openDiary(target, sync)
+        return
+    }
+
+    try {
+        const result = await getPublicDiaryById(id)
+        if (result.code === 200 && result.data) {
+            openDiary(result.data, sync)
+        }
+    } catch {
+        if (sync) syncHomeQuery(null)
+    }
+}
+
+const closeDiary = (sync = true) => {
     diaryVisible.value = false
     activeDiary.value = null
+    applyHomeSeo()
+    if (sync) syncHomeQuery(null)
 }
 
-const openGallery = (id: WallPrint['id']) => {
-    const target = galleryList.value.find(item => String(item.id) === String(id))
-    if (!target) return
-    activeGallery.value = target
+const openGallery = (item: ArticleItem, sync = true) => {
+    closeArticle(false)
+    closeDiary(false)
+    activeGallery.value = item
     galleryVisible.value = true
+    applyPortalSeo(gallerySeoConfig(item))
+    if (sync) syncHomeQuery('gallery', item.id)
 }
 
-const closeGallery = () => {
+const openGalleryById = async (id: number, sync = true): Promise<void> => {
+    const target = galleryList.value.find(item => item.id === id)
+    if (target) {
+        openGallery(target, sync)
+        return
+    }
+
+    try {
+        const result = await getPublicArticleById(id)
+        if (result.code === 200 && result.data?.classify === 'image') {
+            openGallery(result.data, sync)
+        }
+    } catch {
+        if (sync) syncHomeQuery(null)
+    }
+}
+
+const selectGalleryPrint = (id: WallPrint['id']) => {
+    const numericId = Number(id)
+    const target = galleryList.value.find(item => item.id === numericId)
+    if (!target) return
+    openGallery(target)
+}
+
+const closeGallery = (sync = true) => {
     galleryVisible.value = false
     activeGallery.value = null
+    applyHomeSeo()
+    if (sync) syncHomeQuery(null)
 }
 
 const handleGalleryViewCounted = (payload: { id: number; views: number }) => {
@@ -493,6 +575,7 @@ const handleGalleryInteractionChange = (payload: { id: number; likes: number; co
 }
 
 onMounted(() => {
+    applyHomeSeo()
     void loadArticles()
     void loadGallery()
     void loadDiary()
@@ -506,6 +589,33 @@ onMounted(() => {
         currentIndex.value = idx
     })
 })
+
+watch(
+    [() => route.query.article, () => route.query.gallery, () => route.query.diary],
+    ([article, gallery, diary]) => {
+        const articleId = typeof article === 'string' ? Number(article) : 0
+        const galleryId = typeof gallery === 'string' ? Number(gallery) : 0
+        const diaryId = typeof diary === 'string' ? Number(diary) : 0
+
+        if (Number.isSafeInteger(articleId) && articleId > 0) {
+            if (activeArticle.value?.id !== articleId) void openArticle(articleId, false)
+            return
+        }
+        if (Number.isSafeInteger(galleryId) && galleryId > 0) {
+            if (activeGallery.value?.id !== galleryId) void openGalleryById(galleryId, false)
+            return
+        }
+        if (Number.isSafeInteger(diaryId) && diaryId > 0) {
+            if (activeDiary.value?.id !== diaryId) void openDiaryById(diaryId, false)
+            return
+        }
+
+        if (articleVisible.value) closeArticle(false)
+        if (galleryVisible.value) closeGallery(false)
+        if (diaryVisible.value) closeDiary(false)
+    },
+    { immediate: true }
+)
 
 onUnmounted(() => {
     stopRotation?.()

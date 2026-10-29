@@ -29,6 +29,8 @@
             </span>
             <!-- 点赞按钮由外部传入：前台可点，后台只读 -->
             <slot name="like" />
+            <!-- 分享等附加操作仅由需要的内容详情传入 -->
+            <slot name="actions" />
         </div>
     </div>
 </template>

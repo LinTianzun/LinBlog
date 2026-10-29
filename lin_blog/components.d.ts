@@ -90,6 +90,7 @@ declare module 'vue' {
     PortalLayout: typeof import('./src/components/portal/PortalLayout.vue')['default']
     PortalPageHeader: typeof import('./src/components/portal/PortalPageHeader.vue')['default']
     PortalPhotoWall: typeof import('./src/components/portal/PortalPhotoWall.vue')['default']
+    PortalShareButton: typeof import('./src/components/portal/PortalShareButton.vue')['default']
     Reply: typeof import('./src/components/reply/reply.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

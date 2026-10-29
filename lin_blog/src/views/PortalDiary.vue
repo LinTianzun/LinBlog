@@ -115,16 +115,26 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
-import { getPublicDiaries, type PortalDiary, type PortalWeatherFacet } from '../api/portal'
+import {
+    getPublicDiaries,
+    getPublicDiaryById,
+    type PortalDiary,
+    type PortalWeatherFacet
+} from '../api/portal'
 import type { PortalSort } from '../api/portal'
 import { weathers } from '../utils/weather'
 import AdminPager from '../components/common/AdminPager.vue'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
+import {
+    applyPortalSeo,
+    archiveSeoConfig,
+    diarySeoConfig
+} from '../utils/portalSeo'
 
 const route = useRoute()
 const router = useRouter()
@@ -200,15 +210,18 @@ const loadDiaries = async () => {
 
 // 页码已由 v-model 同步，这里重新加载并回到页顶
 const handlePagerChange = (): void => {
+    syncQuery()
     void loadDiaries()
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 筛选条件同步到地址栏，分享或刷新后上下文不丢
-const syncQuery = () => {
+const syncQuery = (openId: number | null = activeDiary.value?.id ?? null) => {
     const query: Record<string, string> = {}
     if (sort.value !== 'latest') query.sort = sort.value
     if (activeWeather.value) query.weather = activeWeather.value
+    if (page.value > 1) query.page = String(page.value)
+    if (openId) query.open = String(openId)
     void router.replace({ path: '/portal/diary', query })
 }
 
@@ -229,14 +242,35 @@ const setSort = (next: PortalSort) => {
     void loadDiaries()
 }
 
-const openDiary = (item: PortalDiary) => {
+const openDiary = (item: PortalDiary, sync = true) => {
     activeDiary.value = item
     detailVisible.value = true
+    applyPortalSeo(diarySeoConfig(item))
+    if (sync) syncQuery(item.id)
 }
 
-const closeDiary = () => {
+const openDiaryById = async (id: number, sync = true): Promise<void> => {
+    const target = diaryList.value.find(item => item.id === id)
+    if (target) {
+        openDiary(target, sync)
+        return
+    }
+
+    try {
+        const result = await getPublicDiaryById(id)
+        if (result.code === 200 && result.data) {
+            openDiary(result.data, sync)
+        }
+    } catch {
+        if (sync) syncQuery(null)
+    }
+}
+
+const closeDiary = (sync = true) => {
     detailVisible.value = false
     activeDiary.value = null
+    applyPortalSeo(archiveSeoConfig('diary'))
+    if (sync) syncQuery(null)
 }
 
 // 详情回读的真实浏览量写回卡片，避免打开后列表数字滞后
@@ -255,18 +289,28 @@ const handleInteractionChange = (payload: { id: number; likes: number; comments:
 }
 
 onMounted(async () => {
+    applyPortalSeo(archiveSeoConfig('diary'))
     // 支持从地址栏恢复筛选：?weather=晴天 / ?sort=hot
     if (typeof route.query.weather === 'string') activeWeather.value = route.query.weather
     if (route.query.sort === 'hot') sort.value = 'hot'
+    if (typeof route.query.page === 'string') page.value = Number(route.query.page) || 1
 
     await loadDiaries()
 
     // 支持直接打开某篇随笔：?open=12
     if (typeof route.query.open === 'string') {
         const id = Number(route.query.open)
-        const target = diaryList.value.find(item => item.id === id)
-        if (target) openDiary(target)
+        if (id) void openDiaryById(id, false)
     }
+})
+
+watch(() => route.query.open, (value) => {
+    const id = typeof value === 'string' ? Number(value) : 0
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        if (detailVisible.value) closeDiary(false)
+        return
+    }
+    if (activeDiary.value?.id !== id) void openDiaryById(id, false)
 })
 </script>
 

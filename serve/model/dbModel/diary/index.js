@@ -177,6 +177,42 @@ async function findDiaryById(id, ownerScope = null) {
 }
 
 /**
+ * 门户详情：返回公开随笔及展示所需计数，供深链接打开时直接读取。
+ */
+async function findPublicDiaryById(id) {
+    const rows = await query(
+        `SELECT d.id, d.user_id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood,
+                d.views, d.likes, d.comments,
+                (SELECT COUNT(*) FROM diary_comment c
+                  WHERE c.diary_id = d.id AND c.status = 1 AND c.parent_id = 0) AS root_comments,
+                (SELECT COUNT(*) FROM diary_comment c
+                  WHERE c.diary_id = d.id AND c.status = 1 AND c.parent_id > 0) AS reply_comments,
+                d.created_at
+         FROM diary d
+         LEFT JOIN weather w ON d.weather_id = w.id
+         WHERE d.id = ? AND d.status = 1
+         LIMIT 1`,
+        [id]
+    )
+    return rows[0] || null
+}
+
+/**
+ * 站点地图与 RSS 使用的公开随笔摘要。
+ */
+async function listPublicDiariesForFeed(limit = 5000) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 5000, 1), 5000)
+    return query(
+        `SELECT d.id, d.title, d.content, d.picture, d.created_at AS createdAt
+         FROM diary d
+         WHERE d.status = 1
+         ORDER BY d.created_at DESC, d.id DESC
+         LIMIT ?`,
+        [safeLimit]
+    )
+}
+
+/**
  * 更新日记（标题/内容/图片/天气）
  * @param {Object} payload - { id, title, content, picture, weatherId }
  */
@@ -212,6 +248,8 @@ module.exports = {
     findWeatherByName,
     insertDiary,
     findDiaryById,
+    findPublicDiaryById,
+    listPublicDiariesForFeed,
     updateDiary,
     deleteDiary
 }

@@ -219,6 +219,10 @@ export function getPublicDiaries(
   return request.get<ApiResult<PortalDiaryPage>>("/public/diary", { params });
 }
 
+export function getPublicDiaryById(id: number) {
+  return request.get<ApiResult<PortalDiary>>(`/public/diary/${id}`);
+}
+
 export interface ViewRecordResult {
   targetType: string;
   targetId: number;

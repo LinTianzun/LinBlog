@@ -26,6 +26,10 @@
                         {{ likeState.likes }}
                     </button>
                 </template>
+                <template #actions>
+                    <PortalShareButton :url="shareUrl" :title="article?.title"
+                        :text="article?.introduce || ''" />
+                </template>
             </ContentStatBar>
             <!-- 正文：独立阅读区，行宽收窄，图片改为居中卡片 -->
             <article class="detail-reader">
@@ -67,6 +71,8 @@ import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import { optimizeRichContentImages } from '../../utils/imageOptimization'
+import { portalItemUrl } from '../../utils/portalSeo'
+import PortalShareButton from './PortalShareButton.vue'
 
 const props = defineProps<{
     open: boolean
@@ -113,6 +119,9 @@ const metaChips = computed(() => {
 })
 
 const labels = computed(() => parseArticleLabels(props.article?.label))
+const shareUrl = computed(() =>
+    props.article?.id ? portalItemUrl('article', props.article.id) : ''
+)
 const optimizedContent = computed(() =>
     optimizeRichContentImages(props.article?.content || '')
 )

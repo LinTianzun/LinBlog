@@ -12,10 +12,11 @@ module.exports = (app) => {
     require('./article')(app)
     //  引入消息相关路由
     require('./message')(app)
+    //  引入随笔门户互动路由（点赞/评论）
+    //  必须先于 /api/public/diary/:id 挂载，避免 comment/praise 被动态 ID 路由截获
+    require('./diaryInteraction')(app)
     //  引入日记相关路由
     require('./diary')(app)
-    //  引入随笔门户互动路由（点赞/评论）
-    require('./diaryInteraction')(app)
     //  引入文件相关路由
     require('./file')(app)
     //  引入图片上传相关路由
@@ -32,4 +33,6 @@ module.exports = (app) => {
     require('./view')(app)
     //  引入系统日志路由
     require('./systemLog')(app)
+    //  门户 SEO：站点地图、robots 与 RSS
+    require('./seo')(app)
 }

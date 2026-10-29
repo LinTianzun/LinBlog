@@ -23,6 +23,9 @@ export default defineConfig({
         target: "http://localhost:3030",
         changeOrigin: true,
       },
+      "/sitemap.xml": "http://localhost:3030",
+      "/robots.txt": "http://localhost:3030",
+      "/feed.xml": "http://localhost:3030",
     },
   },
 

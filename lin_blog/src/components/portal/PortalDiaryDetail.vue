@@ -23,6 +23,9 @@
                         {{ likeState.likes }}
                     </button>
                 </template>
+                <template #actions>
+                    <PortalShareButton :url="shareUrl" :title="item?.title" :text="shareText" />
+                </template>
             </ContentStatBar>
             <p class="diary-text">{{ item.content }}</p>
             <!-- 与后台随笔详情共用图片网格，点击进灯箱 -->
@@ -60,6 +63,8 @@ import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
+import PortalShareButton from './PortalShareButton.vue'
+import { plainText, portalItemUrl } from '../../utils/portalSeo'
 
 const props = defineProps<{
     open: boolean
@@ -73,6 +78,10 @@ const emit = defineEmits<{
 }>()
 
 const weatherName = computed(() => props.item?.weatherName || '')
+const shareUrl = computed(() =>
+    props.item?.id ? portalItemUrl('diary', props.item.id) : ''
+)
+const shareText = computed(() => plainText(props.item?.content))
 const weatherIcon = computed(() =>
     weathers.find(w => w.name === weatherName.value)?.iconUrl || ''
 )

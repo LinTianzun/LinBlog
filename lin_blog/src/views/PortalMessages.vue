@@ -64,6 +64,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import { getWallMessages, createWallMessage, type PortalWallMessage } from '../api/portal'
+import { applyPortalSeo } from '../utils/portalSeo'
 
 const wallList = ref<PortalWallMessage[]>([])
 const wallTotal = ref(0)
@@ -162,6 +163,12 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
+    applyPortalSeo({
+        title: '留言墙',
+        description: '给林知雨留下一句话，所有公开留言都会进入博主的后台私信收件箱。',
+        url: new URL('/portal/messages', window.location.origin).toString(),
+        type: 'website'
+    })
     void loadWall()
     window.addEventListener('keydown', handleKeydown)
 })
