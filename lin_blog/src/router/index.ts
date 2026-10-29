@@ -3,6 +3,7 @@ import { createWebHistory, createRouter } from 'vue-router'
 import IndexView from '../views/IndexView.vue'
 import NotFound from '../components/NotFound.vue'
 import { useSessionStore } from '../store/session'
+import { createRouteGuard } from './guard'
 
 const routes = [
     {
@@ -171,29 +172,6 @@ const router = createRouter({
 })
 
 // 全局路由守卫：未登录时禁止访问业务页面
-router.beforeEach((to) => {
-    const token = localStorage.getItem('token')
-    const allowsAnonymous = to.meta.requiresAuth === false
-
-    // 没有 Token，且目标页面不是登录页
-    if (!allowsAnonymous && to.path !== '/loginRegister' && !token) {
-        return '/loginRegister'
-    }
-
-    // 已有 Token 时，访问登录页自动进入主页
-    if (to.path === '/loginRegister' && token) {
-        return '/overView'
-    }
-
-    // 路由入口按权限判定：命中任意一项即可进入，避免角色硬编码
-    const requiredPermissions = to.meta.permissions as string[] | undefined
-
-    if (requiredPermissions?.length) {
-        const session = useSessionStore()
-        if (!requiredPermissions.some(key => session.can(key))) {
-            return '/overView'
-        }
-    }
-})
+router.beforeEach(createRouteGuard(() => useSessionStore()))
 
 export default router
