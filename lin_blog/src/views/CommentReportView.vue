@@ -125,6 +125,10 @@
                                     删除评论
                                 </yk-button>
                             </template>
+                            <yk-button v-else-if="item.status === 1" size="s" type="secondary"
+                                :disabled="actingId === item.id" @click="markReport(item, 0)">
+                                设为未处理
+                            </yk-button>
                             <yk-button v-else size="s" type="secondary" :disabled="actingId === item.id"
                                 @click="markReport(item, 1)">
                                 标记为已处理
@@ -273,7 +277,7 @@ const handlePagerChange = ({ page: nextPage, pageSize: nextPageSize }: {
     void fetchReports()
 }
 
-const markReport = async (item: CommentReportItem, status: 1 | 2): Promise<void> => {
+const markReport = async (item: CommentReportItem, status: 0 | 1 | 2): Promise<void> => {
     actingId.value = item.id
     try {
         const result = await updateCommentReportStatus(item.id, status)

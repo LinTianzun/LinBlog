@@ -563,14 +563,20 @@ test('举报来源筛选把图库从文章里独立出来', async () => {
     assert.doesNotMatch(diarySql, /a\.classify/)
 })
 
-test('更新举报状态只接受已处理或已忽略', async () => {
+test('更新举报状态支持处理、忽略，以及已处理恢复为待处理', async () => {
     queryHandler = async () => ({ affectedRows: 1 })
     assert.equal(await interactionModel.updateReportStatus(9, 1, 3), true)
     const update = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
     assert.deepEqual(update.values, [1, 3, 9])
 
     queryCalls = []
-    assert.equal(await interactionModel.updateReportStatus(9, 0, 3), false)
+    assert.equal(await interactionModel.updateReportStatus(9, 0, 3), true)
+    const reset = queryCalls.find(call => call.sql.includes('UPDATE comment_report'))
+    assert.match(reset.sql, /SET status = 0, handled_by = NULL, handled_at = NULL/)
+    assert.match(reset.sql, /WHERE id = \? AND status = 1/)
+    assert.deepEqual(reset.values, [9])
+
+    queryCalls = []
     assert.equal(await interactionModel.updateReportStatus(9, 3, 3), false)
     assert.equal(await interactionModel.updateReportStatus(0, 1, 3), false)
     assert.equal(queryCalls.length, 0)
@@ -641,7 +647,7 @@ test('处理举报会写入日志，未命中返回 404', async () => {
     const invalid = makeResponse()
     await controller.updateReportStatus({
         params: { id: '9' },
-        body: { status: 0 },
+        body: { status: 3 },
         user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
     }, invalid)
     assert.equal(invalid.statusCode, 400)
@@ -668,5 +674,14 @@ test('处理举报会写入日志，未命中返回 404', async () => {
     assert.deepEqual(updateReportStatusCalls[1], { id: 9, status: 2, handledBy: 7 })
     assert.equal(logCalls.length, 1)
     assert.equal(logCalls[0].targetType, 'comment_report')
+
+    const reopened = makeResponse()
+    await controller.updateReportStatus({
+        params: { id: '9' },
+        body: { status: 0 },
+        user: { userId: 7, userType: 'admin', permissions: ['comment.moderate'] }
+    }, reopened)
+    assert.equal(reopened.statusCode, 200)
+    assert.deepEqual(updateReportStatusCalls[2], { id: 9, status: 0, handledBy: 7 })
     assert.equal(logCalls[0].detail, '忽略举报')
 })

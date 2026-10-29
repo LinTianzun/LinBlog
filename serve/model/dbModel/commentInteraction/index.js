@@ -431,13 +431,25 @@ async function listReports({
 }
 
 /**
- * 更新单条举报的处理状态。仅允许 1（已处理）/ 2（已忽略）。
+ * 更新单条举报的处理状态。
+ * 0（恢复待处理）仅允许从“已处理”回退，并清空原处理信息；
+ * 1（已处理）/ 2（已忽略）用于正常处理。
  * @returns {Promise<boolean>} 是否命中并更新
  */
 async function updateReportStatus(reportId, status, handledBy) {
     const id = parseCommentId(reportId)
     const nextStatus = parseReportStatus(status)
-    if (!id || (nextStatus !== 1 && nextStatus !== 2)) return false
+    if (!id || ![0, 1, 2].includes(nextStatus)) return false
+
+    if (nextStatus === 0) {
+        const resetResult = await query(
+            `UPDATE comment_report
+             SET status = 0, handled_by = NULL, handled_at = NULL
+             WHERE id = ? AND status = 1`,
+            [id]
+        )
+        return Number(resetResult?.affectedRows || 0) > 0
+    }
 
     const result = await query(
         `UPDATE comment_report

@@ -259,7 +259,8 @@ async function getReports(req, res) {
 
 /**
  * 处理单条举报（需 comment.moderate）
- * PATCH /api/comment/reports/:id  body: { status: 1 已处理 | 2 已忽略 }
+ * PATCH /api/comment/reports/:id
+ * body: { status: 0 恢复待处理 | 1 已处理 | 2 已忽略 }
  */
 async function updateReportStatus(req, res) {
     try {
@@ -273,8 +274,8 @@ async function updateReportStatus(req, res) {
         }
 
         const status = Number(req.body?.status)
-        if (![1, 2].includes(status)) {
-            return res.status(400).json({ code: 400, message: '处理结果仅支持 1（已处理）或 2（已忽略）' })
+        if (![0, 1, 2].includes(status)) {
+            return res.status(400).json({ code: 400, message: '处理结果仅支持 0（恢复待处理）、1（已处理）或 2（已忽略）' })
         }
 
         const updated = await commentInteractionModel.updateReportStatus(
@@ -292,13 +293,21 @@ async function updateReportStatus(req, res) {
             module: 'comment',
             targetType: 'comment_report',
             targetId: reportId,
-            detail: status === 1 ? '将举报标记为已处理' : '忽略举报',
+            detail: status === 0
+                ? '将举报恢复为待处理'
+                : status === 1
+                    ? '将举报标记为已处理'
+                    : '忽略举报',
             ip: req.ip || null,
         })
 
         res.json({
             code: 200,
-            message: status === 1 ? '已标记为已处理' : '已忽略该举报',
+            message: status === 0
+                ? '已恢复为待处理'
+                : status === 1
+                    ? '已标记为已处理'
+                    : '已忽略该举报',
             data: { id: reportId, status },
         })
     } catch (err) {

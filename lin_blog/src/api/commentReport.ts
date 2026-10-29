@@ -100,10 +100,10 @@ export function getCommentReports(
   });
 }
 
-// 处理单条举报：1 已处理 / 2 已忽略
+// 处理单条举报：0 恢复待处理 / 1 已处理 / 2 已忽略
 export function updateCommentReportStatus(
   id: number,
-  status: 1 | 2
+  status: 0 | 1 | 2
 ) {
   return request.patch<ApiResult<{ id: number; status: number }>>(
     `/comment/reports/${id}`,
