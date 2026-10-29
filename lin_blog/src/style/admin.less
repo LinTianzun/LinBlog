@@ -22,6 +22,11 @@
         0 8px 24px color-mix(in srgb, #000 4%, transparent);
     --admin-shadow-md: 0 2px 4px color-mix(in srgb, #000 4%, transparent),
         0 18px 44px color-mix(in srgb, #000 8%, transparent);
+    // 渐变主题专用：卡片描边的渐变与宽度。--lin-edge-* 由渐变主题预设在 :root 写入，
+    // 纯色主题没有这两个变量 -> 宽度回落到 0，描边整层关闭。
+    // border 不接受渐变，故用 mask 伪元素实现（见 #app:not(.is-portal) .card::before）。
+    --admin-edge-width: var(--lin-edge-width, 0px);
+    --admin-edge-gradient: var(--lin-edge-gradient, transparent);
 
     min-height: 100vh;
     color: var(--admin-text);
@@ -128,6 +133,34 @@
     border-radius: var(--admin-radius);
     background: var(--admin-surface);
     box-shadow: var(--admin-shadow-sm);
+}
+
+// 渐变主题描边环：内侧铺一层主题色渐变，用 mask 只保留边缘一圈（border 不支持渐变）。
+// 纯色主题 --admin-edge-width 为 0，mask 无留白 -> 整层不可见。
+// isolation 让卡片成为层叠上下文，环用 z-index:-1 既能盖在卡片底色之上，又不会压住内容。
+#app:not(.is-portal) .card,
+#app:not(.is-portal) .admin-page .user-list,
+#app:not(.is-portal) .admin-page .setting-card {
+    position: relative;
+    isolation: isolate;
+}
+
+#app:not(.is-portal) .card::before,
+#app:not(.is-portal) .admin-page .user-list::before,
+#app:not(.is-portal) .admin-page .setting-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: var(--admin-edge-width);
+    background: var(--admin-edge-gradient);
+    // 两条遮罩相减：border-box 全显 - content-box 全显 = 只剩边缘一圈
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    mask-composite: exclude;
+    pointer-events: none;
 }
 
 #app:not(.is-portal) .card {

@@ -112,12 +112,30 @@ const openDetail = (): void => {
     .diary-item {
         width: 100%;
         box-sizing: border-box;
+        position: relative;
+        isolation: isolate;
         border: 1px solid var(--admin-line, var(--gray1));
         border-radius: 16px;
         padding: 20px;
         background: var(--admin-surface, var(--bgColor1));
         box-shadow: var(--admin-shadow-sm, @shadow-s);
         transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+
+        // 渐变主题：边缘一圈主题色渐变描边（纯色主题宽度为 0，整层不可见）
+        &::before {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            content: '';
+            border-radius: inherit;
+            padding: var(--admin-edge-width, 0px);
+            background: var(--admin-edge-gradient, transparent);
+            -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+            -webkit-mask-composite: xor;
+            mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+            mask-composite: exclude;
+            pointer-events: none;
+        }
 
         &-top {
             width: 100%;

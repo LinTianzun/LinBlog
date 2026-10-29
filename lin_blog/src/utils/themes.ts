@@ -194,6 +194,26 @@ export const themePresets: ThemePreset[] = [
         background: '#f6f4fe',
         preview: 'linear-gradient(135deg, #e5dcff 0%, #b9a8f7 48%, #8b7cf6 100%)',
         gradient: 'linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%)'
+    },
+    {
+        id: 'pine-shadow',
+        name: '墨影深林',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#4ade80',
+        background: '#0c1810',
+        preview: 'linear-gradient(135deg, #062012 0%, #14532d 48%, #4ade80 100%)',
+        gradient: 'linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%)'
+    },
+    {
+        id: 'amber-ember',
+        name: '暖褐余烬',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#e8975c',
+        background: '#1c1410',
+        preview: 'linear-gradient(135deg, #3b2317 0%, #7c4a2d 48%, #e8975c 100%)',
+        gradient: 'linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%)'
     }
 ]
 

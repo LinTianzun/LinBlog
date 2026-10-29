@@ -1,6 +1,15 @@
 // 主题预设变量层：叠加在 yike 的 light/dark 变量之上
 // data-theme 决定 yike 组件明暗，data-theme-preset 注入品牌色与页面底色覆盖
 
+// ===== 渐变主题的专属装饰 =====
+// data-theme-kind 由 applyThemePreset() 写在 <html> 上，纯色主题是 'solid'，
+// 因此下面这组变量只在渐变主题下存在，样式层用 var(..., 0px) 回落即可自动关闭装饰。
+// 描边从当前预设的 --pcolor* 派生，新增渐变主题无需再单独配一次色。
+:root[data-theme-kind='gradient'] {
+    --lin-edge-width: 1px;
+    --lin-edge-gradient: linear-gradient(135deg, var(--pcolor5) 0%, var(--pcolor8) 48%, var(--pcolor5) 100%);
+}
+
 :root[data-theme-preset='ocean'] {
     --pcolor: #0e7bd6;
     --pcolor1: rgba(14, 123, 214, 0.08);
@@ -379,4 +388,50 @@
     --bgColor4: #d3cff4;
     --bgColor5: #faf9ff;
     --bgGradient: linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%);
+}
+
+// 墨影深林：墨绿深林渐变（深色）
+:root[data-theme-preset='pine-shadow'] {
+    --portal-page-gradient: linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%);
+    --pcolor: #4ade80;
+    --pcolor1: rgba(74, 222, 128, 0.08);
+    --pcolor2: rgba(74, 222, 128, 0.12);
+    --pcolor3: rgba(74, 222, 128, 0.16);
+    --pcolor4: rgba(74, 222, 128, 0.24);
+    --pcolor5: rgba(74, 222, 128, 0.32);
+    --pcolor6: #65e596;
+    --pcolor8: #3ec46f;
+    --pcolor9: #35aa61;
+    --pcolor10: #2b8b4f;
+    --lcolor: #4ade80;
+    --bgColor1: #12241a;
+    --bgColor2: #0f2c1c;
+    --bgColor3: #1a3a28;
+    --bgColor4: #214632;
+    --bgColor5: #0f2c1c;
+    --bgGradient: linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%);
+    --gray: #ffffff;
+}
+
+// 暖褐余烬：暖褐炭火渐变（深色）
+:root[data-theme-preset='amber-ember'] {
+    --portal-page-gradient: linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%);
+    --pcolor: #e8975c;
+    --pcolor1: rgba(232, 151, 92, 0.08);
+    --pcolor2: rgba(232, 151, 92, 0.12);
+    --pcolor3: rgba(232, 151, 92, 0.16);
+    --pcolor4: rgba(232, 151, 92, 0.24);
+    --pcolor5: rgba(232, 151, 92, 0.32);
+    --pcolor6: #eda874;
+    --pcolor8: #d4834b;
+    --pcolor9: #b97141;
+    --pcolor10: #985b34;
+    --lcolor: #e8975c;
+    --bgColor1: #271c15;
+    --bgColor2: #241811;
+    --bgColor3: #31231a;
+    --bgColor4: #3c2c21;
+    --bgColor5: #241811;
+    --bgGradient: linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%);
+    --gray: #ffffff;
 }

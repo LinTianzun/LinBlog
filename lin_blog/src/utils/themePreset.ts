@@ -4,6 +4,7 @@ const PRESET_STORAGE_KEY = 'LINBLOG_THEME_PRESET'
 const MODE_STORAGE_KEY = 'YIKE_THEME'
 const PRESET_ATTR = 'data-theme-preset'
 const MODE_ATTR = 'data-theme'
+const KIND_ATTR = 'data-theme-kind'
 const PRESET_CHANGE_EVENT = 'theme:preset-change'
 
 export function getStoredPresetId(): string {
@@ -18,6 +19,8 @@ export function applyThemePreset(presetId: string): ThemePreset {
 
     root.setAttribute(PRESET_ATTR, preset.id)
     root.setAttribute(MODE_ATTR, preset.base)
+    // 主题类型写进属性，样式层用 :root[data-theme-kind='gradient'] 就能统一开启渐变专属装饰
+    root.setAttribute(KIND_ATTR, preset.kind || 'solid')
     localStorage.setItem(PRESET_STORAGE_KEY, preset.id)
     localStorage.setItem(MODE_STORAGE_KEY, preset.base)
 

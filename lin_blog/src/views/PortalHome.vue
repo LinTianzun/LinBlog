@@ -103,7 +103,7 @@
                 <article class="story-featured">
                     <button type="button" class="story-feature-link" @click="openArticle(featuredArticle.id)">
                         <span class="story-feature-media portal-media-box"
-                            :class="{ 'is-empty': !articleCover(featuredArticle) }">
+                            :class="{ 'is-empty': !articleCover(featuredArticle), 'portal-edge': true }">
                             <img v-if="articleCover(featuredArticle)" :src="articleCover(featuredArticle)"
                                 :alt="featuredArticle.title" loading="lazy" />
                             <span v-else class="story-placeholder">
@@ -199,7 +199,7 @@
             </div>
             <div v-else-if="diaryList.length" class="diary-grid">
                 <button v-for="(diary, index) in diaryList" :key="diary.id" type="button"
-                    class="diary-card" :class="`tone-${index % 3}`" @click="openDiary(diary)">
+                    class="diary-card portal-edge" :class="`tone-${index % 3}`" @click="openDiary(diary)">
                     <span class="diary-mark" aria-hidden="true">“</span>
                     <span class="diary-weather">
                         <img v-if="weatherIcon(diary.weatherName)" :src="weatherIcon(diary.weatherName)"
@@ -216,7 +216,7 @@
             </div>
         </section>
 
-        <section class="closing-note portal-reveal">
+        <section class="closing-note portal-reveal portal-edge">
             <div>
                 <span class="block-kicker">04 / KEEP IN TOUCH</span>
                 <h2>如果你也刚好路过，<br />留下一句话再走吧。</h2>
