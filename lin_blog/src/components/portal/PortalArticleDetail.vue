@@ -5,31 +5,30 @@
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
             </div>
-            <div class="detail-meta">
-                <span v-if="article.subsetName" class="meta-chip">{{ article.subsetName }}</span>
-                <time>{{ formatArticleDate(article.publishedAt || article.createdAt) }}</time>
-                <span><IconEyeOutline />{{ views }}</span>
-                <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
-                    :disabled="likeBusy || likePending"
-                    :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
-                    @click="handleLike">
-                    <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
-                    <template v-if="!likePending">
-                        <IconLikeFill v-if="likeState.liked" />
-                        <IconLikeOutline v-else />
-                    </template>
-                    {{ likeState.likes }}
-                </button>
-            </div>
-            <!-- 头图：宽幅卡片居中，不再整条铺满弹窗 -->
-            <figure v-if="article.cover" class="detail-cover-figure">
-                <img class="detail-cover" :src="article.cover" :alt="article.cover" />
-            </figure>
+            <!-- 与后台文章详情共用头部：标题、导语、封面 -->
+            <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
+                :cover="article.cover || ''" :badges="heroBadges" :labels="labels"
+                :cover-hint="article.cover ? '查看封面' : ''" @cover-click="openCover" />
+            <!-- 与后台文章详情共用统计条，点赞按钮走插槽 -->
+            <ContentStatBar :views="views" :comments="commentTotal"
+                :meta-text="formatArticleDate(article.publishedAt || article.createdAt)"
+                :meta-chips="metaChips">
+                <template #like>
+                    <button type="button" class="meta-like" :class="{ liked: likeState.liked, busy: likeBusy }"
+                        :disabled="likeBusy || likePending"
+                        :title="canInteract ? '点赞 / 取消点赞' : '登录后可点赞'"
+                        @click="handleLike">
+                        <!-- 状态未就绪时先不渲染图标，避免「未点赞→已点赞」的图标跳变 -->
+                        <template v-if="!likePending">
+                            <IconLikeFill v-if="likeState.liked" />
+                            <IconLikeOutline v-else />
+                        </template>
+                        {{ likeState.likes }}
+                    </button>
+                </template>
+            </ContentStatBar>
             <!-- 正文：独立阅读区，行宽收窄，图片改为居中卡片 -->
             <article class="detail-reader">
-                <header v-if="article.introduce" class="detail-intro">
-                    <p class="detail-intro-text">{{ article.introduce }}</p>
-                </header>
                 <div class="detail-html" v-html="article.content"></div>
             </article>
 
@@ -42,13 +41,20 @@
                     @need-login="goLogin" />
             </div>
         </div>
+
+        <ContentLightbox :open="coverLightbox" :photos="article?.cover ? [article.cover] : []" :index="0"
+            :title="article?.title" @close="coverLightbox = false" />
     </yk-modal>
 </template>
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatArticleDate, type ArticleItem } from '../../api/article'
+import {
+    formatArticleDate,
+    parseArticleLabels,
+    type ArticleItem,
+} from '../../api/article'
 import {
     getLikeState,
     toggleLike,
@@ -57,6 +63,9 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
+import ContentStatBar from '../content/ContentStatBar.vue'
 
 const props = defineProps<{
     open: boolean
@@ -71,6 +80,7 @@ const emit = defineEmits<{
 // 评论区最新总数，用于点赞/评论后回写列表卡片
 const commentTotal = ref(0)
 const detailLoading = ref(false)
+const coverLightbox = ref(false)
 
 const likeState = ref<LikeState>({ liked: false, likes: 0 })
 const likeBusy = ref(false)
@@ -93,6 +103,26 @@ const canInteract = computed(
 const onCommentsChange = (total: number) => {
     commentTotal.value = total
 }
+
+// 统计条左侧的分类标签
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (props.article?.subsetName) chips.push({ text: props.article.subsetName, tone: 'accent' })
+    return chips
+})
+
+const labels = computed(() => parseArticleLabels(props.article?.label))
+
+// 头部与后台文章详情共用同一组标签语义：分类、状态、发布日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (props.article?.subsetName) badges.push({ text: props.article.subsetName, tone: 'accent' })
+    badges.push({
+        text: formatArticleDate(props.article?.publishedAt || props.article?.createdAt || ''),
+        tone: 'plain'
+    })
+    return badges
+})
 
 const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
@@ -125,6 +155,10 @@ const countView = async (articleId: number) => {
 const goLogin = () => {
     emit('close')
     void router.push('/loginRegister')
+}
+
+const openCover = (): void => {
+    if (props.article?.cover) coverLightbox.value = true
 }
 
 const handleLike = async () => {
@@ -165,6 +199,7 @@ watch(loadKey, async (key, previousKey) => {
         commentTotal.value = 0
         detailLoading.value = false
         likePending.value = false
+        coverLightbox.value = false
         return
     }
 
@@ -216,30 +251,16 @@ watch(loadKey, async (key, previousKey) => {
     z-index: 2;
 }
 
-// 元信息条：与正文阅读区同宽居中，视觉上与正文对齐
-.detail-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+// 统计条：与正文阅读区同宽居中，视觉上与正文对齐
+.detail-content > :deep(.content-detail-hero) {
+    max-width: 820px;
+    margin: 0 auto 20px;
+}
+
+.content-stat-bar {
     max-width: 720px;
     margin: 0 auto;
     padding-bottom: 16px;
-    color: @font-color-s;
-    font-size: @size-s;
-
-    .meta-chip {
-        padding: 2px 10px;
-        border-radius: 999px;
-            background: var(--pcolor1);
-        color: @pcolor;
-        font-weight: 500;
-    }
-
-    span {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
 }
 
 // 点赞按钮：与只读 meta 并排，但保留可点击的视觉反馈
@@ -276,44 +297,10 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
-// 头图：宽幅卡片，居中，四周留白，不再铺满弹窗
-.detail-cover-figure {
-    margin: 0 auto 30px;
-    display: flex;
-    justify-content: center;
-}
-
-.detail-cover {
-    display: block;
-    // 头图按 16:9 裁切，最大宽度收窄到阅读区，避免超宽扁平铺开
-    width: 100%;
-    max-width: 620px;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    border-radius: 14px;
-    border: 1px solid @line-color-s;
-    box-shadow: @shadow-s;
-}
-
 // 阅读区：行宽收窄居中，长文阅读节奏更舒适
 .detail-reader {
     max-width: 720px;
     margin: 0 auto;
-}
-
-// 导语：衬线斜排的引言块，与正文拉开层次
-.detail-intro {
-    margin: 0 0 24px;
-    padding: 0 0 0 18px;
-    border-left: 3px solid var(--pcolor);
-}
-
-.detail-intro-text {
-    margin: 0;
-    font-family: var(--portal-serif);
-    font-size: 16px;
-    line-height: 1.8;
-    color: @font-color-m;
 }
 
 .detail-html {
@@ -458,14 +445,9 @@ watch(loadKey, async (key, previousKey) => {
 // 窄屏：阅读区放开到容器宽度，头图改为 16:10 减少留白
 @media (max-width: 640px) {
     .detail-reader,
-    .detail-meta,
+    .content-stat-bar,
     .comment-wrap {
         max-width: 100%;
-    }
-
-    .detail-cover {
-        aspect-ratio: 16 / 10;
-        border-radius: 10px;
     }
 
     .detail-html :deep(img) {

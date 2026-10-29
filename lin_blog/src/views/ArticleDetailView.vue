@@ -19,41 +19,15 @@
 
             <article v-else-if="article" class="article-detail-article">
                 <!-- 顶部：标题信息 + 封面 -->
-                <header class="article-detail-hero" :class="{ 'is-text-only': !article.cover }">
-                    <div class="article-detail-heading">
-                        <div class="article-detail-kicker">
-                            <yk-tag :class="`state-${article.state}`">{{ stateLabel }}</yk-tag>
-                            <span>{{ subsetName }}</span>
-                            <span class="article-detail-dot"></span>
-                            <span>{{ articleDate }}</span>
-                        </div>
+                <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
+                    :cover="article.cover || ''" :badges="heroBadges" :labels="labels" />
 
-                        <h1>{{ article.title }}</h1>
-                        <p v-if="article.introduce" class="article-detail-introduce">
-                            {{ article.introduce }}
-                        </p>
+                <!-- 数据概览：与前台文章详情共用统计条 -->
+                <ContentStatBar class="article-detail-stats" :views="article.views"
+                    :comments="commentTotal" :meta-chips="metaChips" />
 
-                        <yk-space v-if="labels.length" wrap size="s" class="article-detail-labels">
-                            <yk-tag v-for="label in labels" :key="label" shape="round">
-                                {{ label }}
-                            </yk-tag>
-                        </yk-space>
-                    </div>
-
-                    <figure v-if="article.cover" class="article-detail-cover">
-                        <yk-image :src="article.cover" width="100%" height="100%" fit="cover"
-                            :preview="true" :is-lazy="true" />
-                    </figure>
-                </header>
-
-                <!-- 工具栏：数据概览 + 操作 -->
+                <!-- 管理操作：前台没有这一组，后台按权限展示 -->
                 <div class="article-detail-toolbar">
-                    <div class="article-detail-metrics">
-                        <span><IconEyeOutline />{{ article.views }} 次浏览</span>
-                        <span><IconLikeOutline />{{ article.likes }} 次点赞</span>
-                        <span><IconCommentOutline />{{ article.comments }} 条评论</span>
-                    </div>
-
                     <yk-space size="s" wrap>
                         <yk-button v-if="canEdit" type="secondary" @click="openEditor">
                             编辑
@@ -313,6 +287,8 @@ import {
 import { useSubsetStore } from '../store/subset'
 import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import ContentDetailHero from '../components/content/ContentDetailHero.vue'
+import ContentStatBar from '../components/content/ContentStatBar.vue'
 
 type Props = {
     modelValue?: boolean
@@ -390,10 +366,36 @@ const articleDate = computed(() => formatArticleDate(
     article.value?.publishedAt || article.value?.createdAt
 ))
 const subsetName = computed(
-    () => article.value?.subsetName ||
+    () => String(article.value?.subsetName ||
         subsetStore.subsetName(article.value?.subsetId ?? undefined) ||
-        '未分类'
+        '未分类')
 )
+
+// 统计条左侧：分类与状态，与前台文章详情保持同一套标签语言
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = [
+        { text: subsetName.value, tone: 'accent' }
+    ]
+    chips.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    return chips
+})
+
+// 头部与前台文章详情共用同一组标签语义：分类、状态、日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = [
+        { text: subsetName.value, tone: 'accent' }
+    ]
+    badges.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    badges.push({ text: articleDate.value, tone: 'plain' })
+    return badges
+})
+
 const access = useContentAccess('article')
 const canPublish = access.canPublish
 const canEdit = computed(() => access.canEdit(article.value))
@@ -761,78 +763,17 @@ watch(
         gap: @space-xl;
     }
 
-    // 顶部：信息区与封面并排，封面比例固定，避免超宽铺满
-    &-hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
-        gap: clamp(20px, 3vw, 44px);
-        align-items: center;
-        padding: clamp(22px, 3vw, 36px);
-        border-radius: 20px;
-        background:
-            radial-gradient(circle at 94% 2%, rgba(43, 90, 237, 0.16), transparent 42%),
-            linear-gradient(135deg, @bg-color-l 0%, @bg-color-s 100%);
-
-        &.is-text-only {
-            grid-template-columns: minmax(0, 1fr);
-        }
+    // 统计条：与操作区之间用细线分隔，形成「数据 / 操作」两段
+    &-stats {
+        padding-bottom: @space-m;
+        border-bottom: 1px solid var(--admin-line, var(--gray1));
     }
 
-    &-heading {
-        min-width: 0;
-
-        h1 {
-            margin: @space-m 0 @space-s;
-            color: @font-color-l;
-            font-size: clamp(22px, 2.4vw, 30px);
-            line-height: 1.32;
-            letter-spacing: -0.01em;
-            overflow-wrap: anywhere;
-        }
-    }
-
-    &-kicker {
+    // 操作区：靠右，不和数据抢注意力
+    &-toolbar {
         display: flex;
-        flex-wrap: wrap;
-        gap: @space-s;
-        align-items: center;
-        color: @font-color-s;
-        font-size: @size-s;
-        letter-spacing: 0.03em;
-    }
-
-    &-dot {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: @font-color-s;
-        opacity: 0.5;
-    }
-
-    &-introduce {
-        max-width: 720px;
-        margin: 0;
-        .font-m();
-        color: @font-color-s;
-        line-height: 1.8;
-        overflow-wrap: anywhere;
-    }
-
-    &-labels {
-        margin-top: @space-m;
-    }
-
-    &-cover {
-        margin: 0;
-        overflow: hidden;
-        aspect-ratio: 4 / 3;
-        border-radius: 14px;
-        background: @bg-color-s;
-        box-shadow: 0 14px 34px rgba(21, 38, 79, 0.14);
-
-        :deep(.yk-image) {
-            height: 100%;
-        }
+        justify-content: flex-end;
+        margin-top: calc(@space-m * -1);
     }
 
     // 工具栏：浅底色让数据与操作从正文中分离出来
@@ -1317,28 +1258,12 @@ watch(
         min-width: 0;
     }
 
-    .state-published {
-        color: #1f8a5b;
-        background: rgba(31, 157, 99, 0.12);
-    }
-
-    .state-rejected {
-        color: #c63e32;
-        background: rgba(218, 80, 66, 0.12);
-    }
 }
 
 @media (max-width: 900px) {
     .article-detail {
-        &-hero,
         &-layout {
             grid-template-columns: minmax(0, 1fr);
-        }
-
-        &-cover {
-            order: -1;
-            width: 100%;
-            max-width: 420px;
         }
 
         &-toolbar {
@@ -1361,10 +1286,6 @@ watch(
 
 @media (max-width: 560px) {
     .article-detail {
-        &-hero {
-            padding: @space-l;
-        }
-
         &-aside {
             grid-template-columns: minmax(0, 1fr);
         }

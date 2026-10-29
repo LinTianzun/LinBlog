@@ -13,6 +13,12 @@
             </div>
 
             <div class="article-item-main">
+                <!-- 分类与日期：卡片顶部的信息行，与前台文章卡片的时间/分类语言对齐 -->
+                <div class="article-item-kicker">
+                    <span class="article-item-subset">{{ subsetName }}</span>
+                    <span class="article-item-date">{{ articleDate }}</span>
+                </div>
+
                 <p class="article-item-title" @click="openDetail">
                     {{ props.data.title }}
                 </p>
@@ -22,32 +28,26 @@
 
                 <div class="article-item-datas">
                     <yk-space size="xl" wrap>
-                        <yk-text type="secondary">
-                            {{ subsetName }}
-                            <yk-text type="secondary" v-if="labels.length > 0">
-                                /
-                                <span v-for="(item, index) in labels" :key="index" class="article-item-label">
-                                    {{ item }}
-                                </span>
-                            </yk-text>
+                        <yk-text type="secondary" v-if="labels.length > 0">
+                            <span v-for="(item, index) in labels" :key="index" class="article-item-label">
+                                {{ item }}
+                            </span>
                         </yk-text>
 
-                        <yk-text type="third">{{ articleDate }}</yk-text>
-
-                        <yk-space>
-                            <yk-text type="third">
+                        <yk-space class="article-item-stats">
+                            <yk-text type="third" class="article-item-stat">
                                 <IconEyeOutline />
                                 {{ props.data.views }}
                             </yk-text>
-                            <yk-text type="third">
+                            <yk-text type="third" class="article-item-stat">
                                 <IconHeartOutline />
                                 {{ props.data.likes }}
                             </yk-text>
-                            <yk-text type="third">
+                            <yk-text type="third" class="article-item-stat">
                                 <IconCommentOutline />
                                 {{ rootComments }}
                             </yk-text>
-                            <yk-text type="third">
+                            <yk-text type="third" class="article-item-stat">
                                 <IconRotateLeftOutline />
                                 {{ replyComments }}
                             </yk-text>
@@ -241,6 +241,33 @@ const updateState = (state: ArticleState): void => {
         width: 100%;
     }
 
+    // 分类 + 日期：卡片顶部的信息行，与前台文章的 post-date / post-chip 对齐
+    &-kicker {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: @space-s;
+        padding-bottom: @space-s;
+        color: var(--admin-muted, @font-color-s);
+        font-size: 12px;
+    }
+
+    &-subset {
+        overflow: hidden;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--admin-accent-soft, var(--pcolor2));
+        color: var(--admin-accent, @pcolor);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &-date {
+        flex: none;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
     &-title {
         font-size: 20px;
         font-weight: 600;
@@ -273,6 +300,49 @@ const updateState = (state: ArticleState): void => {
     &-label {
         padding-right: 4px;
         display: inline-block;
+    }
+
+    &-datas {
+        display: flex;
+        gap: @space-l;
+        justify-content: space-between;
+        align-items: center;
+
+        &-icons {
+            flex: none;
+            padding: 6px 8px;
+            border-radius: 10px;
+            background: var(--gray1);
+
+            .yk-icon {
+                width: 18px;
+                height: 18px;
+                color: var(--gray6);
+                cursor: pointer;
+
+                &:hover {
+                    color: var(--pcolor);
+                }
+            }
+        }
+    }
+
+    &-stats {
+        min-width: 0;
+    }
+
+    &-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+
+        :deep(.yk-icon) {
+            width: 15px;
+            height: 15px;
+            flex: none;
+        }
     }
 
     &-datas {

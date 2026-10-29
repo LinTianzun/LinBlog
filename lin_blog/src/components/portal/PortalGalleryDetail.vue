@@ -6,21 +6,12 @@
                 <yk-spinner size="m" />
             </div>
 
-            <!-- ── Hero 区：首图全幅 + 标题与元信息覆盖层 ── -->
+            <!-- ── Hero 区：与后台图库共用沉浸式首图头部 ── -->
             <div class="gd-hero" v-if="images.length">
-                <div class="gd-hero-frame" @click="openLightbox(0)">
-                    <img v-if="images[heroIndex]" :src="images[heroIndex]" :alt="`${item.title} - ${heroIndex + 1}`"
-                        loading="eager" @error="onHeroError" />
-                    <div class="gd-hero-veil" />
-                    <div class="gd-hero-caption">
-                        <span v-if="item.subsetName" class="gd-hero-chip">{{ item.subsetName }}</span>
-                        <h2 class="gd-hero-title">{{ item.title }}</h2>
-                        <p v-if="item.introduce" class="gd-hero-intro">{{ item.introduce }}</p>
-                    </div>
-                    <span class="gd-hero-zoom-hint">
-                        <IconZoomInOutline /> 点击放大
-                    </span>
-                </div>
+                <ContentDetailHero :title="item.title" :introduce="item.introduce || ''"
+                    :cover="images[heroIndex] || ''" variant="immersive" :badges="heroBadges"
+                    cover-hint="点击放大" @cover-click="openLightbox(heroIndex)"
+                    @cover-error="onHeroError" />
 
                 <!-- 胶片条：水平滚动缩略图，当前帧高亮 -->
                 <div class="gd-filmstrip" v-if="images.length > 1">
@@ -50,12 +41,10 @@
                 <p>这组图库暂无图片</p>
             </div>
 
-            <!-- ── 统计栏 ── -->
-            <div class="gd-stats-bar">
-                <div class="gd-stats-left">
-                    <span class="gd-stat-item">
-                        <IconEyeOutline /> {{ views }}
-                    </span>
+            <!-- ── 统计栏：与后台图库详情共用同一个组件，点赞按钮走插槽 ── -->
+            <ContentStatBar class="gd-stats-bar" :views="views" :comments="commentTotal"
+                :photo-count="images.length" :meta-text="formatDate(item.publishedAt || item.createdAt)">
+                <template #like>
                     <button type="button" class="gd-like-btn"
                         :class="{ liked: likeState.liked, busy: likeBusy }"
                         :disabled="likeBusy || likePending"
@@ -67,15 +56,8 @@
                         </template>
                         {{ likeState.likes }}
                     </button>
-                    <span class="gd-stat-item">
-                        <IconCameraOutline /> {{ images.length }} 张
-                    </span>
-                    <span class="gd-stat-item">
-                        <IconCommentOutline /> {{ commentTotal }}
-                    </span>
-                </div>
-                <time class="gd-stats-date">{{ formatDate(item.publishedAt || item.createdAt) }}</time>
-            </div>
+                </template>
+            </ContentStatBar>
 
             <!-- ── 瀑布流照片墙 ── -->
             <div class="gd-masonry" v-if="images.length > 1">
@@ -99,34 +81,9 @@
                 @need-login="goLogin" />
         </div>
 
-        <!-- ── 自定义 Lightbox：全屏查看，键盘翻页 ── -->
-        <Teleport to="body">
-            <div v-if="lightbox.open" class="gd-lightbox" @click.self="closeLightbox"
-                @keydown.esc.prevent="closeLightbox"
-                @keydown.arrow-left.prevent="stepLightbox(-1)"
-                @keydown.arrow-right.prevent="stepLightbox(1)">
-                <button type="button" class="gd-lb-close" @click="closeLightbox"
-                    aria-label="关闭">
-                    <IconCrossOutline />
-                </button>
-                <button v-if="lightbox.index > 0" type="button" class="gd-lb-nav gd-lb-prev"
-                    @click="stepLightbox(-1)" aria-label="上一张">
-                    <IconRightOutline class="gd-icon-flip" />
-                </button>
-                <div class="gd-lb-stage" @click.self="closeLightbox">
-                    <img :src="images[lightbox.index]" :alt="`${item?.title} - ${lightbox.index + 1}`"
-                        :key="lightbox.index" />
-                </div>
-                <button v-if="lightbox.index < images.length - 1" type="button"
-                    class="gd-lb-nav gd-lb-next" @click="stepLightbox(1)"
-                    aria-label="下一张">
-                    <IconRightOutline />
-                </button>
-                <div class="gd-lb-counter">
-                    {{ lightbox.index + 1 }} / {{ images.length }}
-                </div>
-            </div>
-        </Teleport>
+        <!-- ── 灯箱：与后台共用同一个组件，这里只负责传入当前帧 ── -->
+        <ContentLightbox :open="lightbox.open" :photos="images" :index="lightbox.index"
+            :title="item?.title" @close="closeLightbox" @update:index="lightbox.index = $event" />
     </yk-modal>
 </template>
 
@@ -142,6 +99,9 @@ import {
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
 import { useSessionStore } from '../../store/session.ts'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
+import ContentStatBar from '../content/ContentStatBar.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
 
 const props = defineProps<{
     open: boolean
@@ -193,6 +153,16 @@ const formatDate = (value?: string | null) => {
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
 
+// 头部与后台图库详情共用同一组标签语义：分类、图片数、日期
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (props.item?.subsetName) badges.push({ text: props.item.subsetName, tone: 'accent' })
+    badges.push({ text: `${images.value.length} 张`, tone: 'plain' })
+    const date = formatDate(props.item?.publishedAt || props.item?.createdAt)
+    if (date) badges.push({ text: date, tone: 'plain' })
+    return badges
+})
+
 // Hero 帧步进
 const stepHero = (delta: number) => {
     const next = heroIndex.value + delta
@@ -220,12 +190,6 @@ const openLightbox = (index: number) => {
 
 const closeLightbox = () => {
     lightbox.value.open = false
-}
-
-const stepLightbox = (delta: number) => {
-    const next = lightbox.value.index + delta
-    if (next < 0 || next >= images.value.length) return
-    lightbox.value.index = next
 }
 
 // 首图加载失败时切换到下一张
@@ -355,114 +319,6 @@ watch(loadKey, async (key, previousKey) => {
     margin: -4px -4px 0;
 }
 
-.gd-hero-frame {
-    position: relative;
-    display: block;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    border-radius: 4px;
-    cursor: zoom-in;
-    background: var(--portal-line-soft);
-
-    img {
-        display: block;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
-    }
-
-    &:hover img {
-        transform: scale(1.03);
-    }
-
-    &:hover .gd-hero-zoom-hint {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.gd-hero-veil {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(180deg,
-        transparent 40%,
-        rgba(0, 0, 0, 0.28) 70%,
-        rgba(0, 0, 0, 0.55) 100%);
-}
-
-.gd-hero-caption {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: clamp(16px, 3vw, 32px);
-    pointer-events: none;
-}
-
-.gd-hero-chip {
-    display: inline-block;
-    margin-bottom: 10px;
-    padding: 4px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(8px);
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-}
-
-.gd-hero-title {
-    margin: 0 0 8px;
-    color: #fff;
-    font-family: var(--portal-serif);
-    font-size: clamp(24px, 3.5vw, 42px);
-    font-weight: 700;
-    line-height: 1.2;
-    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
-}
-
-.gd-hero-intro {
-    margin: 0;
-    max-width: 52ch;
-    color: rgba(255, 255, 255, 0.82);
-    font-size: 13px;
-    line-height: 1.7;
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.gd-hero-zoom-hint {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(8px);
-    color: rgba(255, 255, 255, 0.88);
-    font-size: 12px;
-    opacity: 0;
-    transform: translateY(-6px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    pointer-events: none;
-
-    .yk-icon {
-        width: 14px;
-        height: 14px;
-    }
-}
-
 // ===== 胶片条 =====
 .gd-filmstrip {
     display: flex;
@@ -568,33 +424,6 @@ watch(loadKey, async (key, previousKey) => {
     margin-top: 4px;
     border-bottom: 1px solid var(--portal-line-soft);
     flex-wrap: wrap;
-}
-
-.gd-stats-left {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-}
-
-.gd-stat-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--portal-text-tertiary);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-
-    .yk-icon {
-        width: 15px;
-        height: 15px;
-    }
-}
-
-.gd-stats-date {
-    color: var(--portal-text-tertiary);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
 }
 
 .gd-like-btn {
@@ -740,143 +569,10 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
-// ===== Lightbox =====
-.gd-lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(8, 10, 14, 0.92);
-    backdrop-filter: blur(6px);
-    animation: gd-lb-fade 0.2s ease;
-}
-
-@keyframes gd-lb-fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-.gd-lb-close {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.85);
-    cursor: pointer;
-    transition: all var(--portal-transition-fast);
-
-    .yk-icon {
-        width: 20px;
-        height: 20px;
-    }
-
-    &:hover {
-        background: rgba(255, 255, 255, 0.15);
-        color: #fff;
-    }
-}
-
-.gd-lb-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 48px;
-    height: 72px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    transition: all var(--portal-transition-fast);
-
-    .yk-icon {
-        width: 22px;
-        height: 22px;
-    }
-
-    &:hover {
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        border-color: rgba(255, 255, 255, 0.3);
-    }
-}
-
-.gd-lb-prev {
-    left: 20px;
-}
-
-.gd-lb-next {
-    right: 20px;
-}
-
-.gd-lb-stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 40px 80px;
-    cursor: zoom-out;
-
-    img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        border-radius: 4px;
-        animation: gd-lb-img-in 0.25s ease;
-    }
-}
-
-@keyframes gd-lb-img-in {
-    from {
-        opacity: 0;
-        transform: scale(0.97);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.gd-lb-counter {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 6px 18px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(8px);
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-}
-
 // ===== 响应式 =====
 @media (max-width: 900px) {
     .gd-masonry {
         columns: 2;
-    }
-
-    .gd-hero-frame {
-        aspect-ratio: 3 / 2;
-    }
-
-    .gd-lb-stage {
-        padding: 20px 56px;
     }
 }
 
@@ -885,38 +581,9 @@ watch(loadKey, async (key, previousKey) => {
         columns: 1;
     }
 
-    .gd-hero-frame {
-        aspect-ratio: 4 / 3;
-    }
-
-    .gd-hero-title {
-        font-size: 22px;
-    }
-
-    .gd-hero-intro {
-        -webkit-line-clamp: 1;
-    }
-
     .gd-strip-thumb {
         width: 52px;
         height: 42px;
-    }
-
-    .gd-lb-stage {
-        padding: 12px 8px;
-    }
-
-    .gd-lb-nav {
-        width: 40px;
-        height: 60px;
-    }
-
-    .gd-lb-prev {
-        left: 8px;
-    }
-
-    .gd-lb-next {
-        right: 8px;
     }
 
     .gd-stats-bar {
@@ -926,7 +593,6 @@ watch(loadKey, async (key, previousKey) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .gd-hero-frame img,
     .gd-masonry-item img {
         transition: none;
     }
@@ -935,8 +601,5 @@ watch(loadKey, async (key, previousKey) => {
         animation: none;
     }
 
-    .gd-lb-stage img {
-        animation: none;
-    }
 }
 </style>

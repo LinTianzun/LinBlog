@@ -15,37 +15,25 @@
             </div>
 
             <template v-else>
-                <div class="gallery-detail-head">
-                    <yk-space size="m" align="center" wrap>
-                        <yk-tag v-if="article.subsetName" shape="round">{{ article.subsetName }}</yk-tag>
-                        <yk-tag :color="stateColor" shape="round">{{ stateLabel }}</yk-tag>
-                        <yk-text type="secondary">{{ publishedText }}</yk-text>
-                    </yk-space>
+                <!-- 与前台图库详情共用沉浸式头部：首图、标题、简介与元信息 -->
+                <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
+                    :cover="photos[0] || article.cover || ''" variant="immersive" :badges="heroBadges"
+                    cover-hint="点击放大" @cover-click="openLightbox(0)" />
 
-                    <yk-space size="xl" align="center" wrap>
-                        <yk-text type="third">
-                            <IconEyeOutline /> {{ article.views }} 次浏览
-                        </yk-text>
-                        <yk-text type="third">
-                            <IconHeartOutline /> {{ article.likes }} 人喜欢
-                        </yk-text>
-                        <yk-text type="third">
-                            <IconCommentOutline /> {{ rootComments }} 条评论
-                        </yk-text>
-                        <yk-text type="third">
-                            <IconRotateLeftOutline /> {{ replyComments }} 条回复
-                        </yk-text>
-                        <yk-button v-if="access.canEdit(article)" type="secondary" size="s" @click="openEditor">
-                            <IconFillOutline />编辑
-                        </yk-button>
-                    </yk-space>
+                <!-- 与前台共用统计条：后台这是只读展示，故不传点赞按钮 -->
+                <ContentStatBar :views="article.views" :comments="rootComments"
+                    :photo-count="photos.length" :meta-text="publishedText" :meta-chips="metaChips" />
+
+                <!-- 操作区与前台不同：后台保留管理动作 -->
+                <div class="gallery-detail-actions">
+                    <yk-button v-if="access.canEdit(article)" size="s" @click="openEditor">
+                        <IconFillOutline />编辑
+                    </yk-button>
                 </div>
 
-                <yk-image-preview-group v-if="photos.length" :src-list="photos" width="100%" height="200"
-                    fit="cover" />
-                <div v-else class="gallery-detail-blank">该图库还没有图片</div>
-
-                <p v-if="article.introduce" class="gallery-detail-introduce">{{ article.introduce }}</p>
+                <!-- 图片集：与前台共用排版，点击后打开共用灯箱 -->
+                <ContentPhotoGrid :photos="photos" layout="masonry" :show-index="true"
+                    empty-text="该图库还没有图片" @preview="openLightbox" />
 
                 <div class="gallery-detail-comment">
                     <p class="gallery-detail-comment-title">
@@ -55,6 +43,9 @@
                 </div>
             </template>
         </div>
+
+        <ContentLightbox :open="lightbox.open" :photos="photos" :index="lightbox.index"
+            :title="article?.title" @close="closeLightbox" @update:index="lightbox.index = $event" />
     </yk-modal>
 </template>
 
@@ -63,14 +54,14 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getArticleById, getArticleStateLabel, type ArticleItem } from '../../api/article.ts'
 import {
-    IconEyeOutline,
     IconFillOutline,
-    IconRotateLeftOutline,
-    IconCommentOutline,
-    IconHeartOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 import ReplyList from '../reply/commentList.vue'
 import { useContentAccess } from '../../utils/contentAccess.ts'
+import ContentDetailHero from '../content/ContentDetailHero.vue'
+import ContentStatBar from '../content/ContentStatBar.vue'
+import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
+import ContentLightbox from '../content/ContentLightbox.vue'
 
 const props = defineProps<{
     modelValue: boolean
@@ -89,6 +80,15 @@ const article = ref<ArticleItem | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
 
+// 灯箱：与前台共用同一个组件，这里只管开关与当前帧
+const lightbox = ref({ open: false, index: 0 })
+const openLightbox = (index: number): void => {
+    lightbox.value = { open: true, index }
+}
+const closeLightbox = (): void => {
+    lightbox.value.open = false
+}
+
 const photos = computed(() => {
     const content = article.value?.content
     if (!content) return []
@@ -104,17 +104,32 @@ const photos = computed(() => {
 
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
 
+// 头部与前台图库详情共用同一组标签语义：分类、图片数、状态
+const heroBadges = computed(() => {
+    const badges: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (article.value?.subsetName) badges.push({ text: article.value.subsetName, tone: 'accent' })
+    badges.push({ text: `${photos.value.length} 张`, tone: 'plain' })
+    badges.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    return badges
+})
+
+// 统计条左侧的分类与状态标签
+const metaChips = computed(() => {
+    const chips: { text: string; tone?: 'plain' | 'accent' | 'success' | 'warning' }[] = []
+    if (article.value?.subsetName) chips.push({ text: article.value.subsetName })
+    chips.push({
+        text: stateLabel.value,
+        tone: article.value?.state === 'published' ? 'success' : 'warning'
+    })
+    return chips
+})
+
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
 const rootComments = computed(() => article.value?.rootComments ?? article.value?.comments ?? 0)
 const replyComments = computed(() => article.value?.replyComments ?? 0)
-
-// 状态标签配色：与列表卡片保持一致
-const stateColor = computed(() => {
-    const state = article.value?.state
-    if (state === 'published') return 'success'
-    if (state === 'rejected') return 'danger'
-    return 'primary'
-})
 
 const publishedText = computed(() => {
     const value = article.value?.publishedAt || article.value?.createdAt
@@ -195,32 +210,11 @@ watch(loadKey, async (key, previousKey) => {
         gap: @space-m;
     }
 
-    &-head {
+    // 统计条与操作区之间收窄一档，避免两行各占一个大间距
+    &-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: @space-m;
-        align-items: center;
-        justify-content: space-between;
-        padding-bottom: @space-m;
-        border-bottom: 1px solid var(--admin-line, var(--gray1));
-    }
-
-    &-blank {
-        display: flex;
-        height: 180px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 12px;
-        background: var(--gray1);
-        color: var(--gray6);
-        font-size: 14px;
-    }
-
-    &-introduce {
-        margin: 0;
-        color: var(--gray6);
-        font-size: 14px;
-        line-height: 1.9;
+        gap: @space-s;
     }
 
     &-comment {
@@ -239,10 +233,6 @@ watch(loadKey, async (key, previousKey) => {
 @media (max-width: 640px) {
     .gallery-detail {
         gap: @space-m;
-
-        &-head {
-            align-items: flex-start;
-        }
     }
 }
 </style>
