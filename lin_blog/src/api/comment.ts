@@ -73,6 +73,14 @@ export function createComment(data: {
 
 export type CommentTargetType = "article" | "diary";
 
+export type CommentReportReason =
+  | "spam"
+  | "abuse"
+  | "porn"
+  | "illegal"
+  | "misinformation"
+  | "other";
+
 export interface CommentLikeState {
   liked: boolean;
   likes: number;
@@ -90,6 +98,8 @@ export function toggleCommentLike(data: {
 export function reportComment(data: {
   commentType: CommentTargetType;
   commentId: number;
+  reason: CommentReportReason;
+  detail?: string;
 }) {
   return request.post<ApiResult<{ complaint: number; already: boolean }>>(
     "/public/comment/report",

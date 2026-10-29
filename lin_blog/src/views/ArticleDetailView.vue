@@ -119,7 +119,8 @@
                         <ContentCommentThread v-for="thread in threads" :key="thread.root.id"
                             :root="thread.root" :replies="thread.replies"
                             :expanded="isExpanded(thread.root.id)" :can-like="true" :can-reply="true"
-                            :can-report="true" :can-delete="true"
+                            :can-report="canReport" :can-delete="true"
+                            :current-user-id="currentUser?.id"
                             :can-confirm-delete="canDeleteComment(thread.root)"
                             :delete-confirming="deleteConfirmId === thread.root.id"
                             :delete-confirming-reply-id="deleteConfirmId"
@@ -159,6 +160,10 @@
                         </ContentCommentThread>
                     </div>
                 </section>
+
+                <CommentReportDialog :open="reportDialogVisible" :submitting="reportSubmitting"
+                    :comment-content="reportTarget?.content || ''"
+                    @update:open="updateReportDialog" @submit="submitReport" />
             </article>
         </div>
     </yk-modal>
@@ -186,6 +191,7 @@ import {
     getRequestErrorMessage,
     reportComment,
     toggleCommentLike,
+    type CommentReportReason,
     type CommentItem,
 } from '../api/comment'
 import { useSubsetStore } from '../store/subset'
@@ -193,6 +199,7 @@ import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import ContentDetailHero from '../components/content/ContentDetailHero.vue'
 import ContentCommentThread from '../components/content/ContentCommentThread.vue'
+import CommentReportDialog from '../components/content/CommentReportDialog.vue'
 import ContentStatBar from '../components/content/ContentStatBar.vue'
 
 type Props = {
@@ -252,6 +259,9 @@ const expandedThreads = ref<Set<number>>(new Set())
 const activeCommentMenu = ref<number | null>(null)
 const commentLikeBusyIds = ref<Set<number>>(new Set())
 const deleteConfirmId = ref<number | null>(null)
+const reportTarget = ref<CommentItem | null>(null)
+const reportDialogVisible = ref(false)
+const reportSubmitting = ref(false)
 
 const currentUser = (() => {
     try {
@@ -265,6 +275,8 @@ const currentUser = (() => {
 })()
 
 const composerAvatar = currentUser?.imgurl || ''
+// 后台仍按权限矩阵决定举报入口是否显示
+const canReport = computed(() => session.can('comment.report'))
 const stateLabel = computed(() => getArticleStateLabel(article.value?.state))
 const labels = computed(() => parseArticleLabels(article.value?.label))
 const articleDate = computed(() => formatArticleDate(
@@ -533,24 +545,54 @@ const handleCommentLike = async (comment: CommentItem): Promise<void> => {
     }
 }
 
-const reportCommentItem = async (comment: CommentItem): Promise<void> => {
+const reportCommentItem = (comment: CommentItem): void => {
     activeCommentMenu.value = null
     deleteConfirmId.value = null
+
+    if (!canReport.value) {
+        showMessage('warning', '当前账号没有举报评论的权限')
+        return
+    }
+
+    reportTarget.value = comment
+    reportDialogVisible.value = true
+}
+
+const updateReportDialog = (open: boolean): void => {
+    if (!open && reportSubmitting.value) return
+    reportDialogVisible.value = open
+    if (!open) reportTarget.value = null
+}
+
+const submitReport = async (payload: {
+    reason: CommentReportReason
+    detail: string
+}): Promise<void> => {
+    const target = reportTarget.value
+    if (!target || reportSubmitting.value) return
+
+    reportSubmitting.value = true
     try {
         const result = await reportComment({
             commentType: 'article',
-            commentId: comment.id,
+            commentId: target.id,
+            reason: payload.reason,
+            ...(payload.detail ? { detail: payload.detail } : {}),
         })
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '举报评论失败')
         }
-        comment.complaint = result.data.complaint
+        target.complaint = result.data.complaint
+        reportDialogVisible.value = false
+        reportTarget.value = null
         showMessage(
             result.data.already ? 'primary' : 'success',
             result.message || (result.data.already ? '你已举报过该评论' : '举报成功，感谢反馈')
         )
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '举报评论失败，请稍后重试'))
+    } finally {
+        reportSubmitting.value = false
     }
 }
 

@@ -328,6 +328,8 @@ const tablesSql = {
     target_type ENUM('article','diary') NOT NULL COMMENT '评论所属内容类型',
     comment_id BIGINT UNSIGNED NOT NULL COMMENT '评论ID',
     user_id BIGINT UNSIGNED NOT NULL COMMENT '举报用户ID',
+    reason VARCHAR(32) NOT NULL DEFAULT 'other' COMMENT '举报原因',
+    detail VARCHAR(200) NULL COMMENT '补充说明',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '举报时间',
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1304,6 +1306,18 @@ async function ensureCommentInteractionSchema(exec = query) {
   });
 }
 
+// 举报原因：新表已在建表语句中覆盖，这里只为存量库补字段。
+async function ensureCommentReportReasonSchema(exec = query) {
+  await ensureColumn(exec, 'comment_report', 'reason', {
+    definition: "VARCHAR(32) NOT NULL DEFAULT 'other'",
+    comment: '举报原因'
+  });
+  await ensureColumn(exec, 'comment_report', 'detail', {
+    definition: 'VARCHAR(200) NULL',
+    comment: '补充说明'
+  });
+}
+
 // 两级评论仍统一挂在根评论下，另外记录“实际回复的是哪条评论/哪位用户”，
 // 用于二级回复之间继续回复且不产生三级嵌套。
 async function ensureCommentReplyTargetSchema(exec = query) {
@@ -1493,6 +1507,10 @@ const migrations = [
   {
     version: '20261028_access_control',
     up: ensureAccessControlSchema
+  },
+  {
+    version: '20261029_comment_report_reason',
+    up: ensureCommentReportReasonSchema
   }
 ];
 

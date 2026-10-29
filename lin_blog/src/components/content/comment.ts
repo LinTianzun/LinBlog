@@ -26,6 +26,16 @@ export interface ContentCommentThread<T extends ContentComment = ContentComment>
     replies: T[]
 }
 
+export function isCommentOwner(
+    comment: Pick<ContentComment, 'userId'>,
+    currentUserId?: number | null
+): boolean {
+    return Boolean(
+        currentUserId &&
+        Number(comment.userId) === Number(currentUserId)
+    )
+}
+
 /**
  * 组织评论树：一级按最新在前，二级按时间正序挂在所属评论下。
  * 前后台六处详情原本各自写了一遍这段逻辑，这里统一。

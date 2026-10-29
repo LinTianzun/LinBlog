@@ -14,6 +14,7 @@ declare module 'vue' {
     ArtcleItem: typeof import('./src/components/article/artcleItem.vue')['default']
     Comment: typeof import('./src/components/reply/comment.vue')['default']
     CommentList: typeof import('./src/components/reply/commentList.vue')['default']
+    CommentReportDialog: typeof import('./src/components/content/CommentReportDialog.vue')['default']
     ConfirmPopover: typeof import('./src/components/common/ConfirmPopover.vue')['default']
     ContentCommentList: typeof import('./src/components/content/ContentCommentList.vue')['default']
     ContentCommentThread: typeof import('./src/components/content/ContentCommentThread.vue')['default']

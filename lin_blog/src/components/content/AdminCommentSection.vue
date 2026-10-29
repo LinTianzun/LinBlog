@@ -47,6 +47,7 @@
             <ContentCommentThread v-for="thread in threads" :key="thread.root.id" :root="thread.root"
                 :replies="thread.replies" :expanded="isExpanded(thread.root.id)" :can-like="canLike"
                 :can-reply="canInteract" :can-report="canReport" :can-delete="canDeleteAny"
+                :current-user-id="currentUser?.id"
                 :can-confirm-delete="canDeleteComment(thread.root)"
                 :delete-confirming="deleteConfirmId === thread.root.id"
                 :delete-confirming-reply-id="deleteConfirmId"
@@ -108,12 +109,17 @@
                 </template>
             </ContentCommentThread>
         </div>
+
+        <CommentReportDialog :open="reportDialogVisible" :submitting="reportSubmitting"
+            :comment-content="reportTarget?.content || ''"
+            @update:open="updateReportDialog" @submit="submitReport" />
     </section>
 </template>
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import ContentCommentThread from './ContentCommentThread.vue'
+import CommentReportDialog from './CommentReportDialog.vue'
 import { buildCommentThreads } from './comment.ts'
 import { useSessionStore } from '../../store/session.ts'
 import {
@@ -124,6 +130,7 @@ import {
     getRequestErrorMessage,
     reportComment,
     toggleCommentLike,
+    type CommentReportReason,
     type CommentItem,
 } from '../../api/comment.ts'
 import {
@@ -170,6 +177,9 @@ const expandedThreads = ref<Set<number>>(new Set())
 const activeCommentMenu = ref<number | null>(null)
 const commentLikeBusyIds = ref<Set<number>>(new Set())
 const deleteConfirmId = ref<number | null>(null)
+const reportTarget = ref<CommentRow | null>(null)
+const reportDialogVisible = ref(false)
+const reportSubmitting = ref(false)
 
 const commentDraft = ref('')
 const commentSubmitting = ref(false)
@@ -409,7 +419,7 @@ const handleReplyLike = (id: number): void => {
     if (target) void handleCommentLike(target)
 }
 
-const reportCommentItem = async (comment: CommentRow): Promise<void> => {
+const reportCommentItem = (comment: CommentRow): void => {
     activeCommentMenu.value = null
     deleteConfirmId.value = null
     if (!canReport.value) {
@@ -417,21 +427,45 @@ const reportCommentItem = async (comment: CommentRow): Promise<void> => {
         return
     }
 
+    reportTarget.value = comment
+    reportDialogVisible.value = true
+}
+
+const updateReportDialog = (open: boolean): void => {
+    if (!open && reportSubmitting.value) return
+    reportDialogVisible.value = open
+    if (!open) reportTarget.value = null
+}
+
+const submitReport = async (payload: {
+    reason: CommentReportReason
+    detail: string
+}): Promise<void> => {
+    const target = reportTarget.value
+    if (!target || reportSubmitting.value) return
+
+    reportSubmitting.value = true
     try {
         const result = await reportComment({
             commentType: props.targetType,
-            commentId: comment.id,
+            commentId: target.id,
+            reason: payload.reason,
+            ...(payload.detail ? { detail: payload.detail } : {}),
         })
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '举报评论失败')
         }
-        comment.complaint = result.data.complaint
+        target.complaint = result.data.complaint
+        reportDialogVisible.value = false
+        reportTarget.value = null
         showMessage(
             result.data.already ? 'primary' : 'success',
             result.message || (result.data.already ? '你已举报过该评论' : '举报成功，感谢反馈')
         )
     } catch (error) {
         showMessage('error', getRequestErrorMessage(error, '举报评论失败，请稍后重试'))
+    } finally {
+        reportSubmitting.value = false
     }
 }
 
@@ -479,6 +513,9 @@ const resetState = (): void => {
     activeCommentMenu.value = null
     commentLikeBusyIds.value = new Set()
     deleteConfirmId.value = null
+    reportTarget.value = null
+    reportDialogVisible.value = false
+    reportSubmitting.value = false
     commentDraft.value = ''
     commentSubmitting.value = false
     commentError.value = ''

@@ -22,7 +22,8 @@ const ALL_MIGRATIONS = [
     '20261028_password_reset',
     '20261028_password_reset_version_guard',
     '20261028_diary_owner',
-    '20261028_access_control'
+    '20261028_access_control',
+    '20261029_comment_report_reason'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -122,6 +123,33 @@ test('comment interaction migration creates interaction tables and counters', as
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261027_comment_interaction'
+    ))
+})
+
+test('comment report reason migration adds reason and detail columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261029_comment_report_reason')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+
+    assert.deepEqual(result, { appliedCount: 1 })
+    const alterSql = calls
+        .filter(call => call.sql.includes('ALTER TABLE comment_report ADD COLUMN'))
+        .map(call => call.sql)
+    assert.equal(alterSql.length, 2)
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN reason VARCHAR(32)')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN detail VARCHAR(200)')))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261029_comment_report_reason'
     ))
 })
 

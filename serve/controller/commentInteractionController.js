@@ -2,6 +2,15 @@ const commentInteractionModel = require('../model/dbModel/commentInteraction/ind
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
 
+const REPORT_REASONS = new Map([
+    ['spam', '广告或引流'],
+    ['abuse', '辱骂或人身攻击'],
+    ['porn', '色情或低俗内容'],
+    ['illegal', '违法或危险内容'],
+    ['misinformation', '虚假或误导信息'],
+    ['other', '其他原因'],
+])
+
 /**
  * 解析并校验互动入参，失败时返回 { error: { code, message } }
  */
@@ -17,6 +26,32 @@ function parsePayload(body) {
     }
 
     return { data: { targetType, commentId } }
+}
+
+/**
+ * 举报额外要求选择原因，补充说明选填。
+ */
+function parseReportPayload(body) {
+    const parsed = parsePayload(body)
+    if (parsed.error) return parsed
+
+    const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
+    if (!REPORT_REASONS.has(reason)) {
+        return { error: { code: 400, message: '请选择有效的举报原因' } }
+    }
+
+    const detail = typeof body?.detail === 'string' ? body.detail.trim() : ''
+    if (detail.length > 200) {
+        return { error: { code: 400, message: '补充说明不能超过 200 个字符' } }
+    }
+
+    return {
+        data: {
+            ...parsed.data,
+            reason,
+            detail: detail || null,
+        }
+    }
 }
 
 /**
@@ -66,7 +101,7 @@ async function toggleLike(req, res) {
 
 /**
  * 举报评论（需登录；同一用户重复举报不重复计数）
- * POST /api/public/comment/report  body: { commentType, commentId }
+ * POST /api/public/comment/report  body: { commentType, commentId, reason, detail? }
  */
 async function report(req, res) {
     try {
@@ -78,15 +113,20 @@ async function report(req, res) {
             return res.status(403).json({ code: 403, message: '当前账号没有举报权限' })
         }
 
-        const parsed = parsePayload(req.body)
+        const parsed = parseReportPayload(req.body)
         if (parsed.error) {
             return res.status(parsed.error.code).json({ code: parsed.error.code, message: parsed.error.message })
         }
-        const { targetType, commentId } = parsed.data
+        const { targetType, commentId, reason, detail } = parsed.data
 
-        const result = await commentInteractionModel.report(targetType, commentId, userId)
+        const result = await commentInteractionModel.report(
+            targetType, commentId, userId, reason, detail
+        )
         if (!result) {
             return res.status(404).json({ code: 404, message: '评论不存在或不可见' })
+        }
+        if (result.self) {
+            return res.status(400).json({ code: 400, message: '不能举报自己的评论' })
         }
 
         if (!result.already) {
@@ -96,7 +136,7 @@ async function report(req, res) {
                 module: 'comment',
                 targetType: `${targetType}_comment`,
                 targetId: commentId,
-                detail: '举报评论',
+                detail: `举报评论：${REPORT_REASONS.get(reason)}`,
                 ip: req.ip || null,
             })
         }

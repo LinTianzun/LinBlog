@@ -45,7 +45,7 @@
                     <slot name="actions-left" />
                 </div>
 
-                <yk-popover v-if="canReport || canDelete" :open="menuOpen" trigger="click"
+                <yk-popover v-if="canReportRoot || canDelete" :open="menuOpen" trigger="click"
                     placement="bottomRight" :arrow="false" overlay-class="cc-action-popover"
                     @update:open="(open: boolean) => emit('update:menuOpen', open)">
                     <button type="button" class="cc-more" title="更多操作" aria-label="更多操作">
@@ -53,7 +53,7 @@
                     </button>
                     <template #popover>
                         <div class="cc-menu">
-                            <button v-if="canReport" type="button" @click="emit('report')">
+                            <button v-if="canReportRoot" type="button" @click="emit('report')">
                                 <IconWarningOutline />举报
                             </button>
                             <button v-if="canDelete" type="button" :disabled="!canConfirmDelete"
@@ -96,7 +96,7 @@
                                 @click="emit('reply-to', reply.id)">
                                 <IconCommentOutline />回复
                             </button>
-                            <yk-popover v-if="canReport || canDelete" :open="replyMenuOpen === reply.id"
+                            <yk-popover v-if="canReportReply(reply) || canDelete" :open="replyMenuOpen === reply.id"
                                 trigger="click" placement="bottomRight" :arrow="false"
                                 overlay-class="cc-action-popover"
                                 @update:open="(open: boolean) => emit('update:replyMenuOpen', { id: reply.id, open })">
@@ -105,7 +105,7 @@
                                 </button>
                         <template #popover>
                             <div class="cc-menu">
-                                <button v-if="canReport" type="button"
+                                <button v-if="canReportReply(reply)" type="button"
                                             @click="emit('report-reply', reply.id)">
                                             <IconWarningOutline />举报
                                         </button>
@@ -139,11 +139,12 @@ import {
     IconWarningOutline,
     IconDeleteOutline,
 } from '@yike-design/ui/es/components/svg-icon'
-import { formatCommentTime, type ContentComment } from './comment.ts'
+import { computed } from 'vue'
+import { formatCommentTime, isCommentOwner, type ContentComment } from './comment.ts'
 
 // 对具体评论类型保持泛型：门户的 PortalComment / DiaryComment 传进来后
 // 仍是原类型，调用方处理点赞/举报时不需要再断言。
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
     root: ContentComment
     replies: ContentComment[]
     expanded?: boolean
@@ -154,6 +155,7 @@ withDefaults(defineProps<{
     canLike?: boolean
     canReply?: boolean
     canReport?: boolean
+    currentUserId?: number | null
     canDelete?: boolean
     canConfirmDelete?: boolean
     deleteConfirming?: boolean
@@ -172,6 +174,7 @@ withDefaults(defineProps<{
     canLike: false,
     canReply: false,
     canReport: false,
+    currentUserId: null,
     canDelete: false,
     canConfirmDelete: true,
     deleteConfirming: false,
@@ -183,6 +186,12 @@ withDefaults(defineProps<{
     menuOpen: false,
     replyMenuOpen: null,
 })
+
+const canReportRoot = computed(
+    () => props.canReport && !isCommentOwner(props.root, props.currentUserId)
+)
+const canReportReply = (reply: ContentComment): boolean =>
+    props.canReport && !isCommentOwner(reply, props.currentUserId)
 
 defineSlots<{
     badges?: () => unknown

@@ -13,6 +13,7 @@ let queryCalls = []
 let transactionCount = 0
 let toggleResult = null
 let reportResult = null
+let reportCalls = []
 let deleteResult = 0
 let deleteCalls = []
 let logCalls = []
@@ -28,7 +29,8 @@ const interactionStub = {
     async toggleLike() {
         return toggleResult
     },
-    async report() {
+    async report(...args) {
+        reportCalls.push(args)
         return reportResult
     },
     async deleteComment(targetType, commentId, userId, userType) {
@@ -101,6 +103,7 @@ test.beforeEach(() => {
     transactionCount = 0
     toggleResult = null
     reportResult = null
+    reportCalls = []
     deleteResult = 0
     deleteCalls = []
     logCalls = []
@@ -140,8 +143,8 @@ test('点赞会锁定公开评论并在同一事务内维护明细与计数', as
     transactionHandler = async (callback) => callback({
         query(sql, values, done) {
             executed.push({ sql, values })
-            if (sql.includes('SELECT c.id, c.likes FROM comment')) {
-                done(null, [{ id: 3, likes: 2 }])
+            if (sql.includes('SELECT c.id, c.likes, c.user_id FROM comment')) {
+                done(null, [{ id: 3, likes: 2, user_id: 9 }])
             } else if (sql.includes('SELECT id FROM comment_praise')) {
                 done(null, [])
             } else if (sql.includes('INSERT INTO comment_praise')) {
@@ -169,8 +172,8 @@ test('重复举报不重复累计 complaint', async () => {
     transactionHandler = async (callback) => callback({
         query(sql, values, done) {
             executed.push({ sql, values })
-            if (sql.includes('SELECT c.id, c.likes FROM comment')) {
-                done(null, [{ id: 3, likes: 1 }])
+            if (sql.includes('SELECT c.id, c.likes, c.user_id FROM comment')) {
+                done(null, [{ id: 3, likes: 1, user_id: 9 }])
             } else if (sql.includes('INSERT INTO comment_report')) {
                 const error = new Error('duplicate')
                 error.code = 'ER_DUP_ENTRY'
@@ -183,10 +186,33 @@ test('重复举报不重复累计 complaint', async () => {
         }
     })
 
-    const result = await interactionModel.report('article', 3, 7)
+    const result = await interactionModel.report('article', 3, 7, 'spam', '重复广告')
 
     assert.deepEqual(result, { complaint: 2, already: true })
     assert.equal(executed.some(call => call.sql.includes('complaint = complaint + 1')), false)
+    const insert = executed.find(call => call.sql.includes('INSERT INTO comment_report'))
+    assert.deepEqual(insert.values, ['article', 3, 7, 'spam', '重复广告'])
+})
+
+test('不能举报自己的评论', async () => {
+    const executed = []
+    transactionHandler = async (callback) => callback({
+        query(sql, values, done) {
+            executed.push({ sql, values })
+            if (sql.includes('SELECT c.id, c.likes, c.user_id FROM comment')) {
+                done(null, [{ id: 3, likes: 1, user_id: 7 }])
+            } else if (sql === 'SELECT complaint FROM comment WHERE id = ?') {
+                done(null, [{ complaint: 1 }])
+            } else {
+                done(new Error(`unexpected SQL: ${sql}`))
+            }
+        }
+    })
+
+    const result = await interactionModel.report('article', 3, 7, 'abuse', null)
+
+    assert.deepEqual(result, { complaint: 1, already: false, self: true })
+    assert.equal(executed.some(call => call.sql.includes('INSERT INTO comment_report')), false)
 })
 
 test('游客点赞和举报均返回 401 且不写库', async () => {
@@ -233,18 +259,49 @@ test('登录用户点赞成功并写系统日志', async () => {
     assert.equal(logCalls[0].targetType, 'diary_comment')
 })
 
+test('举报必须选择有效原因且补充说明不超过 200 字', async () => {
+    for (const body of [
+        { commentType: 'article', commentId: 3 },
+        { commentType: 'article', commentId: 3, reason: 'unknown' },
+        { commentType: 'article', commentId: 3, reason: 'spam', detail: 'x'.repeat(201) }
+    ]) {
+        const res = makeResponse()
+        await controller.report({
+            body,
+            user: { userId: 7, userType: 'normal', permissions: ['comment.report'] }
+        }, res)
+        assert.equal(res.statusCode, 400)
+    }
+    assert.equal(reportCalls.length, 0)
+})
+
+test('举报自己的评论返回 400 且不写日志', async () => {
+    reportResult = { complaint: 1, already: false, self: true }
+    const res = makeResponse()
+
+    await controller.report({
+        body: { commentType: 'article', commentId: 3, reason: 'spam', detail: '广告' },
+        user: { userId: 7, userType: 'normal', permissions: ['comment.report'] }
+    }, res)
+
+    assert.equal(res.statusCode, 400)
+    assert.match(res.body.message, /自己的评论/)
+    assert.equal(logCalls.length, 0)
+})
+
 test('重复举报返回 already 且不写重复日志', async () => {
     reportResult = { complaint: 2, already: true }
     const res = makeResponse()
 
     await controller.report({
-        body: { commentType: 'article', commentId: 3 },
+        body: { commentType: 'article', commentId: 3, reason: 'spam', detail: '广告' },
         user: { userId: 7, userType: 'normal' }
     }, res)
 
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.data.already, true)
     assert.match(res.body.message, /已举报/)
+    assert.deepEqual(reportCalls[0], ['article', 3, 7, 'spam', '广告'])
     assert.equal(logCalls.length, 0)
 })
 

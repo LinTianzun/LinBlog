@@ -31,7 +31,8 @@
         <div v-else class="comment-list">
             <ContentCommentThread v-for="thread in threads" :key="thread.root.id" :root="thread.root"
                 :replies="thread.replies" :expanded="isExpanded(thread.root.id)"
-                :can-like="true" :can-reply="true" :can-report="true" :can-delete="true"
+                :can-like="true" :can-reply="true" :can-report="canReport" :can-delete="true"
+                :current-user-id="currentUser?.id"
                 :can-confirm-delete="canDeleteComment(thread.root)"
                 :delete-confirming="deleteConfirmId === thread.root.id"
                 :delete-confirming-reply-id="deleteConfirmId"
@@ -94,12 +95,17 @@
                 </template>
             </ContentCommentThread>
         </div>
+
+        <CommentReportDialog :open="reportDialogVisible" :submitting="reportSubmitting"
+            :comment-content="reportTarget?.content || ''"
+            @update:open="updateReportDialog" @submit="submitReport" />
     </div>
 </template>
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import ContentCommentThread from '../content/ContentCommentThread.vue'
+import CommentReportDialog from '../content/CommentReportDialog.vue'
 import {
     createDiaryComment,
     createPublicComment,
@@ -113,7 +119,8 @@ import {
     getRequestErrorMessage,
     reportComment,
     toggleCommentLike,
-    deleteInteractionComment
+    deleteInteractionComment,
+    type CommentReportReason,
 } from '../../api/comment'
 import { useSessionStore } from '../../store/session.ts'
 
@@ -148,6 +155,9 @@ const commentTotal = ref(0)
 const expandedThreads = ref<Set<number>>(new Set())
 const activeCommentMenu = ref<number | null>(null)
 const commentLikeBusyIds = ref<Set<number>>(new Set())
+const reportTarget = ref<CommentRow | null>(null)
+const reportDialogVisible = ref(false)
+const reportSubmitting = ref(false)
 const commentDraft = ref('')
 const commentSubmitting = ref(false)
 const commentError = ref('')
@@ -164,6 +174,10 @@ const session = useSessionStore()
 // 互动能力按 comment.create 权限判定，游客角色默认没有该权限
 const canInteract = computed(
     () => Boolean(localStorage.getItem('token')) && session.can('comment.create')
+)
+// 游客保留举报入口以便提示登录；已登录但无权限时直接隐藏。
+const canReport = computed(
+    () => !localStorage.getItem('token') || session.can('comment.report')
 )
 
 // 当前登录用户：仅用于判断某条评论是否属于本人（能否删除交给权限矩阵）
@@ -303,21 +317,48 @@ const handleCommentLike = async (comment: CommentRow) => {
     }
 }
 
-const handleReport = async (comment: CommentRow) => {
+const handleReport = (comment: CommentRow) => {
     activeCommentMenu.value = null
     deleteConfirmId.value = null
     if (!canInteract.value) {
         proxy?.$message?.({ type: 'primary', message: '登录后可举报评论' })
         return
     }
+    if (!canReport.value) {
+        proxy?.$message?.({ type: 'warning', message: '当前账号没有举报评论的权限' })
+        return
+    }
+
+    reportTarget.value = comment
+    reportDialogVisible.value = true
+}
+
+const updateReportDialog = (open: boolean): void => {
+    if (!open && reportSubmitting.value) return
+    reportDialogVisible.value = open
+    if (!open) reportTarget.value = null
+}
+
+const submitReport = async (payload: {
+    reason: CommentReportReason
+    detail: string
+}): Promise<void> => {
+    const target = reportTarget.value
+    if (!target || reportSubmitting.value) return
+
+    reportSubmitting.value = true
 
     try {
         const result = await reportComment({
             commentType: props.targetType,
-            commentId: comment.id
+            commentId: target.id,
+            reason: payload.reason,
+            ...(payload.detail ? { detail: payload.detail } : {}),
         })
         if (result.code === 200 && result.data) {
-            comment.complaint = result.data.complaint
+            target.complaint = result.data.complaint
+            reportDialogVisible.value = false
+            reportTarget.value = null
             proxy?.$message?.({
                 type: result.data.already ? 'primary' : 'success',
                 message: result.message || (result.data.already ? '你已举报过该评论' : '举报成功')
@@ -328,6 +369,8 @@ const handleReport = async (comment: CommentRow) => {
             type: 'error',
             message: getRequestErrorMessage(error, '举报评论失败，请稍后重试')
         })
+    } finally {
+        reportSubmitting.value = false
     }
 }
 
@@ -470,6 +513,9 @@ watch(() => props.targetId, async (targetId, previousId) => {
     activeCommentMenu.value = null
     commentLikeBusyIds.value = new Set()
     deleteConfirmId.value = null
+    reportTarget.value = null
+    reportDialogVisible.value = false
+    reportSubmitting.value = false
     resetComposer()
 
     if (!targetId) {

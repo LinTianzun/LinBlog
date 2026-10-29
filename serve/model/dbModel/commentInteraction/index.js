@@ -5,7 +5,7 @@ const TARGETS = {
     article: {
         table: 'comment',
         // 文章评论只对已发布文章可见
-        visibleSql: `SELECT c.id, c.likes FROM comment c
+        visibleSql: `SELECT c.id, c.likes, c.user_id FROM comment c
                      INNER JOIN article a ON c.article_id = a.id
                      WHERE c.id = ? AND c.status = 1 AND a.state = 'published'
                      LIMIT 1`
@@ -13,7 +13,7 @@ const TARGETS = {
     diary: {
         table: 'diary_comment',
         // 随笔没有草稿概念，status=1 即可见
-        visibleSql: `SELECT c.id, c.likes FROM diary_comment c
+        visibleSql: `SELECT c.id, c.likes, c.user_id FROM diary_comment c
                      INNER JOIN diary d ON c.diary_id = d.id
                      WHERE c.id = ? AND c.status = 1 AND d.status = 1
                      LIMIT 1`
@@ -128,9 +128,9 @@ async function toggleLike(targetType, commentId, userId) {
 
 /**
  * 举报评论：同一用户对同一条评论只记一次，重复举报返回 already=true
- * @returns {Promise<{complaint: number, already: boolean}|null>} null 表示评论不可见
+ * @returns {Promise<{complaint: number, already: boolean, self?: boolean}|null>} null 表示评论不可见
  */
-async function report(targetType, commentId, userId) {
+async function report(targetType, commentId, userId, reason, detail) {
     const type = normalizeTargetType(targetType)
     const id = parseCommentId(commentId)
     if (!type || !id) return null
@@ -147,12 +147,18 @@ async function report(targetType, commentId, userId) {
         // 举报只允许命中公开可见的评论，避免通过 ID 探测隐藏内容
         const rows = await run(`${TARGETS[type].visibleSql} FOR UPDATE`, [id])
         if (rows.length === 0) return null
+        if (Number(rows[0].user_id) === Number(userId)) {
+            const [current] = await run(`SELECT complaint FROM ${table} WHERE id = ?`, [id])
+            return { complaint: Number(current?.complaint || 0), already: false, self: true }
+        }
 
         let already = false
         try {
             await run(
-                `INSERT INTO comment_report (target_type, comment_id, user_id) VALUES (?, ?, ?)`,
-                [type, id, userId]
+                `INSERT INTO comment_report
+                 (target_type, comment_id, user_id, reason, detail)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [type, id, userId, reason, detail]
             )
             await run(`UPDATE ${table} SET complaint = complaint + 1 WHERE id = ?`, [id])
         } catch (err) {
