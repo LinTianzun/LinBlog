@@ -1,5 +1,5 @@
 <template>
-    <div class="datas">
+    <div v-if="canViewOverview" class="datas">
         <div class="card">
             <div class="card-title">
                 <div class="card-title-copy">
@@ -33,9 +33,15 @@
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
+    import { computed, ref, onMounted } from 'vue'
     import { LineChart, PieChart } from '../echarts/index.ts'
     import { getVisitStats, type VisitPoint, type PieItem } from '../../api/overview.ts'
+    import { useSessionStore } from '../../store/session.ts'
+
+    const session = useSessionStore()
+
+    // 访问量趋势与设备/来源分布同属全站统计，按 overview.viewAll 收窄
+    const canViewOverview = computed(() => session.can('overview.viewAll'))
 
     const visitRadio = ref('week')
     const checkRadio = ref('week')

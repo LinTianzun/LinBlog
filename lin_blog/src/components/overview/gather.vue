@@ -1,5 +1,5 @@
 <template>
-    <yk-space class="gather">
+    <yk-space v-if="canViewOverview" class="gather">
         <stat-card v-for="(item, index) in gathers" :key="item.name" :name="item.name"
             :total="item.total" :bg-color="item.bgColor" :icon="iconOf(item.icon)"
             :to="canOpen(item) ? (item.path || item.viewTo) : ''"
@@ -8,7 +8,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import StatCard from '../common/StatCard.vue'
 import { overLink } from '../../utils/menu.ts'
 import { getOverviewSummary, type OverviewSummary } from '../../api/overview'
@@ -19,6 +19,10 @@ import { useSessionStore } from '../../store/session.ts'
 const iconOf = (name: string) => resolveMenuIcon(name)
 
 const session = useSessionStore()
+
+// 总览统计卡片按 overview.viewAll 权限显示：没有该权限时不渲染，
+// 避免出现「接口 403 后卡片停在占位 0」这种看似有数据实则无权限的误导
+const canViewOverview = computed(() => session.can('overview.viewAll'))
 
 // 卡片跳转按目标模块的权限判定：本地文件看 file.view，
 // 文章/图库卡片进入新建编辑器，需要对应对的 create 权限

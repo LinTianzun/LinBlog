@@ -192,8 +192,9 @@ async function countArticlesByState(params) {
         whereClause += ' AND a.user_id = ?'
         whereParams.push(userId)
     } else if (!access.viewAll && !access.viewOwn) {
-        whereClause += ' AND a.state = ?'
-        whereParams.push('published')
+        // 既看不了全站也看不了自己的（如游客）：不允许回退成「统计全站已发布」，
+        // 否则后台总览会把全站内容数量泄漏给无权限账号。显式排除所有行。
+        whereClause += ' AND 1 = 0'
     }
 
     if (classify && ['article', 'image'].includes(classify)) {
