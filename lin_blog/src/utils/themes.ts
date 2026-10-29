@@ -117,103 +117,123 @@ export const themePresets: ThemePreset[] = [
     // ── 渐变色系：--bgGradient 生效，页面底色为真实渐变 ──
     {
         id: 'aurora-dream',
-        name: '晨曦微光',
+        name: '暖砂流光',
         base: 'light',
         kind: 'gradient',
-        primary: '#ff8a5c',
-        background: '#fdf4ee',
-        preview: 'linear-gradient(135deg, #ffd6a5 0%, #ff9a8b 45%, #ff6a88 100%)',
-        gradient: 'linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%)'
+        primary: '#f97362',
+        background: '#fffaf5',
+        preview: 'linear-gradient(135deg, #ffd2ad 0%, #fb9d76 45%, #f97362 100%)',
+        gradient: 'linear-gradient(150deg, #fff6ec 0%, #ffe4d3 38%, #ffcdc6 100%)'
     },
     {
-        id: 'aurora-boreal',
-        name: '极光之境',
-        base: 'dark',
-        kind: 'gradient',
-        primary: '#5eead4',
-        background: '#0d1b1e',
-        preview: 'linear-gradient(135deg, #0f2027 0%, #134e4a 45%, #5eead4 100%)',
-        gradient: 'linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%)'
-    },
-    {
-        id: 'nebula-dream',
-        name: '星云迷梦',
-        base: 'dark',
-        kind: 'gradient',
-        primary: '#c084fc',
-        background: '#170f24',
-        preview: 'linear-gradient(135deg, #2e1065 0%, #7e22ce 50%, #c084fc 100%)',
-        gradient: 'linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%)'
-    },
-    {
-        id: 'ocean-deep',
-        name: '深海幽蓝',
-        base: 'dark',
-        kind: 'gradient',
-        primary: '#38bdf8',
-        background: '#0b1622',
-        preview: 'linear-gradient(135deg, #0c4a6e 0%, #0284c7 50%, #38bdf8 100%)',
-        gradient: 'linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%)'
-    },
-    {
-        id: 'candy-pop',
-        name: '糖果梦境',
+        id: 'honey-dawn',
+        name: '蜜糖薄暮',
         base: 'light',
         kind: 'gradient',
-        primary: '#f472b6',
-        background: '#fef4f9',
-        preview: 'linear-gradient(135deg, #fce7f3 0%, #f9a8d4 50%, #c084fc 100%)',
-        gradient: 'linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%)'
+        primary: '#cf9410',
+        background: '#fffdf6',
+        preview: 'linear-gradient(135deg, #fdeaa8 0%, #f0c04a 45%, #cf9410 100%)',
+        gradient: 'linear-gradient(150deg, #fffbf0 0%, #fbeecd 38%, #f7e0ac 100%)'
     },
     {
-        id: 'sunset-glow',
-        name: '暮色流金',
-        base: 'dark',
+        id: 'citrus-pop',
+        name: '青柠气泡',
+        base: 'light',
         kind: 'gradient',
-        primary: '#fbbf24',
-        background: '#1f1508',
-        preview: 'linear-gradient(135deg, #78350f 0%, #d97706 50%, #fbbf24 100%)',
-        gradient: 'linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%)'
+        primary: '#7aa30f',
+        background: '#fdfff6',
+        preview: 'linear-gradient(135deg, #e4f5a0 0%, #b3d94a 45%, #7aa30f 100%)',
+        gradient: 'linear-gradient(150deg, #fdfff2 0%, #f3fadc 38%, #e7f4c4 100%)'
     },
     {
         id: 'mint-breeze',
-        name: '薄荷微风',
+        name: '浅滩涟漪',
         base: 'light',
         kind: 'gradient',
-        primary: '#2dd4bf',
-        background: '#f0fbfa',
-        preview: 'linear-gradient(135deg, #d4fbf1 0%, #7fe7d2 48%, #3fc9b0 100%)',
-        gradient: 'linear-gradient(150deg, #f2fdfa 0%, #dcf6ef 40%, #c3ece2 100%)'
+        primary: '#0eb0c2',
+        background: '#f7fdfd',
+        preview: 'linear-gradient(135deg, #c4f2f4 0%, #62d6e3 45%, #0eb0c2 100%)',
+        gradient: 'linear-gradient(150deg, #f2fdfd 0%, #dff4f7 38%, #c9eaf1 100%)'
     },
     {
         id: 'lavender-mist',
-        name: '薰衣草雾',
+        name: '雨后蓝紫',
         base: 'light',
         kind: 'gradient',
-        primary: '#8b7cf6',
-        background: '#f6f4fe',
-        preview: 'linear-gradient(135deg, #e5dcff 0%, #b9a8f7 48%, #8b7cf6 100%)',
-        gradient: 'linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%)'
+        primary: '#6f76ee',
+        background: '#fafbff',
+        preview: 'linear-gradient(135deg, #d5d6fb 0%, #9895f4 45%, #6f76ee 100%)',
+        gradient: 'linear-gradient(150deg, #f8f9ff 0%, #e8eafd 38%, #dbdef9 100%)'
+    },
+    {
+        id: 'candy-pop',
+        name: '晚樱初雪',
+        base: 'light',
+        kind: 'gradient',
+        primary: '#c05fe0',
+        background: '#fdfafd',
+        preview: 'linear-gradient(135deg, #f5cff4 0%, #d98bf0 45%, #c05fe0 100%)',
+        gradient: 'linear-gradient(150deg, #fdf8fd 0%, #f5e8fa 38%, #ebdcf7 100%)'
+    },
+    {
+        id: 'aurora-boreal',
+        name: '极夜微光',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#5eead4',
+        background: '#133036',
+        preview: 'linear-gradient(135deg, #062a33 0%, #0d4a55 45%, #5eead4 100%)',
+        gradient: 'linear-gradient(160deg, #05262b 0%, #0a3a3c 42%, #12304a 100%)'
+    },
+    {
+        id: 'nebula-dream',
+        name: '深空星尘',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#c084fc',
+        background: '#241539',
+        preview: 'linear-gradient(135deg, #3b1173 0%, #7e22ce 50%, #c084fc 100%)',
+        gradient: 'linear-gradient(155deg, #1a0b2b 0%, #2d1152 45%, #2a1a5e 100%)'
+    },
+    {
+        id: 'ocean-deep',
+        name: '幽蓝海沟',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#38bdf8',
+        background: '#132b3c',
+        preview: 'linear-gradient(135deg, #0c4a6e 0%, #0284c7 50%, #38bdf8 100%)',
+        gradient: 'linear-gradient(165deg, #04141f 0%, #0a2438 45%, #0d3348 100%)'
+    },
+    {
+        id: 'sunset-glow',
+        name: '炭火余烬',
+        base: 'dark',
+        kind: 'gradient',
+        primary: '#fbbf24',
+        background: '#33230f',
+        preview: 'linear-gradient(135deg, #78350f 0%, #d97706 50%, #fbbf24 100%)',
+        gradient: 'linear-gradient(160deg, #1c1006 0%, #33200e 45%, #3d1c1c 100%)'
     },
     {
         id: 'pine-shadow',
-        name: '墨影深林',
+        name: '苔痕深林',
         base: 'dark',
         kind: 'gradient',
         primary: '#4ade80',
-        background: '#0c1810',
+        background: '#14291c',
         preview: 'linear-gradient(135deg, #062012 0%, #14532d 48%, #4ade80 100%)',
-        gradient: 'linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%)'
+        gradient: 'linear-gradient(160deg, #05170f 0%, #0d2b1a 45%, #0f2f2c 100%)'
     },
     {
         id: 'amber-ember',
-        name: '暖褐余烬',
+        name: '秋叶沉塘',
         base: 'dark',
         kind: 'gradient',
         primary: '#e8975c',
-        background: '#1c1410',
+        background: '#2b1d13',
         preview: 'linear-gradient(135deg, #3b2317 0%, #7c4a2d 48%, #e8975c 100%)',
-        gradient: 'linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%)'
+        gradient: 'linear-gradient(160deg, #150e09 0%, #2a1a0e 45%, #382609 100%)'
     }
 ]
 

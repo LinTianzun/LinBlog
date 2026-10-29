@@ -5,9 +5,34 @@
 // data-theme-kind 由 applyThemePreset() 写在 <html> 上，纯色主题是 'solid'，
 // 因此下面这组变量只在渐变主题下存在，样式层用 var(..., 0px) 回落即可自动关闭装饰。
 // 描边从当前预设的 --pcolor* 派生，新增渐变主题无需再单独配一次色。
+//
+// 强度由用户在设置页选择（data-theme-edge = 0~3）：
+//   等级只控制宽度，颜色浓度由 applyThemePreset 写入的 --lin-edge-alpha 控制，
+//   两者分别独立，方便后续只调其中一个而不影响另一个。
+//   0 级宽度为 0 -> 描边整层不可见（等价于关闭）。
 :root[data-theme-kind='gradient'] {
+    --lin-edge-gradient: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--pcolor5) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 0%,
+        color-mix(in srgb, var(--pcolor8) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 48%,
+        color-mix(in srgb, var(--pcolor5) calc(var(--lin-edge-alpha, 0.85) * 100%), transparent) 100%
+    );
+}
+
+:root[data-theme-kind='gradient'][data-theme-edge='0'] {
+    --lin-edge-width: 0px;
+}
+
+:root[data-theme-kind='gradient'][data-theme-edge='1'] {
     --lin-edge-width: 1px;
-    --lin-edge-gradient: linear-gradient(135deg, var(--pcolor5) 0%, var(--pcolor8) 48%, var(--pcolor5) 100%);
+}
+
+:root[data-theme-kind='gradient'][data-theme-edge='2'] {
+    --lin-edge-width: 1.5px;
+}
+
+:root[data-theme-kind='gradient'][data-theme-edge='3'] {
+    --lin-edge-width: 2px;
 }
 
 :root[data-theme-preset='ocean'] {
@@ -207,231 +232,277 @@
 }
 
 // ===== 渐变色系 =====
-// 额外写入 --bgGradient 供页面底色使用；--bgColor2 仍是纯色，
+// 本段由 src/utils/themes.ts 的渐变预设派生，改配色请改 themes.ts 后跑
+// node gen-gradient-themes.cjs 重新生成，避免两处色值漂移。
+// 页面底色另写入 --bgGradient / --portal-page-gradient；--bgColor2 仍是纯色，
 // 因为它要参与 color-mix()，不接受渐变值。
 
-// 晨曦微光：暖橙粉渐变（浅色）
+// 暖砂流光：浅色渐变
 :root[data-theme-preset='aurora-dream'] {
-    --portal-page-gradient: linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%);
-    --pcolor: #ff8a5c;
-    --pcolor1: rgba(255, 138, 92, 0.08);
-    --pcolor2: rgba(255, 138, 92, 0.12);
-    --pcolor3: rgba(255, 138, 92, 0.16);
-    --pcolor4: rgba(255, 138, 92, 0.24);
-    --pcolor5: rgba(255, 138, 92, 0.32);
-    --pcolor6: #ff9c74;
-    --pcolor8: #f07a4c;
-    --pcolor9: #d96b40;
-    --pcolor10: #b85835;
-    --lcolor: #ff8a5c;
-    --bgColor1: #fffaf6;
-    --bgColor2: #ffe0d0;
-    --bgColor3: #ffd2bd;
-    --bgColor4: #ffc4a9;
-    --bgColor5: #fffaf6;
-    --bgGradient: linear-gradient(150deg, #fff1e2 0%, #ffe0d0 38%, #ffcbba 100%);
+    --portal-page-gradient: linear-gradient(150deg, #fff6ec 0%, #ffe4d3 38%, #ffcdc6 100%);
+    --pcolor: #f97362;
+    --pcolor1: rgba(249, 115, 98, 0.08);
+    --pcolor2: rgba(249, 115, 98, 0.12);
+    --pcolor3: rgba(249, 115, 98, 0.16);
+    --pcolor4: rgba(249, 115, 98, 0.24);
+    --pcolor5: rgba(249, 115, 98, 0.32);
+    --pcolor6: #fa8778;
+    --pcolor8: #e06858;
+    --pcolor9: #cc5e50;
+    --pcolor10: #ae5145;
+    --lcolor: #f97362;
+    --bgColor1: #fffbf7;
+    --bgColor2: #ffe4d3;
+    --bgColor3: #ffcdc6;
+    --bgColor4: #ebbdb6;
+    --bgColor5: #fffbf7;
+    --bgGradient: linear-gradient(150deg, #fff6ec 0%, #ffe4d3 38%, #ffcdc6 100%);
 }
 
-// 极光之境：青绿极光渐变（深色）
+// 蜜糖薄暮：浅色渐变
+:root[data-theme-preset='honey-dawn'] {
+    --portal-page-gradient: linear-gradient(150deg, #fffbf0 0%, #fbeecd 38%, #f7e0ac 100%);
+    --pcolor: #cf9410;
+    --pcolor1: rgba(207, 148, 16, 0.08);
+    --pcolor2: rgba(207, 148, 16, 0.12);
+    --pcolor3: rgba(207, 148, 16, 0.16);
+    --pcolor4: rgba(207, 148, 16, 0.24);
+    --pcolor5: rgba(207, 148, 16, 0.32);
+    --pcolor6: #d6a331;
+    --pcolor8: #ba850e;
+    --pcolor9: #aa790d;
+    --pcolor10: #91680b;
+    --lcolor: #cf9410;
+    --bgColor1: #fffdf9;
+    --bgColor2: #fbeecd;
+    --bgColor3: #f7e0ac;
+    --bgColor4: #e3ce9e;
+    --bgColor5: #fffdf9;
+    --bgGradient: linear-gradient(150deg, #fffbf0 0%, #fbeecd 38%, #f7e0ac 100%);
+}
+
+// 青柠气泡：浅色渐变
+:root[data-theme-preset='citrus-pop'] {
+    --portal-page-gradient: linear-gradient(150deg, #fdfff2 0%, #f3fadc 38%, #e7f4c4 100%);
+    --pcolor: #7aa30f;
+    --pcolor1: rgba(122, 163, 15, 0.08);
+    --pcolor2: rgba(122, 163, 15, 0.12);
+    --pcolor3: rgba(122, 163, 15, 0.16);
+    --pcolor4: rgba(122, 163, 15, 0.24);
+    --pcolor5: rgba(122, 163, 15, 0.32);
+    --pcolor6: #8db031;
+    --pcolor8: #6e930e;
+    --pcolor9: #64860c;
+    --pcolor10: #55720b;
+    --lcolor: #7aa30f;
+    --bgColor1: #fefffa;
+    --bgColor2: #f3fadc;
+    --bgColor3: #e7f4c4;
+    --bgColor4: #d5e0b4;
+    --bgColor5: #fefffa;
+    --bgGradient: linear-gradient(150deg, #fdfff2 0%, #f3fadc 38%, #e7f4c4 100%);
+}
+
+// 浅滩涟漪：浅色渐变
+:root[data-theme-preset='mint-breeze'] {
+    --portal-page-gradient: linear-gradient(150deg, #f2fdfd 0%, #dff4f7 38%, #c9eaf1 100%);
+    --pcolor: #0eb0c2;
+    --pcolor1: rgba(14, 176, 194, 0.08);
+    --pcolor2: rgba(14, 176, 194, 0.12);
+    --pcolor3: rgba(14, 176, 194, 0.16);
+    --pcolor4: rgba(14, 176, 194, 0.24);
+    --pcolor5: rgba(14, 176, 194, 0.32);
+    --pcolor6: #30bbcb;
+    --pcolor8: #0d9eaf;
+    --pcolor9: #0b909f;
+    --pcolor10: #0a7b88;
+    --lcolor: #0eb0c2;
+    --bgColor1: #fafefe;
+    --bgColor2: #dff4f7;
+    --bgColor3: #c9eaf1;
+    --bgColor4: #b9d7de;
+    --bgColor5: #fafefe;
+    --bgGradient: linear-gradient(150deg, #f2fdfd 0%, #dff4f7 38%, #c9eaf1 100%);
+}
+
+// 雨后蓝紫：浅色渐变
+:root[data-theme-preset='lavender-mist'] {
+    --portal-page-gradient: linear-gradient(150deg, #f8f9ff 0%, #e8eafd 38%, #dbdef9 100%);
+    --pcolor: #6f76ee;
+    --pcolor1: rgba(111, 118, 238, 0.08);
+    --pcolor2: rgba(111, 118, 238, 0.12);
+    --pcolor3: rgba(111, 118, 238, 0.16);
+    --pcolor4: rgba(111, 118, 238, 0.24);
+    --pcolor5: rgba(111, 118, 238, 0.32);
+    --pcolor6: #8389f0;
+    --pcolor8: #646ad6;
+    --pcolor9: #5b61c3;
+    --pcolor10: #4e53a7;
+    --lcolor: #6f76ee;
+    --bgColor1: #fcfdff;
+    --bgColor2: #e8eafd;
+    --bgColor3: #dbdef9;
+    --bgColor4: #c9cce5;
+    --bgColor5: #fcfdff;
+    --bgGradient: linear-gradient(150deg, #f8f9ff 0%, #e8eafd 38%, #dbdef9 100%);
+}
+
+// 晚樱初雪：浅色渐变
+:root[data-theme-preset='candy-pop'] {
+    --portal-page-gradient: linear-gradient(150deg, #fdf8fd 0%, #f5e8fa 38%, #ebdcf7 100%);
+    --pcolor: #c05fe0;
+    --pcolor1: rgba(192, 95, 224, 0.08);
+    --pcolor2: rgba(192, 95, 224, 0.12);
+    --pcolor3: rgba(192, 95, 224, 0.16);
+    --pcolor4: rgba(192, 95, 224, 0.24);
+    --pcolor5: rgba(192, 95, 224, 0.32);
+    --pcolor6: #c975e4;
+    --pcolor8: #ad56ca;
+    --pcolor9: #9d4eb8;
+    --pcolor10: #86439d;
+    --lcolor: #c05fe0;
+    --bgColor1: #fefcfe;
+    --bgColor2: #f5e8fa;
+    --bgColor3: #ebdcf7;
+    --bgColor4: #d8cae3;
+    --bgColor5: #fefcfe;
+    --bgGradient: linear-gradient(150deg, #fdf8fd 0%, #f5e8fa 38%, #ebdcf7 100%);
+}
+
+// 极夜微光：深色渐变
 :root[data-theme-preset='aurora-boreal'] {
-    --portal-page-gradient: linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%);
+    --portal-page-gradient: linear-gradient(160deg, #05262b 0%, #0a3a3c 42%, #12304a 100%);
     --pcolor: #5eead4;
     --pcolor1: rgba(94, 234, 212, 0.08);
     --pcolor2: rgba(94, 234, 212, 0.12);
     --pcolor3: rgba(94, 234, 212, 0.16);
     --pcolor4: rgba(94, 234, 212, 0.24);
     --pcolor5: rgba(94, 234, 212, 0.32);
-    --pcolor6: #7cefde;
-    --pcolor8: #4bd8c1;
-    --pcolor9: #42c1ad;
-    --pcolor10: #36a08f;
+    --pcolor6: #75edda;
+    --pcolor8: #55d3bf;
+    --pcolor9: #4dc0ae;
+    --pcolor10: #42a494;
     --lcolor: #5eead4;
-    --bgColor1: #14282b;
-    --bgColor2: #10312f;
-    --bgColor3: #1b3f3d;
-    --bgColor4: #234c49;
-    --bgColor5: #10312f;
-    --bgGradient: linear-gradient(160deg, #0b1a1d 0%, #10312f 42%, #173d38 100%);
+    --bgColor1: #234e50;
+    --bgColor2: #0a3a3c;
+    --bgColor3: #3b6163;
+    --bgColor4: #4f7173;
+    --bgColor5: #05262b;
+    --bgGradient: linear-gradient(160deg, #05262b 0%, #0a3a3c 42%, #12304a 100%);
     --gray: #ffffff;
 }
 
-// 星云迷梦：紫调星云渐变（深色）
+// 深空星尘：深色渐变
 :root[data-theme-preset='nebula-dream'] {
-    --portal-page-gradient: linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%);
+    --portal-page-gradient: linear-gradient(155deg, #1a0b2b 0%, #2d1152 45%, #2a1a5e 100%);
     --pcolor: #c084fc;
     --pcolor1: rgba(192, 132, 252, 0.08);
     --pcolor2: rgba(192, 132, 252, 0.12);
     --pcolor3: rgba(192, 132, 252, 0.16);
     --pcolor4: rgba(192, 132, 252, 0.24);
     --pcolor5: rgba(192, 132, 252, 0.32);
-    --pcolor6: #cd9dfd;
-    --pcolor8: #b06ef5;
-    --pcolor9: #9c5fe0;
-    --pcolor10: #814dd8;
+    --pcolor6: #c995fc;
+    --pcolor8: #ad77e3;
+    --pcolor9: #9d6ccf;
+    --pcolor10: #865cb0;
     --lcolor: #c084fc;
-    --bgColor1: #25143a;
-    --bgColor2: #241539;
-    --bgColor3: #331f4d;
-    --bgColor4: #3d2759;
-    --bgColor5: #241539;
-    --bgGradient: linear-gradient(155deg, #150e22 0%, #241539 45%, #331b4f 100%);
+    --bgColor1: #422963;
+    --bgColor2: #2d1152;
+    --bgColor3: #574175;
+    --bgColor4: #685482;
+    --bgColor5: #1a0b2b;
+    --bgGradient: linear-gradient(155deg, #1a0b2b 0%, #2d1152 45%, #2a1a5e 100%);
     --gray: #ffffff;
 }
 
-// 深海幽蓝：深海蓝渐变（深色）
+// 幽蓝海沟：深色渐变
 :root[data-theme-preset='ocean-deep'] {
-    --portal-page-gradient: linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%);
+    --portal-page-gradient: linear-gradient(165deg, #04141f 0%, #0a2438 45%, #0d3348 100%);
     --pcolor: #38bdf8;
     --pcolor1: rgba(56, 189, 248, 0.08);
     --pcolor2: rgba(56, 189, 248, 0.12);
     --pcolor3: rgba(56, 189, 248, 0.16);
     --pcolor4: rgba(56, 189, 248, 0.24);
     --pcolor5: rgba(56, 189, 248, 0.32);
-    --pcolor6: #55c8f9;
-    --pcolor8: #2ba9e0;
-    --pcolor9: #2696c7;
-    --pcolor10: #1e7ba3;
+    --pcolor6: #54c6f9;
+    --pcolor8: #32aadf;
+    --pcolor9: #2e9bcb;
+    --pcolor10: #2784ae;
     --lcolor: #38bdf8;
-    --bgColor1: #122838;
-    --bgColor2: #0d2436;
-    --bgColor3: #173648;
-    --bgColor4: #1e4257;
-    --bgColor5: #0d2436;
-    --bgGradient: linear-gradient(165deg, #08131f 0%, #0d2436 45%, #12303f 100%);
+    --bgColor1: #233a4c;
+    --bgColor2: #0a2438;
+    --bgColor3: #3b5060;
+    --bgColor4: #4f6170;
+    --bgColor5: #04141f;
+    --bgGradient: linear-gradient(165deg, #04141f 0%, #0a2438 45%, #0d3348 100%);
     --gray: #ffffff;
 }
 
-// 糖果梦境：粉紫糖果渐变（浅色）
-:root[data-theme-preset='candy-pop'] {
-    --portal-page-gradient: linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%);
-    --pcolor: #f472b6;
-    --pcolor1: rgba(244, 114, 182, 0.08);
-    --pcolor2: rgba(244, 114, 182, 0.12);
-    --pcolor3: rgba(244, 114, 182, 0.16);
-    --pcolor4: rgba(244, 114, 182, 0.24);
-    --pcolor5: rgba(244, 114, 182, 0.32);
-    --pcolor6: #f68bc2;
-    --pcolor8: #e35da3;
-    --pcolor9: #cc5292;
-    --pcolor10: #a84278;
-    --lcolor: #f472b6;
-    --bgColor1: #fffafd;
-    --bgColor2: #fdeaf4;
-    --bgColor3: #fbdcee;
-    --bgColor4: #f9cee8;
-    --bgColor5: #fffafd;
-    --bgGradient: linear-gradient(150deg, #fef6fb 0%, #fdeaf4 40%, #fadcec 100%);
-}
-
-// 暮色流金：琥珀暮色渐变（深色）
+// 炭火余烬：深色渐变
 :root[data-theme-preset='sunset-glow'] {
-    --portal-page-gradient: linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%);
+    --portal-page-gradient: linear-gradient(160deg, #1c1006 0%, #33200e 45%, #3d1c1c 100%);
     --pcolor: #fbbf24;
     --pcolor1: rgba(251, 191, 36, 0.08);
     --pcolor2: rgba(251, 191, 36, 0.12);
     --pcolor3: rgba(251, 191, 36, 0.16);
     --pcolor4: rgba(251, 191, 36, 0.24);
     --pcolor5: rgba(251, 191, 36, 0.32);
-    --pcolor6: #fcc94f;
-    --pcolor8: #e0a51b;
-    --pcolor9: #c79118;
-    --pcolor10: #a37613;
+    --pcolor6: #fcc843;
+    --pcolor8: #e2ac20;
+    --pcolor9: #ce9d1e;
+    --pcolor10: #b08619;
     --lcolor: #fbbf24;
-    --bgColor1: #2e1e0c;
-    --bgColor2: #2a1c0a;
-    --bgColor3: #3a2812;
-    --bgColor4: #45311a;
-    --bgColor5: #2a1c0a;
-    --bgGradient: linear-gradient(160deg, #1a1206 0%, #2a1c0a 45%, #382512 100%);
+    --bgColor1: #473626;
+    --bgColor2: #33200e;
+    --bgColor3: #5c4d3e;
+    --bgColor4: #6c5e51;
+    --bgColor5: #1c1006;
+    --bgGradient: linear-gradient(160deg, #1c1006 0%, #33200e 45%, #3d1c1c 100%);
     --gray: #ffffff;
 }
 
-// 薄荷微风：清透薄荷渐变（浅色）
-:root[data-theme-preset='mint-breeze'] {
-    --portal-page-gradient: linear-gradient(150deg, #f2fdfa 0%, #dcf6ef 40%, #c3ece2 100%);
-    --pcolor: #2dd4bf;
-    --pcolor1: rgba(45, 212, 191, 0.08);
-    --pcolor2: rgba(45, 212, 191, 0.12);
-    --pcolor3: rgba(45, 212, 191, 0.16);
-    --pcolor4: rgba(45, 212, 191, 0.24);
-    --pcolor5: rgba(45, 212, 191, 0.32);
-    --pcolor6: #48e0cd;
-    --pcolor8: #22b39f;
-    --pcolor9: #1d9c8b;
-    --pcolor10: #16806f;
-    --lcolor: #2dd4bf;
-    --bgColor1: #f7fdfc;
-    --bgColor2: #dcf6ef;
-    --bgColor3: #cdede5;
-    --bgColor4: #bde3d9;
-    --bgColor5: #f7fdfc;
-    --bgGradient: linear-gradient(150deg, #f2fdfa 0%, #dcf6ef 40%, #c3ece2 100%);
-}
-
-// 薰衣草雾：柔雾薰衣草渐变（浅色）
-:root[data-theme-preset='lavender-mist'] {
-    --portal-page-gradient: linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%);
-    --pcolor: #8b7cf6;
-    --pcolor1: rgba(139, 124, 246, 0.08);
-    --pcolor2: rgba(139, 124, 246, 0.12);
-    --pcolor3: rgba(139, 124, 246, 0.16);
-    --pcolor4: rgba(139, 124, 246, 0.24);
-    --pcolor5: rgba(139, 124, 246, 0.32);
-    --pcolor6: #9d90f8;
-    --pcolor8: #7a6aef;
-    --pcolor9: #6b5ae0;
-    --pcolor10: #5849bd;
-    --lcolor: #8b7cf6;
-    --bgColor1: #faf9ff;
-    --bgColor2: #ece7fb;
-    --bgColor3: #e0dcf8;
-    --bgColor4: #d3cff4;
-    --bgColor5: #faf9ff;
-    --bgGradient: linear-gradient(150deg, #f8f6ff 0%, #ece7fb 40%, #ded7f7 100%);
-}
-
-// 墨影深林：墨绿深林渐变（深色）
+// 苔痕深林：深色渐变
 :root[data-theme-preset='pine-shadow'] {
-    --portal-page-gradient: linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%);
+    --portal-page-gradient: linear-gradient(160deg, #05170f 0%, #0d2b1a 45%, #0f2f2c 100%);
     --pcolor: #4ade80;
     --pcolor1: rgba(74, 222, 128, 0.08);
     --pcolor2: rgba(74, 222, 128, 0.12);
     --pcolor3: rgba(74, 222, 128, 0.16);
     --pcolor4: rgba(74, 222, 128, 0.24);
     --pcolor5: rgba(74, 222, 128, 0.32);
-    --pcolor6: #65e596;
-    --pcolor8: #3ec46f;
-    --pcolor9: #35aa61;
-    --pcolor10: #2b8b4f;
+    --pcolor6: #63e392;
+    --pcolor8: #43c873;
+    --pcolor9: #3db669;
+    --pcolor10: #349b5a;
     --lcolor: #4ade80;
-    --bgColor1: #12241a;
-    --bgColor2: #0f2c1c;
-    --bgColor3: #1a3a28;
-    --bgColor4: #214632;
-    --bgColor5: #0f2c1c;
-    --bgGradient: linear-gradient(160deg, #071a10 0%, #0f2c1c 44%, #173925 100%);
+    --bgColor1: #254031;
+    --bgColor2: #0d2b1a;
+    --bgColor3: #3d5548;
+    --bgColor4: #51665a;
+    --bgColor5: #05170f;
+    --bgGradient: linear-gradient(160deg, #05170f 0%, #0d2b1a 45%, #0f2f2c 100%);
     --gray: #ffffff;
 }
 
-// 暖褐余烬：暖褐炭火渐变（深色）
+// 秋叶沉塘：深色渐变
 :root[data-theme-preset='amber-ember'] {
-    --portal-page-gradient: linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%);
+    --portal-page-gradient: linear-gradient(160deg, #150e09 0%, #2a1a0e 45%, #382609 100%);
     --pcolor: #e8975c;
     --pcolor1: rgba(232, 151, 92, 0.08);
     --pcolor2: rgba(232, 151, 92, 0.12);
     --pcolor3: rgba(232, 151, 92, 0.16);
     --pcolor4: rgba(232, 151, 92, 0.24);
     --pcolor5: rgba(232, 151, 92, 0.32);
-    --pcolor6: #eda874;
-    --pcolor8: #d4834b;
-    --pcolor9: #b97141;
-    --pcolor10: #985b34;
+    --pcolor6: #eba673;
+    --pcolor8: #d18853;
+    --pcolor9: #be7c4b;
+    --pcolor10: #a26a40;
     --lcolor: #e8975c;
-    --bgColor1: #271c15;
-    --bgColor2: #241811;
-    --bgColor3: #31231a;
-    --bgColor4: #3c2c21;
-    --bgColor5: #241811;
-    --bgGradient: linear-gradient(160deg, #150e09 0%, #241811 44%, #322217 100%);
+    --bgColor1: #3f3126;
+    --bgColor2: #2a1a0e;
+    --bgColor3: #55483e;
+    --bgColor4: #665a51;
+    --bgColor5: #150e09;
+    --bgGradient: linear-gradient(160deg, #150e09 0%, #2a1a0e 45%, #382609 100%);
     --gray: #ffffff;
 }
