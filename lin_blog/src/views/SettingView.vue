@@ -168,12 +168,14 @@
 
                         <div class="set-subhead">
                             <span class="set-label">主题配色</span>
-                            <yk-text type="tertiary">共 {{ themePresets.length }} 套</yk-text>
+            <yk-text type="tertiary">
+                {{ isDark ? '深色' : '浅色' }}系 · 共 {{ visiblePresets.length }} 套
+            </yk-text>
                         </div>
 
                         <div class="set-themes">
-                            <button v-for="preset in themePresets" :key="preset.id" type="button" class="set-theme"
-                                :class="{ 'is-active': preset.id === activePresetId, 'is-dark': preset.base === 'dark' }"
+            <button v-for="preset in visiblePresets" :key="preset.id" type="button" class="set-theme"
+                :class="{ 'is-active': preset.id === activePresetId }"
                                 @click="selectTheme(preset.id)">
                                 <span class="set-theme-swatch" :style="swatchStyle(preset)">
                                     <span class="set-theme-dot" :style="{ background: preset.primary }" />
@@ -369,6 +371,11 @@ const activePreset = computed(() =>
 )
 const isDark = computed(() => activePreset.value.base === 'dark')
 
+// 主题配色按当前基调过滤：浅色 tab 只出浅色系，深色 tab 只出深色系
+const visiblePresets = computed(() =>
+    themePresets.filter(p => p.base === activePreset.value.base)
+)
+
 // 顶栏快捷明暗切换会回落到默认主题，这里同步卡片选中态
 const onPresetChange = (event: Event) => {
     const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
@@ -381,7 +388,7 @@ const selectTheme = (presetId: string) => {
     activePresetId.value = presetId
 }
 
-// 明暗切换：在同基调的预设里挑第一套，保持配色不跳变太远
+// 明暗切换：切到该基调的第一套配色，列表随之换成对应系别的卡片
 const switchMode = (mode: 'light' | 'dark') => {
     if (isDark.value === (mode === 'dark')) return
     const candidate = themePresets.find(p => p.base === mode)
@@ -898,7 +905,6 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 
 // ── 账号资料 ──
 .set-profile {
-    // 头像绝对定位的锚点：缺了它头像会脱离卡片去对齐更外层元素
     position: relative;
     padding: 0;
     // .set-card 的 gap 会在横幅与内容区之间插出一条底色缝，这里归零
@@ -913,8 +919,8 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     gap: 4px;
     min-height: 84px;
     justify-content: center;
-    // 左边距与正文区一致（144px），让标题让开头像并与下方资料列对齐
-    padding: 0 24px 0 144px;
+    // 头像现在压在左侧下方，横幅文字仍可整幅排版，但右侧留出安全边距
+    padding: 0 24px;
     overflow: hidden;
     background:
         radial-gradient(circle at 84% 0%, rgba(255, 255, 255, 0.22), transparent 42%),
@@ -946,27 +952,33 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 }
 
 .set-profile-body {
-    // 左侧为头像预留空间：padding 24px + 头像 96px + 间距 24px
     display: flex;
-    min-height: 104px;
     align-items: center;
-    padding: 16px 24px 24px 144px;
+    gap: 24px;
+    min-height: 104px;
+    padding: 16px 24px 24px;
 }
 
+// 头像改用普通流布局 + 负 margin 上探进横幅：
+// 不再靠 absolute 定位卡片，避免正文内容高度变化导致头像与文字错位
 .set-avatar-box {
-    position: absolute;
-    // 横幅高 84px，头像上压 36px、下探 66px，压在交界处
-    top: 48px;
-    left: 24px;
-    z-index: 1;
+    flex: none;
     width: 96px;
+    height: 96px;
+    // 上探进入横幅（横幅 84px 高），让头像压在交界处
+    margin-top: -40px;
+    position: relative;
+    z-index: 1;
 
     :deep(.yk-upload-picture) {
         width: 96px;
         height: 96px;
-        // 描边跟随卡片底色，避免深色主题下出现一圈亮白边
-        border: 3px solid var(--admin-surface, var(--bgColor1));
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        box-sizing: border-box;
+        border: none;
+        // 描边用 box-shadow 环代替 border：不占尺寸，也不会在横幅上露出卡片色块
+        box-shadow:
+            0 0 0 3px var(--admin-surface, var(--bgColor1)),
+            0 6px 16px rgba(0, 0, 0, 0.15);
     }
 
     :deep(.yk-upload-picture img) {
@@ -1464,8 +1476,7 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     }
 
     .set-profile-banner {
-        // 窄屏头像缩到 76px，标题左边距同步收到 112px
-        padding: 0 16px 0 112px;
+        padding: 0 16px;
         min-height: 74px;
     }
 
@@ -1474,14 +1485,15 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     }
 
     .set-profile-body {
-        padding: 16px 16px 20px 116px;
+        padding: 14px 16px 20px;
+        gap: 16px;
         min-height: 92px;
     }
 
     .set-avatar-box {
-        left: 16px;
-        top: 40px;
         width: 76px;
+        height: 76px;
+        margin-top: -30px;
 
         :deep(.yk-upload-picture) {
             width: 76px;
