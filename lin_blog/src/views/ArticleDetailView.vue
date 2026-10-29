@@ -116,69 +116,25 @@
                     <yk-empty v-else-if="threads.length === 0" description="还没有评论" />
 
                     <div v-else class="comment-list">
-                        <article v-for="thread in threads" :key="thread.root.id" class="comment-thread">
-                            <yk-avatar :size="38" :img-url="thread.root.userAvatar || undefined"
-                                class="comment-avatar" />
-                            <div class="thread-body">
-                                <div class="thread-head">
-                                    <span class="comment-user">{{ thread.root.userName || '未知用户' }}</span>
-                                    <div class="comment-head-right">
-                                        <time>{{ formatDateTime(thread.root.createdAt) }}</time>
-                                        <button type="button" class="comment-like"
-                                            :class="{ liked: thread.root.liked, busy: isCommentLikeBusy(thread.root.id) }"
-                                            :disabled="isCommentLikeBusy(thread.root.id)"
-                                            title="点赞 / 取消点赞"
-                                            @click="handleCommentLike(thread.root)">
-                                            <IconLikeFill v-if="thread.root.liked" />
-                                            <IconLikeOutline v-else />
-                                            {{ thread.root.likes }}
-                                        </button>
-                                    </div>
-                                </div>
-                                <p class="comment-content">{{ thread.root.content }}</p>
-
-                                <div class="thread-actions">
-                                    <div class="thread-actions-left">
-                                        <button type="button" class="comment-action"
-                                            @click="startReply(thread.root.id)">
-                                            <IconCommentOutline />回复
-                                        </button>
-                                        <button v-if="thread.replies.length" type="button"
-                                            class="comment-action reply-toggle"
-                                            @click="toggleReplies(thread.root.id)">
-                                            <template v-if="isExpanded(thread.root.id)">
-                                                <IconUpOutline />收起回复
-                                            </template>
-                                            <template v-else>
-                                                <IconDownOutline />展开 {{ thread.replies.length }} 条回复
-                                            </template>
-                                        </button>
-                                    </div>
-
-                                    <yk-popover :open="activeCommentMenu === thread.root.id"
-                                        trigger="click" placement="bottomRight" :arrow="false"
-                                        overlay-class="comment-action-popover"
-                                        @update:open="(open: boolean) => setCommentMenu(thread.root.id, open)">
-                                        <button type="button" class="comment-more" title="更多操作"
-                                            aria-label="更多操作">
-                                            <IconMoreOutline />
-                                        </button>
-                                        <template #popover>
-                                            <div class="comment-menu">
-                                                <button type="button"
-                                                    :disabled="!canDeleteComment(thread.root)"
-                                                    :class="{ 'is-danger': deleteConfirmId === thread.root.id }"
-                                                    @click="requestDeleteComment(thread.root.id)">
-                                                    <IconDeleteOutline />{{ deleteConfirmId === thread.root.id ? '确认删除' : '删除' }}
-                                                </button>
-                                                <button type="button" @click="reportCommentItem(thread.root)">
-                                                    <IconWarningOutline />举报
-                                                </button>
-                                            </div>
-                                        </template>
-                                    </yk-popover>
-                                </div>
-
+                        <ContentCommentThread v-for="thread in threads" :key="thread.root.id"
+                            :root="thread.root" :replies="thread.replies"
+                            :expanded="isExpanded(thread.root.id)" :can-like="true" :can-reply="true"
+                            :can-report="true" :can-delete="true"
+                            :can-confirm-delete="canDeleteComment(thread.root)"
+                            :delete-confirming="deleteConfirmId === thread.root.id"
+                            :delete-confirming-reply-id="deleteConfirmId"
+                            :can-delete-reply="canDeleteCommentById"
+                            :is-reply-like-busy="isCommentLikeBusy"
+                            :like-busy="isCommentLikeBusy(thread.root.id)" :like-title="'点赞 / 取消点赞'"
+                            :menu-open="activeCommentMenu === thread.root.id"
+                            :reply-menu-open="activeCommentMenu" @toggle="toggleReplies(thread.root.id)"
+                            @reply="startReply(thread.root.id)" @like="handleCommentLike(thread.root)"
+                            @like-reply="handleReplyLike" @report="reportCommentItem(thread.root)"
+                            @report-reply="reportCommentById"
+                            @delete="requestDeleteComment(thread.root.id)" @delete-reply="requestDeleteComment"
+                            @update:menu-open="setCommentMenu(thread.root.id, $event)"
+                            @update:reply-menu-open="setReplyMenu($event)">
+                            <template #composer>
                                 <div v-if="replyTarget === thread.root.id" class="reply-composer">
                                     <yk-text-area v-model="replyDraft" :max-length="512" show-word-limit
                                         :auto-size="{ minRows: 2, maxRows: 4 }"
@@ -199,61 +155,8 @@
                                         </yk-space>
                                     </div>
                                 </div>
-
-                                <div v-if="thread.replies.length && isExpanded(thread.root.id)"
-                                    class="reply-list">
-                                    <div v-for="reply in thread.replies" :key="reply.id" class="reply-item">
-                                        <yk-avatar :size="26" :img-url="reply.userAvatar || undefined" />
-                                        <div class="reply-body">
-                                            <div class="thread-head">
-                                                <div class="comment-author-line">
-                                                    <span class="comment-user">{{ reply.userName || '未知用户' }}</span>
-                                                    <span class="reply-to">回复 {{ thread.root.userName || '该用户' }}</span>
-                                                </div>
-                                                <div class="comment-head-right">
-                                                    <time>{{ formatDateTime(reply.createdAt) }}</time>
-                                                    <button type="button" class="comment-like"
-                                                        :class="{ liked: reply.liked, busy: isCommentLikeBusy(reply.id) }"
-                                                        :disabled="isCommentLikeBusy(reply.id)"
-                                                        title="点赞 / 取消点赞"
-                                                        @click="handleCommentLike(reply)">
-                                                        <IconLikeFill v-if="reply.liked" />
-                                                        <IconLikeOutline v-else />
-                                                        {{ reply.likes }}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <p class="comment-content">{{ reply.content }}</p>
-                                            <div class="thread-actions is-reply">
-                                                <yk-popover :open="activeCommentMenu === reply.id"
-                                                    trigger="click" placement="bottomRight" :arrow="false"
-                                                    overlay-class="comment-action-popover"
-                                                    @update:open="(open: boolean) => setCommentMenu(reply.id, open)">
-                                                    <button type="button" class="comment-more"
-                                                        title="更多操作" aria-label="更多操作">
-                                                        <IconMoreOutline />
-                                                    </button>
-                                                    <template #popover>
-                                                        <div class="comment-menu">
-                                                            <button type="button"
-                                                                :disabled="!canDeleteComment(reply)"
-                                                                :class="{ 'is-danger': deleteConfirmId === reply.id }"
-                                                                @click="requestDeleteComment(reply.id)">
-                                                                <IconDeleteOutline />{{ deleteConfirmId === reply.id ? '确认删除' : '删除' }}
-                                                            </button>
-                                                            <button type="button"
-                                                                @click="reportCommentItem(reply)">
-                                                                <IconWarningOutline />举报
-                                                            </button>
-                                                        </div>
-                                                    </template>
-                                                </yk-popover>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </article>
+                            </template>
+                        </ContentCommentThread>
                     </div>
                 </section>
             </article>
@@ -288,6 +191,7 @@ import { useSubsetStore } from '../store/subset'
 import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import ContentDetailHero from '../components/content/ContentDetailHero.vue'
+import ContentCommentThread from '../components/content/ContentCommentThread.vue'
 import ContentStatBar from '../components/content/ContentStatBar.vue'
 
 type Props = {
@@ -461,6 +365,27 @@ const setCommentMenu = (commentId: number, open: boolean) => {
     }
 }
 
+// 二级回复的菜单沿用一级的 open id 空间，这里单独处理开关
+const setReplyMenu = (payload: { id: number; open: boolean }): void => {
+    setCommentMenu(payload.id, payload.open)
+}
+
+// 菜单里逐条判定删除权限，未授权时置灰而不是隐藏
+const canDeleteCommentById = (id: number): boolean => {
+    const target = comments.value.find(item => Number(item.id) === Number(id))
+    return target ? canDeleteComment(target) : false
+}
+
+const handleReplyLike = (id: number): void => {
+    const target = comments.value.find(item => Number(item.id) === Number(id))
+    if (target) void handleCommentLike(target)
+}
+
+const reportCommentById = (id: number): void => {
+    const target = comments.value.find(item => Number(item.id) === Number(id))
+    if (target) void reportCommentItem(target)
+}
+
 const showMessage = (
     type: 'primary' | 'warning' | 'error' | 'success',
     message: string
@@ -472,17 +397,6 @@ const describeError = (error: unknown, fallback: string): string => {
     const responseMessage = getArticleErrorMessage(error, '')
     if (responseMessage) return responseMessage
     return error instanceof Error && error.message ? error.message : fallback
-}
-
-const formatDateTime = (value: string): string => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    })
 }
 
 const closeModal = (): void => {
@@ -1008,218 +922,10 @@ watch(
         display: flex;
         flex-direction: column;
         margin-top: @space-l;
-    }
 
-    .comment-thread {
-        display: flex;
-        gap: @space-m;
-        padding: @space-l 0;
-
-        & + & {
-            border-top: 1px solid @line-color-s;
-        }
-    }
-
-    .thread-body {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .thread-head {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-
-        .comment-author-line {
-            display: flex;
-            flex: 1;
-            flex-wrap: wrap;
-            min-width: 0;
-            align-items: baseline;
-            gap: 8px;
-        }
-
-        .comment-head-right {
-            display: flex;
-            flex: 0 0 auto;
-            align-items: center;
-            gap: 8px;
-            margin-left: auto;
-        }
-
-        .comment-user {
-            color: @font-color-l;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .reply-to {
-            color: @font-color-s;
-            font-size: 12px;
-        }
-
-        time {
-            color: @font-color-s;
-            font-size: 12px;
-            font-variant-numeric: tabular-nums;
-        }
-    }
-
-    .comment-like {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        padding: 2px 7px;
-        border: 1px solid transparent;
-        border-radius: 999px;
-        background: transparent;
-        color: @font-color-s;
-        font-size: 12px;
-        font-variant-numeric: tabular-nums;
-        cursor: pointer;
-        transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
-
-        .yk-icon {
-            width: 13px;
-            height: 13px;
-        }
-
-        &:hover:not(:disabled) {
-            border-color: @pcolor;
-            color: @pcolor;
-        }
-
-        &.liked {
-            border-color: @pcolor;
-            background: var(--pcolor1);
-            color: @pcolor;
-            font-weight: 600;
-        }
-
-        &.busy,
-        &:disabled {
-            cursor: progress;
-            opacity: 0.65;
-        }
-    }
-
-    .comment-content {
-        margin: 6px 0 0;
-        color: @font-color-m;
-        line-height: 1.75;
-        word-break: break-word;
-    }
-
-    .thread-actions {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: @space-l;
-        margin-top: 8px;
-
-        &.is-reply {
-            justify-content: flex-end;
-        }
-    }
-
-    .thread-actions-left {
-        display: flex;
-        flex-wrap: wrap;
-        gap: @space-l;
-        align-items: center;
-    }
-
-    .comment-action {
-        display: inline-flex;
-        gap: 4px;
-        align-items: center;
-        padding: 0;
-        border: none;
-        background: transparent;
-        color: @font-color-s;
-        font-size: 12px;
-        cursor: pointer;
-        transition: color 0.2s ease;
-
-        .yk-icon {
-            width: 13px;
-            height: 13px;
-        }
-
-        &:hover {
-            color: @pcolor;
-        }
-
-        &.is-danger:hover {
-            color: @ecolor;
-        }
-    }
-
-    .comment-more {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        padding: 0;
-        border: none;
-        border-radius: 6px;
-        background: transparent;
-        color: @font-color-s;
-        cursor: pointer;
-        transition: color 0.2s ease, background-color 0.2s ease;
-
-        .yk-icon {
-            width: 17px;
-            height: 17px;
-        }
-
-        &:hover {
-            background: @bg-color-s;
-            color: @font-color-l;
-        }
-    }
-
-    .comment-menu {
-        display: flex;
-        flex-direction: column;
-        min-width: 92px;
-        padding: 4px;
-
-        button {
-            display: flex;
-            gap: 7px;
-            align-items: center;
-            width: 100%;
-            padding: 7px 9px;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            color: @font-color-m;
-            font-size: 13px;
-            text-align: left;
-            white-space: nowrap;
-            cursor: pointer;
-
-            .yk-icon {
-                width: 14px;
-                height: 14px;
-            }
-
-            &:hover:not(:disabled) {
-                background: @bg-color-s;
-                color: @pcolor;
-            }
-
-            &.is-danger {
-                color: @ecolor;
-            }
-
-            &:disabled {
-                color: @font-color-s;
-                cursor: not-allowed;
-                opacity: 0.5;
-            }
+        // 排版由共享组件提供，后台侧沿用 --admin-* 默认 token
+        :deep(.cc-thread) {
+            padding: @space-l 0;
         }
     }
 
@@ -1230,34 +936,6 @@ watch(
         gap: 8px;
         margin-top: @space-m;
     }
-
-    // 二级回复：浅底 + 左侧强调线，比独立卡片更轻
-    .reply-list {
-        display: flex;
-        flex-direction: column;
-        gap: @space-m;
-        margin-top: @space-m;
-        padding: @space-m @space-m @space-m @space-l;
-        border-left: 2px solid @pcolor;
-        border-radius: 0 12px 12px 0;
-        background: @bg-color-s;
-    }
-
-    .reply-item {
-        display: flex;
-        gap: @space-s;
-
-        & + & {
-            padding-top: @space-m;
-            border-top: 1px dashed @line-color-s;
-        }
-    }
-
-    .reply-body {
-        flex: 1;
-        min-width: 0;
-    }
-
 }
 
 @media (max-width: 900px) {
@@ -1288,10 +966,6 @@ watch(
     .article-detail {
         &-aside {
             grid-template-columns: minmax(0, 1fr);
-        }
-
-        .reply-list {
-            padding-left: @space-m;
         }
     }
 }
