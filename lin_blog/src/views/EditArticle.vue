@@ -18,8 +18,8 @@
                     <IconTickOutline v-else-if="saveStatus === 'saved'" />
                     <span>{{ workflowStatusText }}</span>
                     <button v-if="saveStatus === 'conflict'" type="button"
-                        class="edit-article-retry" @click="reloadForConflict">
-                        重新加载
+                        class="edit-article-retry" @click="openConflictCompare">
+                        对比修改
                     </button>
                     <button v-else-if="saveStatus === 'error'" type="button"
                         class="edit-article-retry" @click="saveWorkingCopy('manual')">
@@ -140,6 +140,12 @@
 
         <ArticleVersionPanel v-model:open="versionPanelOpen" :article-id="articleId"
             @restored="handleVersionRestored" />
+
+        <ConflictCompareDialog :open="conflictOpen" :loading="conflictLoading"
+            :error-message="conflictError" :report="conflictReport" classify="article"
+            :adopting="adoptingRemote" :keeping="keepingLocal"
+            @update:open="conflictOpen = $event" @retry="openConflictCompare"
+            @adopt="adoptRemote" @keep="keepLocal" />
     </div>
 </template>
 
@@ -186,6 +192,7 @@ import {
     type WorkflowSaveStatus,
     type WorkflowSnapshot,
 } from '../utils/articleWorkflow'
+import { buildConflictReport, type ConflictReport } from '../utils/conflictCompare'
 import { optimizeRichContentImages } from '../utils/imageOptimization'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
@@ -196,6 +203,7 @@ import {
     writeLocalDraft,
 } from '../utils/localDraft'
 import ArticleVersionPanel from '../components/article/ArticleVersionPanel.vue'
+import ConflictCompareDialog from '../components/article/ConflictCompareDialog.vue'
 
 const editor = defineAsyncComponent(() => import('../components/editor/editor.vue'))
 import forms from '../components/forms/forms.vue'
@@ -241,6 +249,12 @@ const previewOpen = ref(false)
 const scheduleOpen = ref(false)
 const scheduleValue = ref(defaultScheduleValue())
 const localDraftAvailable = ref(false)
+const conflictOpen = ref(false)
+const conflictLoading = ref(false)
+const conflictError = ref('')
+const conflictReport = ref<ConflictReport | null>(null)
+const adoptingRemote = ref(false)
+const keepingLocal = ref(false)
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null
 let saveInFlight = false
@@ -358,6 +372,7 @@ function clearAutosaveTimer(): void {
 
 function scheduleAutosave(): void {
     if (!mounted || !isEditing.value || !canEditCurrent.value || applyingRemote) return
+    if (conflictOpen.value) return
     clearAutosaveTimer()
     autosaveTimer = setTimeout(() => void saveWorkingCopy('autosave'), AUTOSAVE_DELAY_MS)
 }
@@ -709,12 +724,93 @@ async function handleVersionRestored(revision: number): Promise<void> {
     await loadArticle()
 }
 
-async function reloadForConflict(): Promise<void> {
-    const confirmed = window.confirm(
-        '其他窗口已保存更新的工作稿。重新加载会丢弃当前页面尚未保存的修改，是否继续？'
-    )
-    if (!confirmed) return
-    await loadArticle()
+async function openConflictCompare(): Promise<void> {
+    if (!articleId.value || !currentSnapshot.value) return
+    conflictOpen.value = true
+    conflictError.value = ''
+    conflictLoading.value = true
+    try {
+        const result = await getArticleWorkflow(articleId.value)
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '工作稿读取失败')
+        }
+        conflictReport.value = buildConflictReport({
+            base: lastSavedSnapshot.value,
+            local: currentSnapshot.value,
+            remote: result.data.workingCopy,
+            classify: 'article',
+            remoteRevision: result.data.revision,
+            remoteSavedAt: result.data.savedAt,
+        })
+    } catch (error) {
+        conflictError.value = describeError(error, '对方工作稿读取失败，请稍后重试')
+    } finally {
+        conflictLoading.value = false
+    }
+}
+
+async function adoptRemote(): Promise<void> {
+    if (adoptingRemote.value || keepingLocal.value) return
+    adoptingRemote.value = true
+    try {
+        conflictOpen.value = false
+        await loadArticle()
+        showMessage('success', '已采用对方版本')
+    } finally {
+        adoptingRemote.value = false
+    }
+}
+
+async function keepLocal(): Promise<void> {
+    if (!articleId.value || !currentSnapshot.value || keepingLocal.value) return
+    if (adoptingRemote.value) return
+    const remoteRevision = conflictReport.value?.remoteRevision
+    if (!remoteRevision) {
+        conflictError.value = '缺少对方修订号，请关闭后重新对比'
+        return
+    }
+
+    keepingLocal.value = true
+    try {
+        const result = await saveArticleDraft(articleId.value, {
+            ...buildPayload(),
+            revision: remoteRevision,
+            source: 'manual',
+        })
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '工作稿保存失败')
+        }
+        const snapshot = currentSnapshot.value
+        if (workflow.value) {
+            workflow.value = {
+                ...workflow.value,
+                revision: result.data.revision,
+                savedAt: result.data.savedAt,
+                hasUnpublishedChanges: result.data.hasUnpublishedChanges,
+            }
+        }
+        lastSavedSnapshot.value = {
+            ...snapshot,
+            title: snapshot.title.trim(),
+            introduce: snapshot.introduce.trim(),
+            cover: snapshot.cover.trim(),
+        }
+        saveStatus.value = 'saved'
+        saveMoment.value = `${momentDay(new Date())} 已保存`
+        conflictOpen.value = false
+        showMessage('success', '已保留本窗口修改并覆盖对方')
+    } catch (error) {
+        const status = (error as { response?: { status?: number } })?.response?.status
+        if (status === 409) {
+            // 对方在我方覆盖前又保存了一版：重新拉取最新工作稿刷新对比
+            conflictError.value = '对方刚刚又保存了新版本，已刷新为最新差异'
+            await openConflictCompare()
+        } else {
+            conflictError.value = describeError(error, '保存失败，请稍后重试')
+        }
+    } finally {
+        keepingLocal.value = false
+    }
 }
 
 watch(

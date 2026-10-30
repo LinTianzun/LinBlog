@@ -29,7 +29,7 @@
 import { computed, ref, watch } from 'vue'
 import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
-import { momentl } from '../../utils/moment'
+import { momentm } from '../../utils/moment'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoGrid from '../content/ContentPhotoGrid.vue'
@@ -69,7 +69,7 @@ const displayedCommentTotal = computed(
 )
 
 const momentText = computed(() =>
-    props.diary?.moment ? momentl(props.diary.moment) : '暂无时间'
+    props.diary?.moment ? momentm(props.diary.moment) : '暂无时间'
 )
 
 // 统计条左侧：天气单独成 chip，与后台其它详情的标签风格一致

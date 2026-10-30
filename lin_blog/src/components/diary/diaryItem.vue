@@ -10,7 +10,7 @@
                             <img :src="weatherIcon" :alt="props.data.weatherName" />
                             {{ props.data.weatherName }}
                         </span>
-                        <span class="diary-item-time">{{ momentl(props.data.moment) }}</span>
+                        <span class="diary-item-time">{{ momentm(props.data.moment) }}</span>
                     </yk-space>
                 </yk-space>
 
@@ -77,7 +77,7 @@ import {
 } from '@yike-design/ui/es/components/svg-icon'
 import type { DiaryData } from '../../utils/interface'
 import { weathers } from '../../utils/weather'
-import { momentl } from '../../utils/moment'
+import { momentm } from '../../utils/moment'
 import ConfirmPopover from '../common/ConfirmPopover.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 import { optimizedImageUrl } from '../../utils/imageOptimization'
