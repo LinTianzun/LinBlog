@@ -70,7 +70,7 @@ npm --prefix lin_blog test       # 前端纯函数与路由守卫单测
 npm --prefix lin_blog run test:e2e   # Playwright 端到端（自动拉起 Vite dev server）
 ```
 
-E2E 覆盖 13 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
+E2E 覆盖 14 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）、编辑器代码块高亮（CSS/HTML/JavaScript 产生 token、未收录语言只失去着色、语言菜单可切到 JavaScript）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
 
 `.github/workflows/ci.yml` 在 push / PR 到 `main` 时依次执行后端测试、前端单测与生产构建、Playwright E2E，并上传 `playwright-report/` 与 `test-results/` 作为构建产物。见 `lin_blog/playwright.config.ts`、`lin_blog/e2e/`。
 
@@ -487,4 +487,5 @@ bootstrap()
 | 插入数据时提示“外键约束失败”          | 关联的主表记录不存在                  |
 | 查询无结果但数据存在                  | 字符集不匹配/索引失效                 |
 | 连接池报错 “PROTOCOL_CONNECTION_LOST” | MySQL 服务断开连接                    |
+
 

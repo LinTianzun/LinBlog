@@ -19,6 +19,7 @@ import type { IToolbarConfig, IDomEditor } from '@wangeditor/editor'
 import './style.less'
 import { colors } from './colors.js'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import { CODE_HIGHLIGHT_LANGS } from './slimCodeHighlightCore'
 
 const props = withDefaults(defineProps<{
     modelValue?: string
@@ -77,11 +78,8 @@ const editorConfig = {
             // 后续在这里配置真实的图片上传接口
         },
         codeSelectLang: {
-            codeLangs: [
-                { text: 'CSS', value: 'css' },
-                { text: 'HTML', value: 'html' },
-                { text: 'XML', value: 'xml' },
-            ],
+            // 与裁剪版 Prism 支持的语法保持同一份清单，避免菜单能选、实际不着色
+            codeLangs: CODE_HIGHLIGHT_LANGS,
         },
     },
 }
