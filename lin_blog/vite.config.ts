@@ -7,6 +7,9 @@ import { YikeResolver } from '@yike-design/resolver'
 import { createHtmlPlugin } from "vite-plugin-html";
 import vueDevTools from "vite-plugin-vue-devtools";
 
+// 开发代理的后端地址：可用 LINBLOG_DEV_API_PORT 指向隔离后端，默认本地 3030
+const apiTarget = `http://localhost:${process.env.LINBLOG_DEV_API_PORT || 3030}`;
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -20,12 +23,12 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:3030",
+        target: apiTarget,
         changeOrigin: true,
       },
-      "/sitemap.xml": "http://localhost:3030",
-      "/robots.txt": "http://localhost:3030",
-      "/feed.xml": "http://localhost:3030",
+      "/sitemap.xml": apiTarget,
+      "/robots.txt": apiTarget,
+      "/feed.xml": apiTarget,
     },
   },
 
