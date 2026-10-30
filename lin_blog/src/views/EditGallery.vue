@@ -167,9 +167,9 @@ import {
 } from '../api/article'
 import {
     AUTOSAVE_DELAY_MS,
-    defaultScheduleValue,
     formatWorkflowTime,
     hasWorkflowChanges,
+    isoToLocalDateTime,
     localDateTimeToIso,
     workflowSaveLabel,
     type WorkflowSaveStatus,
@@ -233,7 +233,7 @@ const lastSavedSnapshot = ref<WorkflowSnapshot | null>(null)
 const versionPanelOpen = ref(false)
 const previewOpen = ref(false)
 const scheduleOpen = ref(false)
-const scheduleValue = ref(defaultScheduleValue())
+const scheduleValue = ref('')
 const localDraftAvailable = ref(false)
 const conflictOpen = ref(false)
 const conflictLoading = ref(false)
@@ -531,7 +531,6 @@ const loadGallery = async (): Promise<void> => {
         loadedCopy.value = workflowResult.data.workingCopy
         photos.value = parseGalleryContent(workflowResult.data.workingCopy.content)
         cover.value = workflowResult.data.workingCopy.cover || photos.value[0] || ''
-        scheduleValue.value = defaultScheduleValue()
         lastSavedSnapshot.value = {
             title: workflowResult.data.workingCopy.title,
             content: workflowResult.data.workingCopy.content,
@@ -662,7 +661,10 @@ async function publishCurrentWorkflow(): Promise<void> {
 
 function handlePublishMenu(value: string | number): void {
     if (value === 'schedule') {
-        scheduleValue.value = defaultScheduleValue()
+        // 无计划时空着让用户选预设；改期则预填当前计划时间
+        scheduleValue.value = workflow.value?.scheduledAt
+            ? isoToLocalDateTime(workflow.value.scheduledAt)
+            : ''
         scheduleOpen.value = true
         return
     }

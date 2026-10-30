@@ -39,7 +39,7 @@
                 将于 <strong>{{ preview }}</strong> 自动发布<template v-if="contentTitle">
                     「{{ contentTitle }}」</template>的当前工作稿
             </p>
-            <p v-else-if="!validation.ok" class="schedule-dialog-warning">
+            <p v-else-if="value && !validation.ok" class="schedule-dialog-warning">
                 {{ validation.message }}
             </p>
 
@@ -80,7 +80,11 @@ const emit = defineEmits<{
     (event: 'cancel-schedule'): void
 }>()
 
-const presets = computed(() => buildSchedulePresets())
+// 依赖 open：每次打开弹窗都按当前时刻重建快捷时间，避免长驻页面后预设过期
+const presets = computed(() => {
+    void props.open
+    return buildSchedulePresets()
+})
 const activePresetKey = computed(() =>
     presets.value.find(preset => preset.value === props.value)?.key ?? ''
 )
