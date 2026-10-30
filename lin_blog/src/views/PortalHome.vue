@@ -3,13 +3,31 @@
         <!-- 首屏轮播 Hero：照片负责氛围，左右双栏负责叙事与入口 -->
         <section class="hero" :style="{ height: 'var(--portal-banner-height-home)' }">
             <div class="hero-slides">
-                <div
-                    v-for="(slide, i) in slides"
-                    :key="slide.id"
-                    class="hero-slide"
-                    :class="{ active: i === currentIndex }"
-                    :style="{ backgroundImage: `url(${slide.image}), ${themeGradient(slide)}` }"
-                />
+                <template v-for="(slide, i) in slides" :key="slide.id">
+                    <!--
+                        只渲染当前与相邻两张：隐藏幻灯片仍铺满视口，
+                        loading=lazy 不会生效，实测会让首屏多下约 1.4MB。
+                        未挂载的索引用纯渐变占位，切换时即刻补上。
+                    -->
+                    <div
+                        v-if="shouldRenderSlide(i, currentIndex, slides.length)"
+                        class="hero-slide"
+                        :class="{ active: i === currentIndex }"
+                        :style="{ backgroundImage: themeGradient(slide) }"
+                    >
+                        <img
+                            class="hero-slide-photo"
+                            :src="bannerSrc(slide.image)"
+                            :srcset="bannerSrcset(slide.image)"
+                            sizes="100vw"
+                            :alt="i === currentIndex ? slide.title : ''"
+                            :aria-hidden="i === currentIndex ? undefined : 'true'"
+                            :loading="i === currentIndex ? 'eager' : 'lazy'"
+                            :fetchpriority="i === currentIndex ? 'high' : 'auto'"
+                            decoding="async"
+                        />
+                    </div>
+                </template>
             </div>
             <!-- 底部渐变遮罩：明暗双态停靠到页面底色，禁止白色断层 -->
             <div class="hero-fade" />
@@ -250,7 +268,18 @@ import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhot
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'
 import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
-import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, getSlide, startBannerRotation, subscribeBanner } from '../utils/portalBanner'
+import {
+    BANNER_SLIDES,
+    type BannerSlide,
+    bannerSrc,
+    bannerSrcset,
+    deriveCurrentIndex,
+    getSlide,
+    preloadBannerSlide,
+    shouldRenderSlide,
+    startBannerRotation,
+    subscribeBanner,
+} from '../utils/portalBanner'
 import { useThemeDark } from '../utils/themeMode'
 import {
     getPublicArticles,
@@ -306,6 +335,10 @@ const slideTotal = computed(() => String(slides.length).padStart(2, '0'))
 const goToSlide = (i: number) => {
     currentIndex.value = i
 }
+// 只预加载当前这一张：幻灯片会轮播，提前拉全部 9 张反而挤占首屏带宽
+watch(currentSlide, slide => {
+    preloadBannerSlide(slide.image)
+}, { immediate: true })
 let stopRotation: (() => void) | null = null
 let unsub: (() => void) | null = null
 
@@ -672,11 +705,21 @@ onUnmounted(() => {
     inset: 0;
     opacity: 0;
     transition: opacity var(--portal-transition-slow) ease;
-    background-size: cover, cover;
-    background-position: center, center;
+    // 主题色渐变作为兜底底图：照片未解码完时不出现白/黑断层
+    background-size: cover;
+    background-position: center;
     &.active {
         opacity: 1;
     }
+}
+
+// 照片层：object-fit 取代 background-size，让 img 也能走 srcset
+.hero-slide-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
 }
 
 // 底部渐变：明暗双态停靠到页面底色，禁止白色断层

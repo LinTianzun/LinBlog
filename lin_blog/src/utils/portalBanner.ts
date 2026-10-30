@@ -6,7 +6,7 @@ export interface BannerSlide {
     id: string;
     // 占位用主题色渐变（明暗双态），不写死色值
     gradient: { light: string; dark: string };
-    // 柔和风景占位图（SVG，半透明暖色），叠加在主题色渐变之上
+    // 站内的 WebP 资产，按 -1920 命名，960 为窄屏候选
     image: string;
     // 标题叠在照片上缘
     title: string;
@@ -192,4 +192,49 @@ export function startBannerRotation(onTick: (index: number) => void): () => void
 
 export function getSlide(index: number): BannerSlide {
     return BANNER_SLIDES[((index % BANNER_SLIDES.length) + BANNER_SLIDES.length) % BANNER_SLIDES.length];
+}
+
+const bannerWidthPattern = /-(\d+)\.webp$/i
+
+// 把 -1920.webp 换成指定宽度的资产；拿不到宽度时原样返回。
+// 资源是构建期的静态文件而非 /api/uploads，所以不能走 optimizedImageUrl。
+export function bannerSrc(image: string, width = 1920): string {
+    return image.replace(bannerWidthPattern, `-${width}.webp`)
+}
+
+export function bannerSrcset(image: string): string {
+    return [960, 1920].map(width => `${bannerSrc(image, width)} ${width}w`).join(', ')
+}
+
+// 首屏 Hero 唯一的 LCP 候选：只预加载当前这张（而非全部 9 张），
+// 其余幻灯片轮播时由浏览器按 srcset/sizes 自行挑选。
+export function preloadBannerSlide(image: string): void {
+    if (typeof document === 'undefined') return
+    const href = bannerSrc(image, 1920)
+    const existing = document.head.querySelector<HTMLLinkElement>(
+        'link[data-portal-banner-preload]'
+    )
+    if (existing?.dataset.portalBannerPreload === href) return
+
+    existing?.remove()
+    const link = document.createElement('link')
+    link.rel = 'preload'
+    link.as = 'image'
+    link.href = href
+    link.type = 'image/webp'
+    link.setAttribute('imagesrcset', bannerSrcset(image))
+    link.setAttribute('imagesizes', '100vw')
+    link.setAttribute('fetchpriority', 'high')
+    link.dataset.portalBannerPreload = href
+    document.head.appendChild(link)
+}
+
+// 只挂载当前 / 下一张：幻灯片是铺满视口的绝对定位层，
+// 隐藏的 7 张仍在可视区域内，浏览器会无视 loading=lazy 全部拉取（实测多下约 1.4MB）。
+// 当前 + 下一张足以覆盖 6 秒切换间隔与淡入动画。
+export function shouldRenderSlide(index: number, current: number, total: number): boolean {
+    if (total <= 2) return true
+    const normalized = ((current % total) + total) % total
+    const distance = (index - normalized + total) % total
+    return distance === 0 || distance === 1 || distance === total - 1
 }

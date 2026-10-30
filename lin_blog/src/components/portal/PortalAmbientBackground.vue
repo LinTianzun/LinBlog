@@ -1,20 +1,46 @@
 <template>
     <!-- 环境背景层：非首页用模糊低透明度轮播 + 渐变遮罩，与首页共享 index/timestamp -->
     <div class="portal-ambient" aria-hidden="true">
-        <div
-            v-for="(slide, i) in slides"
-            :key="slide.id"
-            class="portal-ambient-slide"
-            :class="{ active: i === currentIndex }"
-            :style="{ backgroundImage: `url(${slide.image}), ${themeGradient(slide)}` }"
-        />
+        <template v-for="(slide, i) in slides" :key="slide.id">
+            <div
+                v-if="shouldRenderSlide(i, currentIndex, slides.length)"
+                class="portal-ambient-slide"
+                :class="{ active: i === currentIndex }"
+                :style="{ backgroundImage: themeGradient(slide) }"
+            >
+                <!--
+                    这是低透明度的装饰层，永远不参与 LCP 竞争：
+                    fetchpriority=low 让浏览器把带宽留给卡片与正文图片。
+                -->
+                <img
+                    class="portal-ambient-photo"
+                    :src="bannerSrc(slide.image)"
+                    :srcset="bannerSrcset(slide.image)"
+                    sizes="100vw"
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    fetchpriority="low"
+                    decoding="async"
+                />
+            </div>
+        </template>
         <div class="portal-ambient-mask" />
     </div>
 </template>
 
 <script lang="ts" setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { BANNER_SLIDES, type BannerSlide, deriveCurrentIndex, startBannerRotation, subscribeBanner } from '../../utils/portalBanner'
+import {
+    BANNER_SLIDES,
+    type BannerSlide,
+    bannerSrc,
+    bannerSrcset,
+    deriveCurrentIndex,
+    shouldRenderSlide,
+    startBannerRotation,
+    subscribeBanner,
+} from '../../utils/portalBanner'
 import { useThemeDark } from '../../utils/themeMode'
 
 const props = withDefaults(defineProps<{
@@ -75,6 +101,14 @@ onUnmounted(() => {
     &.active {
         opacity: 1;
     }
+}
+
+.portal-ambient-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
 }
 
 .portal-ambient-mask {
