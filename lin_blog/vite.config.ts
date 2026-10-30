@@ -56,12 +56,17 @@ export default defineConfig({
         __dirname,
         "src/components/editor/slimEditor.ts",
       ),
+      // @wangeditor/core 顶层 import 了 @uppy/core 与 @uppy/xhr-upload，
+      // 只服务 createUploader（编辑器内的图片/视频上传），预构建产物无法 tree-shake，
+      // 稳定占掉约 75 KB。本站不用编辑器内上传，替换成明确报错的占位实现。
+      "@uppy/core": path.resolve(__dirname, "src/components/editor/uppyStub.ts"),
+      "@uppy/xhr-upload": path.resolve(__dirname, "src/components/editor/uppyStub.ts"),
     },
   },
 
   build: {
-    // 剩余超阈值的只有 editor（编辑器自身体积，且仅在编辑页按需加载）；
-    // yike-design 与 echarts 已压到阈值内，故阈值收紧到 600 以便后续回归能报警。
+    // editor 已裁到约 538 kB（gzip 约 185 kB），yike-design 与 echarts 也在阈值内；
+    // 阈值保持 600 以便后续回归一旦把编辑器或图表撑大就能立刻报警。
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {

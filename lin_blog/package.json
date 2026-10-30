@@ -20,12 +20,14 @@
     "dompurify": "^3.4.17",
     "echarts": "^5.6.0",
     "pinia": "^3.0.1",
+    "prismjs": "^1.30.0",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
+    "@types/prismjs": "^1.26.6",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "@yike-design/resolver": "^0.0.1",

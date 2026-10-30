@@ -38,7 +38,7 @@ import listModule from '@wangeditor/list-module'
 import {
     wangEditorCodeHighlightModule,
     wangEditorCodeHighLightDecorate,
-} from '@wangeditor/code-highlight'
+} from './slimCodeHighlight'
 
 export { DomEditor }
 export type { IEditorConfig, IToolbarConfig, IDomEditor }

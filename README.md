@@ -47,7 +47,7 @@ npm test
 npm run test:e2e          # Playwright 端到端回归（需先 npm run test:e2e:install）
 ```
 
-`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-27 本地验证构建通过；已安装 `vite-plugin-html`、`vite-plugin-vue-devtools` 与 `@types/node`，补齐 Vite 配置所需依赖和 Node 类型。MockJS 已移除，`eval` 警告消失。经图标按需注册与 echarts 特性裁剪后，仅剩 `editor`（约 812 KB，只在编辑页按需加载）一个超阈值 chunk，`yike-design` 与 `echarts` 已压到阈值内，`chunkSizeWarningLimit` 为 600，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
+`build` 会先执行 `vue-tsc -b` 类型检查，再运行 Vite 构建。2026-10-27 本地验证构建通过；已安装 `vite-plugin-html`、`vite-plugin-vue-devtools` 与 `@types/node`，补齐 Vite 配置所需依赖和 Node 类型。MockJS 已移除，`eval` 警告消失。经图标按需注册与 echarts 特性裁剪后，`yike-design` 与 `echarts` 已压到阈值内，`chunkSizeWarningLimit` 为 600；`editor` 经两轮裁剪已从约 812 KB 降到约 538 KB（gzip 约 185 KB），不再超阈值，详见 [Documentation/开发进度.md](Documentation/开发进度.md)。
 
 后端在 `serve/` 目录执行：
 
@@ -114,7 +114,7 @@ E2E 覆盖 13 条主链路：登录与权限守卫、评论举报（选原因与
 ### 当前限制与待办
 
 * 用户管理 CRUD 和账号启停用已联调；统计卡除“用户总数”外只统计启用用户，“编辑与普通用户”不含游客（后端 `staff` 过滤口径一致）。公开注册会先检查邮箱与用户名重复，并把并发插入触发的 MySQL 唯一键冲突稳定映射为 400 业务提示，不再返回通用 500。
-* 前端构建目前通过，MockJS `eval` 警告已消失；首屏体积已治理（图标由整包注册改为按需注册 48 个库内图标，echarts 裁剪未用特性），首屏 gzip 约 188→144 KB。仅剩 `editor`（约 812 KB）超阈值，它只在编辑页按需加载，可评估换更轻的编辑器。
+* 前端构建目前通过，MockJS `eval` 警告已消失；首屏体积已治理（图标由整包注册改为按需注册 48 个库内图标，echarts 裁剪未用特性），首屏 gzip 约 188→144 KB。`editor` 已裁剪到约 538 KB（gzip 约 185 KB，低于 600 KB 阈值），仍在编辑页按需加载；未收录语言的代码块只失去着色，不影响内容。
 * 文章、图库、文件、日记、评论/消息、分类/标签和总览统计（含访问量/数据监测图表）已完成真实 API 联调。访问数据由中间件从功能上线起写入 `record` 表并按 90 天保留期滚动清理（可用 `LINBLOG_RECORD_RETENTION_DAYS` 覆盖），历史数据从功能上线起积累；`position` 字段可配置 `LINBLOG_GEOIP_URL` 接 IP 地理解析（默认关闭），饼图来源维度目前使用操作系统分布。
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
@@ -487,3 +487,4 @@ bootstrap()
 | 插入数据时提示“外键约束失败”          | 关联的主表记录不存在                  |
 | 查询无结果但数据存在                  | 字符集不匹配/索引失效                 |
 | 连接池报错 “PROTOCOL_CONNECTION_LOST” | MySQL 服务断开连接                    |
+
