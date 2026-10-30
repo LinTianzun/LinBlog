@@ -17,8 +17,12 @@
                     <IconLoadingOutline v-if="saveStatus === 'saving'" />
                     <IconTickOutline v-else-if="saveStatus === 'saved'" />
                     <span>{{ workflowStatusText }}</span>
-                    <button v-if="saveStatus === 'conflict' || saveStatus === 'error'"
-                        type="button" class="edit-article-retry" @click="saveWorkingCopy('manual')">
+                    <button v-if="saveStatus === 'conflict'" type="button"
+                        class="edit-article-retry" @click="reloadForConflict">
+                        重新加载
+                    </button>
+                    <button v-else-if="saveStatus === 'error'" type="button"
+                        class="edit-article-retry" @click="saveWorkingCopy('manual')">
                         重试
                     </button>
                 </div>
@@ -623,6 +627,14 @@ async function cancelSchedule(): Promise<void> {
 async function handleVersionRestored(revision: number): Promise<void> {
     versionPanelOpen.value = false
     showMessage('success', `已恢复为版本工作稿（修订 #${revision}）`)
+    await loadArticle()
+}
+
+async function reloadForConflict(): Promise<void> {
+    const confirmed = window.confirm(
+        '其他窗口已保存更新的工作稿。重新加载会丢弃当前页面尚未保存的修改，是否继续？'
+    )
+    if (!confirmed) return
     await loadArticle()
 }
 

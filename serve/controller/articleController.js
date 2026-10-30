@@ -1,32 +1,9 @@
 const articleModel = require('../model/dbModel/article/index')
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
-const imageModel = require('../model/dbModel/image/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getArticleScope } = require('../utils/accessControl')
-
-const uploadsUrlPattern = /^\/api\/uploads\/([A-Za-z0-9._-]+)$/
-
-function extractUploadsFilename(coverUrl) {
-    if (typeof coverUrl !== 'string') return null
-    const match = coverUrl.trim().match(uploadsUrlPattern)
-    return match ? match[1] : null
-}
-
-// 封面被替换/删除后，若数据库中的图片行已无任何业务引用则软删，避免孤儿图片。
-// 清理失败只记录日志，不影响主流程。
-async function cleanupCover(coverUrl) {
-    const filename = extractUploadsFilename(coverUrl)
-    if (!filename) return
-    try {
-        const result = await imageModel.deactivateImageIfUnreferenced(filename)
-        if (result.deactivated) {
-            console.log(`[Article] 已清理无引用封面图片 ${filename}`)
-        }
-    } catch (err) {
-        console.warn('[Article] 清理封面图片失败：', err.message)
-    }
-}
+const { cleanupCover, extractUploadsFilename } = require('../utils/coverCleanup')
 
 /**
  * 新增文章
@@ -586,7 +563,13 @@ async function updateArticleStatus(req, res) {
         // 状态流转时把工作稿落到线上字段：撤回不丢未发布的修改，
         // 草稿转发布也不会残留旧工作稿被误当成「未发布修改」。
         if (affectedRows > 0 && (state === 'draft' || state === 'published')) {
-            await articleWorkflowModel.promoteWorkingCopy(articleId)
+            const promoted = await articleWorkflowModel.promoteWorkingCopy(articleId)
+
+            // 工作稿里的封面可能从未上线过；状态流转后再做一次引用检查，
+            // 避免旧封面（线上字段里已被工作稿替换）永久占用图片行。
+            if (promoted.promoted && promoted.previousCover) {
+                await cleanupCover(promoted.previousCover)
+            }
         }
 
         // 状态中文映射

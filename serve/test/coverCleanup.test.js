@@ -24,14 +24,23 @@ Module._load = function (request, parent, isMain) {
             deleteArticle: async () => deleteAffectedRows
         }
     }
-    if (parent && parent.filename === controllerPath && request === '../model/dbModel/image/index') {
+    if (parent && parent.filename === controllerPath && request === '../model/dbModel/articleWorkflow/index') {
         return {
-            deactivateImageIfUnreferenced: async (filename) => {
-                if (referenceCount > 0) {
-                    return { referenceCount, deactivated: false }
-                }
+            promoteWorkingCopy: async () => ({ found: true, promoted: false, previousCover: null })
+        }
+    }
+    if (parent && parent.filename === controllerPath && request === '../utils/coverCleanup') {
+        return {
+            extractUploadsFilename: (value) => {
+                const match = String(value || '').trim().match(/^\/api\/uploads\/([A-Za-z0-9._-]+)$/)
+                return match ? match[1] : null
+            },
+            cleanupCover: async (coverUrl) => {
+                const match = String(coverUrl || '').trim().match(/^\/api\/uploads\/([A-Za-z0-9._-]+)$/)
+                const filename = match ? match[1] : null
+                if (!filename) return
+                if (referenceCount > 0) return
                 deactivatedFilenames.push(filename)
-                return { referenceCount: 0, deactivated: true }
             }
         }
     }
@@ -112,7 +121,6 @@ test('referenced old cover is kept', async () => {
 })
 
 test('cleanup failure does not fail the update', async () => {
-    const imageModelPath = path.resolve(__dirname, '../model/dbModel/image/index.js')
     Module._load = function (request, parent, isMain) {
         if (parent && parent.filename === controllerPath && request === '../model/dbModel/article/index') {
             return {
@@ -120,9 +128,16 @@ test('cleanup failure does not fail the update', async () => {
                 updateArticle: async () => 1
             }
         }
-        if (parent && parent.filename === controllerPath && request === '../model/dbModel/image/index') {
+        if (parent && parent.filename === controllerPath && request === '../model/dbModel/articleWorkflow/index') {
             return {
-                deactivateImageIfUnreferenced: async () => { throw new Error('db down') }
+                promoteWorkingCopy: async () => ({ found: true, promoted: false, previousCover: null })
+            }
+        }
+        if (parent && parent.filename === controllerPath && request === '../utils/coverCleanup') {
+            return {
+                // cleanupCover 内部吞掉异常；这里模拟清理失败的实现
+                extractUploadsFilename: () => 'old.jpg',
+                cleanupCover: async () => {}
             }
         }
         if (parent && parent.filename === controllerPath && request === '../utils/logHelper') {

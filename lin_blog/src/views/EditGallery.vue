@@ -15,8 +15,12 @@
                     <IconLoadingOutline v-if="saveStatus === 'saving'" />
                     <IconTickOutline v-else-if="saveStatus === 'saved'" />
                     <span>{{ workflowStatusText }}</span>
-                    <button v-if="saveStatus === 'conflict' || saveStatus === 'error'"
-                        type="button" class="edit-gallery-retry" @click="saveWorkingCopy('manual')">
+                    <button v-if="saveStatus === 'conflict'" type="button"
+                        class="edit-gallery-retry" @click="reloadForConflict">
+                        重新加载
+                    </button>
+                    <button v-else-if="saveStatus === 'error'" type="button"
+                        class="edit-gallery-retry" @click="saveWorkingCopy('manual')">
                         重试
                     </button>
                 </div>
@@ -251,8 +255,10 @@ const stateColor = computed(() => {
     return '#2b5aed'
 })
 
-const initialPhotos = computed(() => parseGalleryContent(article.value?.content))
-const initialCover = computed(() => article.value?.cover || initialPhotos.value[0] || '')
+// 初值必须来自工作稿：已发布图库存在未发布修改时，若用线上 content，
+// 编辑区会显示线上图片而不是工作稿，下一次自动保存还会把工作稿覆盖回线上版本。
+const initialPhotos = computed(() => parseGalleryContent(loadedCopy.value?.content))
+const initialCover = computed(() => loadedCopy.value?.cover || initialPhotos.value[0] || '')
 
 const initialForm = computed<Partial<GalleryFormData>>(() => {
     const source = loadedCopy.value
@@ -633,6 +639,14 @@ async function cancelSchedule(): Promise<void> {
 async function handleVersionRestored(revision: number): Promise<void> {
     versionPanelOpen.value = false
     showMessage('success', `已恢复为版本工作稿（修订 #${revision}）`)
+    await loadGallery()
+}
+
+async function reloadForConflict(): Promise<void> {
+    const confirmed = window.confirm(
+        '其他窗口已保存更新的工作稿。重新加载会丢弃当前页面尚未保存的修改，是否继续？'
+    )
+    if (!confirmed) return
     await loadGallery()
 }
 

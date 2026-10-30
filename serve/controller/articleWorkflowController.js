@@ -2,6 +2,7 @@ const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
 const articleModel = require('../model/dbModel/article/index')
 const { getArticleScope } = require('../utils/accessControl')
 const { writeSystemLog } = require('../utils/logHelper')
+const { cleanupCover } = require('../utils/coverCleanup')
 
 function sendError(res, status, message) {
     return res.status(status).json({ code: status, message })
@@ -256,6 +257,8 @@ async function publishWorkflow(req, res) {
             userId: req.user.userId,
         })
         if (!result.found) return sendError(res, 404, '文章不存在或已删除')
+
+        if (result.previousCover) await cleanupCover(result.previousCover)
 
         writeSystemLog({
             userId: req.user.userId,

@@ -1,5 +1,6 @@
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
 const { writeSystemLog } = require('./logHelper')
+const { cleanupCover } = require('./coverCleanup')
 
 const DEFAULT_INTERVAL_MS = 30_000
 
@@ -21,6 +22,8 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                 try {
                     const result = await articleWorkflowModel.publishScheduledArticle(row.id)
                     if (!result.published) continue
+
+                    if (result.previousCover) await cleanupCover(result.previousCover)
 
                     writeSystemLog({
                         userId: row.userId,

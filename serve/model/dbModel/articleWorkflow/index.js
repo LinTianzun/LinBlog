@@ -408,7 +408,7 @@ async function promoteWorkingCopy(articleId) {
 
         const draftPayload = parseDraftPayload(article.draftPayload)
         if (article.draftContent === null && draftPayload === null) {
-            return { found: true, promoted: false }
+            return { found: true, promoted: false, previousCover: null }
         }
 
         await exec(
@@ -426,7 +426,7 @@ async function promoteWorkingCopy(articleId) {
                 articleId,
             ]
         )
-        return { found: true, promoted: true }
+        return { found: true, promoted: true, previousCover: article.cover ?? null }
     })
 }
 
@@ -490,7 +490,12 @@ async function publishScheduledArticle(articleId) {
             nextRevision
         )
         await pruneVersions(exec, articleId)
-        return { published: true, articleId, revision: nextRevision }
+        return {
+            published: true,
+            articleId,
+            revision: nextRevision,
+            previousCover: article.cover ?? null,
+        }
     })
 }
 
@@ -545,7 +550,12 @@ async function publishWorkingCopy(articleId, { userId } = {}) {
         )
         await insertVersionSnapshot(exec, articleId, snapshot, 'publish', userId, nextRevision)
         await pruneVersions(exec, articleId)
-        return { found: true, articleId, revision: nextRevision }
+        return {
+            found: true,
+            articleId,
+            revision: nextRevision,
+            previousCover: article.cover ?? null,
+        }
     })
 }
 
