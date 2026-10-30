@@ -68,6 +68,48 @@ export const initialConversation = {
   isOwner: false,
 }
 
+// 后台内容列表用的图库条目（classify=image，与文章共用 /api/article）
+export const galleryItem = {
+  id: 1301,
+  userId: 1,
+  title: '城市夜色练习',
+  subsetId: 3,
+  subsetName: '摄影',
+  classify: 'image',
+  label: '夜拍',
+  introduce: '一组关于城市光线的练习作品。',
+  cover: null,
+  content: JSON.stringify([
+    '/api/uploads/photo-1.jpg',
+    '/api/uploads/photo-2.jpg',
+  ]),
+  views: 42,
+  likes: 8,
+  comments: 0,
+  rootComments: 0,
+  replyComments: 0,
+  state: 'published',
+  createdAt: '2026-10-21T08:30:00.000Z',
+  updatedAt: '2026-10-21T08:30:00.000Z',
+  publishedAt: '2026-10-21T08:30:00.000Z',
+}
+
+// 后台随笔列表条目
+export const diaryItem = {
+  id: 1401,
+  title: '雨天的旧书店',
+  content: '下午路过旧书店，买了一本停在 1998 年的诗集。',
+  picture: [],
+  weatherId: 4,
+  weatherName: '大雨',
+  views: 21,
+  likes: 3,
+  comments: 1,
+  rootComments: 1,
+  replyComments: 0,
+  createdAt: '2026-10-22T10:00:00.000Z',
+}
+
 export const initialMessage = {
   id: 301,
   senderId: 2,
@@ -106,18 +148,30 @@ export async function seedSession(
     }))
     localStorage.setItem('linlogPermissions', JSON.stringify(session.permissions))
     localStorage.setItem('linlogSuperAdmin', session.isSuperAdmin ? '1' : '0')
+    // 供 mock 读取：会话首屏会重新拉一次 /api/permission/me，
+    // mock 必须回同样的权限，否则会把注入的会话覆盖成写死的普通用户。
+    localStorage.setItem('e2eMockSession', JSON.stringify({
+      permissions: session.permissions,
+      isSuperAdmin: session.isSuperAdmin,
+    }))
   }, { id, permissions, isSuperAdmin, username, mail })
 }
 
 interface MockState {
   messages: typeof initialMessage[]
   conversation: typeof initialConversation
+  articles: (typeof article)[]
+  diaries: (typeof diaryItem)[]
+  session: { permissions: string[]; isSuperAdmin: boolean }
 }
 
 export async function installApiMock(page: Page): Promise<MockState> {
   const state: MockState = {
     messages: [{ ...initialMessage }],
     conversation: { ...initialConversation },
+    articles: [{ ...article }],
+    diaries: [{ ...diaryItem }],
+    session: { permissions: [], isSuperAdmin: false },
   }
 
   // 只拦截后端 /api 前缀：Vite dev 的 /@api/... 与 /@id/... 模块路径不能被
@@ -127,6 +181,18 @@ export async function installApiMock(page: Page): Promise<MockState> {
     const url = new URL(request.url())
     const path = url.pathname
     const method = request.method()
+
+    // 同步一次 seedSession 注入的会话，供 /api/permission/me 回同样的权限
+    if (!state.session.permissions.length) {
+      const raw = await page.evaluate(() => localStorage.getItem('e2eMockSession'))
+      if (raw) {
+        try {
+          state.session = JSON.parse(raw) as MockState['session']
+        } catch {
+          // 解析失败时保持默认空权限
+        }
+      }
+    }
     let body: Record<string, unknown> | null = null
     try {
       body = request.postDataJSON() as Record<string, unknown> | null
@@ -168,8 +234,10 @@ export async function installApiMock(page: Page): Promise<MockState> {
 
     if (method === 'GET' && path === '/api/permission/me') {
       await fulfill({
-        permissions: ['article.create', 'comment.create', 'comment.like', 'comment.report'],
-        isSuperAdmin: false,
+        // 必须与 seedSession 注入的会话一致：会话在首屏会重新拉一次权限，
+        // 这里若写死普通用户权限，会把超级管理员的权限覆盖掉。
+        permissions: state.session.permissions,
+        isSuperAdmin: state.session.isSuperAdmin,
         canEditPermissions: false,
       })
       return
@@ -236,6 +304,97 @@ export async function installApiMock(page: Page): Promise<MockState> {
           moment: '2026-10-20T08:30:00.000Z',
         }],
       })
+      return
+    }
+
+    // ─── 后台内容列表 ──────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/article') {
+      const classify = url.searchParams.get('classify')
+      const keyword = (url.searchParams.get('keyword') || '').trim()
+      const source = classify === 'image' ? [{ ...galleryItem }] : state.articles
+      const list = keyword
+        ? source.filter(item => item.title.includes(keyword))
+        : source
+
+      await fulfill({
+        total: list.length,
+        page: 1,
+        pageSize: Number(url.searchParams.get('pageSize') || 10),
+        totalPage: 1,
+        list,
+      })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/article/state/summary') {
+      await fulfill({ published: 1, draft: 0 })
+      return
+    }
+
+    if (method === 'PATCH' && /^\/api\/article\/\d+\/status$/.test(path)) {
+      const id = Number(path.split('/')[3])
+      const nextState = String(body?.state || 'draft')
+      const target = state.articles.find(item => item.id === id)
+      if (target) target.state = nextState
+      await fulfill({ id, state: nextState })
+      return
+    }
+
+    if (method === 'DELETE' && /^\/api\/article\/\d+$/.test(path)) {
+      const id = Number(path.split('/')[3])
+      state.articles = state.articles.filter(item => item.id !== id)
+      await fulfill({})
+      return
+    }
+
+    // ─── 后台随笔列表 ──────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/diary') {
+      const keyword = (url.searchParams.get('keyword') || '').trim()
+      const list = keyword
+        ? state.diaries.filter(item => item.title.includes(keyword))
+        : state.diaries
+
+      await fulfill({
+        total: list.length,
+        page: 1,
+        pageSize: Number(url.searchParams.get('pageSize') || 10),
+        totalPage: 1,
+        list,
+      })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/diary') {
+      const created = {
+        ...diaryItem,
+        id: 1500 + state.diaries.length,
+        title: String(body?.title || '未命名随笔'),
+        content: String(body?.content || ''),
+      }
+      state.diaries = [created, ...state.diaries]
+      await fulfill({ diaryId: created.id })
+      return
+    }
+
+    if (method === 'PUT' && /^\/api\/diary\/\d+$/.test(path)) {
+      const id = Number(path.split('/')[3])
+      state.diaries = state.diaries.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              title: String(body?.title ?? item.title),
+              content: String(body?.content ?? item.content),
+            }
+          : item
+      )
+      await fulfill({})
+      return
+    }
+
+    if (method === 'DELETE' && /^\/api\/diary\/\d+$/.test(path)) {
+      const id = Number(path.split('/')[3])
+      state.diaries = state.diaries.filter(item => item.id !== id)
+      await fulfill({})
       return
     }
 
