@@ -80,6 +80,12 @@ E2E 覆盖 18 条主链路：登录与权限守卫、评论举报（选原因与
 
 **数据库安全提示：** 后端启动会幂等创建数据库和表，并执行 `schema_migrations` 中尚未应用的增量迁移，但不会自动插入演示数据。需要演示数据时显式执行 `npm run db:seed`；该脚本在 `users` 表已有数据时跳过。对有价值的数据仍应先备份并在隔离环境验证迁移。
 
+#### Railway 单服务部署
+
+根目录提供 `Dockerfile` 与 `railway.toml`，生产环境由 Express 同时托管 `lin_blog/dist`、`/api`、SEO 路由和上传文件，因此不需要分别部署前后端，也不需要先购买域名。Railway 生成的 HTTPS 二级域名可直接作为 `LINBLOG_PUBLIC_URL` 和 `LINBLOG_ALLOWED_ORIGINS`。
+
+Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供的 `MYSQLHOST/MYSQLPORT/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE` 也受支持。文件模块需要在 Railway 挂载 `/data` 持久化磁盘，并设置 `LINBLOG_FILE_STORAGE_DIR=/data/files`、`LINBLOG_FILE_BACKUP_DIR=/data/file-backups`。完整步骤见 [Documentation/Railway部署.md](Documentation/Railway部署.md)。
+
 ### 已注册的后端 API
 
 | 模块 | 路由 | 认证/说明 |

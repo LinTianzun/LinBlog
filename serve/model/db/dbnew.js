@@ -1046,6 +1046,7 @@ async function seedReportSeeds(baseQuery, admin) {
 async function initializeSchema() {
   const connection = mysql.createConnection({
     host: config.database.HOST,
+    port: config.database.PORT,
     user: config.database.USER,
     password: config.database.PASSWORD,
     charset: 'utf8mb4'
@@ -1094,6 +1095,7 @@ function initPool() {
   pool = mysql.createPool({
     connectionLimit: 20,
     host: config.database.HOST,
+    port: config.database.PORT,
     user: config.database.USER,
     password: config.database.PASSWORD,
     database: databaseName,

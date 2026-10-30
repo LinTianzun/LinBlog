@@ -747,6 +747,7 @@ if (!targetDb) {
         const config = require('../config/default')
         const connection = await mysql.createConnection({
             host: config.database.HOST,
+            port: config.database.PORT,
             user: config.database.USER,
             password: config.database.PASSWORD
         })

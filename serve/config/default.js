@@ -5,8 +5,15 @@ if (typeof jwtSecret !== 'string' || jwtSecret.length < 32) {
     configErrors.push('LINBLOG_JWT_SECRET 必须设置为至少 32 个字符的随机值')
 }
 
-// CORS 白名单：必须显式配置精确来源（协议+域名+可选端口），不提供默认值
-const allowedOriginsValue = process.env.LINBLOG_ALLOWED_ORIGINS
+// Railway 会自动注入公开域名；单服务部署时可直接作为前端同源地址。
+const railwayPublicDomain = String(process.env.RAILWAY_PUBLIC_DOMAIN || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '')
+const railwayPublicOrigin = railwayPublicDomain ? `https://${railwayPublicDomain}` : ''
+
+// CORS 白名单：必须显式配置精确来源（协议+域名+可选端口），不提供通用默认值
+const allowedOriginsValue = process.env.LINBLOG_ALLOWED_ORIGINS || railwayPublicOrigin
 const allowedOrigins = typeof allowedOriginsValue === 'string'
     ? allowedOriginsValue.split(',').map((origin) => origin.trim()).filter(Boolean)
     : []
@@ -73,13 +80,31 @@ if (configErrors.length > 0) {
     throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
 }
 
+const port = Number.parseInt(process.env.PORT || process.env.LINBLOG_PORT || '3030', 10)
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    configErrors.push('PORT 或 LINBLOG_PORT 必须是 1-65535 的整数')
+}
+
+const databasePort = Number.parseInt(
+    process.env.LINBLOG_DB_PORT || process.env.MYSQLPORT || '3306',
+    10
+)
+if (!Number.isInteger(databasePort) || databasePort < 1 || databasePort > 65535) {
+    configErrors.push('LINBLOG_DB_PORT 或 MYSQLPORT 必须是 1-65535 的整数')
+}
+
+if (configErrors.length > 0) {
+    throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
+}
+
 const config = {
-    port: Number.parseInt(process.env.LINBLOG_PORT || '3030', 10),
+    port,
     database: {
-        HOST: process.env.LINBLOG_DB_HOST || "localhost",
-        USER: process.env.LINBLOG_DB_USER || "root",
-        PASSWORD: process.env.LINBLOG_DB_PASSWORD || "",
-        DB: process.env.LINBLOG_DB_NAME || "linlog"
+        HOST: process.env.LINBLOG_DB_HOST || process.env.MYSQLHOST || "localhost",
+        PORT: databasePort,
+        USER: process.env.LINBLOG_DB_USER || process.env.MYSQLUSER || "root",
+        PASSWORD: process.env.LINBLOG_DB_PASSWORD || process.env.MYSQLPASSWORD || "",
+        DB: process.env.LINBLOG_DB_NAME || process.env.MYSQLDATABASE || "linlog"
     },
     allowedOrigins,
     trustProxy,

@@ -11,8 +11,20 @@ function loadConfig(env) {
     for (const key of [
         'LINBLOG_JWT_SECRET',
         'LINBLOG_ALLOWED_ORIGINS',
+        'PORT',
         'LINBLOG_PORT',
         'LINBLOG_PUBLIC_URL',
+        'RAILWAY_PUBLIC_DOMAIN',
+        'LINBLOG_DB_HOST',
+        'LINBLOG_DB_PORT',
+        'LINBLOG_DB_USER',
+        'LINBLOG_DB_PASSWORD',
+        'LINBLOG_DB_NAME',
+        'MYSQLHOST',
+        'MYSQLPORT',
+        'MYSQLUSER',
+        'MYSQLPASSWORD',
+        'MYSQLDATABASE',
         'LINBLOG_SMTP_HOST',
         'LINBLOG_SMTP_PORT',
         'LINBLOG_SMTP_SECURE',
@@ -42,6 +54,55 @@ test('valid env loads config with parsed port and origin list', () => {
 
     assert.equal(config.port, 4040)
     assert.deepEqual(config.allowedOrigins, ['http://localhost:5173', 'https://blog.example.com'])
+})
+
+test('Railway port, domain and MySQL variables are supported', () => {
+    const config = loadConfig({
+        LINBLOG_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+        PORT: '8080',
+        RAILWAY_PUBLIC_DOMAIN: 'linblog-demo.up.railway.app',
+        MYSQLHOST: 'mysql.railway.internal',
+        MYSQLPORT: '3307',
+        MYSQLUSER: 'railway',
+        MYSQLPASSWORD: 'secret',
+        MYSQLDATABASE: 'railway',
+    })
+
+    assert.equal(config.port, 8080)
+    assert.deepEqual(config.allowedOrigins, ['https://linblog-demo.up.railway.app'])
+    assert.equal(config.publicUrl, 'https://linblog-demo.up.railway.app')
+    assert.deepEqual(config.database, {
+        HOST: 'mysql.railway.internal',
+        PORT: 3307,
+        USER: 'railway',
+        PASSWORD: 'secret',
+        DB: 'railway',
+    })
+})
+
+test('explicit LINBLOG values and PORT take precedence over platform defaults', () => {
+    const config = loadConfig({
+        LINBLOG_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+        LINBLOG_ALLOWED_ORIGINS: 'https://blog.example.com',
+        LINBLOG_PORT: '4040',
+        PORT: '9090',
+        RAILWAY_PUBLIC_DOMAIN: 'ignored.up.railway.app',
+        LINBLOG_DB_HOST: 'db.example.com',
+        LINBLOG_DB_PORT: '3308',
+        LINBLOG_DB_USER: 'linblog',
+        LINBLOG_DB_PASSWORD: 'custom',
+        LINBLOG_DB_NAME: 'custom_linblog',
+        MYSQLHOST: 'ignored.internal',
+        MYSQLPORT: '3306',
+    })
+
+    assert.equal(config.port, 9090)
+    assert.deepEqual(config.allowedOrigins, ['https://blog.example.com'])
+    assert.equal(config.database.HOST, 'db.example.com')
+    assert.equal(config.database.PORT, 3308)
+    assert.equal(config.database.USER, 'linblog')
+    assert.equal(config.database.PASSWORD, 'custom')
+    assert.equal(config.database.DB, 'custom_linblog')
 })
 
 test('missing or malformed config fails with aggregated errors', () => {

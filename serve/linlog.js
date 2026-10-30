@@ -1,4 +1,5 @@
 const { loadEnvFile } = require('node:process')
+const fs = require('node:fs')
 const path = require('path')
 
 loadEnvFile(path.join(__dirname, '.env'))
@@ -22,6 +23,7 @@ const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
+const { isSpaFallbackRequest } = require('./utils/frontendStatic')
 
 app.disable('x-powered-by')
 
@@ -51,6 +53,11 @@ app.use(cors(corsOptions))
 app.use(express.json({ limit: config.jsonLimit }))
 app.use(normalizeJsonBody)
 
+// Railway / 容器平台健康检查
+app.get('/healthz', (_req, res) => {
+    res.status(200).json({ status: 'ok' })
+})
+
 // 4. 所有 API 写请求先经过全局兜底限流，敏感接口再叠加分路由限流
 app.use('/api', writeMethodLimit)
 
@@ -63,7 +70,39 @@ app.use(express.static(path.join(__dirname, 'data')))
 // 7. 引入路由
 require('./routes/index')(app)
 
-// 8. 统一 404 与异常响应
+// 8. 生产环境中由 Express 托管 Vite 构建产物，前后端共享同一个域名
+const frontendDist = path.resolve(
+    process.env.LINBLOG_FRONTEND_DIST || path.join(__dirname, '..', 'lin_blog', 'dist')
+)
+const frontendIndex = path.join(frontendDist, 'index.html')
+
+if (fs.existsSync(frontendIndex)) {
+    app.use(express.static(frontendDist, {
+        index: false,
+        // dist/portal is an asset directory, but /portal is also a Vue route.
+        // Disable directory redirects so /portal reaches the SPA fallback.
+        redirect: false,
+        setHeaders(res, filePath) {
+            if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+            } else {
+                res.setHeader('Cache-Control', 'no-cache')
+            }
+        },
+    }))
+
+    app.use((req, res, next) => {
+        if (!isSpaFallbackRequest(req)) return next()
+        res.setHeader('Cache-Control', 'no-cache')
+        res.sendFile(frontendIndex, (err) => {
+            if (err) next(err)
+        })
+    })
+} else if (process.env.NODE_ENV === 'production') {
+    console.warn(`[Server] 未找到前端构建产物：${frontendIndex}`)
+}
+
+// 9. 统一 404 与异常响应
 app.use(notFoundHandler)
 app.use(createErrorHandler())
 
