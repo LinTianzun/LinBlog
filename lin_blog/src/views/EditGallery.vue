@@ -117,24 +117,10 @@
             </div>
         </yk-modal>
 
-        <yk-modal :model-value="scheduleOpen" title="安排定时发布" size="s" :show-footer="false"
-            @update:model-value="scheduleOpen = $event">
-            <div class="schedule-dialog">
-                <p class="schedule-dialog-hint">
-                    到点后自动应用当前工作稿并发布。建议先预览，再安排时间。
-                </p>
-                <label class="schedule-dialog-label">
-                    <span>发布时间</span>
-                    <input v-model="scheduleValue" type="datetime-local" class="schedule-dialog-input" />
-                </label>
-                <div class="schedule-dialog-actions">
-                    <yk-button type="secondary" @click="scheduleOpen = false">取消</yk-button>
-                    <yk-button :loading="submitting === 'schedule'" @click="confirmSchedule">
-                        确认安排
-                    </yk-button>
-                </div>
-            </div>
-        </yk-modal>
+        <SchedulePublishDialog v-model:open="scheduleOpen" v-model:value="scheduleValue"
+            :scheduled-at="workflow?.scheduledAt ?? null" :loading="submitting === 'schedule'"
+            :content-title="form?.title || article?.title || ''"
+            @confirm="confirmSchedule" @cancel-schedule="cancelSchedule" />
 
         <ArticleVersionPanel v-model:open="versionPanelOpen" :article-id="articleId" classify="image"
             @restored="handleVersionRestored" />
@@ -194,6 +180,7 @@ import editphoto from '../components/gallery/editPhoto.vue'
 import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import { validateScheduleValue } from '../utils/scheduledPublish'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
@@ -202,6 +189,7 @@ import {
 } from '../utils/localDraft'
 import ArticleVersionPanel from '../components/article/ArticleVersionPanel.vue'
 import ConflictCompareDialog from '../components/article/ConflictCompareDialog.vue'
+import SchedulePublishDialog from '../components/article/SchedulePublishDialog.vue'
 
 type GalleryFormData = {
     title: string
@@ -683,15 +671,13 @@ function handlePublishMenu(value: string | number): void {
 
 async function confirmSchedule(): Promise<void> {
     if (!articleId.value || submitting.value) return
+    const validation = validateScheduleValue(scheduleValue.value)
+    if (!validation.ok) {
+        showMessage('warning', validation.message)
+        return
+    }
     const iso = localDateTimeToIso(scheduleValue.value)
-    if (!iso) {
-        showMessage('warning', '请选择有效的发布时间')
-        return
-    }
-    if (new Date(iso).getTime() < Date.now() + 60_000) {
-        showMessage('warning', '发布时间至少需晚于当前时间 1 分钟')
-        return
-    }
+    if (!iso) return
 
     submitting.value = 'schedule'
     try {
@@ -1075,45 +1061,4 @@ onBeforeUnmount(() => {
     }
 }
 
-.schedule-dialog {
-    display: flex;
-    flex-direction: column;
-    gap: @space-l;
-
-    &-hint {
-        margin: 0;
-        color: @font-color-s;
-        font-size: @size-s;
-        line-height: 1.7;
-    }
-
-    &-label {
-        display: flex;
-        flex-direction: column;
-        gap: @space-s;
-        color: @font-color-m;
-        font-size: @size-s;
-    }
-
-    &-input {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 10px 12px;
-        border: 1px solid @line-color-m;
-        border-radius: @radius-s;
-        background: @bg-color-l;
-        color: @font-color-l;
-        outline: none;
-
-        &:focus {
-            border-color: @pcolor;
-        }
-    }
-
-    &-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: @space-m;
-    }
-}
 </style>

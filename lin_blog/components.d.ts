@@ -99,6 +99,7 @@ declare module 'vue' {
     Reply: typeof import('./src/components/reply/reply.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SchedulePublishDialog: typeof import('./src/components/article/SchedulePublishDialog.vue')['default']
     StatCard: typeof import('./src/components/common/StatCard.vue')['default']
     Subset: typeof import('./src/components/subset/subset.vue')['default']
     SubsetManage: typeof import('./src/components/subset/subsetManage.vue')['default']

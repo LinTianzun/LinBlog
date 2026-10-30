@@ -66,3 +66,73 @@ export function scheduleDateParts(value?: string | null): {
 export function scheduledClassifyLabel(classify: string): string {
   return classify === "image" ? "摄影图库" : "博客文章";
 }
+
+/** datetime-local 输入框需要的本地时间字符串（YYYY-MM-DDTHH:mm）。 */
+function toLocalInputValue(date: Date): string {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
+
+export interface SchedulePreset {
+  key: string;
+  label: string;
+  value: string;
+}
+
+/** 安排发布弹窗的快捷时间：都保证落在未来。 */
+export function buildSchedulePresets(now = new Date()): SchedulePreset[] {
+  const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+  oneHourLater.setSeconds(0, 0);
+  const tomorrowAt = (hour: number): Date => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 1);
+    date.setHours(hour, 0, 0, 0);
+    return date;
+  };
+  return [
+    { key: "hour", label: "1 小时后", value: toLocalInputValue(oneHourLater) },
+    { key: "morning", label: "明早 9:00", value: toLocalInputValue(tomorrowAt(9)) },
+    { key: "evening", label: "明晚 8:00", value: toLocalInputValue(tomorrowAt(20)) },
+  ];
+}
+
+export interface ScheduleValidation {
+  ok: boolean;
+  message: string;
+}
+
+/** 与后端约束一致：必须能解析，且至少晚于当前 1 分钟。 */
+export function validateScheduleValue(
+  value: string,
+  now = Date.now()
+): ScheduleValidation {
+  if (!value) return { ok: false, message: "请选择发布时间" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { ok: false, message: "请选择有效的发布时间" };
+  }
+  if (date.getTime() < now + 60_000) {
+    return { ok: false, message: "发布时间至少需晚于当前时间 1 分钟" };
+  }
+  return { ok: true, message: "" };
+}
+
+/** 人读时间预览：`11月2日 周一 09:00`，无效输入返回空串。 */
+export function scheduleValuePreview(value?: string | null): string {
+  const date = parseDate(value);
+  if (!date) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getMonth() + 1}月${date.getDate()}日 周${
+    WEEKDAYS[date.getDay()]
+  } ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
