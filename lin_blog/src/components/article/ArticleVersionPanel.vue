@@ -4,8 +4,10 @@
         <div class="version-panel">
             <div class="version-panel-head">
                 <div>
-                    <p class="version-panel-title">每次保存都会留下快照</p>
-                    <p class="version-panel-hint">保留最近 50 个版本。回滚会生成新的工作稿，不会覆盖历史。</p>
+                    <p class="version-panel-title">关键版本优先保留</p>
+                    <p class="version-panel-hint">
+                        自动保存每 5 分钟最多一条并保留近 24 小时；手动保存、发布与回滚快照长期保留。
+                    </p>
                 </div>
                 <yk-button type="secondary" size="s" :loading="loading" @click="loadVersions(1)">
                     刷新

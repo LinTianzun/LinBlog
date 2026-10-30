@@ -3,7 +3,9 @@ const articleModel = require('../article/index')
 const labelModel = require('../label/index')
 
 const VERSION_SOURCES = ['manual', 'autosave', 'publish', 'rollback', 'scheduled']
-const MAX_VERSIONS_PER_ARTICLE = 50
+const AUTOSAVE_SNAPSHOT_WINDOW_MINUTES = 5
+const AUTOSAVE_RETENTION_HOURS = 24
+const MAX_AUTOSAVE_VERSIONS_PER_ARTICLE = 50
 
 function normalizeVersionSource(source) {
     return VERSION_SOURCES.includes(source) ? source : 'manual'
@@ -104,16 +106,47 @@ async function insertVersionSnapshot(client, articleId, snapshot, source, userId
     )
 }
 
+/**
+ * 连续自动保存只保留每 5 分钟窗口的首个快照。
+ * 当前工作稿仍会在每次保存时更新，因此合并只影响可回滚历史，不影响防丢稿。
+ */
+async function hasRecentAutosaveSnapshot(client, articleId) {
+    const rows = await client(
+        `SELECT source,
+                (created_at >= DATE_SUB(NOW(), INTERVAL ${AUTOSAVE_SNAPSHOT_WINDOW_MINUTES} MINUTE)) AS isRecent
+         FROM article_version
+         WHERE article_id = ?
+         ORDER BY revision DESC, id DESC
+         LIMIT 1`,
+        [articleId]
+    )
+    const latest = rows[0]
+    return latest?.source === 'autosave' &&
+        (latest.isRecent === true || Number(latest.isRecent) === 1)
+}
+
+/**
+ * 自动快照只保留近 24 小时和最近 50 条；手动、发布、回滚与定时发布
+ * 快照属于明确操作节点，不参与自动裁剪，避免关键版本被高频自动保存挤掉。
+ */
 async function pruneVersions(client, articleId) {
     await client(
         `DELETE FROM article_version
          WHERE article_id = ?
+           AND source = 'autosave'
+           AND created_at < DATE_SUB(NOW(), INTERVAL ${AUTOSAVE_RETENTION_HOURS} HOUR)`,
+        [articleId]
+    )
+    await client(
+        `DELETE FROM article_version
+         WHERE article_id = ?
+           AND source = 'autosave'
            AND id NOT IN (
                SELECT id FROM (
                    SELECT id FROM article_version
-                   WHERE article_id = ?
+                   WHERE article_id = ? AND source = 'autosave'
                    ORDER BY revision DESC, id DESC
-                   LIMIT ${MAX_VERSIONS_PER_ARTICLE}
+                   LIMIT ${MAX_AUTOSAVE_VERSIONS_PER_ARTICLE}
                ) AS keep_rows
            )`,
         [articleId, articleId]
@@ -209,7 +242,19 @@ async function saveWorkingCopy(articleId, payload, { userId, source = 'autosave'
             )
         }
 
-        await insertVersionSnapshot(exec, articleId, snapshot, source, userId, nextRevision)
+        const normalizedSource = normalizeVersionSource(source)
+        const coalesceAutosave = normalizedSource === 'autosave' &&
+            await hasRecentAutosaveSnapshot(exec, articleId)
+        if (!coalesceAutosave) {
+            await insertVersionSnapshot(
+                exec,
+                articleId,
+                snapshot,
+                normalizedSource,
+                userId,
+                nextRevision
+            )
+        }
         await pruneVersions(exec, articleId)
         if (snapshot.label !== undefined) {
             await labelModel.ensureLabels(snapshot.label)
@@ -643,7 +688,9 @@ async function publishWorkingCopy(articleId, { userId } = {}) {
 
 module.exports = {
     VERSION_SOURCES,
-    MAX_VERSIONS_PER_ARTICLE,
+    AUTOSAVE_SNAPSHOT_WINDOW_MINUTES,
+    AUTOSAVE_RETENTION_HOURS,
+    MAX_AUTOSAVE_VERSIONS_PER_ARTICLE,
     normalizeVersionSource,
     findArticleForWorkflow,
     findWorkflowState,

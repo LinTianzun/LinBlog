@@ -19,6 +19,7 @@ let transactionHandler = null
 let mutationAccess = null
 let scheduledPageRows = []
 let scheduledSummaryRow = null
+let latestVersionProbe = null
 
 async function query(sql, values = []) {
     calls.push({ sql, values })
@@ -56,6 +57,9 @@ async function query(sql, values = []) {
 async function withTransaction(callback) {
     const exec = async (sql, values = []) => {
         calls.push({ sql, values })
+        if (sql.includes('SELECT') && sql.includes('FROM article_version')) {
+            return latestVersionProbe ? [latestVersionProbe] : []
+        }
         if (sql.includes('SELECT') && sql.includes('FROM article')) {
             if (sql.includes('scheduled_at IS NOT NULL')) {
                 return articleRows.filter(row => row.scheduledAt !== null)
@@ -209,6 +213,7 @@ test.beforeEach(() => {
     mutationAccess = null
     scheduledPageRows = []
     scheduledSummaryRow = null
+    latestVersionProbe = null
 })
 
 test('published articles keep their online fields while a working copy is saved', async () => {
@@ -237,6 +242,58 @@ test('published articles keep their online fields while a working copy is saved'
         introduce: '新简介',
         cover: '/api/uploads/new.jpg',
     })
+})
+
+test('rapid autosaves advance the working revision without growing snapshot rows', async () => {
+    articleRows = [makeArticle({ draftRevision: 4 })]
+    latestVersionProbe = { source: 'autosave', isRecent: 1 }
+
+    const result = await workflowModel.saveWorkingCopy(10, {
+        title: '五分钟内再次自动保存',
+        content: '<p>最新工作稿</p>',
+        classify: 'article',
+    }, { userId: 1, source: 'autosave', expectedRevision: 4 })
+
+    assert.equal(result.revision, 5)
+    assert.equal(calls.some(call => call.sql.includes('INSERT INTO article_version')), false)
+    assert.ok(calls.some(call => call.sql.includes('FROM article_version') &&
+        call.sql.includes('INTERVAL 5 MINUTE')))
+    assert.ok(calls.some(call => call.sql.includes("source = 'autosave'") &&
+        call.sql.includes('INTERVAL 24 HOUR')))
+})
+
+test('manual saves bypass autosave coalescing and remain outside autosave pruning', async () => {
+    latestVersionProbe = { source: 'autosave', isRecent: 1 }
+
+    await workflowModel.saveWorkingCopy(10, {
+        title: '手动保存节点',
+        content: '<p>手动正文</p>',
+        classify: 'article',
+    }, { userId: 1, source: 'manual', expectedRevision: 0 })
+
+    const insert = calls.find(call => call.sql.includes('INSERT INTO article_version'))
+    assert.ok(insert)
+    assert.equal(insert.values[10], 'manual')
+    const coalesceProbe = calls.find(call => call.sql.includes('INTERVAL 5 MINUTE'))
+    assert.equal(coalesceProbe, undefined)
+
+    const pruneQueries = calls.filter(call => call.sql.includes('DELETE FROM article_version'))
+    assert.equal(pruneQueries.length, 2)
+    assert.ok(pruneQueries.every(call => call.sql.includes("source = 'autosave'")))
+})
+
+test('an autosave older than the coalescing window creates a new snapshot', async () => {
+    latestVersionProbe = { source: 'autosave', isRecent: 0 }
+
+    await workflowModel.saveWorkingCopy(10, {
+        title: '新窗口自动保存',
+        content: '<p>新窗口正文</p>',
+        classify: 'article',
+    }, { userId: 1, source: 'autosave', expectedRevision: 0 })
+
+    const insert = calls.find(call => call.sql.includes('INSERT INTO article_version'))
+    assert.ok(insert)
+    assert.equal(insert.values[10], 'autosave')
 })
 
 test('working copy exposes merged metadata and rejects stale revisions', async () => {

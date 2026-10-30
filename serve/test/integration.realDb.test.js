@@ -846,6 +846,88 @@ if (!targetDb) {
         assert.equal(afterPublish[0].draft_payload, null)
     })
 
+    test('autosave snapshots coalesce and expired autosaves are pruned without touching manual history', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '版本治理文章',
+            content: '原始正文',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = created.articleId
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+
+        const payload = {
+            title: '版本治理工作稿',
+            subsetId: ids.subset,
+            classify: 'article',
+            label: '',
+            introduce: '',
+            content: '<p>第一版工作稿</p>',
+            cover: '',
+        }
+        const first = await workflowModel.saveWorkingCopy(articleId, payload, {
+            userId: ids.normal,
+            source: 'autosave',
+            expectedRevision: 0,
+        })
+        assert.equal(first.revision, 1)
+
+        const second = await workflowModel.saveWorkingCopy(articleId, {
+            ...payload,
+            content: '<p>第二版工作稿</p>',
+        }, {
+            userId: ids.normal,
+            source: 'autosave',
+            expectedRevision: 1,
+        })
+        assert.equal(second.revision, 2)
+
+        const afterSecond = await workflowModel.listVersions(articleId, { page: 1, pageSize: 10 })
+        assert.equal(afterSecond.total, 1)
+        assert.equal(afterSecond.list[0].source, 'autosave')
+
+        const manual = await workflowModel.saveWorkingCopy(articleId, {
+            ...payload,
+            content: '<p>手动保存版本</p>',
+        }, {
+            userId: ids.normal,
+            source: 'manual',
+            expectedRevision: 2,
+        })
+        assert.equal(manual.revision, 3)
+
+        await db.query(
+            `INSERT INTO article_version
+                (article_id, revision, title, subset_id, classify, label, introduce,
+                 content, cover, state, source, created_by, created_at)
+             VALUES (?, 90, '过期自动保存', ?, 'article', '', '',
+                     '<p>过期正文</p>', '', 'published', 'autosave', ?, DATE_SUB(NOW(), INTERVAL 25 HOUR))`,
+            [articleId, ids.subset, ids.normal]
+        )
+
+        await workflowModel.saveWorkingCopy(articleId, {
+            ...payload,
+            content: '<p>再次手动保存</p>',
+        }, {
+            userId: ids.normal,
+            source: 'manual',
+            expectedRevision: 3,
+        })
+
+        const rows = await db.query(
+            'SELECT source, revision FROM article_version WHERE article_id = ? ORDER BY revision ASC',
+            [articleId]
+        )
+        assert.equal(rows.some(row => Number(row.revision) === 90), false)
+        assert.ok(rows.some(row => row.source === 'autosave'))
+        assert.equal(rows.filter(row => row.source === 'manual').length, 2)
+    })
+
     test('scheduled publishing applies the working copy when due', async () => {
         const workflowModel = require('../model/dbModel/articleWorkflow/index')
 
