@@ -27,7 +27,8 @@ const ALL_MIGRATIONS = [
     '20261029_comment_report_handling',
     '20261029_message_channel',
     '20261029_comment_report_note',
-    '20261030_db_backup'
+    '20261030_db_backup',
+    '20261030_article_workflow'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -459,5 +460,36 @@ test('db backup migration creates the backup history table', async () => {
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261030_db_backup'
+    ))
+})
+
+test('article workflow migration adds working copy fields and version table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261030_article_workflow')
+        }
+        if (sql.includes('information_schema')) return []
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    const alterSql = calls
+        .filter(call => call.sql.includes('ALTER TABLE article ADD COLUMN'))
+        .map(call => call.sql)
+    assert.equal(alterSql.length, 5)
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN scheduled_at DATETIME NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN draft_content LONGTEXT NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN draft_payload LONGTEXT NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN draft_revision INT UNSIGNED NOT NULL DEFAULT 0')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN draft_saved_at DATETIME NULL')))
+    assert.ok(calls.some(call => call.sql.includes('CREATE TABLE IF NOT EXISTS article_version')))
+    assert.ok(calls.some(call => call.sql.includes('ADD INDEX idx_article_scheduled')))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261030_article_workflow'
     ))
 })

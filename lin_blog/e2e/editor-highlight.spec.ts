@@ -42,6 +42,41 @@ test('编辑页代码块保留高亮，且语言菜单可切到 JavaScript', asy
     }
   )
 
+  // 编辑页正文改从工作稿接口读取，代码块内容要一并覆盖
+  await page.route(
+    url => url.pathname === `/api/article/${EDITOR_ARTICLE_ID}/workflow`,
+    async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 200,
+          message: 'ok',
+          data: {
+            articleId: EDITOR_ARTICLE_ID,
+            classify: 'article',
+            state: 'draft',
+            revision: 0,
+            savedAt: EDITOR_ARTICLE.updatedAt,
+            scheduledAt: null,
+            publishedAt: null,
+            hasUnpublishedChanges: false,
+            workingCopy: {
+              title: EDITOR_ARTICLE.title,
+              subsetId: EDITOR_ARTICLE.subsetId,
+              classify: 'article',
+              label: EDITOR_ARTICLE.label,
+              introduce: EDITOR_ARTICLE.introduce,
+              content: EDITOR_ARTICLE.content,
+              cover: EDITOR_ARTICLE.cover ?? '',
+              state: 'draft',
+            },
+          },
+        }),
+      })
+    }
+  )
+
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => {

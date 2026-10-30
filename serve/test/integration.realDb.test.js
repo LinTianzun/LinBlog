@@ -759,4 +759,184 @@ if (!targetDb) {
         }
         fs.rmSync(integrationRoot, { recursive: true, force: true })
     })
+
+    test('working copy keeps online content untouched until publish', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        // 单独建一篇已发布文章，避免受其它用例的软删除影响。
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '已发布文章',
+            content: '正文内容',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '简介',
+            cover: ''
+        })
+        const articleId = created.articleId
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+
+        const before = await db.query(
+            'SELECT title, content, state, draft_content FROM article WHERE id = ?',
+            [articleId]
+        )
+        assert.equal(before[0].content, '正文内容')
+        assert.equal(before[0].draft_content, null)
+
+        const saved = await workflowModel.saveWorkingCopy(articleId, {
+            title: '工作稿标题',
+            subsetId: ids.subset,
+            classify: 'article',
+            label: '工作流',
+            introduce: '工作稿简介',
+            content: '<p>工作稿正文</p>',
+            cover: '/api/uploads/workflow.jpg',
+        }, { userId: ids.normal, source: 'autosave', expectedRevision: 0 })
+        assert.equal(saved.revision, 1)
+        assert.equal(saved.hasUnpublishedChanges, true)
+
+        const afterSave = await db.query(
+            'SELECT title, content, draft_content, draft_payload, draft_revision FROM article WHERE id = ?',
+            [articleId]
+        )
+        // 线上正文与标题不能被自动保存改掉
+        assert.equal(afterSave[0].title, before[0].title)
+        assert.equal(afterSave[0].content, '正文内容')
+        assert.equal(afterSave[0].draft_content, '<p>工作稿正文</p>')
+        assert.equal(Number(afterSave[0].draft_revision), 1)
+
+        const state = await workflowModel.findWorkflowState(articleId)
+        assert.equal(state.hasUnpublishedChanges, true)
+        assert.equal(state.workingCopy.title, '工作稿标题')
+        assert.equal(state.workingCopy.content, '<p>工作稿正文</p>')
+
+        const versions = await workflowModel.listVersions(articleId, { page: 1, pageSize: 10 })
+        assert.equal(versions.total, 1)
+        assert.equal(versions.list[0].source, 'autosave')
+
+        // 乐观锁：revision 不匹配时拒绝写入
+        const conflict = await workflowModel.saveWorkingCopy(articleId, {
+            title: '覆盖标题',
+            content: '<p>覆盖正文</p>',
+            classify: 'article',
+        }, { userId: ids.normal, expectedRevision: 0 })
+        assert.equal(conflict.conflict, true)
+        assert.equal(conflict.revision, 1)
+
+        // 回滚：生成新的工作稿 + 新版本，不覆盖历史
+        const restored = await workflowModel.restoreVersion(articleId, versions.list[0].id, {
+            userId: ids.normal,
+        })
+        assert.equal(restored.revision, 2)
+        const afterRestore = await workflowModel.listVersions(articleId, { page: 1, pageSize: 10 })
+        assert.equal(afterRestore.total, 2)
+        assert.equal(afterRestore.list[0].source, 'rollback')
+
+        // 发布：工作稿落到线上字段并清空工作稿
+        const published = await workflowModel.publishWorkingCopy(articleId, { userId: ids.normal })
+        assert.equal(published.revision, 3)
+        const afterPublish = await db.query(
+            'SELECT title, content, state, draft_content, draft_payload FROM article WHERE id = ?',
+            [articleId]
+        )
+        assert.equal(afterPublish[0].title, '工作稿标题')
+        assert.equal(afterPublish[0].content, '<p>工作稿正文</p>')
+        assert.equal(afterPublish[0].state, 'published')
+        assert.equal(afterPublish[0].draft_content, null)
+        assert.equal(afterPublish[0].draft_payload, null)
+    })
+
+    test('scheduled publishing applies the working copy when due', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '待定时发布的文章',
+            content: '原始正文',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = created.articleId
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+
+        const due = new Date(Date.now() - 60 * 1000)
+        await workflowModel.schedulePublish(articleId, due, { userId: ids.normal })
+
+        const scheduled = await workflowModel.findDueScheduledArticles(10)
+        assert.ok(scheduled.some(row => Number(row.id) === Number(articleId)))
+
+        await workflowModel.saveWorkingCopy(articleId, {
+            title: '定时发布标题',
+            subsetId: ids.subset,
+            classify: 'article',
+            label: '',
+            introduce: '',
+            content: '<p>定时发布正文</p>',
+            cover: '',
+        }, { userId: ids.normal, source: 'autosave', expectedRevision: 0 })
+
+        const result = await workflowModel.publishScheduledArticle(articleId)
+        assert.equal(result.published, true)
+
+        const rows = await db.query(
+            'SELECT title, content, state, scheduled_at, draft_content FROM article WHERE id = ?',
+            [articleId]
+        )
+        assert.equal(rows[0].title, '定时发布标题')
+        assert.equal(rows[0].content, '<p>定时发布正文</p>')
+        assert.equal(rows[0].state, 'published')
+        assert.equal(rows[0].scheduled_at, null)
+        assert.equal(rows[0].draft_content, null)
+
+        // 计划清空后不应再被扫描出来
+        const stillDue = await workflowModel.findDueScheduledArticles(10)
+        assert.equal(stillDue.some(row => Number(row.id) === Number(articleId)), false)
+    })
+
+    test('gallery versions expose photo counts and status changes promote the working copy', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const gallery = await articleModel.insertArticle({
+            userId: ids.admin,
+            title: '集成测试图库',
+            content: JSON.stringify(['/api/uploads/1.jpg', '/api/uploads/2.jpg']),
+            classify: 'image',
+            subsetId: ids.subset,
+            introduce: '图库简介',
+            cover: '/api/uploads/1.jpg'
+        })
+        const galleryId = gallery.articleId
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [galleryId])
+
+        await workflowModel.saveWorkingCopy(galleryId, {
+            title: '图库工作稿',
+            subsetId: ids.subset,
+            classify: 'image',
+            label: '图库',
+            introduce: '图库工作稿简介',
+            content: JSON.stringify(['/api/uploads/1.jpg', '/api/uploads/2.jpg', '/api/uploads/3.jpg']),
+            cover: '/api/uploads/1.jpg',
+        }, { userId: ids.admin, source: 'autosave', expectedRevision: 0 })
+
+        const versions = await workflowModel.listVersions(galleryId, { page: 1, pageSize: 10 })
+        assert.equal(versions.total, 1)
+        assert.equal(versions.list[0].classify, 'image')
+        assert.equal(Number(versions.list[0].mediaCount), 3)
+
+        // 撤回时把工作稿落到线上字段，未发布的修改不会丢
+        await workflowModel.promoteWorkingCopy(galleryId)
+        const promoted = await db.query(
+            'SELECT title, content, draft_content, draft_payload FROM article WHERE id = ?',
+            [galleryId]
+        )
+        assert.equal(promoted[0].title, '图库工作稿')
+        assert.equal(
+            JSON.parse(promoted[0].content).length,
+            3
+        )
+        assert.equal(promoted[0].draft_content, null)
+        assert.equal(promoted[0].draft_payload, null)
+    })
 }

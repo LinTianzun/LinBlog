@@ -22,6 +22,7 @@ const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandl
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
+const { startArticleScheduler } = require('./utils/articleScheduler')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
@@ -120,6 +121,7 @@ db.initDatabase()
             const fileLifecycle = startFileLifecycle();
             // 数据库定时备份：图片以 BLOB 存在库里，必须单独备份数据库本体
             const databaseBackup = startScheduledBackup();
+            const articleScheduler = startArticleScheduler();
 
             const shutdown = createGracefulShutdown({
                 server,
@@ -127,6 +129,7 @@ db.initDatabase()
                     () => recordRetention.stop(),
                     () => fileLifecycle.stop(),
                     () => databaseBackup.stop(),
+                    () => articleScheduler.stop(),
                 ],
                 closeDatabase: db.closeDatabase,
             })

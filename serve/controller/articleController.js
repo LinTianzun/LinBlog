@@ -1,4 +1,5 @@
 const articleModel = require('../model/dbModel/article/index')
+const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
 const imageModel = require('../model/dbModel/image/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
@@ -580,6 +581,12 @@ async function updateArticleStatus(req, res) {
             if (!latestAccess.allowed) {
                 return res.status(403).json({ code: 403, message: '无权限修改该文章状态' })
             }
+        }
+
+        // 状态流转时把工作稿落到线上字段：撤回不丢未发布的修改，
+        // 草稿转发布也不会残留旧工作稿被误当成「未发布修改」。
+        if (affectedRows > 0 && (state === 'draft' || state === 'published')) {
+            await articleWorkflowModel.promoteWorkingCopy(articleId)
         }
 
         // 状态中文映射

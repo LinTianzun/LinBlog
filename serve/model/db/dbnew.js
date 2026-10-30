@@ -202,6 +202,11 @@ const tablesSql = {
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     published_at DATETIME COMMENT '发布时间',
+    scheduled_at DATETIME NULL COMMENT '计划发布时间',
+    draft_content LONGTEXT NULL COMMENT '未发布的编辑工作稿正文',
+    draft_payload LONGTEXT NULL COMMENT '未发布的编辑工作稿元数据（JSON）',
+    draft_revision INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '工作稿修订号（用于自动保存冲突检测）',
+    draft_saved_at DATETIME NULL COMMENT '工作稿最后保存时间',
     PRIMARY KEY (id),
     CONSTRAINT fk_article_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
@@ -212,6 +217,29 @@ const tablesSql = {
     INDEX idx_created_at (created_at),
     FULLTEXT INDEX ft_title_intro (title, introduce)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章/图片集表';`,
+
+  article_version: `CREATE TABLE IF NOT EXISTS article_version(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '版本ID',
+    article_id BIGINT UNSIGNED NOT NULL COMMENT '文章ID',
+    revision INT UNSIGNED NOT NULL COMMENT '文章修订号',
+    title VARCHAR(150) NOT NULL COMMENT '标题快照',
+    subset_id INT UNSIGNED NULL COMMENT '分类快照',
+    classify ENUM('article', 'image') NOT NULL COMMENT '内容类型',
+    label VARCHAR(100) NULL COMMENT '标签快照',
+    introduce VARCHAR(512) NULL COMMENT '简介快照',
+    content LONGTEXT NOT NULL COMMENT '正文快照',
+    cover VARCHAR(255) NULL COMMENT '封面快照',
+    state ENUM('draft', 'published', 'rejected') NOT NULL COMMENT '保存时状态',
+    source ENUM('manual', 'autosave', 'publish', 'rollback', 'scheduled') NOT NULL DEFAULT 'manual' COMMENT '版本来源',
+    created_by BIGINT UNSIGNED NULL COMMENT '操作人ID',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_article_revision (article_id, revision),
+    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_article_version_created (article_id, created_at),
+    INDEX idx_article_version_source (source)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章版本快照表';`,
 
   praise: `CREATE TABLE IF NOT EXISTS praise(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '点赞ID',
@@ -1083,7 +1111,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1543,6 +1571,45 @@ async function ensureDbBackupLogSchema(exec = query) {
   await exec(tablesSql.db_backup_log);
 }
 
+// 内容创作工作流：工作稿字段 + 版本快照表。
+// 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
+async function ensureArticleWorkflowSchema(exec = query) {
+  await ensureColumn(exec, 'article', 'scheduled_at', {
+    definition: 'DATETIME NULL',
+    comment: '计划发布时间'
+  });
+  await ensureColumn(exec, 'article', 'draft_content', {
+    definition: 'LONGTEXT NULL',
+    comment: '未发布的编辑工作稿正文'
+  });
+  await ensureColumn(exec, 'article', 'draft_payload', {
+    definition: 'LONGTEXT NULL',
+    comment: '未发布的编辑工作稿元数据（JSON）'
+  });
+  await ensureColumn(exec, 'article', 'draft_revision', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '工作稿修订号（用于自动保存冲突检测）'
+  });
+  await ensureColumn(exec, 'article', 'draft_saved_at', {
+    definition: 'DATETIME NULL',
+    comment: '工作稿最后保存时间'
+  });
+
+  await exec(tablesSql.article_version);
+
+  const [scheduleIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'article'
+      AND INDEX_NAME = 'idx_article_scheduled'
+    LIMIT 1
+  `);
+  if (!scheduleIndex) {
+    await exec('ALTER TABLE article ADD INDEX idx_article_scheduled (state, scheduled_at)');
+  }
+}
+
 // message 表同时承载私信会话与门户留言，用 channel 记录来源。
 // 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
 async function ensureMessageChannelSchema(exec = query) {
@@ -1761,6 +1828,10 @@ const migrations = [
   {
     version: '20261030_db_backup',
     up: ensureDbBackupLogSchema
+  },
+  {
+    version: '20261030_article_workflow',
+    up: ensureArticleWorkflowSchema
   }
 ];
 

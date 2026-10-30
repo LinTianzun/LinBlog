@@ -99,6 +99,79 @@ export interface UpdateArticleStatusResult {
   updatedAt: string;
 }
 
+export type ArticleVersionSource =
+  | "manual"
+  | "autosave"
+  | "publish"
+  | "rollback"
+  | "scheduled";
+
+export interface ArticleWorkingCopy {
+  title: string;
+  subsetId: number | null;
+  classify: ArticleClassify;
+  label: string;
+  introduce: string;
+  content: string;
+  cover: string;
+  state: ArticleState;
+}
+
+export interface ArticleWorkflowState {
+  articleId: number;
+  classify: ArticleClassify;
+  state: ArticleState;
+  revision: number;
+  savedAt: string | null;
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  hasUnpublishedChanges: boolean;
+  workingCopy: ArticleWorkingCopy;
+}
+
+export interface SaveArticleDraftParams extends CreateArticleParams {
+  revision?: number;
+  source?: "manual" | "autosave";
+}
+
+export interface SaveArticleDraftResult {
+  articleId: number;
+  revision: number;
+  savedAt: string;
+  hasUnpublishedChanges: boolean;
+}
+
+export interface ArticleVersionSummary {
+  id: number;
+  articleId: number;
+  revision: number;
+  title: string;
+  subsetId: number | null;
+  classify: ArticleClassify;
+  label: string | null;
+  introduce: string | null;
+  cover: string | null;
+  state: ArticleState;
+  source: ArticleVersionSource;
+  createdBy: number | null;
+  createdAt: string;
+  contentLength: number;
+  /** 图库版本的图片数量，文章版本为 undefined */
+  mediaCount?: number;
+}
+
+export interface ArticleVersionDetail extends Omit<ArticleVersionSummary, "contentLength"> {
+  content: string;
+}
+
+export interface ArticleVersionPage {
+  list: ArticleVersionSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+}
+
 const articleStateLabels: Record<ArticleState, string> = {
   draft: "草稿",
   published: "已发布",
@@ -229,5 +302,58 @@ export function updateArticleStatus(
   return request.patch<ApiResult<UpdateArticleStatusResult>>(
     `/article/${id}/status`,
     { state }
+  );
+}
+
+export function getArticleWorkflow(id: number) {
+  return request.get<ApiResult<ArticleWorkflowState>>(
+    `/article/${id}/workflow`
+  );
+}
+
+export function saveArticleDraft(id: number, data: SaveArticleDraftParams) {
+  return request.post<ApiResult<SaveArticleDraftResult>>(
+    `/article/${id}/workflow/draft`,
+    data
+  );
+}
+
+export function getArticleVersions(
+  id: number,
+  params: { page?: number; pageSize?: number } = {}
+) {
+  return request.get<ApiResult<ArticleVersionPage>>(
+    `/article/${id}/versions`,
+    { params }
+  );
+}
+
+export function getArticleVersion(id: number, versionId: number) {
+  return request.get<ApiResult<ArticleVersionDetail>>(
+    `/article/${id}/versions/${versionId}`
+  );
+}
+
+export function restoreArticleVersion(id: number, versionId: number) {
+  return request.post<
+    ApiResult<{ articleId: number; revision: number; restoredFrom: number }>
+  >(`/article/${id}/versions/${versionId}/restore`);
+}
+
+export function publishArticleWorkflow(id: number) {
+  return request.post<
+    ApiResult<{ articleId: number; state: ArticleState; revision: number }>
+  >(`/article/${id}/workflow/publish`);
+}
+
+export function scheduleArticlePublish(id: number, scheduledAt: string) {
+  return request.post<
+    ApiResult<{ articleId: number; scheduledAt: string }>
+  >(`/article/${id}/workflow/schedule`, { scheduledAt });
+}
+
+export function cancelArticleSchedule(id: number) {
+  return request.delete<ApiResult<{ articleId: number }>>(
+    `/article/${id}/workflow/schedule`
   );
 }

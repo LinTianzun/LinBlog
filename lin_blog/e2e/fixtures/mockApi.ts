@@ -161,8 +161,51 @@ interface MockState {
   messages: typeof initialMessage[]
   conversation: typeof initialConversation
   articles: (typeof article)[]
+  galleries: (typeof galleryItem)[]
   diaries: (typeof diaryItem)[]
+  workflows: Record<number, WorkflowMock>
+  versions: WorkflowVersionMock[]
   session: { permissions: string[]; isSuperAdmin: boolean }
+}
+
+export interface WorkflowMock {
+  articleId: number
+  classify: 'article' | 'image'
+  state: 'draft' | 'published' | 'rejected'
+  revision: number
+  savedAt: string
+  scheduledAt: string | null
+  publishedAt: string | null
+  hasUnpublishedChanges: boolean
+  workingCopy: {
+    title: string
+    subsetId: number | null
+    classify: 'article' | 'image'
+    label: string
+    introduce: string
+    content: string
+    cover: string
+    state: 'draft' | 'published' | 'rejected'
+  }
+}
+
+export interface WorkflowVersionMock {
+  id: number
+  articleId: number
+  revision: number
+  title: string
+  subsetId: number | null
+  classify: 'article' | 'image'
+  label: string | null
+  introduce: string | null
+  cover: string | null
+  state: 'draft' | 'published' | 'rejected'
+  source: 'manual' | 'autosave' | 'publish' | 'rollback' | 'scheduled'
+  createdBy: number | null
+  createdAt: string
+  contentLength: number
+  mediaCount?: number
+  content?: string
 }
 
 export async function installApiMock(page: Page): Promise<MockState> {
@@ -170,7 +213,10 @@ export async function installApiMock(page: Page): Promise<MockState> {
     messages: [{ ...initialMessage }],
     conversation: { ...initialConversation },
     articles: [{ ...article }],
+    galleries: [{ ...galleryItem }],
     diaries: [{ ...diaryItem }],
+    workflows: {},
+    versions: [],
     session: { permissions: [], isSuperAdmin: false },
   }
 
@@ -331,12 +377,252 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 后台文章详情（编辑页据此判断状态与归属）
+    const articleDetailMatch = path.match(/^\/api\/article\/(\d+)$/)
+    if (method === 'GET' && articleDetailMatch) {
+      const id = Number(articleDetailMatch[1])
+      const target =
+        state.articles.find(item => item.id === id) ||
+        state.galleries.find(item => item.id === id)
+      if (!target) {
+        await fulfill({}, { code: 404, message: '文章不存在或无权限访问', status: 404 })
+        return
+      }
+      await fulfill({ ...target })
+      return
+    }
+
     if (method === 'PATCH' && /^\/api\/article\/\d+\/status$/.test(path)) {
       const id = Number(path.split('/')[3])
       const nextState = String(body?.state || 'draft')
       const target = state.articles.find(item => item.id === id)
       if (target) target.state = nextState
+      const gallery = state.galleries.find(item => item.id === id)
+      if (gallery) gallery.state = nextState
       await fulfill({ id, state: nextState })
+      return
+    }
+
+    // ─── 内容创作工作流：自动保存 / 预览 / 版本 / 定时发布 ─────────────
+    const workflowMatch = path.match(/^\/api\/article\/(\d+)\/workflow$/)
+    if (method === 'GET' && workflowMatch) {
+      const id = Number(workflowMatch[1])
+      const target =
+        state.articles.find(item => item.id === id) ||
+        state.galleries.find(item => item.id === id)
+      if (!target) {
+        await fulfill({}, { code: 404, message: '文章不存在或已删除', status: 404 })
+        return
+      }
+      const existing = state.workflows[id]
+      if (existing) {
+        await fulfill(existing)
+        return
+      }
+      const created: WorkflowMock = {
+        articleId: id,
+        classify: target.classify,
+        state: target.state === 'published' ? 'published' : 'draft',
+        revision: 0,
+        savedAt: target.updatedAt,
+        scheduledAt: null,
+        publishedAt: target.publishedAt,
+        hasUnpublishedChanges: false,
+        workingCopy: {
+          title: target.title,
+          subsetId: target.subsetId,
+          classify: target.classify,
+          label: target.label ?? '',
+          introduce: target.introduce ?? '',
+          content: target.content ?? '',
+          cover: target.cover ?? '',
+          state: target.state === 'published' ? 'published' : 'draft',
+        },
+      }
+      state.workflows[id] = created
+      await fulfill(created)
+      return
+    }
+
+    const draftMatch = path.match(/^\/api\/article\/(\d+)\/workflow\/draft$/)
+    if (method === 'POST' && draftMatch) {
+      const id = Number(draftMatch[1])
+      const workflow = state.workflows[id]
+      if (!workflow) {
+        await fulfill({}, { code: 404, message: '文章不存在或已删除', status: 404 })
+        return
+      }
+      const requestedRevision = Number(body?.revision)
+      if (
+        Number.isSafeInteger(requestedRevision) &&
+        requestedRevision >= 0 &&
+        requestedRevision !== workflow.revision
+      ) {
+        await fulfill(
+          { revision: workflow.revision },
+          {
+            code: 409,
+            message: '工作稿已在其他窗口更新，请刷新后继续编辑',
+            status: 409,
+          }
+        )
+        return
+      }
+
+      workflow.revision += 1
+      workflow.savedAt = new Date().toISOString()
+      workflow.hasUnpublishedChanges = workflow.state === 'published'
+      workflow.workingCopy = {
+        title: String(body?.title ?? workflow.workingCopy.title),
+        subsetId: body?.subsetId === null || body?.subsetId === undefined
+          ? null
+          : Number(body.subsetId),
+        classify: workflow.classify,
+        label: String(body?.label ?? ''),
+        introduce: String(body?.introduce ?? ''),
+        content: String(body?.content ?? ''),
+        cover: String(body?.cover ?? ''),
+        state: workflow.state,
+      }
+      state.versions.unshift({
+        id: state.versions.length + 1,
+        articleId: id,
+        revision: workflow.revision,
+        title: workflow.workingCopy.title,
+        subsetId: workflow.workingCopy.subsetId,
+        classify: workflow.classify,
+        label: workflow.workingCopy.label,
+        introduce: workflow.workingCopy.introduce,
+        cover: workflow.workingCopy.cover,
+        state: workflow.state,
+        source: body?.source === 'manual' ? 'manual' : 'autosave',
+        createdBy: 1,
+        createdAt: workflow.savedAt,
+        contentLength: workflow.workingCopy.content.length,
+        mediaCount:
+          workflow.classify === 'image'
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(workflow.workingCopy.content)
+                  return Array.isArray(parsed) ? parsed.length : 0
+                } catch {
+                  return 0
+                }
+              })()
+            : undefined,
+        content: workflow.workingCopy.content,
+      })
+      await fulfill({
+        articleId: id,
+        revision: workflow.revision,
+        savedAt: workflow.savedAt,
+        hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+      })
+      return
+    }
+
+    const publishMatch = path.match(/^\/api\/article\/(\d+)\/workflow\/publish$/)
+    if (method === 'POST' && publishMatch) {
+      const id = Number(publishMatch[1])
+      const workflow = state.workflows[id]
+      if (!workflow) {
+        await fulfill({}, { code: 404, message: '文章不存在或已删除', status: 404 })
+        return
+      }
+      workflow.state = 'published'
+      workflow.hasUnpublishedChanges = false
+      workflow.scheduledAt = null
+      workflow.publishedAt = new Date().toISOString()
+      workflow.revision += 1
+      const target = state.articles.find(item => item.id === id)
+      if (target) {
+        target.state = 'published'
+        target.title = workflow.workingCopy.title
+        target.introduce = workflow.workingCopy.introduce
+        target.content = workflow.workingCopy.content
+      }
+      const gallery = state.galleries.find(item => item.id === id)
+      if (gallery) {
+        gallery.state = 'published'
+        gallery.title = workflow.workingCopy.title
+        gallery.introduce = workflow.workingCopy.introduce
+        gallery.content = workflow.workingCopy.content
+      }
+      await fulfill({ articleId: id, state: 'published', revision: workflow.revision })
+      return
+    }
+
+    const scheduleMatch = path.match(/^\/api\/article\/(\d+)\/workflow\/schedule$/)
+    if (method === 'POST' && scheduleMatch) {
+      const id = Number(scheduleMatch[1])
+      const workflow = state.workflows[id]
+      if (!workflow) {
+        await fulfill({}, { code: 404, message: '文章不存在或已删除', status: 404 })
+        return
+      }
+      workflow.scheduledAt = String(body?.scheduledAt || '')
+      await fulfill({ articleId: id, scheduledAt: workflow.scheduledAt })
+      return
+    }
+
+    if (method === 'DELETE' && scheduleMatch) {
+      const id = Number(scheduleMatch[1])
+      const workflow = state.workflows[id]
+      if (workflow) workflow.scheduledAt = null
+      await fulfill({ articleId: id })
+      return
+    }
+
+    const versionListMatch = path.match(/^\/api\/article\/(\d+)\/versions$/)
+    if (method === 'GET' && versionListMatch) {
+      const id = Number(versionListMatch[1])
+      const list = state.versions.filter(item => item.articleId === id)
+      await fulfill({
+        list: list.map(({ content, ...rest }) => rest),
+        total: list.length,
+        page: Number(url.searchParams.get('page') || 1),
+        pageSize: Number(url.searchParams.get('pageSize') || 10),
+        totalPage: Math.max(1, Math.ceil(list.length / 10)),
+      })
+      return
+    }
+
+    const versionDetailMatch = path.match(/^\/api\/article\/(\d+)\/versions\/(\d+)$/)
+    if (method === 'GET' && versionDetailMatch) {
+      const versionId = Number(versionDetailMatch[2])
+      const version = state.versions.find(item => item.id === versionId)
+      if (!version) {
+        await fulfill({}, { code: 404, message: '版本不存在', status: 404 })
+        return
+      }
+      await fulfill(version)
+      return
+    }
+
+    const versionRestoreMatch = path.match(
+      /^\/api\/article\/(\d+)\/versions\/(\d+)\/restore$/
+    )
+    if (method === 'POST' && versionRestoreMatch) {
+      const id = Number(versionRestoreMatch[1])
+      const versionId = Number(versionRestoreMatch[2])
+      const workflow = state.workflows[id]
+      const version = state.versions.find(item => item.id === versionId)
+      if (!workflow || !version) {
+        await fulfill({}, { code: 404, message: '版本不存在', status: 404 })
+        return
+      }
+      workflow.revision += 1
+      workflow.workingCopy = {
+        title: version.title,
+        subsetId: version.subsetId,
+        classify: workflow.classify,
+        label: version.label ?? '',
+        introduce: version.introduce ?? '',
+        content: version.content ?? '',
+        cover: version.cover ?? '',
+        state: workflow.state,
+      }
+      await fulfill({ articleId: id, revision: workflow.revision, restoredFrom: version.revision })
       return
     }
 
