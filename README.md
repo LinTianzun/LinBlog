@@ -70,7 +70,7 @@ npm --prefix lin_blog test       # 前端纯函数与路由守卫单测
 npm --prefix lin_blog run test:e2e   # Playwright 端到端（自动拉起 Vite dev server）
 ```
 
-E2E 覆盖 5 条主链路：登录与权限守卫、评论举报选原因、私信回复、主题切换持久化、门户详情深链接。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
+E2E 覆盖 11 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
 
 `.github/workflows/ci.yml` 在 push / PR 到 `main` 时依次执行后端测试、前端单测与生产构建、Playwright E2E，并上传 `playwright-report/` 与 `test-results/` 作为构建产物。见 `lin_blog/playwright.config.ts`、`lin_blog/e2e/`。
 
@@ -143,6 +143,8 @@ E2E 覆盖 5 条主链路：登录与权限守卫、评论举报选原因、私�
 * 门户详情深链接与 SEO（2026-10-29）：文章、图库、随笔支持归档页 `?open=<id>` 与首页 `?article=` / `?gallery=` / `?diary=` 直接打开详情，URL 会随打开、关闭以及浏览器前进/后退同步；图库与随笔不再依赖当前分页列表，会按 ID 再拉取详情。详情新增原生分享/复制链接，动态维护 canonical、OG、Twitter Card 与结构化数据；后台和认证页清除门户元信息并标记 `noindex,nofollow`。后端新增 `GET /api/public/diary/:id`、`/sitemap.xml`、`/robots.txt`、`/feed.xml`。后端 `npm test` `331/331`、前端 `npm test` `52/52` 与 `vue-tsc` + Vite 生产构建通过；真实域名与反向代理下的抓取效果待部署环境验证。
 * 私信实时提醒（2026-10-29）：页面可见时每 20 秒轮询未读数和会话；顶栏改为数字未读徽标，私信抽屉与 `/messages` 会话列表静默刷新，当前会话只合并最新一页并保留已加载历史。用户停留在历史位置时新消息显示「有 N 条新私信」按钮，非当前会话收到新消息显示全局提示；页面隐藏时暂停轮询，恢复可见后立即刷新。前端 `npm test` `52/52` 与 `vue-tsc` + Vite 生产构建通过；浏览器端交互待复测。
 * 举报处理效率增强（2026-10-29）：举报页新增侧栏待处理角标、近 14 天状态趋势、时间范围快捷筛选与自定义日期、当页待处理批量选择/处理/忽略，以及单条和批量处理备注；已处理/已忽略卡片会展示备注，恢复待处理时自动清空。新增迁移 `20261029_comment_report_note`（已通过 `npm run db:migrate` 应用于本地开发库）与 `PATCH /api/comment/reports/batch`；列表接口新增成对 `startDate`/`endDate` 校验并回传 `trend`。日期筛选的非法月日不会再触发 500，单边日期返回 400。后端 `npm test` `337/337`、前端 `npm test` `63/63` 与 `vue-tsc` + Vite 生产构建通过；浏览器交互待复测。
+
+* 端到端回归二轮扩展（2026-10-30）：E2E 覆盖由 5 条扩到 11 条，新增举报处理工作台（全选批量标记已处理并带处理备注、自定义日期区间、单条备注处理）、权限矩阵只读态（非超级管理员无保存按钮、列头无批量授予、所有格子锁定）、私信 20 秒轮询（用 `page.clock` 快进验证顶栏徽标 1→2 与「收到来自 读者丙 的新私信」提示）、门户留言墙（留言渲染、提交载荷与回显首位）、举报弹窗边界（未选原因时提交按钮禁用、6 类原因齐备、其他原因可附补充说明）。后端 `npm test` `337/337`、前端 `npm test` `63/63` 与 `vue-tsc` + Vite 生产构建通过，本机 11 条 E2E 全绿。见 `lin_blog/e2e/`。
 
 # LinBlog数据库
 
