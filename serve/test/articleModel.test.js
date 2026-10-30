@@ -40,6 +40,22 @@ test.beforeEach(() => {
     stateSummaryRows = []
 })
 
+test('article list query exposes workflow state for cards', async () => {
+    await articleModel.findArticlesByPage({
+        page: 1,
+        pageSize: 10,
+        offset: 0,
+        classify: 'article',
+        userId: 1,
+        userType: 'admin',
+    })
+
+    const listQuery = calls.find(call => call.sql.includes('FROM article a'))
+    assert.ok(listQuery)
+    assert.match(listQuery.sql, /hasUnpublishedChanges/)
+    assert.match(listQuery.sql, /a\.scheduled_at AS scheduledAt/)
+})
+
 test('article state summary aggregates counts per state and uncategorized', async () => {
     stateSummaryRows = [
         { state: 'published', total: 3 },

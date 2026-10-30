@@ -939,4 +939,57 @@ if (!targetDb) {
         assert.equal(promoted[0].draft_content, null)
         assert.equal(promoted[0].draft_payload, null)
     })
+
+    test('draft images stay referenced and list rows expose workflow state', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const payload = Buffer.from('draft-cover-bytes')
+        await imageModel.createImage({
+            filename: 'it-draft-cover.jpg',
+            mimeType: 'image/jpeg',
+            size: payload.length,
+            checksum: 'b'.repeat(64),
+            data: payload,
+            userId: ids.admin
+        })
+
+        const created = await articleModel.insertArticle({
+            userId: ids.admin,
+            title: '草稿引用图片',
+            content: '<p>正文</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = created.articleId
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+
+        // 工作稿里引用新图片，但线上字段还没有
+        await workflowModel.saveWorkingCopy(articleId, {
+            title: '草稿引用图片',
+            subsetId: ids.subset,
+            classify: 'article',
+            label: '',
+            introduce: '',
+            content: '<p>正文</p><img src="/api/uploads/it-draft-cover.jpg">',
+            cover: '/api/uploads/it-draft-cover.jpg',
+        }, { userId: ids.admin, source: 'autosave', expectedRevision: 0 })
+
+        const kept = await imageModel.deactivateImageIfUnreferenced('it-draft-cover.jpg')
+        assert.equal(kept.deactivated, false)
+        assert.ok(kept.referenceCount >= 1)
+
+        const page = await articleModel.findArticlesByPage({
+            page: 1, pageSize: 10, offset: 0, classify: 'article', userId: ids.admin, userType: 'admin'
+        })
+        const row = page.list.find(item => Number(item.id) === Number(articleId))
+        assert.equal(Boolean(Number(row.hasUnpublishedChanges)), true)
+        assert.equal(row.scheduledAt, null)
+
+        // 发布后草稿字段清空，图片转由线上正文引用，仍然不能删
+        await workflowModel.publishWorkingCopy(articleId, { userId: ids.admin })
+        const afterPublish = await imageModel.deactivateImageIfUnreferenced('it-draft-cover.jpg')
+        assert.equal(afterPublish.deactivated, false)
+    })
 }

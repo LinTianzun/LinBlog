@@ -148,6 +148,8 @@ async function findArticlesByPage(params) {
             (SELECT COUNT(*) FROM comment c2
               WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
+            (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
+            a.scheduled_at AS scheduledAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
             a.published_at AS publishedAt
@@ -264,6 +266,8 @@ async function findAtricleById(articleId, userId, userType) {
             (SELECT COUNT(*) FROM comment c2
               WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
+            (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
+            a.scheduled_at AS scheduledAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
             a.published_at AS publishedAt

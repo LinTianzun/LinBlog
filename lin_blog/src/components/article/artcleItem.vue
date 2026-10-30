@@ -16,6 +16,12 @@
                 <!-- 分类与日期：卡片顶部的信息行，与前台文章卡片的时间/分类语言对齐 -->
                 <div class="article-item-kicker">
                     <span class="article-item-subset">{{ subsetName }}</span>
+                    <span v-if="props.data.hasUnpublishedChanges" class="article-item-workflow is-draft">
+                        有未发布修改
+                    </span>
+                    <span v-if="props.data.scheduledAt" class="article-item-workflow is-scheduled">
+                        {{ scheduledText }} 定时发布
+                    </span>
                     <span class="article-item-date">{{ articleDate }}</span>
                 </div>
 
@@ -126,6 +132,7 @@ const subsetName = computed(
     () => props.data.subsetName || subsetStore.subsetName(props.data.subsetId ?? undefined)
 )
 const coverText = computed(() => props.data.title.trim().slice(0, 1) || '文')
+const scheduledText = computed(() => formatArticleDate(props.data.scheduledAt))
 
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
 const rootComments = computed(() => props.data.rootComments ?? props.data.comments ?? 0)
@@ -246,7 +253,7 @@ const updateState = (state: ArticleState): void => {
     &-kicker {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        flex-wrap: wrap;
         gap: @space-s;
         padding-bottom: @space-s;
         color: var(--admin-muted, @font-color-s);
@@ -265,8 +272,27 @@ const updateState = (state: ArticleState): void => {
 
     &-date {
         flex: none;
+        margin-left: auto;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+    }
+
+    &-workflow {
+        flex: none;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-weight: 500;
+        white-space: nowrap;
+
+        &.is-draft {
+            background: color-mix(in srgb, #d98716 14%, transparent);
+            color: #b8720d;
+        }
+
+        &.is-scheduled {
+            background: color-mix(in srgb, var(--pcolor) 14%, transparent);
+            color: var(--pcolor);
+        }
     }
 
     &-title {

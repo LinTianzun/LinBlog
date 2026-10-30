@@ -37,6 +37,10 @@
                 <yk-button v-if="isEditing" type="secondary" @click="versionPanelOpen = true">
                     版本历史
                 </yk-button>
+                <yk-button v-if="!isEditing && localDraftAvailable" type="secondary"
+                    @click="discardLocalDraft">
+                    丢弃本机草稿
+                </yk-button>
                 <yk-button type="secondary" :loading="submitting === 'save'"
                     @click="submitArticle('save')" :disabled="!canEditCurrent">
                     保存
@@ -185,6 +189,12 @@ import {
 import { optimizeRichContentImages } from '../utils/imageOptimization'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import {
+    clearLocalDraft,
+    hasLocalDraftContent,
+    readLocalDraft,
+    writeLocalDraft,
+} from '../utils/localDraft'
 import ArticleVersionPanel from '../components/article/ArticleVersionPanel.vue'
 
 const editor = defineAsyncComponent(() => import('../components/editor/editor.vue'))
@@ -230,6 +240,7 @@ const versionPanelOpen = ref(false)
 const previewOpen = ref(false)
 const scheduleOpen = ref(false)
 const scheduleValue = ref(defaultScheduleValue())
+const localDraftAvailable = ref(false)
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null
 let saveInFlight = false
@@ -308,7 +319,12 @@ const currentSnapshot = computed<WorkflowSnapshot | null>(() => {
 })
 
 const workflowStatusText = computed(() => {
-    if (!isEditing.value) return '首次保存后开始自动保存'
+    if (!isEditing.value) {
+        if (saveStatus.value === 'saving') return '正在暂存到本机...'
+        if (saveStatus.value === 'dirty') return '有未保存修改'
+        if (localDraftAvailable.value) return '本机草稿已暂存，创建后转为云端自动保存'
+        return '内容会自动暂存在本机，创建后转为云端自动保存'
+    }
     if (workflow.value?.scheduledAt) {
         return `${formatWorkflowTime(workflow.value.scheduledAt)} 定时发布`
     }
@@ -344,6 +360,67 @@ function scheduleAutosave(): void {
     if (!mounted || !isEditing.value || !canEditCurrent.value || applyingRemote) return
     clearAutosaveTimer()
     autosaveTimer = setTimeout(() => void saveWorkingCopy('autosave'), AUTOSAVE_DELAY_MS)
+}
+
+function persistLocalDraft(): void {
+    if (!currentSnapshot.value || !form.value) return
+    const snapshot = currentSnapshot.value
+    saveStatus.value = 'saving'
+    writeLocalDraft('article-new', {
+        title: form.value.title,
+        content: content.value,
+        subsetId: form.value.subsetId ?? null,
+        label: formatArticleLabels(form.value.label),
+        introduce: form.value.introduce,
+        cover: form.value.cover,
+    })
+    localDraftAvailable.value = true
+    lastSavedSnapshot.value = {
+        ...snapshot,
+        title: snapshot.title.trim(),
+        introduce: snapshot.introduce.trim(),
+        cover: snapshot.cover.trim(),
+    }
+    saveStatus.value = 'saved'
+}
+
+function restoreLocalDraft(): void {
+    const draft = readLocalDraft('article-new')
+    if (!hasLocalDraftContent(draft)) return
+
+    const confirmed = window.confirm(
+        `检测到 ${formatWorkflowTime(draft.savedAt)} 暂存在本机的未发布草稿，是否恢复？`
+    )
+    if (!confirmed) return
+
+    applyingRemote = true
+    loadedCopy.value = {
+        title: draft.title,
+        subsetId: draft.subsetId,
+        classify: 'article',
+        label: draft.label,
+        introduce: draft.introduce,
+        content: draft.content,
+        cover: draft.cover,
+        state: 'draft',
+    }
+    content.value = draft.content
+    lastSavedSnapshot.value = null
+    localDraftAvailable.value = true
+    saveStatus.value = 'dirty'
+    void nextTick(() => {
+        applyingRemote = false
+    })
+}
+
+function discardLocalDraft(): void {
+    const confirmed = window.confirm('丢弃本机暂存草稿？此操作不可恢复。')
+    if (!confirmed) return
+
+    clearLocalDraft('article-new')
+    localDraftAvailable.value = false
+    saveStatus.value = 'idle'
+    showMessage('primary', '已丢弃本机草稿')
 }
 
 function buildPayload(): CreateArticleParams {
@@ -502,6 +579,8 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
                     throw new Error(published.message || '文章发布失败')
                 }
             }
+            clearLocalDraft('article-new')
+            localDraftAvailable.value = false
             showMessage('success', action === 'publish' ? '文章已发布' : '文章已保存为草稿')
             await router.push('/article')
             return
@@ -641,8 +720,18 @@ async function reloadForConflict(): Promise<void> {
 watch(
     currentSnapshot,
     (snapshot) => {
-        if (!snapshot || applyingRemote || !isEditing.value || !mounted) return
+        if (!snapshot || applyingRemote || !mounted) return
         if (!canEditCurrent.value) return
+
+        if (!isEditing.value) {
+            // 新建页没有后端 ID：先落本机草稿，保存成功后由提交逻辑清除
+            clearAutosaveTimer()
+            if (!lastSavedSnapshot.value || hasWorkflowChanges(snapshot, lastSavedSnapshot.value)) {
+                saveStatus.value = 'dirty'
+                autosaveTimer = setTimeout(persistLocalDraft, AUTOSAVE_DELAY_MS)
+            }
+            return
+        }
 
         if (hasWorkflowChanges(snapshot, lastSavedSnapshot.value)) {
             saveStatus.value = 'dirty'
@@ -663,6 +752,7 @@ onMounted(() => {
     mounted = true
     window.addEventListener('beforeunload', handleBeforeUnload)
     if (isEditing.value) void loadArticle()
+    else restoreLocalDraft()
 })
 
 onBeforeUnmount(() => {

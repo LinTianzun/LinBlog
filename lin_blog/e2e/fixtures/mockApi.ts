@@ -357,7 +357,23 @@ export async function installApiMock(page: Page): Promise<MockState> {
     if (method === 'GET' && path === '/api/article') {
       const classify = url.searchParams.get('classify')
       const keyword = (url.searchParams.get('keyword') || '').trim()
-      const source = classify === 'image' ? [{ ...galleryItem }] : state.articles
+      const source = classify === 'image'
+        ? state.galleries.map(item => {
+            const workflow = state.workflows[item.id]
+            return {
+              ...item,
+              hasUnpublishedChanges: Boolean(workflow?.hasUnpublishedChanges),
+              scheduledAt: workflow?.scheduledAt ?? null,
+            }
+          })
+        : state.articles.map(item => {
+            const workflow = state.workflows[item.id]
+            return {
+              ...item,
+              hasUnpublishedChanges: Boolean(workflow?.hasUnpublishedChanges),
+              scheduledAt: workflow?.scheduledAt ?? null,
+            }
+          })
       const list = keyword
         ? source.filter(item => item.title.includes(keyword))
         : source

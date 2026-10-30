@@ -37,6 +37,12 @@
                 <!-- 分类与图片数：与前台图库卡片的 kicker + count 信息对齐 -->
                 <div class="gallery-item-kicker">
                     <span class="gallery-item-subset">{{ props.data.subsetName || '未分类' }}</span>
+                    <span v-if="props.data.hasUnpublishedChanges" class="gallery-item-workflow is-draft">
+                        有未发布修改
+                    </span>
+                    <span v-if="props.data.scheduledAt" class="gallery-item-workflow is-scheduled">
+                        {{ formatArticleDate(props.data.scheduledAt) }} 定时发布
+                    </span>
                     <span class="gallery-item-count">
                         <IconCameraOutline />{{ allPhotos.length }} 张
                     </span>
@@ -323,7 +329,7 @@ const deleteGallery = (): void => {
     &-kicker {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        flex-wrap: wrap;
         gap: @space-s;
         padding: 12px 14px 0;
         color: var(--admin-muted, @font-color-s);
@@ -345,11 +351,30 @@ const deleteGallery = (): void => {
         align-items: center;
         gap: 4px;
         flex: none;
+        margin-left: auto;
         font-variant-numeric: tabular-nums;
 
         :deep(.yk-icon) {
             width: 14px;
             height: 14px;
+        }
+    }
+
+    &-workflow {
+        flex: none;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-weight: 500;
+        white-space: nowrap;
+
+        &.is-draft {
+            background: color-mix(in srgb, #d98716 14%, transparent);
+            color: #b8720d;
+        }
+
+        &.is-scheduled {
+            background: color-mix(in srgb, var(--pcolor) 14%, transparent);
+            color: var(--pcolor);
         }
     }
 

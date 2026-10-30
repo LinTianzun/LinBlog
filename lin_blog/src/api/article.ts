@@ -28,6 +28,11 @@ export interface ArticleItem {
 
   state: ArticleDatabaseState;
 
+  /** 已发布内容存在未上线的工作稿 */
+  hasUnpublishedChanges?: boolean;
+  /** 计划发布时间；有值时表示已安排定时发布 */
+  scheduledAt?: string | null;
+
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;

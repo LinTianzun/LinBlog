@@ -19,16 +19,19 @@ function findActiveImageByFilename(filename) {
     )
 }
 
-// 统计一张图片仍被业务数据引用的数量：文章封面/内容、日记图片、用户头像。
+// 统计一张图片仍被业务数据引用的数量：文章封面/内容（含未发布的工作稿）、
+// 日记图片、用户头像。工作稿必须一起统计，否则草稿里引用的图片会被当成孤儿软删。
 function countImageReferences(filename, exec = db.query) {
     const pattern = `%${filename}%`
     return exec(
         `SELECT
             (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND cover LIKE ?) +
             (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_payload LIKE ?) +
             (SELECT COUNT(*) FROM diary WHERE status = 1 AND picture LIKE ?) +
             (SELECT COUNT(*) FROM users WHERE imgurl LIKE ?) AS referenceCount`,
-        [pattern, pattern, pattern, pattern]
+        [pattern, pattern, pattern, pattern, pattern, pattern]
     )
 }
 

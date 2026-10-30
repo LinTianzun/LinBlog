@@ -222,3 +222,17 @@ test('unsupported image variant widths are rejected before querying the database
         imageModel.findActiveImageByFilename = originalFind
     }
 })
+
+test('image reference counting includes unpublished working copies', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        return [{ referenceCount: 0 }]
+    }
+
+    await imageModel.deactivateImageIfUnreferenced('draft-cover.jpg', exec)
+    assert.equal(calls.length, 2)
+    assert.match(calls[0].sql, /draft_content LIKE \?/)
+    assert.match(calls[0].sql, /draft_payload LIKE \?/)
+    assert.equal(calls[0].values.length, 6)
+})
