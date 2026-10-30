@@ -64,6 +64,7 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     messages: ['message.private'],
     localfile: ['file.view'],
     article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
+    scheduledPublish: ['article.publish', 'gallery.publish'],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
     setting: [],
@@ -89,7 +90,7 @@ const menuGroups = computed(() => {
         },
         {
             label: '内容',
-            paths: ['localfile', 'article', 'gallery', 'diary'],
+            paths: ['localfile', 'article', 'scheduledPublish', 'gallery', 'diary'],
         },
         {
             label: '系统',

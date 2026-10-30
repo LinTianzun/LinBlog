@@ -63,6 +63,7 @@ const PROTECTED_ROUTES: { path: string; permissions: string[] }[] = [
     { path: '/systemLog', permissions: ['systemLog.view'] },
     { path: '/localfile', permissions: ['file.view'] },
     { path: '/article', permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'] },
+    { path: '/scheduledPublish', permissions: ['article.publish', 'gallery.publish'] },
     { path: '/gallery', permissions: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'] },
     { path: '/diary', permissions: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'] },
     { path: '/editarticle', permissions: ['article.create', 'article.manageOwn', 'article.manageAll'] },
@@ -245,6 +246,9 @@ describe('编辑角色', () => {
         assert.equal(guard(target('/editgallery', {
             permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
         })), undefined)
+        assert.equal(guard(target('/scheduledPublish', {
+            permissions: ['article.publish', 'gallery.publish']
+        })), undefined)
     })
 
     it('可进入随笔列表页', () => {
@@ -313,6 +317,12 @@ describe('普通用户', () => {
         })), undefined)
     })
 
+    it('没有发布权限时不能进入定时发布工作台', () => {
+        assert.equal(guard(target('/scheduledPublish', {
+            permissions: ['article.publish', 'gallery.publish']
+        })), '/setting')
+    })
+
     it('无权查看全部文章时仍可进入列表页（命中 create 即放行）', () => {
         const result = guard(target('/article', {
             permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
@@ -369,6 +379,9 @@ describe('游客角色', () => {
         assert.equal(guard(target('/editgallery', {
             permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll']
         })), '/setting')
+        assert.equal(guard(target('/scheduledPublish', {
+            permissions: ['article.publish', 'gallery.publish']
+        })), '/setting')
     })
 
     it('无权进入本地文件页，回落到系统设置', () => {
@@ -423,6 +436,13 @@ describe('多权限声明的 OR 语义', () => {
         assert.equal(guard(target('/article', {
             permissions: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll']
         })), '/setting')
+    })
+
+    it('仅命中 gallery.publish 即可进入定时发布工作台', () => {
+        guard = createRouteGuard(() => makeSession(['gallery.publish']))
+        assert.equal(guard(target('/scheduledPublish', {
+            permissions: ['article.publish', 'gallery.publish']
+        })), undefined)
     })
 
     it('有 overview.viewAll 但无文章权限时回落到总览', () => {

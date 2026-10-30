@@ -18,6 +18,7 @@ import {
     IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
+    IconTimeOutline,
     IconWarningOutline,
 } from '@yike-design/ui/es/components/svg-icon'
 
@@ -32,6 +33,7 @@ const iconMap: Record<string, Component> = {
     IconSecurityOutline,
     IconSettingsFill,
     IconStatisticsFill,
+    IconTimeOutline,
     IconWarningOutline,
 }
 

@@ -393,6 +393,54 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === '/api/article/scheduled') {
+      const classify = url.searchParams.get('classify')
+      const requestedPage = Math.max(1, Number(url.searchParams.get('page') || 1))
+      const requestedPageSize = Math.max(1, Number(url.searchParams.get('pageSize') || 20))
+      const scheduled = Object.values(state.workflows)
+        .filter(workflow => Boolean(workflow.scheduledAt))
+        .map(workflow => {
+          const target =
+            state.articles.find(item => item.id === workflow.articleId) ||
+            state.galleries.find(item => item.id === workflow.articleId)
+          if (!target) return null
+          return {
+            id: target.id,
+            userId: target.userId,
+            ownerName: target.userId === owner.id ? owner.name : '未知作者',
+            title: workflow.workingCopy.title || target.title,
+            classify: workflow.classify,
+            state: workflow.state,
+            scheduledAt: workflow.scheduledAt as string,
+            hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+            draftSavedAt: workflow.hasUnpublishedChanges ? workflow.savedAt : null,
+            updatedAt: target.updatedAt,
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .filter(item => !classify || item.classify === classify)
+        .sort((left, right) =>
+          new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime()
+        )
+
+      const now = Date.now()
+      const total = scheduled.length
+      const start = (requestedPage - 1) * requestedPageSize
+      await fulfill({
+        list: scheduled.slice(start, start + requestedPageSize),
+        total,
+        page: requestedPage,
+        pageSize: requestedPageSize,
+        totalPage: Math.ceil(total / requestedPageSize),
+        summary: {
+          total,
+          upcoming: scheduled.filter(item => new Date(item.scheduledAt).getTime() > now).length,
+          overdue: scheduled.filter(item => new Date(item.scheduledAt).getTime() <= now).length,
+        },
+      })
+      return
+    }
+
     // 后台文章详情（编辑页据此判断状态与归属）
     const articleDetailMatch = path.match(/^\/api\/article\/(\d+)$/)
     if (method === 'GET' && articleDetailMatch) {

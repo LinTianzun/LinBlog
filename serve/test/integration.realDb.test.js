@@ -895,6 +895,71 @@ if (!targetDb) {
         assert.equal(stillDue.some(row => Number(row.id) === Number(articleId)), false)
     })
 
+    test('scheduled queue reports upcoming and overdue items with ownership scope', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const upcoming = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '未来待发布',
+            content: '<p>未来正文</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const overdue = await articleModel.insertArticle({
+            userId: ids.admin,
+            title: '逾期待发布',
+            content: JSON.stringify(['/api/uploads/1.jpg']),
+            classify: 'image',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: '/api/uploads/1.jpg'
+        })
+        await db.query(
+            "UPDATE article SET state = 'published', scheduled_at = ? WHERE id = ?",
+            [new Date(Date.now() + 60 * 60 * 1000), upcoming.articleId]
+        )
+        await db.query(
+            "UPDATE article SET state = 'published', scheduled_at = ? WHERE id = ?",
+            [new Date(Date.now() - 60 * 1000), overdue.articleId]
+        )
+
+        const ownQueue = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 10,
+            scopes: [{ classify: 'article', manageOwn: true }],
+            userId: ids.normal,
+        })
+        assert.ok(ownQueue.list.some(row => Number(row.id) === Number(upcoming.articleId)))
+        assert.equal(ownQueue.list.some(row => Number(row.id) === Number(overdue.articleId)), false)
+        assert.ok(ownQueue.summary.total >= 1)
+
+        const allQueue = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 10,
+            scopes: [
+                { classify: 'article', manageAll: true },
+                { classify: 'image', manageAll: true },
+            ],
+            userId: ids.admin,
+        })
+        const overdueRow = allQueue.list.find(row => Number(row.id) === Number(overdue.articleId))
+        assert.ok(overdueRow)
+        assert.equal(overdueRow.classify, 'image')
+        assert.equal(overdueRow.ownerName, '管理员')
+        assert.ok(allQueue.summary.overdue >= 1)
+
+        const filtered = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 10,
+            classify: 'image',
+            scopes: [{ classify: 'image', manageAll: true }],
+            userId: ids.admin,
+        })
+        assert.ok(filtered.list.every(row => row.classify === 'image'))
+    })
+
     test('gallery versions expose photo counts and status changes promote the working copy', async () => {
         const workflowModel = require('../model/dbModel/articleWorkflow/index')
 

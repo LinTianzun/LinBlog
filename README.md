@@ -33,7 +33,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | 评论、消息 | 已接入真实 API：文章评论列表/两级回复/展开收起/删除、评论点赞与举报（举报需选择原因，本人评论不可举报）、举报数展示、后台举报处理页（原因/来源/状态/时间筛选、14 天趋势、待处理角标、单条或批量处理、处理备注、删除评论）、私信会话回复、一键已读、顶栏数字未读徽标与私信跳转均可用；页面可见时每 20 秒自动刷新会话和未读数，非当前会话新消息有提示，滚动到历史位置时可点击「新私信」回到最新；门户留言墙展示所有留言与每位用户的首条私信，后续聊天不会二次公开；前台与后台文章详情共用同一套评论互动能力。 |
 | 文件 | 本地文件已接入数据库：上传（多选、单文件 20MB 上限）、图片/文件/视频/压缩包分组、批量移动与删除、下载与缩略图。 |
 | 图库 | 摄影图库已接入数据库：图片集创建/编辑/发布/撤回、瀑布流展示、分组与文章分组共用（分组仅在文章页维护）。 |
-| 内容创作工作流 | 文章与图库编辑页支持自动保存（停写 1.5 秒触发，只写工作稿不动线上内容）、发布前预览、定时发布（30 秒轮询到点自动应用工作稿并发布）与版本历史/回滚（每篇保留最近 50 个快照，回滚生成新工作稿不覆盖历史）。工作稿与已发布内容分离在 `article.draft_*` 字段，乐观锁用 `draft_revision` 防多窗口覆盖。**新建页还没有后端 ID**，因此先把内容暂存到 `localStorage`（刷新/崩溃后可恢复），创建成功后自动清除；列表卡片回传 `hasUnpublishedChanges` / `scheduledAt`，直接显示「有未发布修改」与「定时发布」角标。见 `serve/model/dbModel/articleWorkflow/index.js`、`serve/utils/articleScheduler.js`、`lin_blog/src/utils/localDraft.ts`、`lin_blog/src/views/EditArticle.vue`、`lin_blog/src/views/EditGallery.vue`、`Documentation/内容创作工作流.md`。 |
+| 内容创作工作流 | 文章与图库编辑页支持自动保存（停写 1.5 秒触发，只写工作稿不动线上内容）、发布前预览、定时发布（30 秒轮询到点自动应用工作稿并发布）与版本历史/回滚（每篇保留最近 50 个快照，回滚生成新工作稿不覆盖历史）。工作稿与已发布内容分离在 `article.draft_*` 字段，乐观锁用 `draft_revision` 防多窗口覆盖。**新建页还没有后端 ID**，因此先把内容暂存到 `localStorage`（刷新/崩溃后可恢复），创建成功后自动清除；列表卡片回传 `hasUnpublishedChanges` / `scheduledAt`，直接显示「有未发布修改」与「定时发布」角标。新增侧栏「内容 → 定时发布」工作台，按账号作用域汇总文章与图库待发布队列，支持类型筛选、改期、立即发布、取消计划和逾期告警。见 `serve/model/dbModel/articleWorkflow/index.js`、`serve/utils/articleScheduler.js`、`lin_blog/src/utils/localDraft.ts`、`lin_blog/src/views/ScheduledPublishView.vue`、`lin_blog/src/views/EditArticle.vue`、`lin_blog/src/views/EditGallery.vue`、`Documentation/内容创作工作流.md`。 |
 | 日记 | 随笔随记已接入数据库：天气图标字典与前端对齐（8 种）、图片上限 6 张、按天记录；公开列表支持按天气名在 SQL 层过滤。 |
 | 总览 | 四张统计卡片（文件总大小、文章、图库、日记数量）走聚合接口 `GET /api/overview/summary`；访问量折线图与设备/系统分布饼图走 `GET /api/overview/visitStats`，近一周/近一月切换相互独立。 |
 
@@ -71,7 +71,7 @@ npm --prefix lin_blog test       # 前端纯函数与路由守卫单测
 npm --prefix lin_blog run test:e2e   # Playwright 端到端（自动拉起 Vite dev server）
 ```
 
-E2E 覆盖 18 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）、编辑器代码块高亮（CSS/HTML/JavaScript 产生 token、未收录语言只失去着色、语言菜单可切到 JavaScript）、后台内容流（文章撤回发布与删除、关键词搜索带上 keyword 参数、图库列表渲染并进入编辑页、随笔新建与删除）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
+E2E 覆盖 27 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）、编辑器代码块高亮（CSS/HTML/JavaScript 产生 token、未收录语言只失去着色、语言菜单可切到 JavaScript）、后台内容流（文章撤回发布与删除、关键词搜索带上 keyword 参数、图库列表渲染并进入编辑页、随笔新建与删除）、内容工作流（文章/图库自动保存、预览、版本面板、定时发布、列表角标、新建页恢复）与定时发布工作台（逾期告警、改期、立即发布、取消计划）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
 
 `.github/workflows/ci.yml` 在 push / PR 到 `main` 时依次执行后端测试、前端单测与生产构建、Playwright E2E，并上传 `playwright-report/` 与 `test-results/` 作为构建产物。见 `lin_blog/playwright.config.ts`、`lin_blog/e2e/`。
 
@@ -110,7 +110,7 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 | 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
 | 系统日志 | `GET /api/systemLog` | 仅管理员；记录登录与各模块写操作（创建/更新/删除、目标类型与 IP），支持分页、关键词搜索与时间排序（`sortOrder=asc|desc`，默认 `desc`）。 |
 | 数据库备份 | `GET /api/backup`、`GET /api/backup/history`、`POST /api/backup`、`GET /api/backup/:filename/download`、`POST /api/backup/restore-drill`、`POST /api/backup/prune`、`DELETE /api/backup/:filename` | `backup.view` 可查看总览与历史，`backup.manage` 才能备份、下载、删除、清理与演练；恢复演练还原到隔离临时库并在验证后自动删库。 |
-| 内容工作流 | `GET /api/article/:id/workflow`、`POST /api/article/:id/workflow/draft`、`GET /api/article/:id/versions`、`GET /api/article/:id/versions/:versionId`、`POST /api/article/:id/versions/:versionId/restore`、`POST /api/article/:id/workflow/publish`、`POST /api/article/:id/workflow/schedule`、`DELETE /api/article/:id/workflow/schedule` | 需要 Bearer Token，文章与图库共用，权限按内容类型取 `article.*` / `gallery.*` 前缀。保存工作稿带 `revision` 乐观锁，版本不一致返回 409；已发布内容自动保存只写工作稿，发布或撤回时才落到线上字段；定时发布至少需晚于当前 1 分钟。 |
+| 内容工作流 | `GET /api/article/scheduled`、`GET /api/article/:id/workflow`、`POST /api/article/:id/workflow/draft`、`GET /api/article/:id/versions`、`GET /api/article/:id/versions/:versionId`、`POST /api/article/:id/versions/:versionId/restore`、`POST /api/article/:id/workflow/publish`、`POST /api/article/:id/workflow/schedule`、`DELETE /api/article/:id/workflow/schedule` | 需要 Bearer Token，文章与图库共用，权限按内容类型取 `article.*` / `gallery.*` 前缀。`/api/article/scheduled` 返回当前账号可管理的待发布队列及即将发布/逾期统计，支持 `classify=article\|image`；保存工作稿带 `revision` 乐观锁，版本不一致返回 409；已发布内容自动保存只写工作稿，发布或撤回时才落到线上字段；定时发布至少需晚于当前 1 分钟。 |
 
 用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，文章列表、编辑器和详情弹窗已调用真实接口。
 
@@ -122,7 +122,7 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 
 **数据库备份与恢复演练**：图片以 `MEDIUMBLOB` 存在数据库里，附件目录备份无法恢复站点，因此服务内置数据库逻辑备份：每天 03:00（可配）用一致性快照导出 gzip JSONL（`.linbak.gz`），按保留份数自动清理；不依赖 `mysqldump`/`mysql` 客户端，容器与 Windows 本地都能运行。备份按外键依赖排序，`BLOB` 十六进制编码，并按字节切块避免恢复时超过 `max_allowed_packet`。后台「系统设置 → 系统信息 → 数据库备份」支持手动备份、下载、删除、清理过期与**隔离恢复演练**（还原到 `linlog_drill_<随机>` 临时库验证后自动删库），`backup.view` 只读、`backup.manage` 可写。命令行提供 `npm run db:backup`、`npm run db:restore -- <文件> --drill` 与 `scripts/verify-restore.js`（逐表行数 + 图片 SHA-256 核对）。完整操作与故障恢复步骤见 [Documentation/数据库备份与恢复.md](Documentation/数据库备份与恢复.md)。
 
-**内容创作工作流**：文章与摄影图库编辑页具备自动保存、发布前预览、定时发布与版本历史/回滚。已发布内容与编辑工作稿分离存储：自动保存只写 `article.draft_*`，读者看到的线上正文不会被半成品覆盖，直到作者点「发布」；撤回或草稿转发布时工作稿会落到线上字段，未发布的修改不会丢。版本链只追加不覆盖（每篇保留最近 50 个快照），回滚会生成新的工作稿并追加一条 `rollback` 快照，随时还能再退回去。定时发布由服务内调度器每 30 秒扫描，到点自动应用工作稿并发布，多实例部署下不会重复执行。**新建文章/图库在首次保存前没有后端 ID，内容会先暂存到本机 `localStorage`，刷新或崩溃后进入页面会提示恢复，创建成功后自动清除**；文章与图库列表卡片会显示「有未发布修改」和「定时发布」角标。完整设计与接口说明见 [Documentation/内容创作工作流.md](Documentation/内容创作工作流.md)。
+**内容创作工作流**：文章与摄影图库编辑页具备自动保存、发布前预览、定时发布与版本历史/回滚。已发布内容与编辑工作稿分离存储：自动保存只写 `article.draft_*`，读者看到的线上正文不会被半成品覆盖，直到作者点「发布」；撤回或草稿转发布时工作稿会落到线上字段，未发布的修改不会丢。版本链只追加不覆盖（每篇保留最近 50 个快照），回滚会生成新的工作稿并追加一条 `rollback` 快照，随时还能再退回去。定时发布由服务内调度器每 30 秒扫描，到点自动应用工作稿并发布，多实例部署下不会重复执行；持续失败的同一条计划只记录一次系统告警，避免刷日志。**新建文章/图库在首次保存前没有后端 ID，内容会先暂存到本机 `localStorage`，刷新或崩溃后进入页面会提示恢复，创建成功后自动清除**；文章与图库列表卡片会显示「有未发布修改」和「定时发布」角标。侧栏「定时发布」工作台按内容类型和账号可管理范围展示计划，到点未成功发布的项标红告警，可直接改期、立即发布或取消计划。完整设计与接口说明见 [Documentation/内容创作工作流.md](Documentation/内容创作工作流.md)。
 
 ### 当前限制与待办
 
@@ -132,7 +132,7 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 后端 `npm test` 当前 `396/396` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与后台举报处理（状态机、日期范围、批量处理、处理备注、原因/来源/状态筛选、图库来源按 a.classify 拆分、权限与系统日志）、私信角色边界与留言墙/私信渠道隔离、门户详情深链接、sitemap/RSS/robots、门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `399/399` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与后台举报处理（状态机、日期范围、批量处理、处理备注、原因/来源/状态筛选、图库来源按 a.classify 拆分、权限与系统日志）、内容工作流（工作稿隔离、乐观锁、版本回滚、定时发布、待发布队列作用域与逾期统计、失败告警去重）、私信角色边界与留言墙/私信渠道隔离、门户详情深链接、sitemap/RSS/robots、门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
 
 ### 当前验证状态
 

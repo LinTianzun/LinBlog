@@ -105,6 +105,43 @@ async function getWorkflow(req, res) {
     }
 }
 
+/**
+ * 定时发布工作台队列。
+ * 只有同时拥有发布权与「管理全部 / 管理自己」作用域的内容类型才进入查询；
+ * 普通作者只能看到本人内容，编辑/管理员可按类型查看全站队列。
+ */
+async function getScheduledQueue(req, res) {
+    try {
+        const classify = req.query?.classify
+        if (classify && !['article', 'image'].includes(classify)) {
+            return sendError(res, 400, '内容类型仅支持 article/image')
+        }
+
+        const scopes = ['article', 'image']
+            .map((type) => ({
+                classify: type,
+                ...getArticleScope(req.user, type),
+            }))
+            .filter((scope) => scope.publish && (scope.manageAll || scope.manageOwn))
+
+        if (scopes.length === 0) {
+            return sendError(res, 403, '当前账号没有定时发布管理权限')
+        }
+
+        const result = await articleWorkflowModel.listScheduledArticles({
+            page: req.query?.page,
+            pageSize: req.query?.pageSize,
+            classify: classify || null,
+            scopes,
+            userId: req.user.userId,
+        })
+
+        res.json({ code: 200, message: '查询成功', data: result })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '读取定时发布队列失败：' + err.message })
+    }
+}
+
 async function saveDraft(req, res) {
     try {
         const articleId = parsePositiveId(req.params.id)
@@ -332,6 +369,7 @@ async function cancelSchedule(req, res) {
         const access = await resolveAccess(req, articleId, 'status')
         if (!access.exists) return sendError(res, 404, '文章不存在或已删除')
         if (!access.allowed) return sendError(res, 403, '无权限取消该文章的计划发布')
+        if (!access.scope.publish) return sendError(res, 403, '当前账号没有发布权限')
 
         const cleared = await articleWorkflowModel.clearScheduledArticle(articleId)
         if (!cleared) return sendError(res, 404, '文章不存在或没有待执行的计划发布')
@@ -353,6 +391,7 @@ async function cancelSchedule(req, res) {
 
 module.exports = {
     getWorkflow,
+    getScheduledQueue,
     saveDraft,
     getVersions,
     getVersion,

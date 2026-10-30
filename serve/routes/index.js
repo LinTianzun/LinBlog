@@ -8,10 +8,10 @@ module.exports = (app) => {
     require('./comment')(app)
     //  引入点赞相关路由
     require('./praise')(app)
+    // 文章工作流含 /api/article/scheduled 固定路径，必须先于 article 的动态 /:id 挂载。
+    require('./articleWorkflow')(app)
     //  引入文章相关路由
     require('./article')(app)
-    // 文章自动保存、预览、版本历史与定时发布
-    require('./articleWorkflow')(app)
     //  引入消息相关路由
     require('./message')(app)
     //  引入随笔门户互动路由（点赞/评论）

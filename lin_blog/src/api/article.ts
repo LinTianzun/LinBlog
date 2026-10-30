@@ -177,6 +177,40 @@ export interface ArticleVersionPage {
   totalPage: number;
 }
 
+export interface ScheduledArticleItem {
+  id: number;
+  userId: number | null;
+  ownerName: string | null;
+  title: string;
+  classify: ArticleClassify;
+  state: ArticleDatabaseState;
+  scheduledAt: string;
+  hasUnpublishedChanges: boolean;
+  draftSavedAt: string | null;
+  updatedAt: string;
+}
+
+export interface ScheduledArticleSummary {
+  total: number;
+  upcoming: number;
+  overdue: number;
+}
+
+export interface ScheduledArticlePage {
+  list: ScheduledArticleItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+  summary: ScheduledArticleSummary;
+}
+
+export interface ScheduledArticleParams {
+  page?: number;
+  pageSize?: number;
+  classify?: ArticleClassify;
+}
+
 const articleStateLabels: Record<ArticleState, string> = {
   draft: "草稿",
   published: "已发布",
@@ -361,4 +395,11 @@ export function cancelArticleSchedule(id: number) {
   return request.delete<ApiResult<{ articleId: number }>>(
     `/article/${id}/workflow/schedule`
   );
+}
+
+// 定时发布工作台：按内容类型与当前账号可管理范围收窄
+export function getScheduledArticles(params: ScheduledArticleParams = {}) {
+  return request.get<ApiResult<ScheduledArticlePage>>("/article/scheduled", {
+    params,
+  });
 }

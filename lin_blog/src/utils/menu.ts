@@ -48,6 +48,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconFileFill'
     },
     {
+        path: 'scheduledPublish',
+        name: '定时发布',
+        icon: 'IconTimeOutline'
+    },
+    {
         path: 'gallery',
         name: '摄影图库',
         icon: 'IconImageFill'

@@ -375,6 +375,88 @@ async function findDueScheduledArticles(limit = 20) {
     )
 }
 
+/**
+ * 定时发布工作台队列。
+ * 只返回仍挂在 article.scheduled_at 上的内容；其中 scheduled_at <= NOW()
+ * 的项代表调度器尚未成功发布（常见于进程停机或发布异常），前端作为逾期告警展示。
+ */
+async function listScheduledArticles({
+    page = 1,
+    pageSize = 20,
+    classify = null,
+    scopes = [],
+    userId = null,
+} = {}) {
+    const safePage = Math.max(1, Number(page) || 1)
+    const safePageSize = Math.min(50, Math.max(1, Number(pageSize) || 20))
+    const offset = (safePage - 1) * safePageSize
+
+    const where = ['a.state != ?', 'a.scheduled_at IS NOT NULL']
+    const values = ['deleted']
+
+    if (classify && ['article', 'image'].includes(classify)) {
+        where.push('a.classify = ?')
+        values.push(classify)
+    }
+
+    const accessClauses = []
+    for (const scope of Array.isArray(scopes) ? scopes : []) {
+        if (!scope || !['article', 'image'].includes(scope.classify)) continue
+        if (classify && scope.classify !== classify) continue
+        if (scope.manageAll) {
+            accessClauses.push('a.classify = ?')
+            values.push(scope.classify)
+        } else if (scope.manageOwn && Number.isSafeInteger(Number(userId))) {
+            accessClauses.push('(a.classify = ? AND a.user_id = ?)')
+            values.push(scope.classify, Number(userId))
+        }
+    }
+    if (accessClauses.length === 0) {
+        where.push('1 = 0')
+    } else {
+        where.push(`(${accessClauses.join(' OR ')})`)
+    }
+
+    const whereSql = where.join(' AND ')
+    const list = await query(
+        `SELECT a.id, a.user_id AS userId, u.username AS ownerName,
+                a.title, a.classify, a.state, a.scheduled_at AS scheduledAt,
+                (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
+                a.draft_saved_at AS draftSavedAt, a.updated_at AS updatedAt
+         FROM article a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE ${whereSql}
+         ORDER BY a.scheduled_at ASC, a.id ASC
+         LIMIT ? OFFSET ?`,
+        [...values, safePageSize, offset]
+    )
+    const [totalRow] = await query(
+        `SELECT COUNT(*) AS total FROM article a WHERE ${whereSql}`,
+        values
+    )
+    const [summaryRow] = await query(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN a.scheduled_at > NOW() THEN 1 ELSE 0 END) AS upcoming,
+                SUM(CASE WHEN a.scheduled_at <= NOW() THEN 1 ELSE 0 END) AS overdue
+         FROM article a
+         WHERE ${whereSql}`,
+        values
+    )
+    const total = Number(totalRow?.total) || 0
+    return {
+        list,
+        total,
+        page: safePage,
+        pageSize: safePageSize,
+        totalPage: Math.ceil(total / safePageSize),
+        summary: {
+            total,
+            upcoming: Number(summaryRow?.upcoming) || 0,
+            overdue: Number(summaryRow?.overdue) || 0,
+        },
+    }
+}
+
 async function clearScheduledArticle(articleId) {
     const result = await query(
         `UPDATE article
@@ -573,6 +655,7 @@ module.exports = {
     schedulePublish,
     clearSchedule,
     findDueScheduledArticles,
+    listScheduledArticles,
     publishScheduledArticle,
     publishWorkingCopy,
     clearScheduledArticle,

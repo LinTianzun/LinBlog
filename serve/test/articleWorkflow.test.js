@@ -17,6 +17,8 @@ let versionRows = []
 let dueRows = []
 let transactionHandler = null
 let mutationAccess = null
+let scheduledPageRows = []
+let scheduledSummaryRow = null
 
 async function query(sql, values = []) {
     calls.push({ sql, values })
@@ -31,6 +33,19 @@ async function query(sql, values = []) {
         return versionRows
     }
     if (sql.includes('FROM article')) {
+        if (sql.includes('SUM(CASE WHEN a.scheduled_at')) {
+            return [scheduledSummaryRow || {
+                total: scheduledPageRows.length,
+                upcoming: scheduledPageRows.filter(row => String(row.scheduledAt) > new Date().toISOString()).length,
+                overdue: scheduledPageRows.filter(row => String(row.scheduledAt) <= new Date().toISOString()).length,
+            }]
+        }
+        if (sql.includes('scheduled_at IS NOT NULL') && sql.includes('COUNT(*)')) {
+            return [{ total: scheduledPageRows.length }]
+        }
+        if (sql.includes('LEFT JOIN users')) {
+            return scheduledPageRows
+        }
         if (sql.includes('scheduled_at <= NOW()')) return dueRows
         return articleRows
     }
@@ -109,14 +124,16 @@ Module._load = function (request, parent, isMain) {
         }
         if (request === '../utils/accessControl') {
             return {
-                getArticleScope: (user) => {
-                    const publish = user?.permissions?.includes('article.publish')
+                getArticleScope: (user, classify = 'article') => {
+                    const prefix = classify === 'image' ? 'gallery' : 'article'
+                    const permissions = user?.permissions || []
                     return {
-                        viewAll: true,
-                        viewOwn: true,
-                        manageAll: true,
-                        manageOwn: true,
-                        publish: publish === true,
+                        viewAll: permissions.includes(`${prefix}.viewAll`),
+                        viewOwn: permissions.includes(`${prefix}.create`) ||
+                            permissions.includes(`${prefix}.manageOwn`),
+                        manageAll: permissions.includes(`${prefix}.manageAll`),
+                        manageOwn: permissions.includes(`${prefix}.manageOwn`),
+                        publish: permissions.includes(`${prefix}.publish`),
                     }
                 },
             }
@@ -124,11 +141,17 @@ Module._load = function (request, parent, isMain) {
         if (request === '../utils/logHelper') {
             return { writeSystemLog: payload => calls.push({ sql: 'LOG', values: [payload] }) }
         }
+        if (request === '../utils/coverCleanup') {
+            return { cleanupCover: async cover => calls.push({ sql: 'CLEAN_COVER', values: [cover] }) }
+        }
     }
     if (parent?.filename === schedulerPath) {
         if (request === '../model/dbModel/articleWorkflow/index') return workflowModel
         if (request === './logHelper') {
             return { writeSystemLog: payload => calls.push({ sql: 'LOG', values: [payload] }) }
+        }
+        if (request === './coverCleanup') {
+            return { cleanupCover: async cover => calls.push({ sql: 'CLEAN_COVER', values: [cover] }) }
         }
     }
     return originalLoad.call(this, request, parent, isMain)
@@ -184,6 +207,8 @@ test.beforeEach(() => {
     dueRows = []
     transactionHandler = null
     mutationAccess = null
+    scheduledPageRows = []
+    scheduledSummaryRow = null
 })
 
 test('published articles keep their online fields while a working copy is saved', async () => {
@@ -318,6 +343,66 @@ test('scheduled publishing only runs due rows and clears the schedule', async ()
     ))
 })
 
+test('scheduled queue applies per-classify manage scopes and overdue summary', async () => {
+    scheduledPageRows = [
+        {
+            id: 10,
+            userId: 1,
+            ownerName: '林知雨',
+            title: '即将发布',
+            classify: 'article',
+            state: 'published',
+            scheduledAt: '2030-01-01T00:00:00.000Z',
+            hasUnpublishedChanges: 1,
+            draftSavedAt: null,
+            updatedAt: '2026-10-30T00:00:00.000Z',
+        },
+        {
+            id: 11,
+            userId: 1,
+            ownerName: '林知雨',
+            title: '已经逾期',
+            classify: 'image',
+            state: 'published',
+            scheduledAt: '2020-01-01T00:00:00.000Z',
+            hasUnpublishedChanges: 0,
+            draftSavedAt: null,
+            updatedAt: '2026-10-30T00:00:00.000Z',
+        },
+    ]
+    scheduledSummaryRow = { total: 2, upcoming: 1, overdue: 1 }
+
+    const result = await workflowModel.listScheduledArticles({
+        page: 1,
+        pageSize: 20,
+        scopes: [
+            { classify: 'article', manageAll: false, manageOwn: true },
+            { classify: 'image', manageAll: true, manageOwn: false },
+        ],
+        userId: 7,
+    })
+
+    assert.equal(result.total, 2)
+    assert.equal(result.summary.overdue, 1)
+    const listQuery = calls.find(call => call.sql.includes('LEFT JOIN users'))
+    assert.ok(listQuery)
+    assert.match(listQuery.sql, /a\.classify = \? AND a\.user_id = \?/)
+    assert.match(listQuery.sql, /a\.classify = \?/)
+    assert.match(listQuery.sql, /a\.scheduled_at IS NOT NULL/)
+    assert.match(listQuery.sql, /ORDER BY a\.scheduled_at ASC/)
+    assert.ok(listQuery.values.includes('article'))
+    assert.ok(listQuery.values.includes(7))
+})
+
+test('scheduled queue controller returns 403 without publish or manage scope', async () => {
+    const denied = makeResponse()
+    await controller.getScheduledQueue({
+        query: {},
+        user: { userId: 1, permissions: ['article.manageOwn'] },
+    }, denied)
+    assert.equal(denied.statusCode, 403)
+})
+
 test('workflow controller returns 409 for stale revisions and 403 without publish scope', async () => {
     articleRows = [makeArticle({ draftRevision: 2 })]
     transactionHandler = (sql) => {
@@ -377,6 +462,32 @@ test('scheduler publishes due rows and records an audit log', async () => {
     assert.ok(calls.some(call =>
         call.sql === 'LOG' && call.values[0].detail === '定时发布已执行'
     ))
+})
+
+test('scheduler logs a failure once while the same overdue row remains stuck', async () => {
+    dueRows = [{ id: 10, userId: 1, classify: 'article' }]
+    articleRows = [makeArticle({
+        scheduledAt: '2026-10-01T00:00:00.000Z',
+        draftRevision: 1,
+        draftContent: '<p>定时正文</p>',
+        draftPayload: JSON.stringify({ title: '定时标题', classify: 'article' }),
+    })]
+    transactionHandler = (sql) => {
+        if (sql.includes("state = 'published'") && sql.includes('scheduled_at = NULL')) {
+            throw new Error('数据库暂时不可用')
+        }
+        return { affectedRows: 1 }
+    }
+
+    const runner = scheduler.startArticleScheduler({ intervalMs: 60_000 })
+    await new Promise(resolve => setImmediate(resolve))
+    await runner.runOnce()
+    runner.stop()
+
+    const failureLogs = calls.filter(call =>
+        call.sql === 'LOG' && call.values[0].detail === '定时发布失败：数据库暂时不可用'
+    )
+    assert.equal(failureLogs.length, 1)
 })
 
 test('promoting the working copy moves it online and clears the draft fields', async () => {

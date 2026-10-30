@@ -107,6 +107,14 @@ const routes = [
                 }
             },
             {
+                path: 'scheduledPublish',
+                component: () => import('../views/ScheduledPublishView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['article.publish', 'gallery.publish']
+                }
+            },
+            {
                 path: 'article/:id',
                 redirect: '/article',
             },
@@ -210,6 +218,7 @@ router.afterEach((to) => {
         '/messages': '回复私信',
         '/localfile': '本地文件',
         '/article': '博客文章',
+        '/scheduledPublish': '定时发布',
         '/gallery': '摄影图库',
         '/diary': '随笔随记',
         '/setting': '系统设置',
