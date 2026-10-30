@@ -2,7 +2,7 @@ const { query } = require('../../db/dbnew')
 
 const ACTIONS = ['login', 'logout', 'create', 'update', 'delete', 'publish', 'revoke', 'status', 'system']
 // permission 模块：角色权限矩阵变更属于高风险操作，必须可审计
-const MODULES = ['user', 'article', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'permission', 'system']
+const MODULES = ['user', 'article', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'permission', 'system', 'backup']
 
 /**
  * 写入一条系统日志；字段已由调用方归一化，失败由调用方兜底

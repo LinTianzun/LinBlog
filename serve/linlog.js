@@ -21,6 +21,7 @@ const { writeMethodLimit } = require('./middleware/rateLimit')
 const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandler')
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
+const { startScheduledBackup } = require('./utils/dbBackup')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
@@ -117,12 +118,15 @@ db.initDatabase()
             const recordRetention = startRecordRetention();
             // 文件备份按保留期清理，并回收数据库已无引用的磁盘孤儿文件
             const fileLifecycle = startFileLifecycle();
+            // 数据库定时备份：图片以 BLOB 存在库里，必须单独备份数据库本体
+            const databaseBackup = startScheduledBackup();
 
             const shutdown = createGracefulShutdown({
                 server,
                 cleanupTasks: [
                     () => recordRetention.stop(),
                     () => fileLifecycle.stop(),
+                    () => databaseBackup.stop(),
                 ],
                 closeDatabase: db.closeDatabase,
             })

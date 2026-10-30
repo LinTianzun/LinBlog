@@ -299,6 +299,11 @@
                         </dl>
                     </div>
 
+                    <!-- 数据库备份：图片以 BLOB 存库，必须单独备份数据库本体 -->
+                    <div v-if="canViewBackup" class="set-card">
+                        <DatabaseBackupPanel />
+                    </div>
+
                     <!-- 快捷入口 -->
                     <div v-if="hasQuickAccess" class="set-card">
                         <span class="set-label" style="margin-bottom: 12px">快捷入口</span>
@@ -335,6 +340,7 @@ import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } f
 import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
 import { getFileStorageStatus, type FileStorageStatus } from '../api/file'
+import DatabaseBackupPanel from '../components/common/DatabaseBackupPanel.vue'
 import { themePresets, type ThemePreset } from '../utils/themes'
 import {
     applyThemePreset,
@@ -691,6 +697,7 @@ const canViewFiles = computed(() => session.can('file.view'))
 const canViewPermissions = computed(() => session.can('permission.view'))
 const canViewUsers = computed(() => session.can('user.view'))
 const canViewSystemLog = computed(() => session.can('systemLog.view'))
+const canViewBackup = computed(() => session.can('backup.view'))
 
 const storagePercent = computed(() =>
     Math.min(Math.max(Number(storage.value?.usedPercent ?? 0), 0), 100)

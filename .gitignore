@@ -54,3 +54,7 @@ serve/data/files/*
 # Non-public deleted-file backups
 serve/storage/file-backups/*
 !serve/storage/file-backups/.gitkeep
+
+# Database dumps (contain user data, never commit)
+serve/storage/db-backups/*
+!serve/storage/db-backups/.gitkeep

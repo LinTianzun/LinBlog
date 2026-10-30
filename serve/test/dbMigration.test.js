@@ -26,7 +26,8 @@ const ALL_MIGRATIONS = [
     '20261029_comment_report_reason',
     '20261029_comment_report_handling',
     '20261029_message_channel',
-    '20261029_comment_report_note'
+    '20261029_comment_report_note',
+    '20261030_db_backup'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -435,5 +436,28 @@ test('comment report note migration adds the handling note column', async () => 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261029_comment_report_note'
+    ))
+})
+
+test('db backup migration creates the backup history table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261030_db_backup')
+        }
+
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS db_backup_log')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261030_db_backup'
     ))
 })

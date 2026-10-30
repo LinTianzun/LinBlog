@@ -267,3 +267,19 @@ test('describePermissionChanges stays within the log column and summarizes the o
     // 超出可读长度后用总数收尾，避免被 VARCHAR(500) 截断
     assert.match(detail, new RegExp(`等 ${changes.length} 项$`))
 })
+
+test('database backup management is reserved for the super admin', () => {
+    const {
+        DEFAULT_ROLE_PERMISSIONS,
+        PROTECTED_PERMISSION_KEYS,
+    } = require('../config/accessControl.js')
+
+    // 备份文件含全库数据与密码哈希，普通管理员只能查看，不能下载/删除/演练
+    assert.ok(PROTECTED_PERMISSION_KEYS.has('backup.manage'))
+    assert.equal(DEFAULT_ROLE_PERMISSIONS.admin.includes('backup.manage'), false)
+    assert.equal(DEFAULT_ROLE_PERMISSIONS.admin.includes('backup.view'), true)
+    for (const roleKey of ['editor', 'normal', 'visitor']) {
+        assert.equal(DEFAULT_ROLE_PERMISSIONS[roleKey].includes('backup.view'), false)
+        assert.equal(DEFAULT_ROLE_PERMISSIONS[roleKey].includes('backup.manage'), false)
+    }
+})

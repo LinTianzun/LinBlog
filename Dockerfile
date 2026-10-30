@@ -37,7 +37,7 @@ COPY --from=server-deps /app/serve/node_modules ./serve/node_modules
 COPY serve ./serve
 COPY --from=frontend-build /app/lin_blog/dist ./lin_blog/dist
 
-RUN mkdir -p /app/serve/data/files /app/serve/storage/file-backups
+RUN mkdir -p /app/serve/data/files /app/serve/storage/file-backups /app/serve/storage/db-backups
 
 EXPOSE 3030
 

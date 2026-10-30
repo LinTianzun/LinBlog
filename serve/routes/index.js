@@ -33,6 +33,8 @@ module.exports = (app) => {
     require('./view')(app)
     //  引入系统日志路由
     require('./systemLog')(app)
+    //  数据库备份与恢复演练
+    require('./backup')(app)
     //  门户 SEO：站点地图、robots 与 RSS
     require('./seo')(app)
 }

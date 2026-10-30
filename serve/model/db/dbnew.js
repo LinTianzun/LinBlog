@@ -428,6 +428,25 @@ const tablesSql = {
     INDEX idx_password_reset_user (user_id, created_at),
     INDEX idx_password_reset_expires (expires_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密码重置令牌表';`
+
+  ,db_backup_log: `CREATE TABLE IF NOT EXISTS db_backup_log(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '记录ID',
+    kind ENUM('backup', 'drill') NOT NULL DEFAULT 'backup' COMMENT '类型：备份/恢复演练',
+    filename VARCHAR(150) NOT NULL COMMENT '备份文件名',
+    target_database VARCHAR(64) NULL COMMENT '恢复演练的目标库',
+    size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '备份文件大小（字节）',
+    checksum CHAR(64) NULL COMMENT '备份文件 SHA-256',
+    table_count INT UNSIGNED NULL COMMENT '表数量',
+    row_count BIGINT UNSIGNED NULL COMMENT '数据行数',
+    duration_ms INT UNSIGNED NULL COMMENT '耗时（毫秒）',
+    trigger_type ENUM('scheduled', 'manual') NOT NULL DEFAULT 'manual' COMMENT '触发方式',
+    status ENUM('success', 'failed') NOT NULL DEFAULT 'success' COMMENT '执行结果',
+    error_message VARCHAR(500) NULL COMMENT '失败原因',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (id),
+    INDEX idx_db_backup_kind_status (kind, status),
+    INDEX idx_db_backup_created (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库备份与演练历史';`
 };
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -1064,7 +1083,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -1519,6 +1538,11 @@ async function ensureCommentReportNoteSchema(exec = query) {
   });
 }
 
+// 数据库备份历史：备份与恢复演练共用一张运行记录表，只存元数据，备份本体在磁盘。
+async function ensureDbBackupLogSchema(exec = query) {
+  await exec(tablesSql.db_backup_log);
+}
+
 // message 表同时承载私信会话与门户留言，用 channel 记录来源。
 // 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
 async function ensureMessageChannelSchema(exec = query) {
@@ -1733,6 +1757,10 @@ const migrations = [
   {
     version: '20261029_comment_report_note',
     up: ensureCommentReportNoteSchema
+  },
+  {
+    version: '20261030_db_backup',
+    up: ensureDbBackupLogSchema
   }
 ];
 

@@ -23,6 +23,7 @@ declare module 'vue' {
     ContentPhotoGrid: typeof import('./src/components/content/ContentPhotoGrid.vue')['default']
     ContentPhotoStage: typeof import('./src/components/content/ContentPhotoStage.vue')['default']
     ContentStatBar: typeof import('./src/components/content/ContentStatBar.vue')['default']
+    DatabaseBackupPanel: typeof import('./src/components/common/DatabaseBackupPanel.vue')['default']
     Datas: typeof import('./src/components/overview/datas.vue')['default']
     Diary: typeof import('./src/components/diary/diary.vue')['default']
     DiaryCommentList: typeof import('./src/components/diary/diaryCommentList.vue')['default']

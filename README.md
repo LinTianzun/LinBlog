@@ -108,6 +108,7 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 | 标签 | `GET/POST /api/label`、`DELETE /api/label/:id` | 需要认证；标签被文章引用时禁止删除。 |
 | 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
 | 系统日志 | `GET /api/systemLog` | 仅管理员；记录登录与各模块写操作（创建/更新/删除、目标类型与 IP），支持分页、关键词搜索与时间排序（`sortOrder=asc|desc`，默认 `desc`）。 |
+| 数据库备份 | `GET /api/backup`、`GET /api/backup/history`、`POST /api/backup`、`GET /api/backup/:filename/download`、`POST /api/backup/restore-drill`、`POST /api/backup/prune`、`DELETE /api/backup/:filename` | `backup.view` 可查看总览与历史，`backup.manage` 才能备份、下载、删除、清理与演练；恢复演练还原到隔离临时库并在验证后自动删库。 |
 
 用户管理的前端请求封装位于 `lin_blog/src/api/user.ts`。登录、注册页面使用 `/api/user/login` 和 `/api/user/register`；认证请求从 `localStorage` 读取令牌并添加认证头。文章 API 封装在 `lin_blog/src/api/article.ts`，文章列表、编辑器和详情弹窗已调用真实接口。
 
@@ -116,6 +117,8 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 **上传凭证使用短期票据**：`yk-upload` 自带 XHR 且无法附加自定义请求头，凭证只能拼在 URL 上。为避免长期 JWT 进入访问日志与浏览器历史，前端先调 `POST /api/upload/ticket`（需登录）换取票据，再把票据拼到上传地址上。票据绑定用户 ID 与来源 IP，5 分钟过期、按次消费（默认 50 次，覆盖一次性批量选择），服务端只存 SHA-256 哈希；票据校验通过后仍查库确认账号存在且未被禁用。上传失败同样以 HTTP 200 返回，并通过 `error` 字段传递原因——`yk-upload` 不处理非 200 响应。
 
 **文件备份与异地副本**：删除文件后，本地备份会同步到可选的跨盘镜像目录与 S3 兼容对象存储；本地备份缺失时，恢复会先尝试从异地副本拉回。回收站支持管理员彻底删除，过期清理与彻底删除都会先移除异地副本，再删除本地备份，避免异地删除失败后留下“本地已不可恢复”的半状态。备份容量由 `LINBLOG_FILE_BACKUP_MAX_BYTES`（默认 2 GiB）和 `LINBLOG_FILE_BACKUP_WARN_PERCENT`（默认 80%）控制，`GET /api/file/storage/status` 与回收站容量卡会显示 `ok` / `warning` / `critical` 状态；跨盘与对象存储配置见 `serve/.env.example`。
+
+**数据库备份与恢复演练**：图片以 `MEDIUMBLOB` 存在数据库里，附件目录备份无法恢复站点，因此服务内置数据库逻辑备份：每天 03:00（可配）用一致性快照导出 gzip JSONL（`.linbak.gz`），按保留份数自动清理；不依赖 `mysqldump`/`mysql` 客户端，容器与 Windows 本地都能运行。备份按外键依赖排序，`BLOB` 十六进制编码，并按字节切块避免恢复时超过 `max_allowed_packet`。后台「系统设置 → 系统信息 → 数据库备份」支持手动备份、下载、删除、清理过期与**隔离恢复演练**（还原到 `linlog_drill_<随机>` 临时库验证后自动删库），`backup.view` 只读、`backup.manage` 可写。命令行提供 `npm run db:backup`、`npm run db:restore -- <文件> --drill` 与 `scripts/verify-restore.js`（逐表行数 + 图片 SHA-256 核对）。完整操作与故障恢复步骤见 [Documentation/数据库备份与恢复.md](Documentation/数据库备份与恢复.md)。
 
 ### 当前限制与待办
 

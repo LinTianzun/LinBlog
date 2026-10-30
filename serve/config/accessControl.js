@@ -320,6 +320,22 @@ const PERMISSIONS = [
         group: 'system',
         label: '查看系统日志',
         description: '查询登录、内容与用户操作日志'
+    },
+    {
+        key: 'backup.view',
+        group: 'system',
+        label: '查看数据库备份',
+        description: '查看备份列表、容量与执行历史',
+        risk: 'high'
+    },
+    {
+        key: 'backup.manage',
+        group: 'system',
+        label: '管理与恢复数据库备份',
+        description: '手动备份、下载、删除备份并执行恢复演练',
+        risk: 'critical',
+        // 备份文件含全库数据与密码哈希，下载/删除权仅超级管理员固定持有
+        protected: true
     }
 ]
 
@@ -352,7 +368,11 @@ const INTERACTION_DEFAULT = [
 ]
 
 const DEFAULT_ROLE_PERMISSIONS = {
-    admin: ALL_PERMISSION_KEYS.filter(key => key !== 'permission.edit' && key !== 'user.assignAdmin'),
+    admin: ALL_PERMISSION_KEYS.filter(key =>
+        key !== 'permission.edit'
+        && key !== 'user.assignAdmin'
+        && key !== 'backup.manage'
+    ),
     editor: [
         'overview.viewAll',
         ...CONTENT_ALL,

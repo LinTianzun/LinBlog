@@ -93,6 +93,7 @@
         { value: 'label', label: '标签' },
         { value: 'permission', label: '权限' },
         { value: 'system', label: '系统' },
+        { value: 'backup', label: '备份' },
     ]
 
     // 支持从权限管理页带 ?module=permission 直接落到权限审计
