@@ -502,6 +502,21 @@ async function listScheduledArticles({
     }
 }
 
+
+/**
+ * 自愈历史脏数据：内容已实际发布/驳回/退回草稿，却仍挂着 scheduled_at。
+ * 这类记录会永远留在待发布队列，到点还会被调度器再发布一次（覆盖正文、重置发布时间）。
+ * 启动时调用一次即可；返回清理行数。
+ */
+async function clearStaleSchedules() {
+    const result = await query(
+        `UPDATE article
+         SET scheduled_at = NULL
+         WHERE scheduled_at IS NOT NULL
+           AND state IN ('published', 'rejected', 'draft')`
+    )
+    return Number(result?.affectedRows) || 0
+}
 async function clearScheduledArticle(articleId) {
     const result = await query(
         `UPDATE article
@@ -706,5 +721,6 @@ module.exports = {
     publishScheduledArticle,
     publishWorkingCopy,
     clearScheduledArticle,
+    clearStaleSchedules,
     promoteWorkingCopy,
 }

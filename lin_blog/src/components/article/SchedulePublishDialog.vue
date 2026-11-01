@@ -32,7 +32,8 @@
 
             <label class="schedule-dialog-label">
                 <span>发布时间</span>
-                <input v-model="inputValue" type="datetime-local" class="schedule-dialog-input" />
+                <input v-model="inputValue" type="datetime-local" class="schedule-dialog-input"
+                    :min="minValue" />
             </label>
 
             <p v-if="validation.ok && preview" class="schedule-dialog-preview">
@@ -92,6 +93,13 @@ const activePresetKey = computed(() =>
 const inputValue = computed({
     get: () => props.value,
     set: (value: string) => emit('update:value', value),
+})
+
+// 原生控件直接挡住过去时间，避免只能靠下方文字提示才发现选错
+const minValue = computed(() => {
+    const next = new Date(Date.now() + 60_000)
+    const pad = (part: number): string => String(part).padStart(2, '0')
+    return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`
 })
 
 const validation = computed(() => validateScheduleValue(props.value))

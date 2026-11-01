@@ -398,6 +398,12 @@ async function updateArticle(articleId, updateData, userId, userType) {
         publishAtSql = ', published_at = NULL' // 驳回时清空发布时间
     }
 
+    // 内容已实际发布/驳回/退回草稿时，待发布计划不再有意义：
+    // 不清的话它会永远挂在待发布队列里，到点被调度器再发布一次（覆盖正文、重置发布时间）。
+    if (['published', 'rejected', 'draft'].includes(updateData.state)) {
+        publishAtSql += ', scheduled_at = NULL'
+    }
+
     // 最终 SQL：SET 子句在前，WHERE 子句在后
     const sql = `
         UPDATE article 
@@ -483,6 +489,12 @@ async function updateArticleStatus(articleId, state, userId, userType) {
         publishAtSql = ', article.published_at = NOW()';
     } else if (state === 'rejected') {
         publishAtSql = ', article.published_at = NULL';
+    }
+
+    // 状态已落到 published / rejected / draft，定时发布计划必须一并清除，
+    // 否则内容会继续留在待发布队列并在到点时被重复发布。
+    if (['published', 'rejected', 'draft'].includes(state)) {
+        publishAtSql += ', article.scheduled_at = NULL';
     }
 
     //  SQL语句：所有字段加表别名（article.），避免歧义

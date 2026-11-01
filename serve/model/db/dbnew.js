@@ -20,14 +20,32 @@ const execute = (connection, sql, values = []) => {
   });
 };
 
+// 获取连接的等待上限：mysql2 的 PoolConfig 不支持 acquireTimeout（传入只会告警），
+// 因此在应用层用 race 实现，避免连接池打满时请求无限排队。
 const getPoolConnection = () => {
+  const acquireTimeout = Number(config.database.acquireTimeout) || 10_000
+
   return new Promise((resolve, reject) => {
     if (!pool) {
       reject(new Error('数据库连接池未初始化，请先调用 initDatabase'));
       return;
     }
 
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error(`获取数据库连接超时（${acquireTimeout}ms），连接池可能已打满`));
+    }, acquireTimeout);
+
     pool.getConnection((err, connection) => {
+      if (settled) {
+        // 已超时：连接若随后返回要立刻还回去，避免泄漏
+        if (!err && connection && typeof connection.release === 'function') connection.release();
+        return;
+      }
+      settled = true
+      clearTimeout(timer)
       if (err) reject(err);
       else resolve(connection);
     });
@@ -1151,7 +1169,6 @@ function initPool() {
     database: databaseName,
     charset: 'utf8mb4',
     connectTimeout: 15000,
-    acquireTimeout: config.database.acquireTimeout,
     waitForConnections: true,
     queueLimit: 100,
     supportBigNumbers: true,

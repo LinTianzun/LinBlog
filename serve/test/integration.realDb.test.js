@@ -977,6 +977,95 @@ if (!targetDb) {
         assert.equal(stillDue.some(row => Number(row.id) === Number(articleId)), false)
     })
 
+    // 回归：已安排定时发布的内容若经状态接口或编辑接口直接发布，
+    // 计划时间必须一并清除，否则会永远留在待发布队列并在到点被重复发布。
+    test('direct publish clears the pending schedule via status and edit paths', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const future = new Date(Date.now() + 60 * 60 * 1000)
+
+        // 路径 A：updateArticleStatus（文章列表的发布/撤回按钮）
+        const viaStatus = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '状态接口发布',
+            content: '<p>正文A</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        await workflowModel.schedulePublish(viaStatus.articleId, future, { userId: ids.normal })
+        const plannedA = await db.query('SELECT scheduled_at FROM article WHERE id = ?', [viaStatus.articleId])
+        assert.ok(plannedA[0].scheduled_at, '安排后应带上计划时间')
+
+        await articleModel.updateArticleStatus(viaStatus.articleId, 'published', ids.normal, 'admin')
+        const afterA = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [viaStatus.articleId])
+        assert.equal(afterA[0].state, 'published')
+        assert.equal(afterA[0].scheduled_at, null, '状态接口发布后计划时间必须清除')
+
+        // 路径 B：updateArticle（编辑页保存并发布）
+        const viaEdit = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '编辑接口发布',
+            content: '<p>正文B</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        await workflowModel.schedulePublish(viaEdit.articleId, future, { userId: ids.normal })
+
+        await articleModel.updateArticle(
+            viaEdit.articleId,
+            { title: '编辑接口发布', content: '<p>改过的正文B</p>', state: 'published' },
+            ids.normal,
+            'admin'
+        )
+        const afterB = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [viaEdit.articleId])
+        assert.equal(afterB[0].state, 'published')
+        assert.equal(afterB[0].scheduled_at, null, '编辑接口发布后计划时间必须清除')
+
+        // 两条都不应再出现在待发布队列里
+        const queue = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 50,
+            scopes: [{ classify: 'article', manageAll: true }],
+            userId: ids.admin
+        })
+        const stillQueued = queue.list.filter(row =>
+            Number(row.id) === Number(viaStatus.articleId) || Number(row.id) === Number(viaEdit.articleId)
+        )
+        assert.equal(stillQueued.length, 0, '已发布内容不应继续留在待发布队列')
+    })
+
+    // 回归：历史脏数据（已 published 却仍挂 scheduled_at）应在启动时被自愈清除。
+    test('startup self-heal clears stale schedules on already published content', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '脏数据自愈',
+            content: '<p>正文C</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = Number(created.articleId)
+
+        // 人工造出脏数据：已发布但仍挂着计划时间
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+        await workflowModel.schedulePublish(articleId, new Date(Date.now() + 3600_000), { userId: ids.normal })
+        const dirty = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.ok(dirty[0].scheduled_at, '前置条件：应存在已发布却仍挂计划的脏数据')
+
+        const healed = await workflowModel.clearStaleSchedules()
+        assert.ok(healed >= 1, '自愈应至少清理这一条')
+
+        const clean = await db.query('SELECT scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.equal(clean[0].scheduled_at, null)
+    })
+
     test('scheduled queue reports upcoming and overdue items with ownership scope', async () => {
         const workflowModel = require('../model/dbModel/articleWorkflow/index')
 

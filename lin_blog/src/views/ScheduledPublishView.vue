@@ -139,7 +139,8 @@
                 </p>
                 <label class="sched-dialog-label">
                     <span>发布时间</span>
-                    <input v-model="rescheduleValue" type="datetime-local" class="sched-dialog-input" />
+                    <input v-model="rescheduleValue" type="datetime-local" class="sched-dialog-input"
+                        :min="rescheduleMin" />
                 </label>
                 <div class="sched-dialog-actions">
                     <yk-button size="s" :disabled="acting" @click="closeReschedule()">取消</yk-button>
@@ -239,6 +240,13 @@ const statusCards = computed(() => [
 const lastLoadedText = computed(() => lastLoadedAt.value
     ? `队列更新于 ${formatWorkflowTime(new Date(lastLoadedAt.value).toISOString())}`
     : '正在准备队列')
+
+// 原生控件直接挡住过去时间（后端要求至少晚于当前 1 分钟）
+const rescheduleMin = computed(() => {
+    const next = new Date(Date.now() + 60_000)
+    const pad = (part: number): string => String(part).padStart(2, '0')
+    return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`
+})
 
 const confirmTitle = computed(() => confirmAction.value === 'cancel' ? '取消定时发布' : '立即发布')
 const confirmCopy = computed(() => confirmAction.value === 'cancel'

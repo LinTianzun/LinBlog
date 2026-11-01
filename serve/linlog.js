@@ -24,6 +24,7 @@ const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
 const { startArticleScheduler } = require('./utils/articleScheduler')
+const articleWorkflowModel = require('./model/dbModel/articleWorkflow/index')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
@@ -114,6 +115,16 @@ app.use(createErrorHandler())
 db.initDatabase()
     .then(async () => {
         await refreshPermissionCache();
+
+        // 自愈历史脏数据：已发布/驳回/草稿却仍挂着 scheduled_at 的记录
+        // 会永远留在待发布队列并在到点被重复发布，启动时清一次。
+        try {
+            const healed = await articleWorkflowModel.clearStaleSchedules();
+            if (healed > 0) console.log(`[Server] 已清理 ${healed} 条残留的定时发布计划`);
+        } catch (err) {
+            console.warn('[Server] 清理残留定时发布计划失败：', err.message);
+        }
+
         const port = config.port;
         const server = app.listen(port, () => {
             console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);
