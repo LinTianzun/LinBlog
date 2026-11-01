@@ -1,3 +1,13 @@
+import {
+  getServerOffsetMinutes,
+  serverNowMs,
+} from "./serverClockState.ts";
+import {
+  serverZoneParts,
+  serverZoneInputToIso,
+  serverZoneInputValue,
+} from "./scheduledPublish.ts";
+
 export type WorkflowSaveStatus =
   | "idle"
   | "dirty"
@@ -42,47 +52,37 @@ export function hasWorkflowChanges(
 }
 
 /**
- * 把本地 datetime-local 值转为带时区的 ISO 字符串。
- * 浏览器按用户本地时区输入，后端按绝对时间执行，避免部署时区不同导致提前/延后。
+ * 把 datetime-local 值转为绝对 ISO 字符串。
+ * 输入框语义是「服务器时区」，不能按浏览器时区解析——浏览器时区与
+ * 服务器/挂钟不一致时会把发布时间算错数小时。
  */
 export function localDateTimeToIso(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return serverZoneInputToIso(value);
 }
 
 export function isoToLocalDateTime(value?: string | null): string {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    "-",
-    pad(date.getMonth() + 1),
-    "-",
-    pad(date.getDate()),
-    "T",
-    pad(date.getHours()),
-    ":",
-    pad(date.getMinutes()),
-  ].join("");
+  return serverZoneInputValue(value);
 }
 
-export function defaultScheduleValue(now = new Date()): string {
+export function defaultScheduleValue(
+  now = new Date(serverNowMs()),
+  offsetMinutes = getServerOffsetMinutes()
+): string {
   const next = new Date(now.getTime() + 60 * 60 * 1000);
   next.setSeconds(0, 0);
-  return isoToLocalDateTime(next.toISOString());
+  return serverZoneInputValue(next, offsetMinutes);
 }
 
 export function formatWorkflowTime(value?: string | null): string {
   if (!value) return "尚未保存";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "尚未保存";
-
+  // 按服务器时区渲染，避免浏览器时区不同导致展示时间偏移
+  const parts = serverZoneParts(date);
+  if (!parts) return "尚未保存";
   const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hours)}:${pad(parts.minutes)}`;
 }
 
 export function workflowSaveLabel(

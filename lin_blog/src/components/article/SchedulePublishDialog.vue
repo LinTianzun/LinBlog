@@ -63,8 +63,10 @@ import {
     buildSchedulePresets,
     scheduleDistanceLabel,
     scheduleValuePreview,
+    serverZoneInputValue,
     validateScheduleValue,
 } from '../../utils/scheduledPublish'
+import { serverNowMs } from '../../utils/serverClockState'
 
 const props = defineProps<{
     open: boolean
@@ -97,9 +99,7 @@ const inputValue = computed({
 
 // 原生控件直接挡住过去时间，避免只能靠下方文字提示才发现选错
 const minValue = computed(() => {
-    const next = new Date(Date.now() + 60_000)
-    const pad = (part: number): string => String(part).padStart(2, '0')
-    return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`
+    return serverZoneInputValue(new Date(serverNowMs() + 60_000))
 })
 
 const validation = computed(() => validateScheduleValue(props.value))

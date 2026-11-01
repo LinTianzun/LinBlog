@@ -262,6 +262,17 @@ export async function installApiMock(page: Page): Promise<MockState> {
       })
     }
 
+    // 服务器时间：定时发布以服务器时区为权威。mock 固定东八区，
+    // 这样浏览器时区被改写成其他值时仍应算出同样的"1 小时后"。
+    if (method === 'GET' && path === '/api/time/now') {
+      await fulfill({
+        now: new Date().toISOString(),
+        offsetMinutes: 480,
+        timeZone: 'Asia/Shanghai',
+      })
+      return
+    }
+
     if (method === 'POST' && path === '/api/user/login') {
       await fulfill({
         token: 'mock-token',

@@ -1,4 +1,79 @@
+import { getServerOffsetMinutes, serverNowMs } from "./serverClockState.ts";
+
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+const pad2 = (part: number) => String(part).padStart(2, "0");
+
+/**
+ * 把绝对时间按「服务器时区」拆成日历字段。
+ * 用 UTC 毫秒 + 服务器偏移换算，不受浏览器时区影响。
+ */
+export function serverZoneParts(
+  value: string | Date,
+  offsetMinutes = getServerOffsetMinutes()
+): {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+  hours: number;
+  minutes: number;
+} | null {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const shifted = new Date(date.getTime() + offsetMinutes * 60_000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    weekday: shifted.getUTCDay(),
+    hours: shifted.getUTCHours(),
+    minutes: shifted.getUTCMinutes(),
+  };
+}
+
+/** 服务器时区下的 `YYYY-MM-DDTHH:mm`，供 datetime-local 输入框。 */
+export function serverZoneInputValue(
+  value: string | Date,
+  offsetMinutes = getServerOffsetMinutes()
+): string {
+  const parts = serverZoneParts(value, offsetMinutes);
+  if (!parts) return "";
+  return [
+    parts.year,
+    "-",
+    pad2(parts.month),
+    "-",
+    pad2(parts.day),
+    "T",
+    pad2(parts.hours),
+    ":",
+    pad2(parts.minutes),
+  ].join("");
+}
+
+/**
+ * 把「服务器时区」下的 datetime-local 值转成绝对时间 ISO。
+ * 例：偏移 +480 时，`2026-11-01T15:32` → `2026-11-01T07:32:00.000Z`。
+ */
+export function serverZoneInputToIso(
+  value: string,
+  offsetMinutes = getServerOffsetMinutes()
+): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hours, minutes, seconds] = match;
+  const utcMs = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hours),
+    Number(minutes),
+    Number(seconds || 0)
+  );
+  if (Number.isNaN(utcMs)) return null;
+  return new Date(utcMs - offsetMinutes * 60_000).toISOString();
+}
 
 function parseDate(value?: string | null): Date | null {
   if (!value) return null;
@@ -8,7 +83,7 @@ function parseDate(value?: string | null): Date | null {
 
 export function isScheduleOverdue(
   value?: string | null,
-  now = Date.now()
+  now = serverNowMs()
 ): boolean {
   const date = parseDate(value);
   return Boolean(date && date.getTime() <= now);
@@ -20,7 +95,7 @@ export function isScheduleOverdue(
  */
 export function scheduleDistanceLabel(
   value?: string | null,
-  now = Date.now()
+  now = serverNowMs()
 ): string {
   const date = parseDate(value);
   if (!date) return "时间待确认";
@@ -49,38 +124,20 @@ export function scheduleDateParts(value?: string | null): {
   weekday: string;
   time: string;
 } {
-  const date = parseDate(value);
-  if (!date) {
+  const parts = value ? serverZoneParts(value) : null;
+  if (!parts) {
     return { month: "--", day: "--", weekday: "待定", time: "--:--" };
   }
-
-  const pad = (part: number) => String(part).padStart(2, "0");
   return {
-    month: `${date.getMonth() + 1}月`,
-    day: pad(date.getDate()),
-    weekday: `周${WEEKDAYS[date.getDay()]}`,
-    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    month: `${parts.month}月`,
+    day: pad2(parts.day),
+    weekday: `周${WEEKDAYS[parts.weekday]}`,
+    time: `${pad2(parts.hours)}:${pad2(parts.minutes)}`,
   };
 }
 
 export function scheduledClassifyLabel(classify: string): string {
   return classify === "image" ? "摄影图库" : "博客文章";
-}
-
-/** datetime-local 输入框需要的本地时间字符串（YYYY-MM-DDTHH:mm）。 */
-function toLocalInputValue(date: Date): string {
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    "-",
-    pad(date.getMonth() + 1),
-    "-",
-    pad(date.getDate()),
-    "T",
-    pad(date.getHours()),
-    ":",
-    pad(date.getMinutes()),
-  ].join("");
 }
 
 export interface SchedulePreset {
@@ -89,20 +146,36 @@ export interface SchedulePreset {
   value: string;
 }
 
-/** 安排发布弹窗的快捷时间：都保证落在未来。 */
-export function buildSchedulePresets(now = new Date()): SchedulePreset[] {
-  const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
-  oneHourLater.setSeconds(0, 0);
+/**
+ * 安排发布弹窗的快捷时间：都保证落在未来，并按服务器时区渲染。
+ * 关键：不能用浏览器本地方法（getHours/setHours）——浏览器时区与
+ * 服务器/挂钟不一致时，"1 小时后"会算到错误时刻。
+ */
+export function buildSchedulePresets(
+  now = new Date(serverNowMs()),
+  offsetMinutes = getServerOffsetMinutes()
+): SchedulePreset[] {
+  const nowMs = now.getTime();
+  const oneHourLater = new Date(nowMs + 60 * 60 * 1000);
+  const current = serverZoneParts(now, offsetMinutes);
+  if (!current) return [];
+
+  // 服务器时区下的「明天 hour:00」换算回绝对时间
   const tomorrowAt = (hour: number): Date => {
-    const date = new Date(now);
-    date.setDate(date.getDate() + 1);
-    date.setHours(hour, 0, 0, 0);
-    return date;
+    const utcMs = Date.UTC(
+      current.year,
+      current.month - 1,
+      current.day + 1,
+      hour,
+      0,
+      0
+    );
+    return new Date(utcMs - offsetMinutes * 60_000);
   };
   return [
-    { key: "hour", label: "1 小时后", value: toLocalInputValue(oneHourLater) },
-    { key: "morning", label: "明早 9:00", value: toLocalInputValue(tomorrowAt(9)) },
-    { key: "evening", label: "明晚 8:00", value: toLocalInputValue(tomorrowAt(20)) },
+    { key: "hour", label: "1 小时后", value: serverZoneInputValue(oneHourLater, offsetMinutes) },
+    { key: "morning", label: "明早 9:00", value: serverZoneInputValue(tomorrowAt(9), offsetMinutes) },
+    { key: "evening", label: "明晚 8:00", value: serverZoneInputValue(tomorrowAt(20), offsetMinutes) },
   ];
 }
 
@@ -114,14 +187,14 @@ export interface ScheduleValidation {
 /** 与后端约束一致：必须能解析，且至少晚于当前 1 分钟。 */
 export function validateScheduleValue(
   value: string,
-  now = Date.now()
+  now = serverNowMs()
 ): ScheduleValidation {
   if (!value) return { ok: false, message: "请选择发布时间" };
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const iso = serverZoneInputToIso(value);
+  if (!iso) {
     return { ok: false, message: "请选择有效的发布时间" };
   }
-  if (date.getTime() < now + 60_000) {
+  if (new Date(iso).getTime() < now + 60_000) {
     return { ok: false, message: "发布时间至少需晚于当前时间 1 分钟" };
   }
   return { ok: true, message: "" };
@@ -129,10 +202,14 @@ export function validateScheduleValue(
 
 /** 人读时间预览：`11月2日 周一 09:00`，无效输入返回空串。 */
 export function scheduleValuePreview(value?: string | null): string {
-  const date = parseDate(value);
-  if (!date) return "";
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getMonth() + 1}月${date.getDate()}日 周${
-    WEEKDAYS[date.getDay()]
-  } ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (!value) return "";
+  // 输入框值（无时区）按服务器时区解析；带 Z/±偏移的是绝对时间，直接换算
+  const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+  const parts = hasZone
+    ? serverZoneParts(value)
+    : serverZoneParts(serverZoneInputToIso(value) || "");
+  if (!parts) return "";
+  return `${parts.month}月${parts.day}日 周${WEEKDAYS[parts.weekday]} ${pad2(
+    parts.hours
+  )}:${pad2(parts.minutes)}`;
 }

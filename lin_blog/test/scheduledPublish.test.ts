@@ -7,8 +7,14 @@ import {
   scheduleValuePreview,
   scheduleDistanceLabel,
   scheduledClassifyLabel,
+  serverZoneInputToIso,
+  serverZoneInputValue,
   validateScheduleValue,
 } from "../src/utils/scheduledPublish.ts";
+import { resetServerClockState, setServerClock } from "../src/utils/serverClockState.ts";
+
+// 测试固定为东八区，避免依赖运行机器的时区
+setServerClock(480, 0);
 
 const now = new Date("2026-10-30T09:00:00+08:00").getTime();
 
@@ -36,7 +42,8 @@ test("时间块与内容类型使用工作台文案", () => {
 });
 
 test("快捷预设基于当前时间生成且全部在未来", () => {
-  const base = new Date("2026-10-30T09:00:00+08:00");
+  // 固定绝对时刻（东八区 09:00），与运行机器时区无关
+  const base = new Date("2026-10-30T01:00:00.000Z");
   const presets = buildSchedulePresets(base);
   assert.deepEqual(
     presets.map(preset => preset.label),
@@ -64,4 +71,27 @@ test("发布时间预览输出人读中文格式", () => {
   assert.equal(scheduleValuePreview("2026-11-01T01:30:00.000Z"), "11月1日 周日 09:30");
   assert.equal(scheduleValuePreview("bad"), "");
   assert.equal(scheduleValuePreview(null), "");
+});
+
+test("datetime-local 值按服务器时区解析，不依赖浏览器时区", () => {
+  // 东八区 15:32 → UTC 07:32
+  assert.equal(serverZoneInputToIso("2026-11-01T15:32"), "2026-11-01T07:32:00.000Z");
+  // 绝对时间按服务器时区渲染回输入框格式
+  assert.equal(serverZoneInputValue("2026-11-01T07:32:00.000Z"), "2026-11-01T15:32");
+  // 带秒的输入也能解析
+  assert.equal(
+    serverZoneInputToIso("2026-11-01T15:32:45"),
+    "2026-11-01T07:32:45.000Z"
+  );
+  assert.equal(serverZoneInputToIso("not-a-date"), null);
+  assert.equal(serverZoneInputValue("bad"), "");
+});
+
+test("跨零点时服务器时区换算仍然正确", () => {
+  // 东八区 11-02 00:30 → UTC 11-01 16:30
+  assert.equal(
+    serverZoneInputToIso("2026-11-02T00:30"),
+    "2026-11-01T16:30:00.000Z"
+  );
+  assert.equal(serverZoneInputValue("2026-11-01T16:30:00.000Z"), "2026-11-02T00:30");
 });

@@ -198,7 +198,9 @@ import {
     scheduleDateParts,
     scheduleDistanceLabel,
     scheduledClassifyLabel,
+    serverZoneInputValue,
 } from '../utils/scheduledPublish'
+import { serverNowMs } from '../utils/serverClockState'
 
 type ConfirmAction = 'publish' | 'cancel'
 
@@ -243,9 +245,7 @@ const lastLoadedText = computed(() => lastLoadedAt.value
 
 // 原生控件直接挡住过去时间（后端要求至少晚于当前 1 分钟）
 const rescheduleMin = computed(() => {
-    const next = new Date(Date.now() + 60_000)
-    const pad = (part: number): string => String(part).padStart(2, '0')
-    return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}T${pad(next.getHours())}:${pad(next.getMinutes())}`
+    return serverZoneInputValue(new Date(serverNowMs() + 60_000))
 })
 
 const confirmTitle = computed(() => confirmAction.value === 'cancel' ? '取消定时发布' : '立即发布')
@@ -339,7 +339,7 @@ const confirmReschedule = async (): Promise<void> => {
         actionError.value = '请选择有效的发布时间'
         return
     }
-    if (new Date(iso).getTime() < Date.now() + 60_000) {
+    if (new Date(iso).getTime() < serverNowMs() + 60_000) {
         actionError.value = '发布时间至少需晚于当前时间 1 分钟'
         return
     }

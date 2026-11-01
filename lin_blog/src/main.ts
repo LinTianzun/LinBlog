@@ -14,9 +14,13 @@ import './style/theme-presets.less'
 import './style/portal.less'
 import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
+import { ensureServerClock } from './utils/serverClock'
 
 // 启动时恢复用户选择的主题预设（设置 data-theme 与 data-theme-preset）
 initThemePreset()
+
+// 定时发布等"本地时间"语义以服务器时区为准，启动时先对齐一次
+void ensureServerClock()
 
 //  路由
 import router from './router'

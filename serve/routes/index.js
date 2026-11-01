@@ -37,6 +37,8 @@ module.exports = (app) => {
     require('./systemLog')(app)
     //  运行时信息：内存、运行时间、连接池状态
     require('./health')(app)
+    // 服务器时间：前端定时发布以服务器时区为权威
+    require('./time')(app)
     //  数据库备份与恢复演练
     require('./backup')(app)
     //  门户 SEO：站点地图、robots 与 RSS
