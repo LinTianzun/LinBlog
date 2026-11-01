@@ -172,6 +172,7 @@ import {
     AUTOSAVE_DELAY_MS,
     formatWorkflowTime,
     hasWorkflowChanges,
+    defaultScheduleValue,
     isoToLocalDateTime,
     localDateTimeToIso,
     workflowSaveLabel,
@@ -182,7 +183,7 @@ import { buildConflictReport, type ConflictReport } from '../utils/conflictCompa
 import { optimizeRichContentImages } from '../utils/imageOptimization'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
-import { validateScheduleValue } from '../utils/scheduledPublish'
+import { validateScheduleValue, isScheduleOverdue } from '../utils/scheduledPublish'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
@@ -649,10 +650,12 @@ function openPreview(): void {
 
 function handlePublishMenu(value: string | number): void {
     if (value === 'schedule') {
-        // 无计划时空着让用户选预设；改期则预填当前计划时间
+        // 改期时预填当前计划时间；已逾期或无计划时预填默认值（1 小时后），
+        // 避免弹窗打开即显示校验错误
         scheduleValue.value = workflow.value?.scheduledAt
+            && !isScheduleOverdue(workflow.value.scheduledAt)
             ? isoToLocalDateTime(workflow.value.scheduledAt)
-            : ''
+            : defaultScheduleValue()
         scheduleOpen.value = true
         return
     }

@@ -320,6 +320,7 @@ const openEditor = (item: ScheduledArticleItem): void => {
 const openReschedule = (item: ScheduledArticleItem): void => {
     rescheduleTarget.value = item
     rescheduleValue.value = item.scheduledAt
+        && !isScheduleOverdue(item.scheduledAt)
         ? isoToLocalDateTime(item.scheduledAt) || defaultScheduleValue()
         : defaultScheduleValue()
 }
