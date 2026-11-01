@@ -407,16 +407,23 @@ async function clearSchedule(articleId) {
     return result.affectedRows > 0
 }
 
-async function findDueScheduledArticles(limit = 20) {
+/**
+ * 到期扫描。
+ * 比较基准由 Node 传入而非 MySQL 的 NOW()：scheduled_at 是 Node 侧 Date
+ * 经 mysql2 按时区序列化写入的，用 NOW()（MySQL 会话时区）比较会在
+ * Node 与 MySQL 时区不一致的部署环境里错位（提前触发或永不触发）。
+ * 统一用 Node 的 Date，读写两侧走同一套序列化规则。
+ */
+async function findDueScheduledArticles(limit = 20, now = new Date()) {
     return query(
         `SELECT id, user_id AS userId, classify
          FROM article
          WHERE state != 'deleted'
            AND scheduled_at IS NOT NULL
-           AND scheduled_at <= NOW()
+           AND scheduled_at <= ?
          ORDER BY scheduled_at ASC, id ASC
          LIMIT ?`,
-        [Math.min(Math.max(Number(limit) || 20, 1), 100)]
+        [now, Math.min(Math.max(Number(limit) || 20, 1), 100)]
     )
 }
 
@@ -431,6 +438,7 @@ async function listScheduledArticles({
     classify = null,
     scopes = [],
     userId = null,
+    now = new Date(),
 } = {}) {
     const safePage = Math.max(1, Number(page) || 1)
     const safePageSize = Math.min(50, Math.max(1, Number(pageSize) || 20))
@@ -481,11 +489,11 @@ async function listScheduledArticles({
     )
     const [summaryRow] = await query(
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN a.scheduled_at > NOW() THEN 1 ELSE 0 END) AS upcoming,
-                SUM(CASE WHEN a.scheduled_at <= NOW() THEN 1 ELSE 0 END) AS overdue
+                SUM(CASE WHEN a.scheduled_at > ? THEN 1 ELSE 0 END) AS upcoming,
+                SUM(CASE WHEN a.scheduled_at <= ? THEN 1 ELSE 0 END) AS overdue
          FROM article a
          WHERE ${whereSql}`,
-        values
+        [now, now, ...values]
     )
     const total = Number(totalRow?.total) || 0
     return {

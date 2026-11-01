@@ -47,7 +47,7 @@ async function query(sql, values = []) {
         if (sql.includes('LEFT JOIN users')) {
             return scheduledPageRows
         }
-        if (sql.includes('scheduled_at <= NOW()')) return dueRows
+        if (sql.includes('scheduled_at <= ?')) return dueRows
         return articleRows
     }
     if (sql.includes('UPDATE article')) return { affectedRows: 1 }

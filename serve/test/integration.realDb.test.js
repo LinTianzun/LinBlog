@@ -977,6 +977,68 @@ if (!targetDb) {
         assert.equal(stillDue.some(row => Number(row.id) === Number(articleId)), false)
     })
 
+    // 回归：到期判定不能依赖 MySQL 的 NOW()。
+    // scheduled_at 是 Node 侧 Date 经 mysql2 按时区序列化写入的；若用 NOW()
+    // （MySQL 会话时区）比较，部署环境 Node 与 MySQL 时区不一致时会错位，
+    // 导致定时发布提前触发或永不触发。验证按 Node 的 now 判定仍然正确。
+    test('scheduled due check uses node now instead of mysql NOW()', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '时区错位回归',
+            content: '<p>正文</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = Number(created.articleId)
+        await db.query("UPDATE article SET state = 'published' WHERE id = ?", [articleId])
+
+        const future = new Date(Date.now() + 60 * 60 * 1000)
+        const past = new Date(Date.now() - 60 * 1000)
+        const now = new Date()
+        await workflowModel.schedulePublish(articleId, future, { userId: ids.normal })
+
+        const dueForFuture = await workflowModel.findDueScheduledArticles(10, now)
+        assert.equal(
+            dueForFuture.some(row => Number(row.id) === articleId),
+            false,
+            '未来计划不应被判定为到期'
+        )
+
+        const queueFuture = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 50,
+            scopes: [{ classify: 'article', manageAll: true }],
+            userId: ids.admin,
+            now,
+        })
+        assert.ok(
+            queueFuture.list.some(row => Number(row.id) === articleId),
+            '未来计划应出现在队列'
+        )
+        assert.equal(queueFuture.summary.upcoming >= 1, true, '未来计划应计入 upcoming')
+
+        await workflowModel.schedulePublish(articleId, past, { userId: ids.normal })
+        const dueForPast = await workflowModel.findDueScheduledArticles(10, now)
+        assert.equal(
+            dueForPast.some(row => Number(row.id) === articleId),
+            true,
+            '过去计划应被判定为到期'
+        )
+
+        const queuePast = await workflowModel.listScheduledArticles({
+            page: 1,
+            pageSize: 50,
+            scopes: [{ classify: 'article', manageAll: true }],
+            userId: ids.admin,
+            now,
+        })
+        assert.equal(queuePast.summary.overdue >= 1, true, '过去计划应计入 overdue')
+    })
+
     // 回归：已安排定时发布的内容若经状态接口或编辑接口直接发布，
     // 计划时间必须一并清除，否则会永远留在待发布队列并在到点被重复发布。
     test('direct publish clears the pending schedule via status and edit paths', async () => {

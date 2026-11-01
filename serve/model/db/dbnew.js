@@ -103,9 +103,31 @@ const handlePoolError = (err) => {
     console.log('连接池异常，正在重新创建...');
     pool = mysql.createPool(pool.config);
     pool.on('error', handlePoolError);
+    alignSessionTimezone();
     console.log('连接池已重新初始化');
   }
 };
+
+/**
+ * 把 MySQL 会话时区对齐到 Node 进程时区。
+ * mysql2 默认 timezone:'local' 按 Node 时区序列化/解析 DATETIME，而
+ * NOW()/CURDATE() 用的是 MySQL 会话时区。部署环境两者不一致时（如容器
+ * TZ=UTC 而 MySQL SYSTEM=+08:00），写入时间戳与 SQL 侧 NOW() 会错开数小时，
+ * 表现为定时发布提前触发或永不触发。会话建立时显式对齐，保证自洽。
+ */
+function alignSessionTimezone() {
+  const offsetMinutes = -new Date().getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const abs = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(abs / 60)).padStart(2, '0');
+  const minutes = String(abs % 60).padStart(2, '0');
+  const offset = `${sign}${hours}:${minutes}`;
+  pool.on('connection', (connection) => {
+    connection.query(`SET time_zone = '${offset}'`, (err) => {
+      if (err) console.warn('[DB] 对齐会话时区失败：', err.message);
+    });
+  });
+}
 
 const databaseName = config.database.DB;
 const databaseIdentifier = `\`${databaseName.replace(/`/g, '``')}\``;
@@ -1177,6 +1199,7 @@ function initPool() {
     keepAliveInitialDelay: 10000,
   });
   pool.on('error', handlePoolError);
+  alignSessionTimezone();
   console.log('[DB] 数据库连接池初始化完成（可正常提供业务查询）');
 }
 
