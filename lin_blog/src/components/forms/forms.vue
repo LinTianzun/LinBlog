@@ -31,8 +31,6 @@
 
             <div class="forms-cover" v-if="props.classify == 0">
                 <span class="forms-cover-label">文章封面</span>
-                <img v-if="formData.cover" class="forms-cover-preview" :src="optimizedImageUrl(formData.cover, 320)"
-                    alt="文章封面预览">
                 <yk-upload :file-list="coverFileList" :upload-url="uploadUrl" :limit="1" :multiple="false"
                     accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
                     desc="上传封面" @handle-success="handleCoverSuccess"
@@ -75,7 +73,6 @@ import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
-import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 
 type FormData = {
@@ -556,15 +553,8 @@ onMounted(() => {
                 height: 120px;
             }
 
-            &-preview {
-                width: 160px;
-                height: 120px;
-                object-fit: cover;
-                border-radius: @radius-m;
-                border: 1px solid var(--admin-line, @line-color-s);
-            }
-
-            &-library {
+            // 素材库按钮保持内容宽度，不被列布局拉伸
+            .forms-cover-library {
                 align-self: flex-start;
             }
         }
