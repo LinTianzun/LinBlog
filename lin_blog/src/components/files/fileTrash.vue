@@ -153,8 +153,7 @@ const formatSize = (size: number | null): string => {
 }
 
 const formatTime = (value: string | null): string => {
-    if (!value) return '未知时间'
-    const text = String(value).replace('T', ' ').slice(0, 16)
+    const text = String(value || '').replace('T', ' ').slice(0, 16)
     return text || '未知时间'
 }
 

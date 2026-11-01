@@ -12,6 +12,14 @@ export interface FileItem {
   source?: "disk" | "image";
   // 内容图片的内联地址，与 /api/uploads 共用缩略图契约
   rawUrl?: string;
+  // 内容图片的归属：被哪些文章、图库、随笔引用
+  owners?: FileOwner[];
+}
+
+export interface FileOwner {
+  type: "article" | "gallery" | "diary";
+  id: number;
+  title: string;
 }
 
 // 素材库选择器使用的图片条目：raw 地址可直接作为文章/图库/随笔图片

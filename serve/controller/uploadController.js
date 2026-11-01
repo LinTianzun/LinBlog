@@ -72,7 +72,8 @@ async function saveImage(req, res, file) {
         try {
             let subsetId = null
             try {
-                subsetId = await subsetModel.ensureResourceSubset('图片')
+                // 内容图片归入「内容图片」分组，与磁盘文件区分开
+                subsetId = await subsetModel.ensureResourceSubset('内容图片', 95)
             } catch (subsetErr) {
                 // 找不到资源分组时先归入未分类，不影响图片本身。
                 console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)

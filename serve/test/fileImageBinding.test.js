@@ -57,6 +57,9 @@ function withOverrides(target, overrides, run) {
 
 test('getFiles exposes content images with the uploads url and an image source tag', async () => {
     await withOverrides(fileModel, {
+        async findContentOwnersByFileIds() {
+            return []
+        },
         async getFilesByPage() {
             return {
                 total: 2,
@@ -94,6 +97,44 @@ test('getFiles exposes content images with the uploads url and an image source t
         assert.equal(res.body.data.list[0].source, 'image')
         assert.equal(res.body.data.list[1].url, '/api/file/32/download')
         assert.equal(res.body.data.list[1].source, 'file')
+    })
+})
+
+test('getFiles attaches the owning article, gallery and diary to content images', async () => {
+    await withOverrides(fileModel, {
+        async getFilesByPage() {
+            return {
+                total: 1,
+                list: [
+                    {
+                        id: 91,
+                        file_name: '1700000000-photo.jpg',
+                        format: 'jpg',
+                        size: 2048,
+                        url: '',
+                        subset_id: 5,
+                        source_image_id: 19,
+                        created_at: '2026-11-01 10:00:00'
+                    }
+                ]
+            }
+        },
+        async findContentOwnersByFileIds() {
+            return [
+                { fileId: 91, type: 'article', id: 7, title: '慢速河流' },
+                { fileId: 91, type: 'gallery', id: 8, title: '城市夜色' },
+                { fileId: 91, type: 'diary', id: 9, title: '雨天的旧书店' }
+            ]
+        }
+    }, async () => {
+        const res = createRes()
+        await fileController.getFiles({ query: {}, user: { userId: 1, userType: 'admin' } }, res)
+
+        assert.equal(res.body.code, 200)
+        const owners = res.body.data.list[0].owners
+        assert.equal(owners.length, 3)
+        assert.deepEqual(owners.map(item => item.type), ['article', 'gallery', 'diary'])
+        assert.equal(owners[0].title, '慢速河流')
     })
 })
 

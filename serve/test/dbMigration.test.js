@@ -30,7 +30,8 @@ const ALL_MIGRATIONS = [
     '20261030_db_backup',
     '20261030_article_workflow',
     '20261101_composite_indexes',
-    '20261102_file_image_binding'
+    '20261102_file_image_binding',
+    '20261103_content_image_subset'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -571,5 +572,37 @@ test('file image binding migration adds the column, unique key and backfills con
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261102_file_image_binding'
+    ))
+})
+
+test('content image subset migration creates the group and moves content images into it', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261103_content_image_subset')
+        }
+        // 分组不存在，需要新建
+        if (sql.includes("subset_name = '内容图片'")) return []
+        if (sql.includes('INSERT INTO subset')) return { insertId: 42 }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('INSERT INTO subset')
+        && call.values.includes('内容图片')
+    ))
+    // 存量内容图片要从「图片」迁到「内容图片」
+    assert.ok(calls.some(call =>
+        call.sql.includes('UPDATE file f')
+        && call.sql.includes('source_image_id IS NOT NULL')
+        && call.values[0] === 42
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261103_content_image_subset'
     ))
 })

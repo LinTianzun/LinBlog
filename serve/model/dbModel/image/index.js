@@ -126,6 +126,60 @@ async function deactivateImageIfUnreferenced(filename, exec = db.query) {
     return { referenceCount: 0, deactivated: true }
 }
 
+/**
+ * 找出引用了这张内容图片的文章、图库与随笔。
+ * 引用有两种形态：上传时的 /api/uploads/:filename，
+ * 以及从素材库复用后的 /api/file/:id/raw。
+ * 返回所属区块（文章/图库/随笔）与内容名称，供「本地文件」展示关联来源。
+ */
+async function findContentOwners({ fileId, filename }, exec = db.query) {
+    const rawUrl = `/api/file/${fileId}/raw`
+    const patterns = [filename, rawUrl]
+    const owners = []
+
+    const articleRows = await exec(
+        `SELECT id, title, classify
+         FROM article
+         WHERE state != 'deleted'
+           AND (
+             cover LIKE ? OR content LIKE ? OR draft_content LIKE ? OR draft_payload LIKE ?
+             OR cover LIKE ? OR content LIKE ? OR draft_content LIKE ? OR draft_payload LIKE ?
+           )
+         LIMIT 50`,
+        [
+            `%${patterns[0]}%`, `%${patterns[0]}%`, `%${patterns[0]}%`, `%${patterns[0]}%`,
+            `%${patterns[1]}%`, `%${patterns[1]}%`, `%${patterns[1]}%`, `%${patterns[1]}%`,
+        ]
+    )
+
+    for (const row of articleRows || []) {
+        owners.push({
+            type: row.classify === 'image' ? 'gallery' : 'article',
+            id: Number(row.id),
+            title: String(row.title || '未命名内容')
+        })
+    }
+
+    const diaryRows = await exec(
+        `SELECT id, title
+         FROM diary
+         WHERE status = 1
+           AND (picture LIKE ? OR picture LIKE ?)
+         LIMIT 50`,
+        [`%${patterns[0]}%`, `%${patterns[1]}%`]
+    )
+
+    for (const row of diaryRows || []) {
+        owners.push({
+            type: 'diary',
+            id: Number(row.id),
+            title: String(row.title || '未命名随笔')
+        })
+    }
+
+    return owners
+}
+
 module.exports = {
     createImage,
     findActiveImageByFilename,
@@ -135,5 +189,6 @@ module.exports = {
     deleteImageById,
     countImageReferencesByFilename,
     countImageReferencesWithBinding,
-    deactivateImageIfUnreferenced
+    deactivateImageIfUnreferenced,
+    findContentOwners
 }

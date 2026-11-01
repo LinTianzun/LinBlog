@@ -35,6 +35,9 @@ test('图库可以从素材库挑选本地图片', async ({ page }) => {
   await expect(picker.locator('.media-picker-item')).toHaveCount(2)
 
   await picker.locator('.media-picker-item').first().click()
+  // 选中态必须明显：徽标 + 主题色描边，而不是只有一条细边框
+  await expect(picker.locator('.media-picker-item.is-selected')).toHaveCount(1)
+  await expect(picker.locator('.media-picker-item.is-selected .media-picker-item-check')).toBeVisible()
   await picker.getByRole('button', { name: '确定' }).click()
 
   await expect(page.locator('.waterfall-item')).toHaveCount(before + 1)

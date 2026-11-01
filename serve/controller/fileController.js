@@ -72,7 +72,8 @@ function formatFile(item) {
             rawUrl: `/api/file/${item.id}/raw`,
             subsetId: item.subset_id,
             createdAt: item.created_at,
-            source: 'image'
+            source: 'image',
+            owners: item.owners || []
         }
     }
 
@@ -131,6 +132,30 @@ async function getFiles(req, res) {
             offset
         })
 
+        // 内容图片要展示被哪篇文章、图库或随笔引用，一次批量查完再挂到条目上
+        const imageFileIds = list
+            .filter(item => item.source_image_id)
+            .map(item => item.id)
+        let owners = []
+        if (imageFileIds.length > 0) {
+            try {
+                owners = await fileModel.findContentOwnersByFileIds(imageFileIds)
+            } catch (err) {
+                // 归属查询失败不影响列表本身，只是不展示引用来源
+                console.warn('[File] 查询内容图片归属失败：', err.message)
+            }
+        }
+        const ownersByFile = new Map()
+        for (const owner of owners) {
+            const listForFile = ownersByFile.get(owner.fileId) || []
+            listForFile.push({
+                type: owner.type,
+                id: owner.id,
+                title: owner.title
+            })
+            ownersByFile.set(owner.fileId, listForFile)
+        }
+
         res.json({
             code: 200,
             message: '获取文件列表成功',
@@ -139,7 +164,13 @@ async function getFiles(req, res) {
                 page,
                 pageSize,
                 totalPage: Math.ceil(total / pageSize),
-                list: list.map(formatFile)
+                list: list.map((item) => {
+                    const formatted = formatFile(item)
+                    if (formatted.owners) {
+                        formatted.owners = ownersByFile.get(item.id) || []
+                    }
+                    return formatted
+                })
             }
         })
     } catch (err) {

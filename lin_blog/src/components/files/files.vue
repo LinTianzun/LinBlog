@@ -1,24 +1,32 @@
 <template>
     <div ref="rootRef" class="files">
-        <div class="files-tool" v-show="selectedFilesId.length > 0">
-            <yk-space>
+        <div class="files-tool" :class="{ 'files-tool-active': selectedFilesId.length > 0 }">
+            <yk-space size="m" align="center" wrap>
                 <yk-checkbox :checked="checkedAll" :indeterminate="indeterminate" @change="handleChangeAll">
                     全选
                 </yk-checkbox>
-                <yk-text>
-                    已选择 {{ selectedFilesId.length }} 项内容
-                </yk-text>
-                <yk-text type="primary" @click="cancelCheck" style="cursor: pointer;">
-                    取消选中
+                <yk-text type="third" class="files-tool-summary">
+                    当前 {{ displayTotal }} 个文件
+                    <template v-if="selectedFilesId.length > 0"> · 已选 {{ selectedFilesId.length }} 项</template>
                 </yk-text>
             </yk-space>
-            <yk-space v-if="canManageFiles">
+
+            <yk-space v-if="canManageFiles" size="s">
+                <yk-button size="s" type="secondary" :disabled="selectedFilesId.length === 0"
+                    @click="cancelCheck">
+                    取消选中
+                </yk-button>
                 <yk-popconfirm title="确认删除所选文件？可在回收站恢复" trigger="click" placement="topRight"
                     @confirm="deleteMultipleFile">
-                    <IconDeleteOutline class="files-tool-delete" />
+                    <yk-button size="s" type="secondary" status="danger"
+                        :disabled="selectedFilesId.length === 0">
+                        删除所选
+                    </yk-button>
                 </yk-popconfirm>
                 <yk-popconfirm title="选择分组" trigger="click" placement="bottomRight" @confirm="confirmMove">
-                    <IconSwitchOutline class="files-tool-switch" />
+                    <yk-button size="s" type="secondary" :disabled="selectedFilesId.length === 0">
+                        移动分组
+                    </yk-button>
                     <template #content>
                         <yk-scrollbar ref="scrollbar" height="148px" class="subset">
                             <div class="subset-item" @click="changeOption(undefined)"
@@ -43,7 +51,11 @@
             <yk-text type="secondary">正在加载文件...</yk-text>
         </div>
 
-        <yk-empty v-else-if="files.length === 0" description="暂无文件" />
+        <div v-else-if="files.length === 0" class="files-state">
+            <yk-empty description="暂无文件">
+                <yk-text type="secondary">当前分组还没有文件，可以先上传或选择其他分组。</yk-text>
+            </yk-empty>
+        </div>
 
         <div v-else class="files-main" :class="{ 'is-refreshing': loading }">
             <fileItem v-for="item in files" :key="item.id" :data="item" @changeSubsetId="changeSubset"
@@ -96,14 +108,16 @@ const session = useSessionStore()
 const canManageFiles = computed(() => session.can('file.manage'))
 const rootRef = ref<HTMLElement | null>(null)
 const responsivePageSize = useResponsiveGridPageSize(rootRef, {
-    minCardWidth: 200,
-    gap: 24,
+    minCardWidth: 225,
+    gap: 20,
     rows: 3,
     horizontalPadding: 48,
 })
 const effectivePageSize = computed(
     () => props.pageSize ?? responsivePageSize.value
 )
+
+const displayTotal = computed(() => count.value)
 
 const indeterminate = ref(false)
 const checkedAll = ref(false)
@@ -163,6 +177,8 @@ const fetchFiles = async (): Promise<void> => {
             subsetId: item.subsetId ?? undefined,
             source: item.source ?? 'disk',
             rawUrl: item.rawUrl,
+            createdAt: item.createdAt,
+            owners: item.owners ?? [],
             selected: false,
         }))
 
@@ -350,7 +366,7 @@ defineExpose({ refresh: fetchFiles })
 
 <style lang="less" scoped>
     .files {
-        padding: @space-l;
+        padding: 18px;
         border-radius: @radius-m;
         background: @bg-color-l;
         width: 100%;
@@ -359,31 +375,33 @@ defineExpose({ refresh: fetchFiles })
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: @space-l;
-            border-radius: @radius-m;
-            background: @bg-color-m;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding: 12px 14px;
+            border: 1px solid var(--admin-line, @line-color-s);
+            border-radius: var(--admin-radius-sm, 12px);
+            background: color-mix(in srgb, var(--admin-surface, @bg-color-m) 84%, @bg-color-m);
+            box-shadow: var(--admin-shadow-sm, @shadow-s);
+            transition: border-color 180ms ease, background 180ms ease;
 
-            &-delete,
-            &-switch {
-                width: 20px;
-                height: 20px;
-                color: @font-color-s;
-                cursor: pointer;
-
-                &:hover {
-                    color: @font-color-l;
-                }
+            &-active {
+                border-color: color-mix(in srgb, var(--pcolor) 54%, transparent);
+                background: color-mix(in srgb, var(--admin-surface, @bg-color-m) 82%, var(--pcolor1));
             }
 
+            &-summary {
+                font-size: @size-s;
+                color: var(--admin-muted, @font-color-s);
+            }
         }
 
         &-main {
             display: grid;
             // 流体列：卡片宽度随可用空间伸缩，屏幕拉宽时铺满而不是居中留白
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            row-gap: 32px;
-            column-gap: 24px;
-            padding: 24px 0 32px;
+            grid-template-columns: repeat(auto-fill, minmax(225px, 1fr));
+            row-gap: 26px;
+            column-gap: 20px;
+            padding: 24px 4px 30px;
             // 刷新中只降低不透明度，不销毁 DOM：网格高度不变，不会有跳动
             transition: opacity 160ms ease;
 
@@ -402,6 +420,10 @@ defineExpose({ refresh: fetchFiles })
 
         &-state {
             min-height: 220px;
+            padding: 24px;
+            border: 1px dashed var(--admin-line, @line-color-s);
+            border-radius: var(--admin-radius-sm, 12px);
+            background: color-mix(in srgb, var(--admin-surface, @bg-color-m) 70%, @bg-color-m);
             display: flex;
             flex-direction: column;
             align-items: center;

@@ -42,6 +42,15 @@ export interface FileData {
     source?: 'disk' | 'image';
     // 内容图片的内联地址，与 /api/uploads 共用缩略图契约
     rawUrl?: string;
+    createdAt?: string;
+    // 内容图片的归属：被哪些文章、图库、随笔引用
+    owners?: FileOwner[];
+}
+
+export interface FileOwner {
+    type: 'article' | 'gallery' | 'diary';
+    id: number;
+    title: string;
 }
 
 //  标签

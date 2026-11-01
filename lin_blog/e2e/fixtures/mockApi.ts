@@ -338,9 +338,13 @@ export async function installApiMock(page: Page): Promise<MockState> {
             size: 204800,
             url: '/api/uploads/1700000000-cover.jpg',
             rawUrl: '/api/file/601/raw',
-            subsetId: 2,
+            subsetId: 3,
             createdAt: '2026-11-01T08:00:00.000Z',
             source: 'image',
+            owners: [
+              { type: 'article', id: 1201, title: '把日常写成一条慢速河流' },
+              { type: 'diary', id: 1401, title: '雨天的旧书店' },
+            ],
           },
           {
             id: 602,
@@ -363,6 +367,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
         uncategorized: 0,
         subsets: [
           { id: 2, name: '图片', classify: 'resource', sort: 100, moment: '2026-10-20', value: 1 },
+          { id: 3, name: '内容图片', classify: 'resource', sort: 95, moment: '2026-10-20', value: 1 },
         ],
       })
       return

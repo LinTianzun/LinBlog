@@ -160,6 +160,72 @@ async function insertImageBinding({ fileName, format, size, sourceImageId, subse
 }
 
 /**
+ * 批量查询内容图片的归属：被哪些文章、图库、随笔引用。
+ * 引用形态有两种：上传时的 /api/uploads/:filename，
+ * 以及从素材库复用后的 /api/file/:id/raw。
+ * 返回 [{ fileId, type, id, title }]，type 为 article/gallery/diary。
+ */
+async function findContentOwnersByFileIds(fileIds) {
+    const ids = (fileIds || []).map(Number).filter(id => Number.isSafeInteger(id) && id > 0)
+    if (ids.length === 0) return []
+
+    const placeholders = ids.map(() => '?').join(', ')
+    const owners = []
+
+    const articleRows = await query(
+        `SELECT f.id AS file_id, a.id AS content_id, a.title, a.classify
+         FROM file f
+         JOIN image i ON i.id = f.source_image_id
+         JOIN article a ON a.state != 'deleted'
+          AND (
+            a.cover LIKE CONCAT('%', i.filename, '%')
+            OR a.content LIKE CONCAT('%', i.filename, '%')
+            OR a.draft_content LIKE CONCAT('%', i.filename, '%')
+            OR a.draft_payload LIKE CONCAT('%', i.filename, '%')
+            OR a.cover LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.content LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.draft_content LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.draft_payload LIKE CONCAT('%/api/file/', f.id, '/raw%')
+          )
+         WHERE f.id IN (${placeholders})`,
+        ids
+    )
+
+    for (const row of articleRows || []) {
+        owners.push({
+            fileId: Number(row.file_id),
+            type: row.classify === 'image' ? 'gallery' : 'article',
+            id: Number(row.content_id),
+            title: String(row.title || '未命名内容')
+        })
+    }
+
+    const diaryRows = await query(
+        `SELECT f.id AS file_id, d.id AS content_id, d.title
+         FROM file f
+         JOIN image i ON i.id = f.source_image_id
+         JOIN diary d ON d.status = 1
+          AND (
+            d.picture LIKE CONCAT('%', i.filename, '%')
+            OR d.picture LIKE CONCAT('%/api/file/', f.id, '/raw%')
+          )
+         WHERE f.id IN (${placeholders})`,
+        ids
+    )
+
+    for (const row of diaryRows || []) {
+        owners.push({
+            fileId: Number(row.file_id),
+            type: 'diary',
+            id: Number(row.content_id),
+            title: String(row.title || '未命名随笔')
+        })
+    }
+
+    return owners
+}
+
+/**
  * 素材库图片列表：只返回图片类扩展名且未删除的文件。
  * 扩展名白名单与 uploadController 的 MIME 白名单保持一致，
  * 避免把视频/压缩包等非图片混进选择器。
@@ -340,6 +406,7 @@ module.exports = {
     getFilesByPage,
     getImageBindingsByPage,
     findImageBindingByImageId,
+    findContentOwnersByFileIds,
     countFilesSummary,
     getSubsetCounts,
     findFileById,

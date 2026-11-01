@@ -563,6 +563,42 @@ async function ensureFileImageBindingSchema(exec = query) {
   `);
 }
 
+// 内容图片（文章/图库/随笔上传）单独归入「内容图片」资源分组，
+// 与磁盘文件区分开：这一组里的图片都能在本地文件里看到，
+// 并能查到被哪篇文章、图库或随笔引用。
+async function ensureContentImageSubsetSchema(exec = query) {
+  const [existing] = await exec(
+    `SELECT id FROM subset
+     WHERE subset_name = '内容图片' AND classify = 'resource' AND status = 1
+     LIMIT 1`
+  )
+
+  let subsetId = existing?.id
+  if (!subsetId) {
+    // 同名的软删分组先清掉，避免出现两个「内容图片」
+    await exec(
+      `UPDATE subset SET status = 0
+       WHERE subset_name = '内容图片' AND classify = 'resource' AND status = 1`
+    )
+    const result = await exec(
+      `INSERT INTO subset (subset_name, classify, sort)
+       VALUES (?, ?, ?)`,
+      ['内容图片', 'resource', 95]
+    )
+    subsetId = result.insertId
+  }
+
+  // 存量内容图片从「图片」分组迁到「内容图片」
+  await exec(
+    `UPDATE file f
+     JOIN subset s ON s.subset_name = '图片' AND s.classify = 'resource' AND s.status = 1
+     SET f.subset_id = ?
+     WHERE f.source_image_id IS NOT NULL
+       AND f.subset_id = s.id`,
+    [subsetId]
+  )
+}
+
 // -------------------------- 显式、事务化演示数据 --------------------------
 async function seedDemoData() {
   return withTransaction(async (connection) => {
@@ -1974,6 +2010,10 @@ const migrations = [
   {
     version: '20261102_file_image_binding',
     up: ensureFileImageBindingSchema
+  },
+  {
+    version: '20261103_content_image_subset',
+    up: ensureContentImageSubsetSchema
   }
 ];
 
