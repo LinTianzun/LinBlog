@@ -25,6 +25,7 @@ test('评论路由挂载：公开写操作走可选认证，后台写操作走�
     )
 
     // 公开互动接口必须在 optionalAuth 下，否则匿名请求会直接 401
+    // POST 路由额外叠加 sameOrigin 同源校验，GET 不需要
     for (const [method, routePath] of [
         ['get', '/api/public/comment'],
         ['post', '/api/public/comment'],
@@ -34,7 +35,12 @@ test('评论路由挂载：公开写操作走可选认证，后台写操作走�
     ]) {
         const route = find(method, routePath)
         assert.ok(route, `缺少路由 ${method.toUpperCase()} ${routePath}`)
-        assert.equal(route.handlers[0].name, 'optionalAuthMiddleware')
+        if (method === 'post') {
+            assert.equal(route.handlers[0].name, 'sameOrigin')
+            assert.equal(route.handlers[1].name, 'optionalAuthMiddleware')
+        } else {
+            assert.equal(route.handlers[0].name, 'optionalAuthMiddleware')
+        }
     }
 
     // 后台接口必须强制登录
@@ -58,6 +64,7 @@ test('删除接口处理器按 commentType 分发，与点赞/举报复用同一
         route => route.method === 'post' && route.path === '/api/public/comment/delete'
     )
 
-    assert.equal(deleteRoute.handlers.length, 2)
-    assert.equal(deleteRoute.handlers[1].name, 'deleteComment')
+    // sameOrigin + optionalAuthMiddleware + deleteComment
+    assert.equal(deleteRoute.handlers.length, 3)
+    assert.equal(deleteRoute.handlers[2].name, 'deleteComment')
 })

@@ -19,6 +19,7 @@ const {
 } = require('./middleware/security')
 const { writeMethodLimit } = require('./middleware/rateLimit')
 const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandler')
+const healthController = require('./controller/healthController')
 const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
@@ -56,9 +57,10 @@ app.use(express.json({ limit: config.jsonLimit }))
 app.use(normalizeJsonBody)
 
 // Railway / 容器平台健康检查
-app.get('/healthz', (_req, res) => {
-    res.status(200).json({ status: 'ok' })
-})
+// 存活检查：进程存活即返回 ok，不检查 DB（避免 DB 抖动导致容器被反复重启）
+app.get('/healthz', healthController.liveness)
+// 就绪检查：DB 连通后才返回 200，未就绪返回 503
+app.get('/readyz', healthController.readiness)
 
 // 4. 所有 API 写请求先经过全局兜底限流，敏感接口再叠加分路由限流
 app.use('/api', writeMethodLimit)

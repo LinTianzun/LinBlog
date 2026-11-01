@@ -27,6 +27,10 @@ LINBLOG_DB_NAME=${{MySQL.MYSQLDATABASE}}
 
 LINBLOG_FILE_STORAGE_DIR=/data/files
 LINBLOG_FILE_BACKUP_DIR=/data/file-backups
+
+# 可选：连接池调优（默认 20 连接，获取超时 10 秒）
+# LINBLOG_DB_CONNECTION_LIMIT=20
+# LINBLOG_DB_ACQUIRE_TIMEOUT_MS=10000
 ```
 
 如果应用服务能够读取到 Railway 自动注入的 `MYSQLHOST`、`MYSQLPORT`、`MYSQLUSER`、`MYSQLPASSWORD`、`MYSQLDATABASE`，也可以省略对应的 `LINBLOG_DB_*` 配置。`RAILWAY_PUBLIC_DOMAIN` 存在时，`LINBLOG_ALLOWED_ORIGINS` 也可省略。
@@ -75,13 +79,14 @@ npm --prefix serve run db:seed
 部署完成后检查：
 
 ```text
-https://<域名>/healthz
+https://<域名>/healthz（存活：进程正常即 200）
+https://<域名>/readyz（就绪：数据库连通才 200，未就绪 503）
 https://<域名>/portal
 https://<域名>/loginRegister
 https://<域名>/sitemap.xml
 ```
 
-`/healthz` 返回 `{"status":"ok"}` 表示容器和数据库均已正常启动。
+`/healthz` 返回 `{"status":"ok"}` 表示容器进程正常；`/readyz` 返回 `{"status":"ready"}` 表示数据库连通、可以接流量。 Railway 等平台的存活探针应指向 `/healthz`（DB 抖动不会触发容器重启），就绪探针指向 `/readyz`。登录管理员可访问 `/api/health/runtime` 查看内存、运行时间与连接池占用。
 
 ## 常见问题
 

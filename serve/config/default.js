@@ -99,12 +99,15 @@ if (configErrors.length > 0) {
 
 const config = {
     port,
+    // 连接池大小可按部署规格调优，默认 20；acquireTimeout 防止连接获取无限等待
     database: {
         HOST: process.env.LINBLOG_DB_HOST || process.env.MYSQLHOST || "localhost",
         PORT: databasePort,
         USER: process.env.LINBLOG_DB_USER || process.env.MYSQLUSER || "root",
         PASSWORD: process.env.LINBLOG_DB_PASSWORD || process.env.MYSQLPASSWORD || "",
-        DB: process.env.LINBLOG_DB_NAME || process.env.MYSQLDATABASE || "linlog"
+        DB: process.env.LINBLOG_DB_NAME || process.env.MYSQLDATABASE || "linlog",
+        connectionLimit: Math.min(Math.max(Number.parseInt(process.env.LINBLOG_DB_CONNECTION_LIMIT || '20', 10) || 20, 1), 100),
+        acquireTimeout: Math.min(Math.max(Number.parseInt(process.env.LINBLOG_DB_ACQUIRE_TIMEOUT_MS || '10000', 10) || 10000, 1000), 60000)
     },
     allowedOrigins,
     trustProxy,

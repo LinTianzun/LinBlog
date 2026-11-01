@@ -77,6 +77,8 @@ test('Railway port, domain and MySQL variables are supported', () => {
         USER: 'railway',
         PASSWORD: 'secret',
         DB: 'railway',
+        connectionLimit: 20,
+        acquireTimeout: 10000,
     })
 })
 

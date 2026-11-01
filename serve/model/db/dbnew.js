@@ -1143,7 +1143,7 @@ function initPool() {
     return;
   }
   pool = mysql.createPool({
-    connectionLimit: 20,
+    connectionLimit: config.database.connectionLimit,
     host: config.database.HOST,
     port: config.database.PORT,
     user: config.database.USER,
@@ -1151,6 +1151,7 @@ function initPool() {
     database: databaseName,
     charset: 'utf8mb4',
     connectTimeout: 15000,
+    acquireTimeout: config.database.acquireTimeout,
     waitForConnections: true,
     queueLimit: 100,
     supportBigNumbers: true,
@@ -1969,5 +1970,6 @@ module.exports = {
   withTransaction,
   closeDatabase,
   seedRichDemoData,
+  getPool: () => pool, // 暴露连接池实例供运行时观测
   isInited: () => isInited, // 检查是否已初始化（可选）
 };

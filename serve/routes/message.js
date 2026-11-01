@@ -1,6 +1,7 @@
 const messageController = require('../controller/messageController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
 const { publicMessageLimit } = require('../middleware/rateLimit')
+const { sameOrigin } = require('../middleware/sameOrigin')
 const { requirePermission } = require('../utils/accessControl')
 
 module.exports = (app) => {
@@ -28,5 +29,5 @@ module.exports = (app) => {
 
     // ===== 门户留言墙（公开）=====
     app.get('/api/portal/messages', messageController.getWallMessages)
-    app.post('/api/portal/message', optionalAuthMiddleware, publicMessageLimit, messageController.createWallMessage)
+    app.post('/api/portal/message', sameOrigin, optionalAuthMiddleware, publicMessageLimit, messageController.createWallMessage)
 }

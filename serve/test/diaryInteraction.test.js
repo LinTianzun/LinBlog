@@ -227,6 +227,12 @@ test('随笔互动路由挂在可选认证下', () => {
         '/api/public/diary/comment'
     ])
     for (const route of routes) {
-        assert.equal(route.handlers[0].name, 'optionalAuthMiddleware')
+        // POST 路由第一个 handler 是 sameOrigin（同源校验），GET 路由直接是 optionalAuthMiddleware
+        if (route.method === 'post') {
+            assert.equal(route.handlers[0].name, 'sameOrigin')
+            assert.equal(route.handlers[1].name, 'optionalAuthMiddleware')
+        } else {
+            assert.equal(route.handlers[0].name, 'optionalAuthMiddleware')
+        }
     }
 })
