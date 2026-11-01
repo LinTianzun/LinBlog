@@ -15,6 +15,12 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 * **后台全模块真实联调**：文章支持列表、新建、编辑、搜索、发布、撤回、删除及详情弹窗；日记支持天气图标与最多 6 张图片；图库分组与文章分组共用同一套分类数据。图库卡片下半部分、随笔卡片正文均可点击，打开后台详情弹窗查看大图/正文与两级评论区，管理员可在弹窗内直接删除评论；总览评论的删除同样带二次确认，删除一级评论会连同其下所有回复一起删除。三类卡片统计统一为「图标 + 数字」：浏览、喜欢、评论、回复（一级评论与回复由后端按 `parent_id` 分开统计）。总览页统计卡片、访问量折线图与设备/系统分布饼图均走真实接口；总览的评论条目可点击，按所属作品类型跳转到文章页或图库页并自动打开对应详情弹窗。
 * **统一后台视觉与响应式体验**：侧栏按运营/内容/系统分组，图标、悬停态、焦点态和选中态统一；顶部保留主题下拉、私信数字未读徽标与用户入口。总览和用户管理复用 `StatCard`，支持配色、图标、点击筛选与当前筛选高亮；文件、图库和私信列表会按视口宽高动态计算每页数量，大屏下保持多行填充，不出现单行或大面积留白。图库编辑页左右卡片等高，评论分页固定在内容分隔线下方，图库初始化不会重复请求。列表分页统一走 `AdminPager`：它屏蔽了 yk-pagination 内部状态不同步导致的「数据翻页但高亮不跟手」，并统一提供「共 N 条」与每页条数切换；管理标签弹窗也接入该分页组件做前端切片分页。图库与随笔的删除确认使用 Teleport 到 body 的 `ConfirmPopover`，避免被卡片 `overflow: hidden` 裁剪。
 
+* **内容创作工作流**：文章与摄影图库编辑页支持自动保存（停写 1.5 秒触发，只写工作稿不动线上内容）、发布前预览、定时发布与版本历史/回滚。已发布内容与编辑工作稿分离存储，读者不会看到半成品；多窗口同时编辑撞车时弹出三方对比（共同基线 / 本窗口 / 对方最新）后再决定采用谁。侧栏「定时发布」工作台按内容类型与账号可管理范围展示待发布队列，支持改期、立即发布、取消计划与逾期告警。详见 [Documentation/内容创作工作流.md](Documentation/内容创作工作流.md)。
+* **定时发布以服务器时区为准**：计划时间的展示、解析与到期判定统一使用服务器时区，不再依赖浏览器时区。浏览器时区与实际挂钟不一致时（如容器 `TZ=UTC`、DevTools 时区覆盖），「1 小时后」依然得到正确时刻；后端另用 `GET /api/time/now` 把服务器时间与偏移下发给前端。
+* **数据库备份与恢复演练**：图片以 `MEDIUMBLOB` 存在数据库里，附件目录备份无法恢复站点，因此服务内置数据库逻辑备份（每天定时导出 gzip JSONL、按保留份数自动清理），并提供「隔离恢复演练」——还原到 `linlog_drill_<随机>` 临时库校验后自动删库。后台「系统设置 → 系统信息 → 数据库备份」支持手动备份、下载、删除与清理过期。详见 [Documentation/数据库备份与恢复.md](Documentation/数据库备份与恢复.md)。
+* **部署监控与安全加固**：`/healthz` 存活检查（不查库，避免 DB 抖动触发容器重启）、`/readyz` 就绪检查（DB 未连通返回 503）、`GET /api/health/runtime` 运行时信息（内存、运行时间、连接池占用）；公开写接口统一走同源校验中间件，前端带 CSP meta。连接池大小与获取超时可用 `LINBLOG_DB_CONNECTION_LIMIT` / `LINBLOG_DB_ACQUIRE_TIMEOUT_MS` 调整。
+* **自动化回归与错误边界**：后端 420 项单测 + 26 项真实 MySQL 集成测试，前端 117 项纯函数单测，Playwright 34 条端到端回归，GitHub Actions 在 push/PR 时自动跑三层回归并上传报告。任一后台页面渲染异常时由 `ErrorBoundary` 兜住，展示可重试卡片而不是整站白屏；未捕获的异步异常统一进 `app.config.errorHandler` 落日志。
+
 ## 项目结构与当前状态
 
 | 目录/模块 | 当前实现 |
@@ -36,6 +42,11 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 | 内容创作工作流 | 文章与图库编辑页支持自动保存（停写 1.5 秒触发，只写工作稿不动线上内容）、发布前预览、定时发布（30 秒轮询到点自动应用工作稿并发布）与版本历史/回滚。「安排定时发布」弹窗提供快捷时间预设、已计划状态块（当前计划 + 倒计时 + 就地取消）与人读时间预览，时间过近会内联提示并禁用确认。自动快照按 5 分钟合并、只留近 24 小时与最近 50 条；手动/发布/回滚/定时快照长期保留，回滚生成新工作稿不覆盖历史。工作稿与已发布内容分离在 `article.draft_*` 字段，乐观锁用 `draft_revision` 防多窗口覆盖；冲突时提供三方对比弹窗（对方与本窗口相对共同基线的字段/正文差异），可选择采用对方版本或保留本窗口修改覆盖保存。**新建页还没有后端 ID**，因此先把内容暂存到 `localStorage`（刷新/崩溃后可恢复），创建成功后自动清除；列表卡片回传 `hasUnpublishedChanges` / `scheduledAt`，直接显示「有未发布修改」与「定时发布」角标。新增侧栏「内容 → 定时发布」工作台，按账号作用域汇总文章与图库待发布队列，支持类型筛选、改期、立即发布、取消计划和逾期告警。见 `serve/model/dbModel/articleWorkflow/index.js`、`serve/utils/articleScheduler.js`、`lin_blog/src/utils/localDraft.ts`、`lin_blog/src/views/ScheduledPublishView.vue`、`lin_blog/src/views/EditArticle.vue`、`lin_blog/src/views/EditGallery.vue`、`Documentation/内容创作工作流.md`。 |
 | 日记 | 随笔随记已接入数据库：天气图标字典与前端对齐（8 种）、图片上限 6 张、按天记录；公开列表支持按天气名在 SQL 层过滤。 |
 | 总览 | 四张统计卡片（文件总大小、文章、图库、日记数量）走聚合接口 `GET /api/overview/summary`；访问量折线图与设备/系统分布饼图走 `GET /api/overview/visitStats`，近一周/近一月切换相互独立。 |
+| 总览 · 热门路径 | `GET /api/overview/topPaths` 返回近 N 天访问次数 TOP N 的路径（`period=week\|moon`、`limit` 1–50），前端在访问量折线下方以排名条形 + 人读路径（如「文章 #123」）呈现，配合迁移 `20261101_composite_indexes` 补的复合索引避免全表扫描。 |
+| 自动化回归与 CI | `.github/workflows/ci.yml` 在 push / PR 到 `main` 时并行跑后端测试、前端单测与生产构建、Playwright E2E 三个 job，并上传 `playwright-report/`、`test-results/` 产物。E2E 用 `page.route` 拦截 `/api/**` 返回稳定 mock，不依赖 MySQL 与后端进程。 |
+| 部署监控与安全加固 | `/healthz` 存活检查、`/readyz` 就绪检查（DB 未连通返回 503）、`GET /api/health/runtime` 运行时信息；公开写路由挂 `sameOrigin` 同源校验中间件；`index.html` 带 CSP meta。`serve/middleware/sameOrigin.js`、`serve/utils/healthCheck.js`。 |
+| 错误边界 | `lin_blog/src/components/common/ErrorBoundary.vue` 以 `onErrorCaptured` 拦截路由级渲染/生命周期异常，`App.vue` 用 `:key="route.path"` 包住 `<router-view>`，崩页时展示可重试卡片；错误详情格式化与可重试判定收敛在 `lin_blog/src/utils/errorBoundary.ts`。 |
+| 数据库备份与恢复 | 定时导出 gzip JSONL 逻辑备份（不依赖 `mysqldump`），按外键顺序序列化、`BLOB` 十六进制编码并按字节切块；支持隔离恢复演练、`scripts/verify-restore.js` 逐表行数与图片 SHA-256 核对。见 `serve/utils/dbBackup.js`、`serve/model/dbModel/backup/index.js`。 |
 
 ### 本地开发命令
 
@@ -71,7 +82,7 @@ npm --prefix lin_blog test       # 前端纯函数与路由守卫单测
 npm --prefix lin_blog run test:e2e   # Playwright 端到端（自动拉起 Vite dev server）
 ```
 
-E2E 覆盖 29 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）、编辑器代码块高亮（CSS/HTML/JavaScript 产生 token、未收录语言只失去着色、语言菜单可切到 JavaScript）、后台内容流（文章撤回发布与删除、关键词搜索带上 keyword 参数、图库列表渲染并进入编辑页、随笔新建与删除）、内容工作流（文章/图库自动保存、预览、版本面板、定时发布、列表角标、新建页恢复、保存冲突三方对比）与定时发布工作台（逾期告警、改期、立即发布、取消计划）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
+E2E 覆盖 34 条主链路：登录与权限守卫、评论举报（选原因与补充说明、未选原因禁止提交）、私信回复、私信轮询（未读徽标与其他会话新消息提示）、主题切换持久化、门户详情深链接、门户留言墙（展示与提交回显）、举报处理工作台（全选批量标记已处理并带备注、日期筛选与单条备注处理）、权限矩阵只读模式、门户 Hero 的 img + srcset + preload（含窄屏选 960 档）、编辑器代码块高亮（CSS/HTML/JavaScript 产生 token、未收录语言只失去着色、语言菜单可切到 JavaScript）、后台内容流（文章撤回发布与删除、关键词搜索带上 keyword 参数、图库列表渲染并进入编辑页、随笔新建与删除）、内容工作流（文章/图库自动保存、预览、版本面板、定时发布、列表角标、新建页恢复、保存冲突三方对比）、定时发布工作台（逾期告警、改期、立即发布、取消计划）、错误边界（正常路径不拦截渲染）与定时发布跨时区回归（浏览器时区分别为 Asia/Shanghai / UTC / Etc/GMT+2 时，「1 小时后」均得到服务器时区的同一时刻）。所有 `/api/**` 请求由 `lin_blog/e2e/fixtures/mockApi.ts` 拦截并返回稳定 mock，测试不依赖 MySQL 或后端进程；未显式 mock 的接口统一兜底为空成功响应，避免误连 `localhost:3030`。首次运行需执行 `npm --prefix lin_blog run test:e2e:install` 下载 Chromium；公司网络下载慢时可设置 `PLAYWRIGHT_CHANNEL=chrome` 复用本机安装的 Chrome。
 
 `.github/workflows/ci.yml` 在 push / PR 到 `main` 时依次执行后端测试、前端单测与生产构建、Playwright E2E，并上传 `playwright-report/` 与 `test-results/` 作为构建产物。见 `lin_blog/playwright.config.ts`、`lin_blog/e2e/`。
 
@@ -107,7 +118,9 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 | 文件 | `GET /api/file`、`GET /api/file/summary`、`GET /api/file/trash`、`PATCH /api/file/restore`、`DELETE /api/file/trash`（仅管理员，彻底删除）、`GET /api/file/storage/status`（仅管理员）、`POST /api/file/maintenance/cleanup`（仅管理员，支持 `dryRun`）、`POST /api/file/upload?ticket=...`、`PATCH /api/file/move`、`DELETE /api/file`、`GET /api/file/:id/download` | 上传需要认证（一次性票据）；删除为软删并把本地文件移入非公开备份区，可在回收站恢复或由管理员彻底删除；下载公开，缩略图加 `?inline=true`。 |
 | 分类 | `GET /api/subset?classify=...`、`POST /api/subset`、`PUT /api/subset/:id`、`DELETE /api/subset/:id` | 需要认证；图库（`classify=image`）复用文章分组，仅计数口径不同。门户 `GET /api/public/subset` 的分类计数只统计已发布内容，草稿与已驳回不计入。 |
 | 标签 | `GET/POST /api/label`、`DELETE /api/label/:id` | 需要认证；标签被文章引用时禁止删除。 |
-| 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布。 |
+| 总览统计 | `GET /api/overview/summary`、`GET /api/overview/visitStats?period=week\|moon`、`GET /api/overview/topPaths?period=week\|moon&limit=1-50` | 需要 Bearer Token；summary 聚合文件总大小、文章/图库/日记数量、评论数与私信未读数，visitStats 返回每日访问量与设备/系统分布，topPaths 返回热门路径 TOP N（按访问次数降序，默认 10、上限 50）。 |
+| 服务器时间 | `GET /api/time/now` | 公开访问，`Cache-Control: no-store`；返回服务器绝对时间 `now`、时区偏移 `offsetMinutes` 与时区名 `timeZone`。定时发布等「本地时间」语义以该接口为权威，前端据此解析 `datetime-local`，不依赖浏览器时区。 |
+| 健康检查与运行时 | `GET /healthz`、`GET /readyz`、`GET /api/health/runtime` | `/healthz` 存活检查不查库（避免 DB 抖动触发容器重启）；`/readyz` 就绪检查带 5 秒 DB ping 缓存，未连通返回 503；`/api/health/runtime` 需 `systemLog.view`，返回内存、运行时间、连接池占用与 Node 版本。 |
 | 系统日志 | `GET /api/systemLog` | 仅管理员；记录登录与各模块写操作（创建/更新/删除、目标类型与 IP），支持分页、关键词搜索与时间排序（`sortOrder=asc|desc`，默认 `desc`）。 |
 | 数据库备份 | `GET /api/backup`、`GET /api/backup/history`、`POST /api/backup`、`GET /api/backup/:filename/download`、`POST /api/backup/restore-drill`、`POST /api/backup/prune`、`DELETE /api/backup/:filename` | `backup.view` 可查看总览与历史，`backup.manage` 才能备份、下载、删除、清理与演练；恢复演练还原到隔离临时库并在验证后自动删库。 |
 | 内容工作流 | `GET /api/article/scheduled`、`GET /api/article/:id/workflow`、`POST /api/article/:id/workflow/draft`、`GET /api/article/:id/versions`、`GET /api/article/:id/versions/:versionId`、`POST /api/article/:id/versions/:versionId/restore`、`POST /api/article/:id/workflow/publish`、`POST /api/article/:id/workflow/schedule`、`DELETE /api/article/:id/workflow/schedule` | 需要 Bearer Token，文章与图库共用，权限按内容类型取 `article.*` / `gallery.*` 前缀。`/api/article/scheduled` 返回当前账号可管理的待发布队列及即将发布/逾期统计，支持 `classify=article\|image`；保存工作稿带 `revision` 乐观锁，版本不一致返回 409；已发布内容自动保存只写工作稿，发布或撤回时才落到线上字段；定时发布至少需晚于当前 1 分钟。 |
@@ -132,7 +145,8 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 * 文章模型依赖 `article.user_id` 保存作者及执行权限过滤；迁移版本 `20261023_article_owner` 已在本地测试库执行验证。历史文章作者列允许为 `NULL`。
 * JWT 密钥由 `LINBLOG_JWT_SECRET` 提供并要求至少 32 字符，`.env` 会由后端入口加载。认证中间件已区分 Token 错误（401）与数据库故障（503）。
 * CORS 允许来源可通过 `LINBLOG_ALLOWED_ORIGINS` 配置，并已允许 `Authorization` 请求头和 `PATCH` 方法。Vite 同源代理开发路径不代表所有跨域部署均已完成验证。
-* 后端 `npm test` 当前 `402/402` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与后台举报处理（状态机、日期范围、批量处理、处理备注、原因/来源/状态筛选、图库来源按 a.classify 拆分、权限与系统日志）、内容工作流（工作稿隔离、乐观锁、版本回滚、自动快照合并与分级保留、定时发布、待发布队列作用域与逾期统计、失败告警去重）、私信角色边界与留言墙/私信渠道隔离、门户详情深链接、sitemap/RSS/robots、门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 后端 `npm test` 当前 `420/420` 通过，覆盖注册并发唯一键冲突、配置校验、文章、评论（安全与两级边界）、评论点赞/举报（公开可见范围、重复举报、匿名拒绝、举报原因白名单、禁止举报本人评论）与后台举报处理（状态机、日期范围、批量处理、处理备注、原因/来源/状态筛选、图库来源按 a.classify 拆分、权限与系统日志）、内容工作流（工作稿隔离、乐观锁、版本回滚、自动快照合并与分级保留、定时发布、待发布队列作用域与逾期统计、失败告警去重、草稿保留待发布计划）、私信角色边界与留言墙/私信渠道隔离、门户详情深链接、sitemap/RSS/robots、门户文章点赞/公开评论、门户浏览计数（去重、目标不存在、参数校验）、浏览量模型（去重窗口、过期清理、跨表计数）、随笔天气 SQL 过滤与全量分面、用户权限、消息角色、认证中间件（含禁用账号、数据库故障、令牌版本失效、上传票据的签发/按次消费/过期/来源绑定/重放、伪造票据与无票据拒绝）、公开只读权限边界（含门户分类/标签/随笔路由与登录态不串用作者过滤）、封面引用清理、迁移幂等、请求体归一化、图片存储（含按需 WebP 缩略图与 ETag/304）、文件/分类/标签/日记控制器、文件生命周期（备份区/回收站/恢复回滚/彻底删除/定时清理）、异地镜像与 S3 同步、容量告警、系统日志时间排序、门户分类只统计已发布内容、天气字典、访问统计、访问记录保留期清理与地理解析降级、系统日志、密码重置（令牌哈希存储、一次性消费、版本绑定、限流）、服务器时间接口与同源校验等；测试使用模块替身。真实 MySQL 集成测试见 `serve/test/integration.realDb.test.js`，需设置 `LINBLOG_INTEGRATION_DB` 指向独立验证库才会运行（自动建库迁移、跑完删除，禁止指向默认业务库）。
+* 时间语义统一以服务器时区为准：数据库会话 `time_zone` 在连接建立时对齐到 Node 进程时区，定时发布的到期判定改用 Node 时钟而非 MySQL `NOW()`，前端 `datetime-local` 的解析与展示也走服务器偏移。这样容器 `TZ=UTC`、浏览器时区被改写等场景下不会把计划时间算偏。但**用户浏览器自身的挂钟时间**若被手动改错（与服务器时间不一致），界面显示仍会与真实世界脱节，属于操作系统层面的问题，需在机器上校准系统时间。
 
 ### 当前验证状态
 
@@ -162,6 +176,8 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 
 * 门户首屏图片加载与 LCP 治理（2026-10-30）：Hero 与门户环境背景从 CSS `background-image` 改为真实 `<img>`，获得 `srcset`/`sizes`（960w/1920w）与 `fetchpriority`；隐藏幻灯片原本铺满视口、`loading=lazy` 不生效，实测会把 9 张 1920 全部拉下来，现只挂载当前与前后各一张；`preloadBannerSlide` 只预加载当前这一张并在轮播时替换。浏览器实测（vite preview + 真实 MySQL 数据）：banner 从 9 张 1920 约 1.4 MB 降到桌面 3 张 361 KB、移动 3 张 960 共 132 KB；LCP 元素确认为 `.hero-slide-photo`，移动端稳定选 `-960.webp`。前端 `npm test` 72 项、`vue-tsc` + Vite 构建、13 条 E2E 全绿。见 `lin_blog/src/utils/portalBanner.ts`、`lin_blog/e2e/portal-lcp.spec.ts`。
 
+* 定时发布四轮修复（2026-11-01，真实 MySQL 实测定位）：① 草稿被误清计划——上一版把 `draft` 纳入清除 `scheduled_at` 的条件，而草稿正是定时发布的载体，导致每次服务重启（dev 下 `node --watch` 频繁重启）与手动保存都把计划清掉，到点永不发布；② 弹窗打开即报「至少晚于当前 1 分钟」——已逾期的 `scheduled_at` 被预填进输入框，直接触发校验；③ 到期判定改用 Node 时钟而非 MySQL `NOW()`，并在连接建立时把会话 `time_zone` 对齐 Node 进程时区，消除 Node 与 MySQL 时区不一致导致的错位；④ 浏览器时区错位——前端用浏览器 `new Date()` 算「1 小时后」，浏览器时区与挂钟不一致时相差 9 小时（14:54 → 05:54），现改为以服务器时区为权威，新增公开接口 `GET /api/time/now` 下发服务器时间与偏移。验证：后端 `npm test` 420 项、真实 MySQL 集成 26 项、前端 `npm test` 117 项、`vue-tsc` + Vite 生产构建、Playwright 34 条 E2E 全绿；新增跨时区回归（浏览器时区分别为 Asia/Shanghai / UTC / Etc/GMT+2 时「1 小时后」均得到服务器时区的同一时刻）与 `TZ=UTC` 下的会话时区对齐实测。
+
 # LinBlog数据库
 
 ## 文档概述
@@ -182,16 +198,17 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 
 ### 表结构总览
 
-系统共设计 12 张数据表，按业务模块分类如下：
+系统共设计 21 张业务表 + 1 张迁移登记表，按业务模块分类如下：
 
-- 用户模块：`users`（用户表）
+- 用户与权限模块：`users`（用户表）、`role_permission`（角色权限矩阵表）
 - 资源分类模块：`subset`（资源分类表）
-- 内容模块：`article`（文章 / 图片集表）、`file`（文件存储表）
-- 互动模块：`praise`（点赞表）、`comment`（评论表）
+- 内容模块：`article`（文章 / 图片集表）、`article_version`（版本快照表）、`file`（文件存储表）、`image`（图片二进制表）
+- 互动模块：`praise`（内容点赞表）、`comment`（文章评论表）、`diary_praise`（随笔点赞表）、`diary_comment`（随笔评论表）、`comment_praise`（评论点赞表）、`comment_report`（评论举报表）
 - 字典模块：`label`（标签字典表）、`weather`（天气字典表）
 - 个人模块：`diary`（个人日记表）
-- 通知模块：`message`（消息表）
-- 统计模块：`record`（访问记录表）、`system_log`（系统日志表）
+- 通知模块：`message`（消息表）、`password_reset_token`（密码重置令牌表）
+- 统计与日志模块：`record`（访问记录表）、`view_log`（浏览量去重表）、`system_log`（系统日志表）、`db_backup_log`（数据库备份记录表）
+- 迁移登记：`schema_migrations`（记录已应用的增量迁移版本）
 
 ### 表结构详情
 
@@ -257,6 +274,11 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 | created_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP`、普通索引（idx_created_at）                 | 创建时间                              |
 | updated_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`                 | 更新时间（自动触发）                  |
 | published_at    | DATETIME                          | 可选（允许为NULL）                                                         | 发布时间（仅已发布状态有效）          |
+| scheduled_at    | DATETIME                          | 可选（允许为NULL）、复合索引（idx_article_scheduled：state + scheduled_at） | 计划发布时间（定时发布到点由调度器消费） |
+| draft_content   | LONGTEXT                          | 可选（允许为NULL）                                                         | 未发布的编辑工作稿正文（自动保存只写这里，不动线上 content） |
+| draft_payload   | LONGTEXT                          | 可选（允许为NULL）                                                         | 未发布的工作稿元数据（JSON：标题/分类/标签/简介/封面） |
+| draft_revision  | INT UNSIGNED                      | 非空、默认值 `0`                                                           | 工作稿修订号，乐观锁依据（不一致返回 409） |
+| draft_saved_at  | DATETIME                          | 可选（允许为NULL）                                                         | 工作稿最后保存时间                    |
 | 索引补充       | ——                                | 全文索引（ft_title_intro：title + introduce）                               | 支持标题+简介的模糊搜索                |
 | 外键规则       | ——                                | FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL               | 作者删除时保留内容并清空作者ID        |
 | 外键规则       | ——                                | FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL            | 分类删除时，关联内容的分类ID设为NULL  |
@@ -362,6 +384,18 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 | path           | VARCHAR(255)                      | 非空、普通索引（idx_path）                                                 | 访问路径（如“/article/1”）            |
 | created_at     | TIMESTAMP                         | 非空、默认值 `CURRENT_TIMESTAMP`、普通索引（idx_created_at）                 | 访问时间                              |
 
+#### 内容创作工作流相关表
+
+`article_version`（版本快照表）：`article_id` + `revision` 唯一，记录每次手动保存 / 自动保存 / 发布 / 回滚 / 定时发布时的标题、分类、标签、简介、正文、封面快照，`source` 区分来源用于分级保留（自动保存按 5 分钟合并、只留近 24 小时与最近 50 条；手动与发布类长期保留）。
+
+`view_log`（浏览量去重表）：`target_type` + `target_id` + `identifier`（登录用户 `u:{id}`，游客为 IP+UA 哈希）+ `created_at`，按 30 分钟窗口去重后回写 `article.views` / `diary.views`。
+
+`role_permission`（角色权限矩阵表）：角色与权限的多对多映射，37 项权限按 7 个分组组合；`permission.edit` 与 `user.assignAdmin` 为受保护权限，仅超级管理员可持有。
+
+`password_reset_token`（密码重置令牌表）：只存令牌的 SHA-256 哈希（唯一索引），绑定签发时的 `users.token_version`，30 分钟过期且单次使用，改密或重置后旧链接自动失效。
+
+`db_backup_log`（数据库备份记录表）：记录每次备份与恢复演练的 `kind`、文件名、目标库、字节数、SHA-256 校验和、表数、行数、耗时、触发方式（`scheduled` / `manual`）与结果状态。
+
 ### 表关系说明
 
 #### 核心关系图谱
@@ -412,7 +446,7 @@ label（标签）
 每次启动都会执行幂等结构检查：
 
 1. 创建数据库（`CREATE DATABASE IF NOT EXISTS`）。
-2. 切换数据库并按依赖顺序创建 11 张表（`CREATE TABLE IF NOT EXISTS`）。
+2. 切换数据库并按依赖顺序创建 21 张业务表（`CREATE TABLE IF NOT EXISTS`）。
 3. 创建 `schema_migrations` 并执行尚未登记的迁移。
 4. 初始化业务连接池。
 
@@ -447,6 +481,9 @@ label（标签）
 | supportBigNumbers| true         | 支持 BIGINT 等大数字类型              |
 | bigNumberStrings | false        | 大数字返回 Number 类型（而非字符串）  |
 | enableKeepAlive  | true         | 启用 TCP Keep-Alive                   |
+| connectionLimit  | 20（可配）   | 最大并发连接数，可用 `LINBLOG_DB_CONNECTION_LIMIT` 覆盖（1–100） |
+| acquireTimeout   | 10 秒（可配） | 获取连接的等待上限，`LINBLOG_DB_ACQUIRE_TIMEOUT_MS`（1–60 秒），由应用层 `setTimeout` + race 实现，超时后归还连接避免泄漏 |
+| session time_zone | 与 Node 进程时区对齐 | 连接建立时执行 `SET time_zone`，保证 `NOW()` 与 DATETIME 读写（mysql2 `timezone:'local'`）使用同一时区，定时发布到期判定不会错位 |
 
 ---
 
