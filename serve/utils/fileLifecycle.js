@@ -1,4 +1,5 @@
 const fileModel = require('../model/dbModel/file/index')
+const imageModel = require('../model/dbModel/image/index')
 const fileStorage = require('./fileStorage')
 const { defaultOffsite } = require('./fileOffsite')
 const { getBackupCapacity } = require('./fileCapacity')
@@ -95,6 +96,19 @@ async function runFileLifecycleCleanup(options = {}) {
     const expiredIds = []
 
     for (const row of expiredRows) {
+        // 内容图片（image 表）没有磁盘副本，超期后直接删除二进制本体。
+        if (!dryRun && row.source_image_id) {
+            try {
+                await imageModel.deleteImageById(row.source_image_id)
+                removedExpiredBackups += 1
+            } catch (err) {
+                failedFiles.push({ name: row.url, reason: err.message })
+                continue
+            }
+            expiredIds.push(row.id)
+            continue
+        }
+
         if (!dryRun && !storage.isRemoteUrl(row.url)) {
             try {
                 const offsiteResult = await offsite.remove(row.url)

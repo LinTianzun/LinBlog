@@ -29,7 +29,8 @@ const ALL_MIGRATIONS = [
     '20261029_comment_report_note',
     '20261030_db_backup',
     '20261030_article_workflow',
-    '20261101_composite_indexes'
+    '20261101_composite_indexes',
+    '20261102_file_image_binding'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -540,4 +541,35 @@ test('ensureIndex is idempotent: existing index is not re-added', async () => {
     assert.deepEqual(result, { appliedCount: 1 })
     // 不应出现任何 ALTER TABLE ADD INDEX
     assert.ok(!calls.some(call => call.sql.includes('ADD INDEX')))
+})
+
+test('file image binding migration adds the column, unique key and backfills content images', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261102_file_image_binding')
+        }
+        // information_schema 查询返回空：列与唯一索引都需要补齐
+        if (sql.includes('information_schema')) return []
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE file ADD COLUMN source_image_id')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('ADD UNIQUE KEY uk_file_source_image (source_image_id)')
+    ))
+    // 存量内容图片要补一条聚合记录，本地文件模块才能看到它们
+    assert.ok(calls.some(call =>
+        call.sql.includes('INSERT INTO file') && call.sql.includes('source_image_id')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261102_file_image_binding'
+    ))
 })

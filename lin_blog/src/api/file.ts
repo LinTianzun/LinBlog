@@ -8,6 +8,10 @@ export interface FileItem {
   url: string;
   subsetId: number | null;
   createdAt: string;
+  // disk=本地磁盘文件；image=文章/图库/随笔上传的内容图片（二进制在 image 表）
+  source?: "disk" | "image";
+  // 内容图片的内联地址，与 /api/uploads 共用缩略图契约
+  rawUrl?: string;
 }
 
 // 素材库选择器使用的图片条目：raw 地址可直接作为文章/图库/随笔图片

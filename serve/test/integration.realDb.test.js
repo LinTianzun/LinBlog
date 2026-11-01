@@ -416,6 +416,33 @@ if (!targetDb) {
         assert.equal(emptyRes.body.code, 400)
     })
 
+    test('uploaded content images appear in the local file module', async () => {
+        const payload = Buffer.from('integration-content-image-bytes')
+        const uploadRes = await uploadViaHttp('file', 'visible.png', 'image/png', payload)
+        assert.equal(uploadRes.status, 200)
+        assert.equal(uploadRes.body.code, 200)
+
+        const filename = uploadRes.body.data.url.replace('/api/uploads/', '')
+
+        // 本地文件列表里应出现这条内容图片记录
+        const listRes = response()
+        await fileController.getFiles({ query: { page: 1, pageSize: 50 } }, listRes)
+        const entry = listRes.body.data.list.find(item => item.url === `/api/uploads/${filename}`)
+        assert.ok(entry, '上传的内容图片应出现在本地文件列表里')
+        assert.equal(entry.source, 'image')
+        assert.equal(entry.rawUrl.startsWith('/api/file/'), true)
+
+        // raw 地址能读回同一份二进制
+        const rawRes = response()
+        rawRes.setHeader = () => {}
+        rawRes.end = (data) => { rawRes.body = data }
+        await fileController.getRawImage(
+            { params: { id: String(entry.id) }, query: {}, headers: {} },
+            rawRes
+        )
+        assert.ok(Buffer.from(rawRes.body).equals(payload))
+    })
+
     test('file delete backs up disk file and restore pulls from mirror when backup is lost', async () => {
         const diskName = 'it-disk-lifecycle.txt'
         await fs.promises.mkdir(process.env.LINBLOG_FILE_STORAGE_DIR, { recursive: true })

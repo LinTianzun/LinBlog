@@ -1,6 +1,8 @@
 const crypto = require('node:crypto')
 const multer = require('multer')
 const imageModel = require('../model/dbModel/image/index')
+const fileModel = require('../model/dbModel/file/index')
+const subsetModel = require('../model/dbModel/subset/index')
 const {
     parseVariantRequest,
     readVariantCache,
@@ -56,7 +58,7 @@ async function saveImage(req, res, file) {
         .digest('hex')
 
     try {
-        await imageModel.createImage({
+        const { imageId } = await imageModel.createImage({
             filename,
             mimeType: file.mimetype,
             size: file.size,
@@ -64,6 +66,29 @@ async function saveImage(req, res, file) {
             data: file.buffer,
             userId: req.user?.userId ?? null
         })
+
+        // 同步登记到「本地文件」：内容图片与磁盘文件在同一个列表里可见，
+        // file 行只存展示元数据，二进制本体仍在 image 表。
+        try {
+            let subsetId = null
+            try {
+                subsetId = await subsetModel.ensureResourceSubset('图片')
+            } catch (subsetErr) {
+                // 找不到资源分组时先归入未分类，不影响图片本身。
+                console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)
+            }
+
+            await fileModel.insertImageBinding({
+                fileName: filename,
+                format: extension.replace(/^\./, ''),
+                size: file.size,
+                sourceImageId: imageId,
+                subsetId
+            })
+        } catch (bindErr) {
+            // 聚合登记失败不影响图片本身可用，只记录日志。
+            console.warn('[Upload] 登记到本地文件失败：', bindErr.message)
+        }
     } catch (err) {
         console.error('[Upload] 保存图片失败：', err)
         return sendUploadError(res, 500, '图片保存失败，请稍后重试')

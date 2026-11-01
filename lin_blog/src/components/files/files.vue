@@ -161,6 +161,8 @@ const fetchFiles = async (): Promise<void> => {
             format: item.format,
             size: item.size ?? undefined,
             subsetId: item.subsetId ?? undefined,
+            source: item.source ?? 'disk',
+            rawUrl: item.rawUrl,
             selected: false,
         }))
 

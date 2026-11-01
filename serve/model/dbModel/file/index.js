@@ -34,7 +34,7 @@ async function getFilesByPage({ subsetId, uncategorized, keyword, pageSize, offs
     )
 
     const list = await query(
-        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at
+        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at, f.source_image_id
          FROM file f
          LEFT JOIN subset s ON f.subset_id = s.id
          ${whereSql}
@@ -44,6 +44,50 @@ async function getFilesByPage({ subsetId, uncategorized, keyword, pageSize, offs
     )
 
     return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+/**
+ * 内容图片（文章/图库/随笔上传）聚合为 file 记录。
+ * image 表保存二进制本体，file 只保存展示元数据；
+ * url 暂留空，实际展示走 /api/uploads/:filename。
+ */
+async function getImageBindingsByPage({ keyword, pageSize, offset }) {
+    const where = ['f.status = 1', 'f.source_image_id IS NOT NULL']
+    const params = []
+
+    if (keyword) {
+        where.push('f.file_name LIKE ?')
+        params.push(`%${keyword}%`)
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`
+    const totalRows = await query(
+        `SELECT COUNT(*) AS total
+         FROM file f
+         ${whereSql}`,
+        params
+    )
+    const list = await query(
+        `SELECT f.id, f.file_name, f.format, f.size, f.source_image_id, f.created_at
+         FROM file f
+         ${whereSql}
+         ORDER BY f.created_at DESC, f.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
+    )
+
+    return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+async function findImageBindingByImageId(imageId) {
+    const rows = await query(
+        `SELECT id, file_name, format, size, url, source_image_id, status, created_at
+         FROM file
+         WHERE source_image_id = ?
+         LIMIT 1`,
+        [imageId]
+    )
+    return rows[0] || null
 }
 
 /**
@@ -95,7 +139,7 @@ async function getSubsetCounts() {
 
 async function findFileById(id) {
     const rows = await query(
-        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          WHERE id = ?
@@ -103,6 +147,16 @@ async function findFileById(id) {
         [id]
     )
     return rows[0] || null
+}
+
+async function insertImageBinding({ fileName, format, size, sourceImageId, subsetId = null }) {
+    const result = await query(
+        `INSERT INTO file
+            (file_name, format, size, url, subset_id, source_image_id)
+         VALUES (?, ?, ?, '', ?, ?)`,
+        [fileName, format, size ?? null, subsetId ?? null, sourceImageId]
+    )
+    return { fileId: result.insertId }
 }
 
 /**
@@ -129,7 +183,7 @@ async function getImageFilesByPage({ keyword, pageSize, offset }) {
     )
 
     const list = await query(
-        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at,
+        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at, f.source_image_id,
                 s.subset_name AS subsetName
         FROM file f
         LEFT JOIN subset s ON f.subset_id = s.id
@@ -166,7 +220,7 @@ async function findFilesByIds(ids) {
     if (!ids.length) return []
     const placeholders = ids.map(() => '?').join(', ')
     return query(
-        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          WHERE id IN (${placeholders})`,
@@ -247,7 +301,7 @@ async function findLocalFileReferences() {
 
 async function findExpiredDeletedFiles(days, limit = 500) {
     return query(
-        `SELECT id, url
+        `SELECT id, url, source_image_id
          FROM file
          WHERE status = 0
            AND deleted_at IS NOT NULL
@@ -270,7 +324,7 @@ async function getDeletedFilesByPage({ keyword, pageSize, offset }) {
     const whereSql = `WHERE ${where.join(' AND ')}`
     const totalRows = await query(`SELECT COUNT(*) AS total FROM file ${whereSql}`, params)
     const list = await query(
-        `SELECT id, file_name, format, size, url, subset_id, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          ${whereSql}
@@ -284,6 +338,8 @@ async function getDeletedFilesByPage({ keyword, pageSize, offset }) {
 
 module.exports = {
     getFilesByPage,
+    getImageBindingsByPage,
+    findImageBindingByImageId,
     countFilesSummary,
     getSubsetCounts,
     findFileById,
@@ -292,6 +348,7 @@ module.exports = {
     findFilesByIds,
     findExistingFileIds,
     insertFile,
+    insertImageBinding,
     updateFileSubset,
     softDeleteFiles,
     restoreFile,

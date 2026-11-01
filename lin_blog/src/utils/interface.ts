@@ -38,6 +38,10 @@ export interface FileData {
     size?: number;
     subsetId?: number;
     selected?: boolean;
+    // disk=本地磁盘文件；image=文章/图库/随笔上传的内容图片（二进制在 image 表）
+    source?: 'disk' | 'image';
+    // 内容图片的内联地址，与 /api/uploads 共用缩略图契约
+    rawUrl?: string;
 }
 
 //  标签

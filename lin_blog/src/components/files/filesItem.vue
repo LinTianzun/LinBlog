@@ -34,6 +34,7 @@
         <div class="file-item-name">
             <p class="file-item-name-file">{{ displayName }}</p>
             <p>.{{ props.data.format }}</p>
+            <p v-if="isContentImage" class="file-item-name-source">内容图片</p>
         </div>
     </div>
 </template>
@@ -58,6 +59,9 @@ const previewFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
 const isPreviewable = computed(() =>
     previewFormats.includes(String(props.data.format || '').toLowerCase())
 )
+
+// 内容图片来自文章/图库/随笔的上传（二进制在 image 表），与磁盘文件区分展示
+const isContentImage = computed(() => props.data.source === 'image')
 
 // 下载接口默认 attachment + octet-stream，缩略图需要 inline 才能拿到正确 MIME
 const previewUrl = computed(() => {
@@ -265,6 +269,16 @@ const downloadFile = () => {
             margin: 0;
             color: var(--gray6);
             font-size: 11px;
+        }
+
+        // 内容图片标记：告诉用户这张图存在数据库里，而不是磁盘目录
+        &-source {
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: var(--pcolor1);
+            color: var(--pcolor);
+            font-size: 10px;
+            line-height: 16px;
         }
     }
 

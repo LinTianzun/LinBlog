@@ -231,8 +231,11 @@ test('image reference counting includes unpublished working copies', async () =>
     }
 
     await imageModel.deactivateImageIfUnreferenced('draft-cover.jpg', exec)
-    assert.equal(calls.length, 2)
+    // 统计引用 → 查聚合绑定 → 软删图片 → 同步软删本地文件聚合行
+    assert.equal(calls.length, 4)
     assert.match(calls[0].sql, /draft_content LIKE \?/)
     assert.match(calls[0].sql, /draft_payload LIKE \?/)
     assert.equal(calls[0].values.length, 6)
+    assert.ok(calls.some(call => call.sql.includes('source_image_id IN')))
+    assert.ok(calls.some(call => call.sql.includes('UPDATE file') && call.sql.includes('source_image_id')))
 })

@@ -217,12 +217,14 @@ const tablesSql = {
     deleted_at DATETIME NULL COMMENT '移入备份区的时间',
     backup_deleted_at DATETIME NULL COMMENT '备份内容清理时间',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+    source_image_id BIGINT UNSIGNED NULL COMMENT '内容图片库关联ID（file 记录聚合）',
     PRIMARY KEY (id),
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
     INDEX idx_subset (subset_id),
     INDEX idx_format (format),
     INDEX idx_status (status),
-    INDEX idx_file_deleted_at (status, deleted_at)
+    INDEX idx_file_deleted_at (status, deleted_at),
+    UNIQUE KEY uk_file_source_image (source_image_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件存储表';`,
 
   article: `CREATE TABLE IF NOT EXISTS article(
@@ -519,6 +521,47 @@ const tablesSql = {
     INDEX idx_db_backup_created (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库备份与演练历史';`
 };
+
+// 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
+// 给 file 表补 source_image_id，迁移时为存量图片登记“云文件”记录，
+// 本地文件模块因此能统一展示磁盘文件与内容图片。
+async function ensureFileImageBindingSchema(exec = query) {
+  await ensureColumn(exec, 'file', 'source_image_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '内容图片库关联ID（file 记录聚合）'
+  });
+
+  const [bindingIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'file'
+      AND INDEX_NAME = 'uk_file_source_image'
+      AND COLUMN_NAME = 'source_image_id'
+      AND SEQ_IN_INDEX = 1
+  `);
+  if (!bindingIndex) {
+    await exec(`
+      ALTER TABLE file
+      ADD UNIQUE KEY uk_file_source_image (source_image_id)
+    `);
+  }
+
+  await exec(`
+    INSERT INTO file (file_name, format, size, url, subset_id, status, source_image_id)
+    SELECT
+        image.filename,
+        LOWER(SUBSTRING_INDEX(image.filename, '.', -1)),
+        image.size,
+        '',
+        (SELECT id FROM subset WHERE subset_name = '图片' AND classify = 'resource' LIMIT 1),
+        image.status,
+        image.id
+    FROM image
+    LEFT JOIN file ON file.source_image_id = image.id
+    WHERE file.id IS NULL
+  `);
+}
 
 // -------------------------- 显式、事务化演示数据 --------------------------
 async function seedDemoData() {
@@ -1927,6 +1970,10 @@ const migrations = [
   {
     version: '20261101_composite_indexes',
     up: ensureCompositeIndexesSchema
+  },
+  {
+    version: '20261102_file_image_binding',
+    up: ensureFileImageBindingSchema
   }
 ];
 

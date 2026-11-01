@@ -323,6 +323,51 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 本地文件列表：磁盘文件与内容图片（image 表）混排
+    if (method === 'GET' && path === '/api/file') {
+      await fulfill({
+        total: 2,
+        page: 1,
+        pageSize: 8,
+        totalPage: 1,
+        list: [
+          {
+            id: 601,
+            fileName: '1700000000-cover.jpg',
+            format: 'jpg',
+            size: 204800,
+            url: '/api/uploads/1700000000-cover.jpg',
+            rawUrl: '/api/file/601/raw',
+            subsetId: 2,
+            createdAt: '2026-11-01T08:00:00.000Z',
+            source: 'image',
+          },
+          {
+            id: 602,
+            fileName: '说明文档.pdf',
+            format: 'pdf',
+            size: 409600,
+            url: '/api/file/602/download',
+            subsetId: 2,
+            createdAt: '2026-10-31T08:00:00.000Z',
+            source: 'file',
+          },
+        ],
+      })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/file/summary') {
+      await fulfill({
+        all: 2,
+        uncategorized: 0,
+        subsets: [
+          { id: 2, name: '图片', classify: 'resource', sort: 100, moment: '2026-10-20', value: 1 },
+        ],
+      })
+      return
+    }
+
     // 素材库图片：文章/图库/随笔的「从素材库选择」用它拉列表
     if (method === 'GET' && path === '/api/file/images') {
       await fulfill({

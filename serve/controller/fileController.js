@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const crypto = require('node:crypto')
 const multer = require('multer')
 const fileModel = require('../model/dbModel/file/index')
+const imageModel = require('../model/dbModel/image/index')
 const subsetModel = require('../model/dbModel/subset/index')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
@@ -59,6 +60,22 @@ function toAccessUrl(id, url) {
 }
 
 function formatFile(item) {
+    // 内容图片（文章/图库/随笔上传）没有磁盘副本，
+    // 直接复用 /api/uploads 地址展示与下载。
+    if (item.source_image_id) {
+        return {
+            id: item.id,
+            fileName: item.file_name,
+            format: item.format,
+            size: item.size,
+            url: `/api/uploads/${item.file_name}`,
+            rawUrl: `/api/file/${item.id}/raw`,
+            subsetId: item.subset_id,
+            createdAt: item.created_at,
+            source: 'image'
+        }
+    }
+
     return {
         id: item.id,
         fileName: item.file_name,
@@ -66,7 +83,8 @@ function formatFile(item) {
         size: item.size,
         url: toAccessUrl(item.id, item.url),
         subsetId: item.subset_id,
-        createdAt: item.created_at
+        createdAt: item.created_at,
+        source: 'file'
     }
 }
 
@@ -274,6 +292,21 @@ async function downloadFile(req, res) {
             return res.status(404).json({ code: 404, message: '文件不存在或已删除' })
         }
 
+        // 内容图片没有磁盘副本，直接把 image 表里的二进制作为附件下载。
+        if (file.source_image_id) {
+            const image = await imageModel.findImageById(file.source_image_id)
+            if (!image || Number(image.status) !== 1) {
+                return res.status(404).json({ code: 404, message: '文件内容已丢失' })
+            }
+
+            res.setHeader('Content-Type', image.mime_type || 'application/octet-stream')
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}`
+            )
+            return res.end(image.data)
+        }
+
         if (/^https?:\/\//i.test(String(file.url))) {
             return res.redirect(302, file.url)
         }
@@ -320,6 +353,11 @@ async function getRawImage(req, res) {
         const file = await fileModel.findFileById(fileId)
         if (!file || Number(file.status) !== 1) {
             return res.status(404).json({ code: 404, message: '图片不存在或已删除' })
+        }
+
+        // 内容图片存在 image 表里，没有磁盘副本，直接读二进制并走同一缩略图契约。
+        if (file.source_image_id) {
+            return sendDatabaseImage(req, res, file.source_image_id, variantRequest)
         }
 
         if (/^https?:\/\//i.test(String(file.url))) {
@@ -384,6 +422,53 @@ async function getRawImage(req, res) {
         if (!res.headersSent) {
             res.status(500).json({ code: 500, message: '图片读取失败' })
         }
+    }
+}
+
+/**
+ * 读取 image 表里的图片并返回（与 /api/uploads/:filename 同契约）。
+ */
+async function sendDatabaseImage(req, res, imageId, variantRequest) {
+    const image = await imageModel.findImageById(imageId)
+    if (!image || Number(image.status) !== 1) {
+        return res.status(404).json({ code: 404, message: '图片不存在或已删除' })
+    }
+
+    const version = image.checksum || `${image.filename}-${image.size}`
+    if (!variantRequest) {
+        return sendImage(req, res, {
+            version,
+            data: image.data,
+            mimeType: image.mime_type
+        })
+    }
+
+    const cacheKey = `image:${image.id}:${variantRequest.width}:${variantRequest.format}`
+    const cached = readVariantCache(cacheKey)
+    if (cached) {
+        return sendImage(req, res, {
+            version: cached.version,
+            data: cached.data,
+            mimeType: 'image/webp',
+            width: variantRequest.width
+        })
+    }
+
+    try {
+        const variant = await createVariant(image.data, variantRequest.width, cacheKey, version)
+        return sendImage(req, res, {
+            version,
+            data: variant.data,
+            mimeType: 'image/webp',
+            width: variantRequest.width
+        })
+    } catch (err) {
+        console.error(`[File] 生成内容图片缩略图失败（${image.filename}）：`, err)
+        return sendImage(req, res, {
+            version,
+            data: image.data,
+            mimeType: image.mime_type
+        })
     }
 }
 
@@ -458,7 +543,11 @@ async function deleteFiles(req, res) {
         const referenced = []
         const deletableIds = []
         for (const file of activeFiles) {
-            const referenceCount = await fileModel.countFileReferences(file.id)
+            // 内容图片按文件名统计引用（内容里用的是 /api/uploads/:filename），
+            // 磁盘文件按 /api/file/:id/raw 精确匹配。
+            const referenceCount = file.source_image_id
+                ? await imageModel.countImageReferencesWithBinding(file.file_name)
+                : await fileModel.countFileReferences(file.id)
             if (referenceCount > 0) {
                 referenced.push({ id: file.id, referenceCount })
                 continue
@@ -482,6 +571,15 @@ async function deleteFiles(req, res) {
         let backupFailedCount = 0
         let offsiteFailedCount = 0
         for (const file of activeFiles) {
+            // 仍被内容引用的文件不会进 deletableIds，图片本体必须保持可用。
+            if (!deletableIds.includes(file.id)) continue
+
+            // 内容图片本体在 image 表里，没有磁盘文件需要搬进备份区。
+            if (file.source_image_id) {
+                await imageModel.deactivateImageById(file.source_image_id)
+                continue
+            }
+
             if (fileStorage.isRemoteUrl(file.url)) continue
             try {
                 const result = await fileStorage.moveToBackup(file.url)
@@ -554,11 +652,16 @@ async function getTrashFiles(req, res) {
             fileName: item.file_name,
             format: item.format,
             size: item.size,
-            url: toAccessUrl(item.id, item.url),
+            url: item.source_image_id
+                ? `/api/uploads/${item.file_name}`
+                : toAccessUrl(item.id, item.url),
             subsetId: item.subset_id,
             createdAt: item.created_at,
             deletedAt: item.deleted_at,
-            recoverable: fileStorage.isRemoteUrl(item.url)
+            // 内容图片本体在 image 表里，恢复时把 image 状态改回即可。
+            recoverable: item.source_image_id
+                ? Boolean(await imageModel.findImageById(item.source_image_id))
+                : fileStorage.isRemoteUrl(item.url)
                 || await fileStorage.backupExists(item.url)
         })))
 
@@ -600,6 +703,18 @@ async function restoreFiles(req, res) {
         const failed = []
 
         for (const file of recoverable) {
+            // 内容图片：恢复的是 image 表状态，没有磁盘文件要搬。
+            if (file.source_image_id) {
+                const affected = await fileModel.restoreFile(file.id)
+                if (affected !== 1) {
+                    failed.push({ id: file.id, reason: 'record_not_restorable' })
+                    continue
+                }
+                await imageModel.restoreImageById(file.source_image_id)
+                restoredCount += 1
+                continue
+            }
+
             let diskRestored = false
             if (!fileStorage.isRemoteUrl(file.url)) {
                 try {
@@ -713,13 +828,22 @@ async function purgeTrashFiles(req, res) {
         // 被文章/图库/随笔引用的文件进入回收站后，不能直接物理删除；
         // 先移除内容引用，再回到回收站执行彻底删除。
         for (const file of candidates) {
-            const referenceCount = await fileModel.countFileReferences(file.id)
+            const referenceCount = file.source_image_id
+                ? await imageModel.countImageReferencesWithBinding(file.file_name)
+                : await fileModel.countFileReferences(file.id)
             if (referenceCount > 0) {
                 failed.push({
                     id: file.id,
                     reason: 'referenced_by_content',
                     referenceCount
                 })
+                continue
+            }
+
+            // 内容图片彻底删除：连同 image 表里的二进制一起移除。
+            if (file.source_image_id) {
+                await imageModel.deleteImageById(file.source_image_id)
+                purgedIds.push(file.id)
                 continue
             }
 
