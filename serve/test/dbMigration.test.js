@@ -28,7 +28,8 @@ const ALL_MIGRATIONS = [
     '20261029_message_channel',
     '20261029_comment_report_note',
     '20261030_db_backup',
-    '20261030_article_workflow'
+    '20261030_article_workflow',
+    '20261101_composite_indexes'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -492,4 +493,51 @@ test('article workflow migration adds working copy fields and version table', as
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261030_article_workflow'
     ))
+})
+
+test('composite indexes migration adds covering indexes for report/message/record', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261101_composite_indexes')
+        }
+        // ensureIndex 内部的 INFORMATION_SCHEMA 查询返回空，触发 ADD INDEX
+        if (sql.includes('information_schema')) return []
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    // 四条复合索引都应通过 ALTER TABLE ... ADD INDEX 下发
+    assert.ok(calls.some(call => call.sql.includes('ADD INDEX idx_report_status_created (status, created_at)')))
+    assert.ok(calls.some(call => call.sql.includes('ADD INDEX idx_message_receiver_type_read_created (receiver_id, type, is_read, created_at)')))
+    assert.ok(calls.some(call => call.sql.includes('ADD INDEX idx_message_sender_type_created (sender_id, type, created_at)')))
+    assert.ok(calls.some(call => call.sql.includes('ADD INDEX idx_record_created_path (created_at, path)')))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261101_composite_indexes'
+    ))
+})
+
+test('ensureIndex is idempotent: existing index is not re-added', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261101_composite_indexes')
+        }
+        // 所有 INFORMATION_SCHEMA 查询都返回非空，模拟索引已存在
+        if (sql.includes('information_schema')) return [{ INDEX_NAME: 'already_exists' }]
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    // 不应出现任何 ALTER TABLE ADD INDEX
+    assert.ok(!calls.some(call => call.sql.includes('ADD INDEX')))
 })

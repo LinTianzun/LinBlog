@@ -38,6 +38,21 @@ async function countRecordsByField(field, days) {
     return query(sql, [days])
 }
 
+// 近 N 天热门路径 TOP N：按访问次数降序，用于总览「热门来源」卡片
+async function countTopPaths(days, limit = 10) {
+    const safeDays = Number.isSafeInteger(days) && days > 0 ? days : 7
+    const safeLimit = Number.isSafeInteger(limit) && limit > 0 && limit <= 50 ? limit : 10
+    const sql = `
+        SELECT path AS path, COUNT(*) AS visits
+        FROM record
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)
+        GROUP BY path
+        ORDER BY visits DESC
+        LIMIT ?
+    `
+    return query(sql, [safeDays, safeLimit])
+ }
+
 /**
  * 清理超出保留期的访问记录。
  * 分批删除，避免单条 DELETE 锁住整表影响正常写入。
@@ -85,6 +100,7 @@ module.exports = {
     createRecord,
     countRecordsByDay,
     countRecordsByField,
+    countTopPaths,
     pruneRecords,
     countExpiredRecords,
     RETENTION_DAYS,

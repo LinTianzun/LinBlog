@@ -367,7 +367,8 @@ const tablesSql = {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uk_user_comment (target_type, comment_id, user_id),
     INDEX idx_comment (target_type, comment_id),
-    INDEX idx_report_status (status)
+    INDEX idx_report_status (status),
+    INDEX idx_report_status_created (status, created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论举报表';`,
 
   weather: `CREATE TABLE IF NOT EXISTS weather(
@@ -394,7 +395,9 @@ const tablesSql = {
     INDEX idx_receiver (receiver_id),
     INDEX idx_is_read (is_read),
     INDEX idx_type (type),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_message_receiver_type_read_created (receiver_id, type, is_read, created_at),
+    INDEX idx_message_sender_type_created (sender_id, type, created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';`,
 
   record: `CREATE TABLE IF NOT EXISTS record(
@@ -1441,6 +1444,23 @@ async function ensureColumn(exec, tableName, columnName, { definition, comment }
   return true;
 }
 
+// 索引级幂等补全：不存在则 ADD INDEX，已存在直接跳过（存量库升级用）。
+// indexSql 必须是完整的 ALTER TABLE ... ADD INDEX ... 语句。
+async function ensureIndex(exec, tableName, indexName, indexSql) {
+  const [index] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = ?
+      AND INDEX_NAME = ?
+    LIMIT 1
+  `, [tableName, indexName]);
+  if (index) return false;
+
+  await exec(indexSql);
+  return true;
+}
+
 // 浏览量统计：view_log 去重记录表 + article/diary 的 views 计数列。
 // 建表语句已在 createOrder 中覆盖新库，这里只负责存量库的补全。
 async function ensureViewStatsSchema(exec = query) {
@@ -1617,6 +1637,36 @@ async function ensureMessageChannelSchema(exec = query) {
     definition: "ENUM('direct', 'wall') NOT NULL DEFAULT 'direct'",
     comment: '私信来源：direct-私信会话，wall-门户留言墙'
   });
+}
+// 性能与可观测性：为高频查询补复合索引（幂等）。
+// comment_report 列表按 status 排序并按 created_at 倒序，趋势按 created_at 分日聚合；
+// message 会话列表与未读计数按 (receiver_id, type, is_read, created_at) 过滤排序；
+// record 近 N 天聚合与分批清理依赖 created_at 范围扫描。
+async function ensureCompositeIndexesSchema(exec = query) {
+  await ensureIndex(
+    exec,
+    'comment_report',
+    'idx_report_status_created',
+    'ALTER TABLE comment_report ADD INDEX idx_report_status_created (status, created_at)'
+  );
+  await ensureIndex(
+    exec,
+    'message',
+    'idx_message_receiver_type_read_created',
+    'ALTER TABLE message ADD INDEX idx_message_receiver_type_read_created (receiver_id, type, is_read, created_at)'
+  );
+  await ensureIndex(
+    exec,
+    'message',
+    'idx_message_sender_type_created',
+    'ALTER TABLE message ADD INDEX idx_message_sender_type_created (sender_id, type, created_at)'
+  );
+  await ensureIndex(
+    exec,
+    'record',
+    'idx_record_created_path',
+    'ALTER TABLE record ADD INDEX idx_record_created_path (created_at, path)'
+  );
 }
 
 // 两级评论仍统一挂在根评论下，另外记录“实际回复的是哪条评论/哪位用户”，
@@ -1832,6 +1882,10 @@ const migrations = [
   {
     version: '20261030_article_workflow',
     up: ensureArticleWorkflowSchema
+  },
+  {
+    version: '20261101_composite_indexes',
+    up: ensureCompositeIndexesSchema
   }
 ];
 

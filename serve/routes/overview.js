@@ -19,4 +19,11 @@ module.exports = (app) => {
         requirePermission('overview.viewAll'),
         overviewController.getVisitStats
     )
+    // 近一周/近一月热门路径 TOP 10，让博主看到流量集中在哪些页面
+    app.get(
+        '/api/overview/topPaths',
+        authMiddleware,
+        requirePermission('overview.viewAll'),
+        overviewController.getTopPaths
+    )
 }

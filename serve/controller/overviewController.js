@@ -104,7 +104,30 @@ async function getVisitStats(req, res) {
     }
 }
 
+// 近一周/近一月热门路径 TOP 10，让博主看到流量集中在哪些页面
+async function getTopPaths(req, res) {
+    try {
+        const days = req.query.period === 'moon' ? 30 : 7
+        const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50)
+
+        const rows = await recordModel.countTopPaths(days, limit)
+        const paths = rows.map((row) => ({
+            path: row.path,
+            visits: Number(row.visits),
+        }))
+
+        return res.json({
+            code: 200,
+            message: '查询成功',
+            data: { paths },
+        })
+    } catch (err) {
+        return res.status(500).json({ code: 500, message: '热门路径查询失败：' + err.message })
+    }
+}
+
 module.exports = {
     getOverviewSummary,
     getVisitStats,
+    getTopPaths,
 }

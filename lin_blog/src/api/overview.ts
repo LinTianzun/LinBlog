@@ -44,3 +44,19 @@ export function getVisitStats(period: "week" | "moon") {
     params: { period },
   });
 }
+
+// 近一周/近一月热门路径 TOP 10，让博主看到流量集中在哪些页面
+export interface TopPathItem {
+  path: string;
+  visits: number;
+}
+
+export interface TopPathsResult {
+  paths: TopPathItem[];
+}
+
+export function getTopPaths(period: "week" | "moon", limit = 10) {
+  return request.get<ApiResult<TopPathsResult>>("/overview/topPaths", {
+    params: { period, limit },
+  });
+}

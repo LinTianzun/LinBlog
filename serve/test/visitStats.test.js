@@ -151,3 +151,72 @@ test('record middleware writes parsed UA and skips public auth paths', async () 
         model.createRecord = originalCreate
     }
 })
+
+test('getTopPaths returns top paths sorted by visits', async () => {
+    const original = recordModel.countTopPaths
+    let receivedDays, receivedLimit
+    recordModel.countTopPaths = async (days, limit) => {
+        receivedDays = days
+        receivedLimit = limit
+        return [
+            { path: '/api/public/article/1', visits: 42 },
+            { path: '/api/public/diary', visits: 17 },
+        ]
+    }
+
+    try {
+        const res = createRes()
+        await overviewController.getTopPaths({ query: { period: 'week' } }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(receivedDays, 7)
+        assert.equal(receivedLimit, 10)
+        assert.deepEqual(res.body.data.paths, [
+            { path: '/api/public/article/1', visits: 42 },
+            { path: '/api/public/diary', visits: 17 },
+        ])
+    } finally {
+        recordModel.countTopPaths = original
+    }
+})
+
+test('getTopPaths supports month period and clamps limit', async () => {
+    const original = recordModel.countTopPaths
+    let receivedDays, receivedLimit
+    recordModel.countTopPaths = async (days, limit) => {
+        receivedDays = days
+        receivedLimit = limit
+        return []
+    }
+
+    try {
+        const res = createRes()
+        await overviewController.getTopPaths({ query: { period: 'moon', limit: '200' } }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(receivedDays, 30)
+        // limit 上限 50
+        assert.equal(receivedLimit, 50)
+        assert.deepEqual(res.body.data.paths, [])
+    } finally {
+        recordModel.countTopPaths = original
+    }
+})
+
+test('getTopPaths returns 500 when record query fails', async () => {
+    const original = recordModel.countTopPaths
+    recordModel.countTopPaths = async () => {
+        throw new Error('connection lost')
+    }
+
+    try {
+        const res = createRes()
+        await overviewController.getTopPaths({ query: {} }, res)
+
+        assert.equal(res.statusCode, 500)
+        assert.equal(res.body.code, 500)
+        assert.match(res.body.message, /热门路径查询失败/)
+    } finally {
+        recordModel.countTopPaths = original
+    }
+})
