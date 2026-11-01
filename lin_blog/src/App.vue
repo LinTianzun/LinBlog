@@ -2,13 +2,17 @@
   <!-- 头部 -->
   <HeadBar v-if="!$route.meta.hideHeader" />
   <!-- 内容 -->
-  <router-view />
+  <!-- 路由级错误边界：某个页面渲染异常时退化成可恢复卡片，而不是整站白屏 -->
+  <ErrorBoundary :key="route.path">
+    <router-view />
+  </ErrorBoundary>
 </template>
 
 <script lang="ts" setup>
   import { watch } from 'vue'
   import { useRoute } from 'vue-router'
   import HeadBar from './components/bar/HeadBar.vue'
+  import ErrorBoundary from './components/common/ErrorBoundary.vue'
   import { useSessionStore } from './store/session'
 
   const route = useRoute()

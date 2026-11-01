@@ -24,6 +24,12 @@ import router from './router'
 const pinia = createPinia()
 const app = createApp(App)
 
+// 全局兜底：未被 ErrorBoundary 覆盖的组件异常（如异步生命周期、事件处理器）
+// 记录到控制台，避免静默失败；界面层由 ErrorBoundary 负责展示可恢复卡片。
+app.config.errorHandler = (err, _instance, info) => {
+    console.error('[App] 未处理的组件异常：', info, err)
+}
+
 // yike 组件内部会在模板里直接用图标（见 utils/libraryIcons.ts）。
 // 过去用 app.use(Icon) 整包注册会拉入 700+ 图标，改为只注册库内部真正引用的那些。
 for (const [name, component] of Object.entries(libraryIcons)) {

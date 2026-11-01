@@ -88,7 +88,7 @@
         try {
             const res = await getVisitStats(visitRadio.value === 'moon' ? 'moon' : 'week')
             if (res.code !== 200 || !res.data) return
-            visitData.value = res.data.visit
+            visitData.value = res.data.visit ?? []
         } catch (error) {
             console.error('访问量加载失败：', error)
         }
@@ -98,8 +98,8 @@
         try {
             const res = await getVisitStats(checkRadio.value === 'moon' ? 'moon' : 'week')
             if (res.code !== 200 || !res.data) return
-            deviceData.value = res.data.device
-            websiteData.value = res.data.website
+            deviceData.value = res.data.device ?? []
+            websiteData.value = res.data.website ?? []
         } catch (error) {
             console.error('数据监测加载失败：', error)
         }
@@ -109,7 +109,7 @@
         try {
             const res = await getTopPaths(pathRadio.value === 'moon' ? 'moon' : 'week')
             if (res.code !== 200 || !res.data) return
-            topPaths.value = res.data.paths
+            topPaths.value = res.data.paths ?? []
         } catch (error) {
             console.error('热门路径加载失败：', error)
         }

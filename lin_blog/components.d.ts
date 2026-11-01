@@ -34,6 +34,7 @@ declare module 'vue' {
     DiaryItem: typeof import('./src/components/diary/diaryItem.vue')['default']
     Editor: typeof import('./src/components/editor/editor.vue')['default']
     EditPhoto: typeof import('./src/components/gallery/editPhoto.vue')['default']
+    ErrorBoundary: typeof import('./src/components/common/ErrorBoundary.vue')['default']
     Files: typeof import('./src/components/files/files.vue')['default']
     FilesItem: typeof import('./src/components/files/filesItem.vue')['default']
     FileTrash: typeof import('./src/components/files/fileTrash.vue')['default']

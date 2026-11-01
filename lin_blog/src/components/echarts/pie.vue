@@ -8,20 +8,11 @@
 import { ref, onMounted, onBeforeUnmount, markRaw, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { PieChart } from 'echarts/charts'
-import {
-    TitleComponent,
-    TooltipComponent,
-    LegendComponent
-} from 'echarts/components'
+import { TitleComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([
-    TitleComponent,
-    TooltipComponent,
-    CanvasRenderer,
-    LegendComponent,
-    PieChart
-])
+// legend 在下方 option 里固定 show: false，不必注册 LegendComponent
+echarts.use([TitleComponent, TooltipComponent, CanvasRenderer, PieChart])
 
 type PieData = {
     name: string
@@ -61,11 +52,6 @@ const survey = (data: PieData[]): void => {
         tooltip: {
             trigger: 'item',
             confine: true
-        },
-        legend: {
-            show: false,
-            bottom: 0,
-            icon: 'circle'
         },
         series: [
             {

@@ -7,7 +7,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // 本机默认满核并行时，Vite dev server 的冷编译与大量 mock route handler
+  // 争用会随机拖慢个别页面（快照表现为 5-20 秒超时）。收敛到 4 个 worker。
+  workers: process.env.CI ? 2 : 4,
   reporter: [
     ['list'],
     ['html', { open: 'never' }],

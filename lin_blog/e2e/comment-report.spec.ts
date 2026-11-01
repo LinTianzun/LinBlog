@@ -1,5 +1,13 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { article, installApiMock, modalRootClass, seedSession } from './fixtures/mockApi'
+
+// 深链接详情要等门户列表接口返回后才弹出；并行执行时 mock 响应可能较慢，
+// 默认 5 秒超时不够，统一放宽到 20 秒。
+const DETAIL_TIMEOUT = 20_000
+
+function articleDetail(page: Page) {
+  return page.locator(modalRootClass).filter({ hasText: '文章阅读' })
+}
 
 test('登录用户可选择原因举报他人评论', async ({ page }) => {
   await installApiMock(page)
@@ -7,8 +15,8 @@ test('登录用户可选择原因举报他人评论', async ({ page }) => {
 
   await page.goto(`/portal/articles?open=${article.id}`)
 
-  const detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
-  await expect(detail).toBeVisible()
+  const detail = articleDetail(page)
+  await expect(detail).toBeVisible({ timeout: DETAIL_TIMEOUT })
   await expect(detail.getByText('这是一条待举报的评论')).toBeVisible()
 
   await detail.getByRole('button', { name: '更多操作' }).click()
@@ -39,8 +47,8 @@ test('举报弹窗在未选原因时不可提交，其他原因可附补充说�
 
   await page.goto(`/portal/articles?open=${article.id}`)
 
-  const detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
-  await expect(detail).toBeVisible()
+  const detail = articleDetail(page)
+  await expect(detail).toBeVisible({ timeout: DETAIL_TIMEOUT })
   await detail.getByRole('button', { name: '更多操作' }).click()
   await page.getByRole('button', { name: '举报', exact: true }).click()
 

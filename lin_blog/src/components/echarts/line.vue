@@ -8,22 +8,12 @@
 import { ref, onMounted, onBeforeUnmount, markRaw, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import {
-    TitleComponent,
-    TooltipComponent,
-    GridComponent,
-    LegendComponent
-} from 'echarts/components'
+import { TooltipComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([
-    TitleComponent,
-    TooltipComponent,
-    GridComponent,
-    CanvasRenderer,
-    LegendComponent,
-    LineChart
-])
+// 只注册本图真正用到的能力：折线图 + 直角坐标系 + 悬浮提示。
+// 注册未使用的 Title/Legend 会把对应模块打进 echarts chunk（约数十 KB）。
+echarts.use([TooltipComponent, GridComponent, CanvasRenderer, LineChart])
 
 type VisitData = {
     date: string
