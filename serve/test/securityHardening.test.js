@@ -168,6 +168,49 @@ test('public write routes mount dedicated rate limiters', () => {
     assert.ok(handler('post', '/api/portal/message').includes(publicMessageLimit))
 })
 
+test('素材库图片接口需要登录，且允许文件查看或内容创作权限进入', async () => {
+    const expressApp = express()
+    const routes = []
+    for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+        expressApp[method] = (path, ...handlers) => {
+            routes.push({ method, path, handlers })
+            return expressApp
+        }
+    }
+
+    require('../routes/file')(expressApp)
+    const handler = (method, path) => routes.find(
+        (route) => route.method === method && route.path === path
+    )?.handlers || []
+
+    const imageHandlers = handler('get', '/api/file/images')
+    assert.ok(imageHandlers.length > 0)
+    // 素材库既是文件能力也是创作能力：命中任一权限即放行
+    // 中间件顺序：authMiddleware → 权限中间件 → 控制器
+    const gate = imageHandlers[imageHandlers.length - 2]
+    assert.ok(gate, '素材库接口应挂载权限中间件')
+
+    const run = (permissions) => new Promise(resolve => {
+        const res = {
+            statusCode: 0,
+            payload: null,
+            status(code) { this.statusCode = code; return this },
+            json(payload) { this.payload = payload; resolve({ status: this.statusCode, payload }) },
+        }
+        gate({ user: { userId: 1, user_type: 'normal', permissions } }, res, () => {
+            resolve({ status: 200, payload: null })
+        })
+    })
+
+    assert.equal((await run(['file.view'])).status, 200)
+    assert.equal((await run(['article.create'])).status, 200)
+    assert.equal((await run(['comment.like'])).status, 403)
+
+    // raw 图片地址与 /api/uploads 一样公开可读，浏览器才能直接 <img src>
+    const rawHandlers = handler('get', '/api/file/:id/raw')
+    assert.equal(rawHandlers.length, 1)
+})
+
 test('graceful shutdown stops tasks, closes HTTP and database once', async () => {
     const calls = []
     const exitCodes = []

@@ -71,3 +71,22 @@ test('富文本正文图片会补充响应式地址与懒加载属性', () => {
   assert.match(html, /decoding="async"/)
   assert.match(html, /<img src="https:\/\/cdn\.example\.com\/raw\.jpg">/)
 })
+
+test('素材库 raw 图片同样生成 webp 缩略图地址', () => {
+  const url = optimizedImageUrl('/api/file/18/raw', 480)
+
+  assert.equal(url, '/api/file/18/raw?w=480&format=webp')
+  assert.equal(isUploadImageUrl('/api/file/18/raw'), true)
+  assert.equal(isUploadImageUrl('/api/file/18/download'), false)
+  assert.match(
+    imageSrcset('/api/file/18/raw', [320, 640]),
+    /\/api\/file\/18\/raw\?w=320&format=webp 320w/
+  )
+})
+
+test('素材库 raw 图片在富文本里也会补响应式属性', () => {
+  const html = optimizeRichContentImages('<img src="/api/file/18/raw" alt="素材图">')
+
+  assert.match(html, /src="\/api\/file\/18\/raw\?w=960&amp;format=webp"/)
+  assert.match(html, /srcset="[^"]+320w[^"]+960w"/)
+})

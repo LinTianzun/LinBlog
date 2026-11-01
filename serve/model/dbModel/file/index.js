@@ -105,6 +105,63 @@ async function findFileById(id) {
     return rows[0] || null
 }
 
+/**
+ * 素材库图片列表：只返回图片类扩展名且未删除的文件。
+ * 扩展名白名单与 uploadController 的 MIME 白名单保持一致，
+ * 避免把视频/压缩包等非图片混进选择器。
+ */
+const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+
+async function getImageFilesByPage({ keyword, pageSize, offset }) {
+    const where = ["f.status = 1", `f.format IN (${IMAGE_FORMATS.map(() => '?').join(', ')})`]
+    const params = [...IMAGE_FORMATS]
+
+    if (keyword) {
+        where.push('f.file_name LIKE ?')
+        params.push(`%${keyword}%`)
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`
+
+    const totalRows = await query(
+        `SELECT COUNT(*) AS total FROM file f ${whereSql}`,
+        params
+    )
+
+    const list = await query(
+        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at,
+                s.subset_name AS subsetName
+        FROM file f
+        LEFT JOIN subset s ON f.subset_id = s.id
+        ${whereSql}
+        ORDER BY f.created_at DESC, f.id DESC
+        LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
+    )
+
+    return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+/**
+ * 统计某个本地文件被业务内容引用的次数。
+ * 引用 URL 形如 /api/file/12/raw，按 URL 精确匹配文件 id，
+ * 命中文章封面/正文（含工作稿）、随笔图片与用户头像。
+ */
+async function countFileReferences(fileId) {
+    const pattern = `%/api/file/${fileId}/raw%`
+    const rows = await query(
+        `SELECT
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND cover LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_payload LIKE ?) +
+            (SELECT COUNT(*) FROM diary WHERE status = 1 AND picture LIKE ?) +
+            (SELECT COUNT(*) FROM users WHERE imgurl LIKE ?) AS referenceCount`,
+        [pattern, pattern, pattern, pattern, pattern, pattern]
+    )
+    return Number(rows?.[0]?.referenceCount ?? 0)
+}
+
 async function findFilesByIds(ids) {
     if (!ids.length) return []
     const placeholders = ids.map(() => '?').join(', ')
@@ -230,6 +287,8 @@ module.exports = {
     countFilesSummary,
     getSubsetCounts,
     findFileById,
+    getImageFilesByPage,
+    countFileReferences,
     findFilesByIds,
     findExistingFileIds,
     insertFile,

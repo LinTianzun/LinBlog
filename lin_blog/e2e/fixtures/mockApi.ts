@@ -323,6 +323,41 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 素材库图片：文章/图库/随笔的「从素材库选择」用它拉列表
+    if (method === 'GET' && path === '/api/file/images') {
+      await fulfill({
+        total: 2,
+        page: 1,
+        pageSize: 12,
+        totalPage: 1,
+        list: [
+          {
+            id: 501,
+            fileName: '素材-日落.jpg',
+            format: 'jpg',
+            size: 204800,
+            url: '/api/file/501/raw',
+            thumbUrl: '/api/file/501/raw?w=320&format=webp',
+            subsetId: 3,
+            subsetName: '摄影',
+            createdAt: '2026-10-30T08:00:00.000Z',
+          },
+          {
+            id: 502,
+            fileName: '素材-夜色.png',
+            format: 'png',
+            size: 409600,
+            url: '/api/file/502/raw',
+            thumbUrl: '/api/file/502/raw?w=320&format=webp',
+            subsetId: 3,
+            subsetName: '摄影',
+            createdAt: '2026-10-29T08:00:00.000Z',
+          },
+        ],
+      })
+      return
+    }
+
     if (method === 'POST' && path === '/api/upload/ticket') {
       await fulfill({
         ticket: 'e2e-upload-ticket',

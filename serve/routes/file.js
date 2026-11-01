@@ -1,7 +1,7 @@
 const fileController = require('../controller/fileController')
 const { authMiddleware, authMiddlewareFromQuery } = require('../middleware/auth')
 const { uploadLimit } = require('../middleware/rateLimit')
-const { requirePermission } = require('../utils/accessControl')
+const { requirePermission, requireAnyPermission } = require('../utils/accessControl')
 
 module.exports = (app) => {
     // 文件分页查询
@@ -9,6 +9,15 @@ module.exports = (app) => {
 
     // 文件统计（分组栏计数）
     app.get('/api/file/summary', authMiddleware, requirePermission('file.view'), fileController.getFileSummary)
+
+    // 素材库图片选择器
+    // 内容创作者（文章/图库/随笔）也需要复用素材库，所以放宽为「文件查看」或任一创作权限
+    app.get('/api/file/images', authMiddleware, requireAnyPermission([
+        'file.view',
+        'article.create',
+        'gallery.create',
+        'diary.create'
+    ]), fileController.getImageFiles)
 
     // 回收站与恢复
     app.get('/api/file/trash', authMiddleware, requirePermission('file.manage'), fileController.getTrashFiles)
@@ -29,4 +38,7 @@ module.exports = (app) => {
     // 下载/预览：浏览器与 yk-image 直接发起 GET，无法附加请求头，
     // 与 /api/uploads/:filename 保持一致不做鉴权
     app.get('/api/file/:id/download', fileController.downloadFile)
+
+    // 本地图片内联展示：文章/图库/随笔可直接引用，并支持响应式缩略图
+    app.get('/api/file/:id/raw', fileController.getRawImage)
 }

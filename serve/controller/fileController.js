@@ -11,6 +11,12 @@ const fileStorage = require('../utils/fileStorage')
 const { runFileLifecycleCleanup } = require('../utils/fileLifecycle')
 const offsiteStorage = require('../utils/fileOffsite').defaultOffsite
 const { getBackupCapacity } = require('../utils/fileCapacity')
+const {
+    parseVariantRequest,
+    readVariantCache,
+    createVariant,
+    sendImage,
+} = require('../utils/imageVariants')
 
 const uploadDir = fileStorage.activeDir
 const maxFileSize = 20 * 1024 * 1024
@@ -60,6 +66,24 @@ function formatFile(item) {
         size: item.size,
         url: toAccessUrl(item.id, item.url),
         subsetId: item.subset_id,
+        createdAt: item.created_at
+    }
+}
+
+// 素材库选择器只关心图片；raw 地址可被文章/图库/随笔直接引用，
+// 并与 /api/uploads 一样支持 ?w=&format=webp 响应式缩略图。
+function formatImageFile(item) {
+    const rawUrl = `/api/file/${item.id}/raw`
+    const params = new URLSearchParams({ w: '320', format: 'webp' })
+    return {
+        id: item.id,
+        fileName: item.file_name,
+        format: item.format,
+        size: item.size,
+        url: rawUrl,
+        thumbUrl: `${rawUrl}?${params.toString()}`,
+        subsetId: item.subset_id,
+        subsetName: item.subsetName || null,
         createdAt: item.created_at
     }
 }
@@ -126,6 +150,43 @@ async function getFileSummary(req, res) {
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '文件统计查询失败：' + err.message })
+    }
+}
+
+/**
+ * 素材库图片分页列表：从本地文件模块筛选可内联展示的图片。
+ */
+async function getImageFiles(req, res) {
+    try {
+        const params = formatPaginationParams(req.query, {
+            defaultPageSize: 12,
+            maxPageSize: 50
+        })
+        if (!params.success) {
+            return res.status(400).json({ code: 400, message: params.errorMsg })
+        }
+
+        const { page, pageSize, offset } = params.data
+        const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
+        const { list, total } = await fileModel.getImageFilesByPage({
+            keyword: keyword || undefined,
+            pageSize,
+            offset
+        })
+
+        res.json({
+            code: 200,
+            message: '获取素材图片列表成功',
+            data: {
+                total,
+                page,
+                pageSize,
+                totalPage: Math.ceil(total / pageSize),
+                list: list.map(formatImageFile)
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '获取素材图片列表失败：' + err.message })
     }
 }
 
@@ -241,6 +302,92 @@ async function downloadFile(req, res) {
 }
 
 /**
+ * 本地图片的公开内联地址：与 /api/uploads/:filename 保持同一缩略图契约。
+ * 文章、图库和随笔引用 raw 地址后，回收站清除前会先检查内容引用。
+ */
+async function getRawImage(req, res) {
+    try {
+        const fileId = Number(req.params.id)
+        if (!Number.isSafeInteger(fileId) || fileId <= 0) {
+            return res.status(400).json({ code: 400, message: '文件ID必须是有效数字' })
+        }
+
+        const variantRequest = parseVariantRequest(req.query)
+        if (variantRequest?.invalid) {
+            return res.status(400).json({ code: 400, message: '缩略图尺寸不受支持' })
+        }
+
+        const file = await fileModel.findFileById(fileId)
+        if (!file || Number(file.status) !== 1) {
+            return res.status(404).json({ code: 404, message: '图片不存在或已删除' })
+        }
+
+        if (/^https?:\/\//i.test(String(file.url))) {
+            return res.redirect(302, file.url)
+        }
+
+        const format = String(file.format || '').toLowerCase()
+        const mimeType = mimeMap[format]
+        if (!mimeType || !mimeType.startsWith('image/')) {
+            return res.status(415).json({ code: 415, message: '该文件不是可内联展示的图片' })
+        }
+
+        const diskName = path.basename(String(file.url))
+        const filePath = path.join(uploadDir, diskName)
+        if (!diskName || !fs.existsSync(filePath)) {
+            return res.status(404).json({ code: 404, message: '图片内容已丢失' })
+        }
+
+        // SVG 是用户上传的矢量文件，内联服务时禁用脚本与外链资源。
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+        const stat = fs.statSync(filePath)
+        const version = `${file.id}-${stat.size}-${Math.floor(stat.mtimeMs)}`
+
+        if (!variantRequest || mimeType === 'image/svg+xml') {
+            if (variantRequest) {
+                return res.redirect(
+                    302,
+                    `/api/file/${fileId}/raw`
+                )
+            }
+
+            const data = fs.readFileSync(filePath)
+            return sendImage(req, res, { version, data, mimeType })
+        }
+
+        const cacheKey = `${fileId}:${variantRequest.width}:${variantRequest.format}`
+        const cached = readVariantCache(cacheKey)
+        if (cached) {
+            return sendImage(req, res, {
+                version: cached.version,
+                data: cached.data,
+                mimeType: 'image/webp',
+                width: variantRequest.width
+            })
+        }
+
+        try {
+            const variant = await createVariant(filePath, variantRequest.width, cacheKey, version)
+            return sendImage(req, res, {
+                version,
+                data: variant.data,
+                mimeType: 'image/webp',
+                width: variantRequest.width
+            })
+        } catch (err) {
+            console.error(`[File] 生成缩略图失败（${file.file_name}）：`, err)
+            const data = fs.readFileSync(filePath)
+            return sendImage(req, res, { version, data, mimeType })
+        }
+    } catch (err) {
+        console.error('[File] 读取图片失败：', err)
+        if (!res.headersSent) {
+            res.status(500).json({ code: 500, message: '图片读取失败' })
+        }
+    }
+}
+
+/**
  * 批量移动文件到指定分组（subsetId 为空表示移入未分类）
  */
 async function moveFiles(req, res) {
@@ -306,8 +453,28 @@ async function deleteFiles(req, res) {
 
         const existing = await fileModel.findFilesByIds(ids)
         const activeFiles = existing.filter(file => Number(file.status) === 1)
-        const deleted = await fileModel.softDeleteFiles(ids)
+        // 被内容引用的图片不能直接删除：文章封面/正文、随笔图片都指向 raw 地址，
+        // 文件一旦移入备份区，线上内容就会出现裂图。
+        const referenced = []
+        const deletableIds = []
+        for (const file of activeFiles) {
+            const referenceCount = await fileModel.countFileReferences(file.id)
+            if (referenceCount > 0) {
+                referenced.push({ id: file.id, referenceCount })
+                continue
+            }
+            deletableIds.push(file.id)
+        }
+
+        const deleted = await fileModel.softDeleteFiles(deletableIds)
         if (deleted === 0) {
+            if (referenced.length > 0) {
+                return res.status(409).json({
+                    code: 409,
+                    message: '部分文件仍被内容引用，请先移除引用再删除',
+                    data: { referenced }
+                })
+            }
             return res.status(404).json({ code: 404, message: '文件不存在或已删除' })
         }
 
@@ -351,7 +518,9 @@ async function deleteFiles(req, res) {
                 deletedCount: deleted,
                 backedUpCount,
                 backupFailedCount,
-                offsiteFailedCount
+                offsiteFailedCount,
+                referencedCount: referenced.length,
+                referenced
             }
         })
     } catch (err) {
@@ -541,7 +710,19 @@ async function purgeTrashFiles(req, res) {
         const failed = []
         const purgedIds = []
 
+        // 被文章/图库/随笔引用的文件进入回收站后，不能直接物理删除；
+        // 先移除内容引用，再回到回收站执行彻底删除。
         for (const file of candidates) {
+            const referenceCount = await fileModel.countFileReferences(file.id)
+            if (referenceCount > 0) {
+                failed.push({
+                    id: file.id,
+                    reason: 'referenced_by_content',
+                    referenceCount
+                })
+                continue
+            }
+
             if (!fileStorage.isRemoteUrl(file.url)) {
                 // 先清理异地副本；异地失败时本地仍可恢复，避免留下不可恢复的半状态。
                 const offsiteResult = await offsiteStorage.remove(file.url)
@@ -613,8 +794,10 @@ async function getStorageStatus(req, res) {
 module.exports = {
     getFiles,
     getFileSummary,
+    getImageFiles,
     uploadFile,
     downloadFile,
+    getRawImage,
     moveFiles,
     deleteFiles,
     getTrashFiles,

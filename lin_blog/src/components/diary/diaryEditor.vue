@@ -38,6 +38,11 @@
                     accept="image/*" multiple
                     @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                     @handle-delete="handleUploadDelete"></yk-upload>
+
+                <yk-button type="secondary" size="s" v-if="photos.length < maxPhotoCount"
+                    @click="mediaPickerOpen = true">
+                    从素材库选择
+                </yk-button>
             </div>
         </div>
 
@@ -50,6 +55,9 @@
             </yk-space>
         </div>
     </div>
+
+    <MediaPickerDialog v-model:open="mediaPickerOpen" multiple :max-count="maxPhotoCount"
+        @select="handleMediaSelect" />
 </template>
 
 <script lang="ts" setup>
@@ -58,6 +66,7 @@ import { weathers } from '../../utils/weather'
 import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diary'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
+import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 
 type DiaryForm = {
     title?: string
@@ -117,6 +126,7 @@ const selectWeather = (item: WeatherItem): void => {
 // 图片上传（photos 为唯一数据源，不把 fileList 回传给 yk-upload，
 // 否则其内部会整体重建列表导致 uid 失配、删除一张时数据错乱）
 const photos = ref<string[]>([])
+const mediaPickerOpen = ref(false)
 
 // 编辑中的日记 ID：为空表示新建模式
 const editingId = ref<number | null>(null)
@@ -190,6 +200,18 @@ const handleUploadDelete = (payload: unknown): void => {
         photos.value.splice(removedIndex, 1)
     }
     diaryForm.value.picture = [...photos.value]
+}
+
+// 从素材库选择图片：随笔图片上限与上传一致，超出的部分直接忽略
+const handleMediaSelect = (urls: string[]): void => {
+    const picked = urls
+        .filter(url => !photos.value.includes(url))
+        .slice(0, maxPhotoCount - photos.value.length)
+    if (picked.length === 0) return
+
+    photos.value = [...photos.value, ...picked]
+    diaryForm.value.picture = [...photos.value]
+    proxy?.$message?.({ type: 'primary', message: `已从素材库添加 ${picked.length} 张图片` })
 }
 
 // 图片数量上限（与后端校验一致）

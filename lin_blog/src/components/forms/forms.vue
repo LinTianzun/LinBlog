@@ -31,10 +31,15 @@
 
             <div class="forms-cover" v-if="props.classify == 0">
                 <span class="forms-cover-label">文章封面</span>
+                <img v-if="formData.cover" class="forms-cover-preview" :src="optimizedImageUrl(formData.cover, 320)"
+                    alt="文章封面预览">
                 <yk-upload :file-list="coverFileList" :upload-url="uploadUrl" :limit="1" :multiple="false"
                     accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
                     desc="上传封面" @handle-success="handleCoverSuccess"
                     @handle-error="handleCoverError" @handle-delete="handleCoverDelete" />
+                <yk-button type="secondary" size="s" class="forms-cover-library" @click="mediaPickerOpen = true">
+                    从素材库选择
+                </yk-button>
                 <p v-if="coverUploadError" class="forms-cover-error">
                     {{ coverUploadError }}
                 </p>
@@ -60,6 +65,8 @@
             </yk-space>
         </yk-space>
     </yk-modal>
+
+    <MediaPickerDialog v-model:open="mediaPickerOpen" @select="handleMediaSelect" />
 </template>
 
 <script lang="ts" setup>
@@ -68,6 +75,8 @@ import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
+import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
+import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 
 type FormData = {
     title: string
@@ -166,6 +175,7 @@ const subsetList = ref<SubsetOption[]>([])
 // 封面上传
 const coverFileList = ref<CoverFile[]>([])
 const coverUploadError = ref('')
+const mediaPickerOpen = ref(false)
 // 每次上传前换取一次性票据：URL 里流通的是 5 分钟失效的短期票据，
 // 不再是长期有效的登录 token（避免进入访问日志与浏览器历史）
 const uploadUrl = ref('')
@@ -226,6 +236,16 @@ const handleCoverDelete = (): void => {
     formData.value.cover = ''
     coverFileList.value = []
     void refreshUploadUrl()
+}
+
+// 从素材库选择封面：素材库图片与本地文件同源，raw 地址可直接被内容引用
+const handleMediaSelect = (urls: string[]): void => {
+    const url = urls[0]
+    if (!url) return
+
+    coverUploadError.value = ''
+    formData.value.cover = url
+    coverFileList.value = [{ name: '文章封面', url }]
 }
 
 const getSubset = () => {
@@ -534,6 +554,18 @@ onMounted(() => {
             .yk-upload__picture-button {
                 width: 160px;
                 height: 120px;
+            }
+
+            &-preview {
+                width: 160px;
+                height: 120px;
+                object-fit: cover;
+                border-radius: @radius-m;
+                border: 1px solid var(--admin-line, @line-color-s);
+            }
+
+            &-library {
+                align-self: flex-start;
             }
         }
 

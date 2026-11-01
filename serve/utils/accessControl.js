@@ -64,6 +64,22 @@ function requirePermission(permissionKey) {
     }
 }
 
+/**
+ * 满足任一权限即可通过。用于「同一能力有多个入口权限」的场景，
+ * 例如素材库图片既归文件模块管（file.view），也服务于内容创作。
+ */
+function requireAnyPermission(permissionKeys) {
+    const keys = Array.isArray(permissionKeys) ? permissionKeys.filter(Boolean) : []
+    return (req, res, next) => {
+        if (keys.some(key => hasPermission(req.user, key))) return next()
+
+        return res.status(403).json({
+            code: 403,
+            message: '当前账号没有执行此操作的权限'
+        })
+    }
+}
+
 function requireSuperAdmin(req, res, next) {
     if (isSuperAdmin(req.user)) return next()
 
@@ -287,6 +303,7 @@ module.exports = {
     getPermissionsForUser,
     hasPermission,
     requirePermission,
+    requireAnyPermission,
     requireSuperAdmin,
     refreshPermissionCache,
     getRolePermissionMap,

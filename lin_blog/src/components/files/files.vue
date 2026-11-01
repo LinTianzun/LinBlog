@@ -254,9 +254,12 @@ const deleteFile = async (id: number): Promise<void> => {
 
         const backupFailed = Number(result.data?.backupFailedCount ?? 0)
         const offsiteFailed = Number(result.data?.offsiteFailedCount ?? 0)
+        const referenced = Number(result.data?.referencedCount ?? 0)
         showMessage(
-            backupFailed > 0 || offsiteFailed > 0 ? 'warning' : 'primary',
-            backupFailed > 0 || offsiteFailed > 0
+            backupFailed > 0 || offsiteFailed > 0 || referenced > 0 ? 'warning' : 'primary',
+            referenced > 0
+                ? '该文件仍被文章、图库或随笔引用，已保留在素材库中'
+                : backupFailed > 0 || offsiteFailed > 0
                 ? '已移入回收站，但部分备份或异地同步失败，请检查存储配置'
                 : '删除成功'
         )
@@ -282,9 +285,13 @@ const deleteMultipleFile = async (): Promise<void> => {
 
         const backupFailed = Number(result.data?.backupFailedCount ?? 0)
         const offsiteFailed = Number(result.data?.offsiteFailedCount ?? 0)
+        const referenced = Number(result.data?.referencedCount ?? 0)
+        const deleted = Number(result.data?.deletedCount ?? ids.length)
         showMessage(
-            backupFailed > 0 || offsiteFailed > 0 ? 'warning' : 'primary',
-            backupFailed > 0 || offsiteFailed > 0
+            backupFailed > 0 || offsiteFailed > 0 || referenced > 0 ? 'warning' : 'primary',
+            referenced > 0
+                ? `已删除 ${deleted} 个文件，${referenced} 个仍被内容引用的文件已保留`
+                : backupFailed > 0 || offsiteFailed > 0
                 ? `已删除 ${ids.length} 个文件，但部分备份或异地同步失败`
                 : `已删除 ${ids.length} 个文件`
         )
