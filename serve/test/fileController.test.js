@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
+const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
@@ -9,6 +11,21 @@ const fileModel = require(path.resolve(__dirname, '../model/dbModel/file/index.j
 const subsetModel = require(path.resolve(__dirname, '../model/dbModel/subset/index.js'))
 const fileStorage = require(path.resolve(__dirname, '../utils/fileStorage.js'))
 const defaultOffsite = require(path.resolve(__dirname, '../utils/fileOffsite.js')).defaultOffsite
+
+// raw 路由直接读盘，这里写入真实存储目录后再清理
+function createTempImageFile(extension, data) {
+    const diskName = `${Date.now()}-raw-test-${crypto.randomUUID()}${extension}`
+    fs.writeFileSync(path.join(fileStorage.activeDir, diskName), data)
+    return diskName
+}
+
+function removeTempImageFile(diskName) {
+    try {
+        fs.unlinkSync(path.join(fileStorage.activeDir, diskName))
+    } catch (_error) {
+        // 清理失败不影响断言结果
+    }
+}
 
 function createRes() {
     return {
@@ -29,6 +46,12 @@ function createRes() {
         },
         redirect(_code, url) {
             this.redirectedTo = url
+            this.statusCode ||= 200
+            return this
+        },
+        end(data) {
+            this.statusCode ||= 200
+            this.body = data ?? null
             return this
         }
     }
@@ -167,6 +190,7 @@ test('deleteFiles moves local files to backup after soft deleting records', asyn
             ]
         },
         async softDeleteFiles() { return 2 }
+    , async countFileReferences() { return 0 }
     }, async () => {
         await withOverrides(fileStorage, {
             async moveToBackup(name) {
@@ -185,6 +209,40 @@ test('deleteFiles moves local files to backup after soft deleting records', asyn
     })
 })
 
+test('deleteFiles keeps files that are still referenced by content', async () => {
+    const softDeleted = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [
+                { id: 11, url: 'used-cover.png', status: 1 },
+                { id: 12, url: 'free-file.png', status: 1 }
+            ]
+        },
+        async countFileReferences(fileId) {
+            return fileId === 11 ? 2 : 0
+        },
+        async softDeleteFiles(ids) {
+            softDeleted.push(...ids)
+            return ids.length
+        }
+    }, async () => {
+        await withOverrides(fileStorage, {
+            async moveToBackup() { return { moved: true, reason: null } }
+        }, async () => {
+            const res = createRes()
+            await fileController.deleteFiles(
+                { body: { fileIds: [11, 12] }, params: {}, user: { userId: 1 } },
+                res
+            )
+
+            assert.equal(res.body.code, 200)
+            assert.equal(res.body.data.deletedCount, 1)
+            assert.equal(res.body.data.referencedCount, 1)
+            assert.equal(res.body.data.referenced[0].id, 11)
+            assert.deepEqual(softDeleted, [12])
+        })
+    })
+})
 test('restoreFiles restores the disk file and database record', async () => {
     const restoredIds = []
     await withOverrides(fileModel, {
@@ -370,17 +428,25 @@ test('purgeTrashFiles is admin-only and removes backup before marking the record
             await withOverrides(fileStorage, {
                 async removeBackup(name) { removed.push(name); return true }
             }, async () => {
-                const res = createRes()
-                await fileController.purgeTrashFiles(
-                    { body: { fileIds: [9, 10, 11] }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
-                    res
-                )
+                await withOverrides(fileModel, {
+                    async countFileReferences() { return 0 }
+                }, async () => {
+                await withOverrides(fileModel, {
+                    async countFileReferences() { return 0 }
+                }, async () => {
+                    const res = createRes()
+                    await fileController.purgeTrashFiles(
+                        { body: { fileIds: [9, 10, 11] }, user: { userId: 1, user_type: 'admin' }, ip: '127.0.0.1' },
+                        res
+                    )
 
-                assert.equal(res.body.code, 200)
-                assert.equal(res.body.data.purgedCount, 2)
-                assert.deepEqual(offsiteRemoved, ['purge-me.bin'])
-                assert.deepEqual(removed, ['purge-me.bin'])
-                assert.deepEqual(marked, [9, 10])
+                    assert.equal(res.body.code, 200)
+                    assert.equal(res.body.data.purgedCount, 2)
+                    assert.deepEqual(offsiteRemoved, ['purge-me.bin'])
+                    assert.deepEqual(removed, ['purge-me.bin'])
+                    assert.deepEqual(marked, [9, 10])
+                })
+                })
             })
         })
     })
@@ -403,6 +469,9 @@ test('purgeTrashFiles keeps local backup when offsite removal fails', async () =
             await withOverrides(fileStorage, {
                 async removeBackup(name) { removed.push(name); return true }
             }, async () => {
+            await withOverrides(fileModel, {
+                async countFileReferences() { return 0 }
+            }, async () => {
                 const res = createRes()
                 await fileController.purgeTrashFiles(
                     { body: { fileIds: [31] }, user: { userId: 1, user_type: 'admin' } },
@@ -414,6 +483,7 @@ test('purgeTrashFiles keeps local backup when offsite removal fails', async () =
                 assert.equal(res.body.data.failed[0].reason, 'offsite_remove_failed')
                 assert.deepEqual(removed, [])
                 assert.deepEqual(marked, [])
+            })
             })
         })
     })
@@ -430,22 +500,60 @@ test('purgeTrashFiles keeps the record when backup removal fails', async () => {
         },
         async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
     }, async () => {
+        await withOverrides(fileModel, {
+            async countFileReferences() { return 0 }
+        }, async () => {
+            await withOverrides(fileStorage, {
+                async removeBackup(name) {
+                    if (name === 'locked.bin') throw new Error('EBUSY')
+                    return true
+                }
+            }, async () => {
+                const res = createRes()
+                await fileController.purgeTrashFiles(
+                    { body: { fileIds: [21, 22] }, user: { userId: 1, user_type: 'admin' } },
+                    res
+                )
+
+                assert.equal(res.body.data.purgedCount, 1)
+                assert.equal(res.body.data.failedCount, 1)
+                assert.equal(res.body.data.failed[0].id, 21)
+                assert.deepEqual(marked, [22])
+            })
+        })
+    })
+})
+
+test('purgeTrashFiles refuses files still referenced by content', async () => {
+    const removed = []
+    const marked = []
+    await withOverrides(fileModel, {
+        async findFilesByIds() {
+            return [
+                { id: 41, url: 'used-image.png', status: 0, backup_deleted_at: null },
+                { id: 42, url: 'unused-image.png', status: 0, backup_deleted_at: null }
+            ]
+        },
+        async countFileReferences(fileId) {
+            return fileId === 41 ? 3 : 0
+        },
+        async markBackupDeleted(ids) { marked.push(...ids); return ids.length }
+    }, async () => {
         await withOverrides(fileStorage, {
-            async removeBackup(name) {
-                if (name === 'locked.bin') throw new Error('EBUSY')
-                return true
-            }
+            async removeBackup(name) { removed.push(name); return true }
         }, async () => {
             const res = createRes()
             await fileController.purgeTrashFiles(
-                { body: { fileIds: [21, 22] }, user: { userId: 1, user_type: 'admin' } },
+                { body: { fileIds: [41, 42] }, user: { userId: 1, user_type: 'admin' } },
                 res
             )
 
             assert.equal(res.body.data.purgedCount, 1)
             assert.equal(res.body.data.failedCount, 1)
-            assert.equal(res.body.data.failed[0].id, 21)
-            assert.deepEqual(marked, [22])
+            assert.equal(res.body.data.failed[0].id, 41)
+            assert.equal(res.body.data.failed[0].reason, 'referenced_by_content')
+            assert.deepEqual(removed, ['unused-image.png'])
+            assert.deepEqual(marked, [42])
         })
     })
 })
@@ -467,4 +575,161 @@ test('getStorageStatus is admin-only and returns capacity plus offsite config', 
     assert.ok(Number.isFinite(res.body.data.usedBytes))
     assert.ok(Number.isFinite(res.body.data.maxBytes))
     assert.ok(['ok', 'warning', 'critical'].includes(res.body.data.level))
+})
+
+test('getImageFiles returns raw and thumbnail urls for the media picker', async () => {
+    await withOverrides(fileModel, {
+        async getImageFilesByPage({ keyword }) {
+            assert.equal(keyword, 'sunset')
+            return {
+                total: 1,
+                list: [{
+                    id: 18,
+                    file_name: '日落.jpg',
+                    format: 'jpg',
+                    size: 2048,
+                    url: '1700000000-image.jpg',
+                    subset_id: 3,
+                    subsetName: '素材',
+                    created_at: '2026-10-30 10:00:00'
+                }]
+            }
+        }
+    }, async () => {
+        const invalid = createRes()
+        await fileController.getImageFiles({ query: { pageSize: '999' }, user: { userId: 1 } }, invalid)
+        assert.equal(invalid.statusCode, 400)
+
+        const res = createRes()
+        await fileController.getImageFiles(
+            { query: { keyword: 'sunset', page: '2', pageSize: '12' }, user: { userId: 1 } },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.total, 1)
+        assert.equal(res.body.data.list[0].url, '/api/file/18/raw')
+        assert.equal(res.body.data.list[0].thumbUrl, '/api/file/18/raw?w=320&format=webp')
+        assert.equal(res.body.data.list[0].subsetName, '素材')
+    })
+})
+
+test('getRawImage validates id, variant and image type before reading disk', async () => {
+    await withOverrides(fileModel, {
+        async findFileById(id) {
+            if (id === 2) {
+                return { id: 2, file_name: 'not-image.txt', format: 'txt', url: 'file.txt', status: 1 }
+            }
+            if (id === 3) {
+                return { id: 3, file_name: 'deleted.png', format: 'png', url: 'deleted.png', status: 0 }
+            }
+            return null
+        }
+    }, async () => {
+        const invalid = createRes()
+        await fileController.getRawImage({ params: { id: 'abc' }, query: {} }, invalid)
+        assert.equal(invalid.statusCode, 400)
+
+        const badWidth = createRes()
+        await fileController.getRawImage(
+            { params: { id: '2' }, query: { w: '999', format: 'webp' } },
+            badWidth
+        )
+        assert.equal(badWidth.statusCode, 400)
+
+        const notImage = createRes()
+        await fileController.getRawImage({ params: { id: '2' }, query: {} }, notImage)
+        assert.equal(notImage.statusCode, 415)
+
+        const deleted = createRes()
+        await fileController.getRawImage({ params: { id: '3' }, query: {} }, deleted)
+        assert.equal(deleted.statusCode, 404)
+
+        const missing = createRes()
+        await fileController.getRawImage({ params: { id: '999' }, query: {} }, missing)
+        assert.equal(missing.statusCode, 404)
+    })
+})
+
+test('getRawImage serves the original with inline image headers and ETag', async () => {
+    const data = Buffer.from('original-image-bytes')
+    const diskName = createTempImageFile('.png', data)
+    await withOverrides(fileModel, {
+        async findFileById() {
+            return { id: 24, file_name: 'photo.png', format: 'png', url: diskName, status: 1 }
+        }
+    }, async () => {
+        const res = createRes()
+        await fileController.getRawImage(
+            { params: { id: '24' }, query: {}, headers: {} },
+            res
+        )
+
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.headers['Content-Type'], 'image/png')
+        assert.equal(res.headers['Content-Length'], data.length)
+        assert.match(res.headers.ETag, /^"24-/)
+        assert.ok(res.body.equals(data))
+    })
+    removeTempImageFile(diskName)
+})
+
+test('getRawImage redirects svg variant requests to the original', async () => {
+    const data = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    const diskName = createTempImageFile('.svg', data)
+    await withOverrides(fileModel, {
+        async findFileById() {
+            return { id: 26, file_name: 'icon.svg', format: 'svg', url: diskName, status: 1 }
+        }
+    }, async () => {
+        const res = createRes()
+        await fileController.getRawImage(
+            { params: { id: '26' }, query: { w: '320', format: 'webp' }, headers: {} },
+            res
+        )
+
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.redirectedTo, '/api/file/26/raw')
+        assert.equal(res.body, null)
+        assert.equal(
+            res.headers['Content-Security-Policy'],
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+        )
+    })
+    removeTempImageFile(diskName)
+})
+
+test('getRawImage generates and caches webp variants', async () => {
+    const sharp = require('sharp')
+    const data = await sharp({
+        create: {
+            width: 640,
+            height: 384,
+            channels: 3,
+            background: { r: 16, g: 72, b: 108 }
+        }
+    }).png().toBuffer()
+    const diskName = createTempImageFile('.png', data)
+
+    await withOverrides(fileModel, {
+        async findFileById() {
+            return { id: 25, file_name: 'variant.png', format: 'png', url: diskName, status: 1 }
+        }
+    }, async () => {
+        const request = { params: { id: '25' }, query: { w: '320', format: 'webp' }, headers: {} }
+        const first = createRes()
+        await fileController.getRawImage(request, first)
+
+        assert.equal(first.statusCode, 200)
+        assert.equal(first.headers['Content-Type'], 'image/webp')
+        assert.equal(await sharp(first.body).metadata().then(item => item.format), 'webp')
+        assert.equal(await sharp(first.body).metadata().then(item => item.width), 320)
+
+        const second = createRes()
+        await fileController.getRawImage(request, second)
+        assert.equal(second.statusCode, 200)
+        assert.equal(second.headers['Content-Type'], 'image/webp')
+        assert.equal(second.headers.ETag, first.headers.ETag, '同尺寸缩略图应命中内存缓存')
+    })
+    removeTempImageFile(diskName)
 })

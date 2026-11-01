@@ -34,7 +34,7 @@ async function getFilesByPage({ subsetId, uncategorized, keyword, pageSize, offs
     )
 
     const list = await query(
-        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at
+        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at, f.source_image_id
          FROM file f
          LEFT JOIN subset s ON f.subset_id = s.id
          ${whereSql}
@@ -44,6 +44,50 @@ async function getFilesByPage({ subsetId, uncategorized, keyword, pageSize, offs
     )
 
     return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+/**
+ * 内容图片（文章/图库/随笔上传）聚合为 file 记录。
+ * image 表保存二进制本体，file 只保存展示元数据；
+ * url 暂留空，实际展示走 /api/uploads/:filename。
+ */
+async function getImageBindingsByPage({ keyword, pageSize, offset }) {
+    const where = ['f.status = 1', 'f.source_image_id IS NOT NULL']
+    const params = []
+
+    if (keyword) {
+        where.push('f.file_name LIKE ?')
+        params.push(`%${keyword}%`)
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`
+    const totalRows = await query(
+        `SELECT COUNT(*) AS total
+         FROM file f
+         ${whereSql}`,
+        params
+    )
+    const list = await query(
+        `SELECT f.id, f.file_name, f.format, f.size, f.source_image_id, f.created_at
+         FROM file f
+         ${whereSql}
+         ORDER BY f.created_at DESC, f.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
+    )
+
+    return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+async function findImageBindingByImageId(imageId) {
+    const rows = await query(
+        `SELECT id, file_name, format, size, url, source_image_id, status, created_at
+         FROM file
+         WHERE source_image_id = ?
+         LIMIT 1`,
+        [imageId]
+    )
+    return rows[0] || null
 }
 
 /**
@@ -95,7 +139,7 @@ async function getSubsetCounts() {
 
 async function findFileById(id) {
     const rows = await query(
-        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          WHERE id = ?
@@ -105,11 +149,144 @@ async function findFileById(id) {
     return rows[0] || null
 }
 
+async function insertImageBinding({ fileName, format, size, sourceImageId, subsetId = null }) {
+    const result = await query(
+        `INSERT INTO file
+            (file_name, format, size, url, subset_id, source_image_id)
+         VALUES (?, ?, ?, '', ?, ?)`,
+        [fileName, format, size ?? null, subsetId ?? null, sourceImageId]
+    )
+    return { fileId: result.insertId }
+}
+
+/**
+ * 批量查询内容图片的归属：被哪些文章、图库、随笔引用。
+ * 引用形态有两种：上传时的 /api/uploads/:filename，
+ * 以及从素材库复用后的 /api/file/:id/raw。
+ * 返回 [{ fileId, type, id, title }]，type 为 article/gallery/diary。
+ */
+async function findContentOwnersByFileIds(fileIds) {
+    const ids = (fileIds || []).map(Number).filter(id => Number.isSafeInteger(id) && id > 0)
+    if (ids.length === 0) return []
+
+    const placeholders = ids.map(() => '?').join(', ')
+    const owners = []
+
+    const articleRows = await query(
+        `SELECT f.id AS file_id, a.id AS content_id, a.title, a.classify
+         FROM file f
+         JOIN image i ON i.id = f.source_image_id
+         JOIN article a ON a.state != 'deleted'
+          AND (
+            a.cover LIKE CONCAT('%', i.filename, '%')
+            OR a.content LIKE CONCAT('%', i.filename, '%')
+            OR a.draft_content LIKE CONCAT('%', i.filename, '%')
+            OR a.draft_payload LIKE CONCAT('%', i.filename, '%')
+            OR a.cover LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.content LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.draft_content LIKE CONCAT('%/api/file/', f.id, '/raw%')
+            OR a.draft_payload LIKE CONCAT('%/api/file/', f.id, '/raw%')
+          )
+         WHERE f.id IN (${placeholders})`,
+        ids
+    )
+
+    for (const row of articleRows || []) {
+        owners.push({
+            fileId: Number(row.file_id),
+            type: row.classify === 'image' ? 'gallery' : 'article',
+            id: Number(row.content_id),
+            title: String(row.title || '未命名内容')
+        })
+    }
+
+    const diaryRows = await query(
+        `SELECT f.id AS file_id, d.id AS content_id, d.title
+         FROM file f
+         JOIN image i ON i.id = f.source_image_id
+         JOIN diary d ON d.status = 1
+          AND (
+            d.picture LIKE CONCAT('%', i.filename, '%')
+            OR d.picture LIKE CONCAT('%/api/file/', f.id, '/raw%')
+          )
+         WHERE f.id IN (${placeholders})`,
+        ids
+    )
+
+    for (const row of diaryRows || []) {
+        owners.push({
+            fileId: Number(row.file_id),
+            type: 'diary',
+            id: Number(row.content_id),
+            title: String(row.title || '未命名随笔')
+        })
+    }
+
+    return owners
+}
+
+/**
+ * 素材库图片列表：只返回图片类扩展名且未删除的文件。
+ * 扩展名白名单与 uploadController 的 MIME 白名单保持一致，
+ * 避免把视频/压缩包等非图片混进选择器。
+ */
+const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+
+async function getImageFilesByPage({ keyword, pageSize, offset }) {
+    const where = ["f.status = 1", `f.format IN (${IMAGE_FORMATS.map(() => '?').join(', ')})`]
+    const params = [...IMAGE_FORMATS]
+
+    if (keyword) {
+        where.push('f.file_name LIKE ?')
+        params.push(`%${keyword}%`)
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`
+
+    const totalRows = await query(
+        `SELECT COUNT(*) AS total FROM file f ${whereSql}`,
+        params
+    )
+
+    const list = await query(
+        `SELECT f.id, f.file_name, f.format, f.size, f.url, f.subset_id, f.created_at, f.source_image_id,
+                s.subset_name AS subsetName
+        FROM file f
+        LEFT JOIN subset s ON f.subset_id = s.id
+        ${whereSql}
+        ORDER BY f.created_at DESC, f.id DESC
+        LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
+    )
+
+    return { list, total: Number(totalRows[0]?.total || 0) }
+}
+
+/**
+ * 统计某个本地文件被业务内容引用的次数。
+ * 引用 URL 形如 /api/file/12/raw，按 URL 精确匹配文件 id，
+ * 命中文章封面/正文（含工作稿）、随笔图片与用户头像。
+ */
+async function countFileReferences(fileId) {
+    const pattern = `%/api/file/${fileId}/raw%`
+    const rows = await query(
+        `SELECT
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND cover LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_content LIKE ?) +
+            (SELECT COUNT(*) FROM article WHERE state != 'deleted' AND draft_payload LIKE ?) +
+            (SELECT COUNT(*) FROM diary WHERE status = 1 AND picture LIKE ?) +
+            (SELECT COUNT(*) FROM users WHERE imgurl LIKE ?) AS referenceCount`,
+        [pattern, pattern, pattern, pattern, pattern, pattern]
+    )
+    return Number(rows?.[0]?.referenceCount ?? 0)
+}
+
 async function findFilesByIds(ids) {
     if (!ids.length) return []
     const placeholders = ids.map(() => '?').join(', ')
     return query(
-        `SELECT id, file_name, format, size, url, subset_id, status, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, status, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          WHERE id IN (${placeholders})`,
@@ -190,7 +367,7 @@ async function findLocalFileReferences() {
 
 async function findExpiredDeletedFiles(days, limit = 500) {
     return query(
-        `SELECT id, url
+        `SELECT id, url, source_image_id
          FROM file
          WHERE status = 0
            AND deleted_at IS NOT NULL
@@ -213,7 +390,7 @@ async function getDeletedFilesByPage({ keyword, pageSize, offset }) {
     const whereSql = `WHERE ${where.join(' AND ')}`
     const totalRows = await query(`SELECT COUNT(*) AS total FROM file ${whereSql}`, params)
     const list = await query(
-        `SELECT id, file_name, format, size, url, subset_id, created_at,
+        `SELECT id, file_name, format, size, url, subset_id, created_at, source_image_id,
                 deleted_at, backup_deleted_at
          FROM file
          ${whereSql}
@@ -227,12 +404,18 @@ async function getDeletedFilesByPage({ keyword, pageSize, offset }) {
 
 module.exports = {
     getFilesByPage,
+    getImageBindingsByPage,
+    findImageBindingByImageId,
+    findContentOwnersByFileIds,
     countFilesSummary,
     getSubsetCounts,
     findFileById,
+    getImageFilesByPage,
+    countFileReferences,
     findFilesByIds,
     findExistingFileIds,
     insertFile,
+    insertImageBinding,
     updateFileSubset,
     softDeleteFiles,
     restoreFile,

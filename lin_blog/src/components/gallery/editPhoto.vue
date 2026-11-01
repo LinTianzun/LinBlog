@@ -8,6 +8,9 @@
                 @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                 @handle-delete="handleUploadDelete">
             </yk-upload>
+            <yk-button type="secondary" size="s" class="edit_photo-library" @click="mediaPickerOpen = true">
+                从素材库选择
+            </yk-button>
         </div>
 
         <yk-empty v-if="photos.length === 0" description="还没有上传图片" style="padding: 48px 0;" />
@@ -28,12 +31,16 @@
 
         <p v-if="uploadError" class="edit_photo-error">{{ uploadError }}</p>
     </div>
+
+    <MediaPickerDialog v-model:open="mediaPickerOpen" multiple :max-count="maxPhotoCount"
+        @select="handleMediaSelect" />
 </template>
 
 <script lang="ts" setup>
 import { ref, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
+import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 
 type UploadResponse = {
     data?: {
@@ -64,6 +71,10 @@ const proxy = getCurrentInstance()?.proxy as MessageInstance | null | undefined
 const photos = ref<string[]>([...props.initialPhotos])
 const cover = ref(props.initialCover || props.initialPhotos[0] || '')
 const uploadError = ref('')
+const mediaPickerOpen = ref(false)
+
+// 图库最多 20 张，素材库选择沿用同一上限
+const maxPhotoCount = 20
 
 // 上传配置
 // 上传地址改用短期票据：yk-upload 只能把凭证拼在 URL 上，
@@ -147,6 +158,19 @@ const handleUploadDelete = (payload: unknown): void => {
 const changeCover = (url: string): void => {
     cover.value = url
     emitChange()
+}
+
+// 从素材库选择图片：raw 地址与上传得到的 /api/uploads 地址行为一致
+const handleMediaSelect = (urls: string[]): void => {
+    const picked = urls.filter(url => !photos.value.includes(url))
+    if (picked.length === 0) return
+
+    photos.value = [...photos.value, ...picked].slice(0, maxPhotoCount)
+    if (!cover.value) {
+        cover.value = photos.value[0] || ''
+    }
+    emitChange()
+    proxy?.$message?.({ type: 'primary', message: `已从素材库添加 ${picked.length} 张图片` })
 }
 
 // 删除图片

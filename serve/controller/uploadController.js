@@ -1,7 +1,14 @@
 const crypto = require('node:crypto')
 const multer = require('multer')
-const sharp = require('sharp')
 const imageModel = require('../model/dbModel/image/index')
+const fileModel = require('../model/dbModel/file/index')
+const subsetModel = require('../model/dbModel/subset/index')
+const {
+    parseVariantRequest,
+    readVariantCache,
+    createVariant,
+    sendImage,
+} = require('../utils/imageVariants')
 
 const maxFileSize = 8 * 1024 * 1024
 const mimeExtensions = new Map([
@@ -10,11 +17,6 @@ const mimeExtensions = new Map([
     ['image/webp', '.webp'],
     ['image/gif', '.gif']
 ])
-const variantWidths = new Set([160, 240, 320, 480, 640, 720, 960, 1280, 1600])
-const variantCache = new Map()
-const pendingVariants = new Map()
-const variantCacheMaxBytes = 64 * 1024 * 1024
-let variantCacheBytes = 0
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -47,106 +49,6 @@ function createFilename(extension) {
     return `${Date.now()}-${crypto.randomUUID()}${extension}`
 }
 
-function getVariantRequest(req) {
-    const rawWidth = Array.isArray(req.query?.w) ? req.query.w[0] : req.query?.w
-    if (rawWidth === undefined || rawWidth === '') return null
-
-    const width = Number(rawWidth)
-    const format = Array.isArray(req.query?.format) ? req.query.format[0] : req.query?.format
-    if (!Number.isInteger(width) || !variantWidths.has(width) || (format && format !== 'webp')) {
-        return { invalid: true }
-    }
-
-    return { width, format: 'webp' }
-}
-
-function readVariantCache(key) {
-    const cached = variantCache.get(key)
-    if (!cached) return null
-
-    // Map 保持插入顺序，命中后移到队尾即可实现轻量 LRU。
-    variantCache.delete(key)
-    variantCache.set(key, cached)
-    return cached
-}
-
-function writeVariantCache(key, value) {
-    const dataLength = value.data.length
-    if (dataLength > variantCacheMaxBytes) return
-
-    const previous = variantCache.get(key)
-    if (previous) {
-        variantCacheBytes -= previous.data.length
-        variantCache.delete(key)
-    }
-
-    while (variantCache.size && variantCacheBytes + dataLength > variantCacheMaxBytes) {
-        const oldestKey = variantCache.keys().next().value
-        const oldest = variantCache.get(oldestKey)
-        variantCache.delete(oldestKey)
-        variantCacheBytes -= oldest?.data.length || 0
-    }
-
-    variantCache.set(key, value)
-    variantCacheBytes += dataLength
-}
-
-function createVariant(image, width, cacheKey) {
-    const pending = pendingVariants.get(cacheKey)
-    if (pending) return pending
-
-    const quality = width <= 320 ? 72 : width <= 640 ? 76 : 80
-    const task = sharp(image.data, {
-        failOn: 'error',
-        limitInputPixels: 40_000_000,
-        animated: false
-    })
-        .rotate()
-        .resize({
-            width,
-            fit: 'inside',
-            withoutEnlargement: true,
-            fastShrinkOnLoad: true
-        })
-        .webp({ quality, effort: 4, smartSubsample: true })
-        .toBuffer()
-        .then((data) => {
-            const variant = {
-                data,
-                version: image.checksum || `${image.filename}-${image.size}`
-            }
-            writeVariantCache(cacheKey, variant)
-            return variant
-        })
-        .finally(() => {
-            pendingVariants.delete(cacheKey)
-        })
-
-    pendingVariants.set(cacheKey, task)
-    return task
-}
-
-function createEtag(image, width) {
-    const version = image.checksum || `${image.filename}-${image.size}`
-    return `"${version}-${width || 'original'}"`
-}
-
-function sendImage(req, res, image, data, mimeType, width) {
-    const etag = createEtag(image, width)
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
-    res.setHeader('ETag', etag)
-
-    const requestEtag = req.headers?.['if-none-match']
-    if (requestEtag && requestEtag === etag) {
-        res.statusCode = 304
-        return res.end()
-    }
-
-    res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Length', data.length)
-    return res.end(data)
-}
-
 async function saveImage(req, res, file) {
     const extension = mimeExtensions.get(file.mimetype)
     const filename = createFilename(extension)
@@ -156,7 +58,7 @@ async function saveImage(req, res, file) {
         .digest('hex')
 
     try {
-        await imageModel.createImage({
+        const { imageId } = await imageModel.createImage({
             filename,
             mimeType: file.mimetype,
             size: file.size,
@@ -164,6 +66,30 @@ async function saveImage(req, res, file) {
             data: file.buffer,
             userId: req.user?.userId ?? null
         })
+
+        // 同步登记到「本地文件」：内容图片与磁盘文件在同一个列表里可见，
+        // file 行只存展示元数据，二进制本体仍在 image 表。
+        try {
+            let subsetId = null
+            try {
+                // 内容图片归入「内容图片」分组，与磁盘文件区分开
+                subsetId = await subsetModel.ensureResourceSubset('内容图片', 95)
+            } catch (subsetErr) {
+                // 找不到资源分组时先归入未分类，不影响图片本身。
+                console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)
+            }
+
+            await fileModel.insertImageBinding({
+                fileName: filename,
+                format: extension.replace(/^\./, ''),
+                size: file.size,
+                sourceImageId: imageId,
+                subsetId
+            })
+        } catch (bindErr) {
+            // 聚合登记失败不影响图片本身可用，只记录日志。
+            console.warn('[Upload] 登记到本地文件失败：', bindErr.message)
+        }
     } catch (err) {
         console.error('[Upload] 保存图片失败：', err)
         return sendUploadError(res, 500, '图片保存失败，请稍后重试')
@@ -203,7 +129,7 @@ async function getImage(req, res) {
         return res.status(400).json({ code: 400, message: '图片名称不合法' })
     }
 
-    const variantRequest = getVariantRequest(req)
+    const variantRequest = parseVariantRequest(req.query)
     if (variantRequest?.invalid) {
         return res.status(400).json({ code: 400, message: '缩略图尺寸不受支持' })
     }
@@ -215,10 +141,12 @@ async function getImage(req, res) {
             return sendImage(
                 req,
                 res,
-                { filename, checksum: cached.version },
-                cached.data,
-                'image/webp',
-                variantRequest.width
+                {
+                    version: cached.version,
+                    data: cached.data,
+                    mimeType: 'image/webp',
+                    width: variantRequest.width
+                }
             )
         }
     }
@@ -237,16 +165,30 @@ async function getImage(req, res) {
     }
 
     if (!variantRequest) {
-        return sendImage(req, res, image, image.data, image.mime_type)
+        return sendImage(req, res, {
+            version: image.checksum || `${image.filename}-${image.size}`,
+            data: image.data,
+            mimeType: image.mime_type,
+        })
     }
 
     try {
-        const variant = await createVariant(image, variantRequest.width, cacheKey)
-        return sendImage(req, res, image, variant.data, 'image/webp', variantRequest.width)
+        const version = image.checksum || `${image.filename}-${image.size}`
+        const variant = await createVariant(image.data, variantRequest.width, cacheKey, version)
+        return sendImage(req, res, {
+            version,
+            data: variant.data,
+            mimeType: 'image/webp',
+            width: variantRequest.width,
+        })
     } catch (error) {
         // 缩略图生成失败时仍返回原图，优先保证内容可读。
         console.error(`[Upload] 生成缩略图失败（${filename}）：`, error)
-        return sendImage(req, res, image, image.data, image.mime_type)
+        return sendImage(req, res, {
+            version: image.checksum || `${image.filename}-${image.size}`,
+            data: image.data,
+            mimeType: image.mime_type,
+        })
     }
 }
 

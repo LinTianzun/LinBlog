@@ -217,12 +217,14 @@ const tablesSql = {
     deleted_at DATETIME NULL COMMENT '移入备份区的时间',
     backup_deleted_at DATETIME NULL COMMENT '备份内容清理时间',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+    source_image_id BIGINT UNSIGNED NULL COMMENT '内容图片库关联ID（file 记录聚合）',
     PRIMARY KEY (id),
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
     INDEX idx_subset (subset_id),
     INDEX idx_format (format),
     INDEX idx_status (status),
-    INDEX idx_file_deleted_at (status, deleted_at)
+    INDEX idx_file_deleted_at (status, deleted_at),
+    UNIQUE KEY uk_file_source_image (source_image_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件存储表';`,
 
   article: `CREATE TABLE IF NOT EXISTS article(
@@ -519,6 +521,83 @@ const tablesSql = {
     INDEX idx_db_backup_created (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库备份与演练历史';`
 };
+
+// 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
+// 给 file 表补 source_image_id，迁移时为存量图片登记“云文件”记录，
+// 本地文件模块因此能统一展示磁盘文件与内容图片。
+async function ensureFileImageBindingSchema(exec = query) {
+  await ensureColumn(exec, 'file', 'source_image_id', {
+    definition: 'BIGINT UNSIGNED NULL',
+    comment: '内容图片库关联ID（file 记录聚合）'
+  });
+
+  const [bindingIndex] = await exec(`
+    SELECT INDEX_NAME
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'file'
+      AND INDEX_NAME = 'uk_file_source_image'
+      AND COLUMN_NAME = 'source_image_id'
+      AND SEQ_IN_INDEX = 1
+  `);
+  if (!bindingIndex) {
+    await exec(`
+      ALTER TABLE file
+      ADD UNIQUE KEY uk_file_source_image (source_image_id)
+    `);
+  }
+
+  await exec(`
+    INSERT INTO file (file_name, format, size, url, subset_id, status, source_image_id)
+    SELECT
+        image.filename,
+        LOWER(SUBSTRING_INDEX(image.filename, '.', -1)),
+        image.size,
+        '',
+        (SELECT id FROM subset WHERE subset_name = '图片' AND classify = 'resource' LIMIT 1),
+        image.status,
+        image.id
+    FROM image
+    LEFT JOIN file ON file.source_image_id = image.id
+    WHERE file.id IS NULL
+  `);
+}
+
+// 内容图片（文章/图库/随笔上传）单独归入「内容图片」资源分组，
+// 与磁盘文件区分开：这一组里的图片都能在本地文件里看到，
+// 并能查到被哪篇文章、图库或随笔引用。
+async function ensureContentImageSubsetSchema(exec = query) {
+  const [existing] = await exec(
+    `SELECT id FROM subset
+     WHERE subset_name = '内容图片' AND classify = 'resource' AND status = 1
+     LIMIT 1`
+  )
+
+  let subsetId = existing?.id
+  if (!subsetId) {
+    // 同名的软删分组先清掉，避免出现两个「内容图片」
+    await exec(
+      `UPDATE subset SET status = 0
+       WHERE subset_name = '内容图片' AND classify = 'resource' AND status = 1`
+    )
+    const result = await exec(
+      `INSERT INTO subset (subset_name, classify, sort)
+       VALUES (?, ?, ?)`,
+      ['内容图片', 'resource', 95]
+    )
+    subsetId = result.insertId
+  }
+
+  // 存量内容图片从「图片」分组迁到「内容图片」
+  await exec(
+    `UPDATE file f
+     JOIN subset s ON s.subset_name = '图片' AND s.classify = 'resource' AND s.status = 1
+     SET f.subset_id = ?
+     WHERE f.source_image_id IS NOT NULL
+       AND f.subset_id = s.id`,
+    [subsetId]
+  )
+}
 
 // -------------------------- 显式、事务化演示数据 --------------------------
 async function seedDemoData() {
@@ -1927,6 +2006,14 @@ const migrations = [
   {
     version: '20261101_composite_indexes',
     up: ensureCompositeIndexesSchema
+  },
+  {
+    version: '20261102_file_image_binding',
+    up: ensureFileImageBindingSchema
+  },
+  {
+    version: '20261103_content_image_subset',
+    up: ensureContentImageSubsetSchema
   }
 ];
 

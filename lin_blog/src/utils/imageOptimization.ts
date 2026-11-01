@@ -1,4 +1,4 @@
-const uploadPathPattern = /\/api\/uploads\/[A-Za-z0-9._-]+$/
+const uploadPathPattern = /\/api\/(?:uploads\/[A-Za-z0-9._-]+|file\/\d+\/raw)$/
 
 export const IMAGE_WIDTHS = {
   thumb: [160, 240, 320],

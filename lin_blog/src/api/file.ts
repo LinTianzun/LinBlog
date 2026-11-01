@@ -8,6 +8,39 @@ export interface FileItem {
   url: string;
   subsetId: number | null;
   createdAt: string;
+  // disk=本地磁盘文件；image=文章/图库/随笔上传的内容图片（二进制在 image 表）
+  source?: "disk" | "image";
+  // 内容图片的内联地址，与 /api/uploads 共用缩略图契约
+  rawUrl?: string;
+  // 内容图片的归属：被哪些文章、图库、随笔引用
+  owners?: FileOwner[];
+}
+
+export interface FileOwner {
+  type: "article" | "gallery" | "diary";
+  id: number;
+  title: string;
+}
+
+// 素材库选择器使用的图片条目：raw 地址可直接作为文章/图库/随笔图片
+export interface MediaImageItem {
+  id: number;
+  fileName: string;
+  format: string;
+  size: number | null;
+  url: string;
+  thumbUrl: string;
+  subsetId: number | null;
+  subsetName: string | null;
+  createdAt: string;
+}
+
+export interface MediaImagePageData {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
+  list: MediaImageItem[];
 }
 
 // 回收站条目：在文件字段基础上补删除时间与是否仍可恢复
@@ -94,6 +127,13 @@ export function getFileSummary() {
   return request.get<ApiResult<FileSummaryData>>("/file/summary");
 }
 
+// 素材库图片分页查询（本地文件模块中可内联展示的图片）
+export function getImageFiles(
+  params: { page?: number; pageSize?: number; keyword?: string } = {}
+) {
+  return request.get<ApiResult<MediaImagePageData>>("/file/images", { params });
+}
+
 // 回收站分页查询
 export function getTrashFiles(params: { page?: number; pageSize?: number } = {}) {
   return request.get<ApiResult<FilePageData & { list: TrashFileItem[] }>>(
@@ -155,6 +195,8 @@ export function deleteFiles(fileIds: number[]) {
       backedUpCount: number;
       backupFailedCount: number;
       offsiteFailedCount: number;
+      referencedCount: number;
+      referenced: { id: number; referenceCount: number }[];
     }>
   >("/file", { data: { fileIds } });
 }

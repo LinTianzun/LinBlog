@@ -63,6 +63,23 @@ async function insertSubset({ name, classify, sort = 0 }) {
     return { subsetId: result.insertId }
 }
 
+/**
+ * 确保资源分组存在，返回分组 ID。
+ * 内容图片（文章/图库/随笔上传）在「本地文件」里单独归到一个资源分组，
+ * 避免混进未分类统计，也方便管理员按组整理。
+ */
+async function ensureResourceSubset(name, sort = 96) {
+    const existing = await findSubsetByNameAndClassify(name, 'resource')
+    if (existing) {
+        return existing.id
+    }
+
+    // 同名的软删分组先清掉再复用，避免出现「图片 / 图片」两个同名分组
+    await removeInactiveDuplicates(name, 'resource')
+    const { subsetId } = await insertSubset({ name, classify: 'resource', sort })
+    return subsetId
+}
+
 async function reviveSubset(id, { sort = 0 } = {}) {
     const result = await query(
         'UPDATE subset SET status = 1, sort = ? WHERE id = ? AND status = 0',
@@ -120,6 +137,7 @@ module.exports = {
     findSubsetById,
     findSubsetByNameAndClassify,
     insertSubset,
+    ensureResourceSubset,
     reviveSubset,
     removeInactiveDuplicates,
     updateSubset,

@@ -85,6 +85,7 @@ declare module 'vue' {
     LabelManage: typeof import('./src/components/label/labelManage.vue')['default']
     Line: typeof import('./src/components/echarts/line.vue')['default']
     LoginRegister: typeof import('./src/components/loginRegister/LoginRegister.vue')['default']
+    MediaPickerDialog: typeof import('./src/components/common/MediaPickerDialog.vue')['default']
     MenuBar: typeof import('./src/components/bar/MenuBar.vue')['default']
     NotFound: typeof import('./src/components/NotFound.vue')['default']
     Pie: typeof import('./src/components/echarts/pie.vue')['default']
