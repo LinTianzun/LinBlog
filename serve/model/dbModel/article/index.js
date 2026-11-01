@@ -399,8 +399,8 @@ async function updateArticle(articleId, updateData, userId, userType) {
     }
 
     // 内容已实际发布/驳回/退回草稿时，待发布计划不再有意义：
-    // 不清的话它会永远挂在待发布队列里，到点被调度器再发布一次（覆盖正文、重置发布时间）。
-    if (['published', 'rejected', 'draft'].includes(updateData.state)) {
+    // 草稿（draft）是定时发布的正常载体，不能在此清除 scheduled_at。
+    if (['published', 'rejected'].includes(updateData.state)) {
         publishAtSql += ', scheduled_at = NULL'
     }
 
@@ -491,9 +491,10 @@ async function updateArticleStatus(articleId, state, userId, userType) {
         publishAtSql = ', article.published_at = NULL';
     }
 
-    // 状态已落到 published / rejected / draft，定时发布计划必须一并清除，
+    // 状态已落到 published / rejected 时，定时发布计划必须一并清除，
     // 否则内容会继续留在待发布队列并在到点时被重复发布。
-    if (['published', 'rejected', 'draft'].includes(state)) {
+    // draft 是定时发布的正常载体，退回草稿不应清除已安排的计划。
+    if (['published', 'rejected'].includes(state)) {
         publishAtSql += ', article.scheduled_at = NULL';
     }
 

@@ -116,7 +116,7 @@ db.initDatabase()
     .then(async () => {
         await refreshPermissionCache();
 
-        // 自愈历史脏数据：已发布/驳回/草稿却仍挂着 scheduled_at 的记录
+        // 自愈历史脏数据：已发布/驳回却仍挂着 scheduled_at 的记录
         // 会永远留在待发布队列并在到点被重复发布，启动时清一次。
         try {
             const healed = await articleWorkflowModel.clearStaleSchedules();

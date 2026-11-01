@@ -1066,6 +1066,50 @@ if (!targetDb) {
         assert.equal(clean[0].scheduled_at, null)
     })
 
+    // 回归：草稿是定时发布的正常载体，启动自愈和 updateArticle/updateArticleStatus
+    // 都不得清除草稿的 scheduled_at，否则定时发布永远不会生效。
+    test('draft scheduled_at survives startup self-heal and status updates', async () => {
+        const workflowModel = require('../model/dbModel/articleWorkflow/index')
+
+        const created = await articleModel.insertArticle({
+            userId: ids.normal,
+            title: '草稿定时发布',
+            content: '<p>草稿正文</p>',
+            classify: 'article',
+            subsetId: ids.subset,
+            introduce: '',
+            cover: ''
+        })
+        const articleId = Number(created.articleId)
+        const future = new Date(Date.now() + 60 * 60 * 1000)
+
+        await workflowModel.schedulePublish(articleId, future, { userId: ids.normal })
+        const before = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.ok(before[0].scheduled_at, '前置条件：草稿应带上计划时间')
+
+        // 启动自愈不应清除草稿的计划
+        const healed = await workflowModel.clearStaleSchedules()
+        const afterHeal = await db.query('SELECT scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.ok(afterHeal[0].scheduled_at, '自愈不得清除草稿的 scheduled_at')
+
+        // updateArticleStatus 退回草稿也不应清除计划
+        await articleModel.updateArticleStatus(articleId, 'draft', ids.normal, 'admin')
+        const afterStatus = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.equal(afterStatus[0].state, 'draft')
+        assert.ok(afterStatus[0].scheduled_at, '退回草稿不得清除 scheduled_at')
+
+        // updateArticle 保存草稿内容也不应清除计划
+        await articleModel.updateArticle(
+            articleId,
+            { title: '草稿定时发布（改）', content: '<p>改过的草稿正文</p>', state: 'draft' },
+            ids.normal,
+            'admin'
+        )
+        const afterEdit = await db.query('SELECT state, scheduled_at FROM article WHERE id = ?', [articleId])
+        assert.equal(afterEdit[0].state, 'draft')
+        assert.ok(afterEdit[0].scheduled_at, '保存草稿不得清除 scheduled_at')
+    })
+
     test('scheduled queue reports upcoming and overdue items with ownership scope', async () => {
         const workflowModel = require('../model/dbModel/articleWorkflow/index')
 
