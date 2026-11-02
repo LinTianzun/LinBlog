@@ -7,6 +7,9 @@ const variantCache = new Map()
 const pendingVariants = new Map()
 const variantCacheMaxBytes = 64 * 1024 * 1024
 let variantCacheBytes = 0
+// 命中率统计：读缓存时区分命中与未命中，生成与淘汰单独计数，
+// 供后台「缩略图缓存」面板展示。
+const variantCacheStats = { hits: 0, misses: 0, generations: 0, evictions: 0, clears: 0 }
 
 /**
  * 解析 ?w=&format= 缩略图请求。
@@ -27,11 +30,15 @@ function parseVariantRequest(query) {
 
 function readVariantCache(key) {
   const cached = variantCache.get(key)
-  if (!cached) return null
+  if (!cached) {
+    variantCacheStats.misses += 1
+    return null
+  }
 
   // Map 保持插入顺序，命中后移到队尾即可实现轻量 LRU。
   variantCache.delete(key)
   variantCache.set(key, cached)
+  variantCacheStats.hits += 1
   return cached
 }
 
@@ -50,6 +57,7 @@ function writeVariantCache(key, value) {
     const oldest = variantCache.get(oldestKey)
     variantCacheBytes -= oldest?.data.length || 0
     variantCache.delete(oldestKey)
+    variantCacheStats.evictions += 1
   }
 
   variantCache.set(key, value)
@@ -81,6 +89,7 @@ function createVariant(source, width, cacheKey, version) {
     .toBuffer()
     .then((data) => {
       const variant = { data, version }
+      variantCacheStats.generations += 1
       writeVariantCache(cacheKey, variant)
       return variant
     })
@@ -94,6 +103,35 @@ function createVariant(source, width, cacheKey, version) {
 
 function createEtag(version, width) {
   return `"${version}-${width || 'original'}"`
+}
+
+/**
+ * 缓存运行状态：条目数、内存占用与命中率。
+ * hitRate = 命中 / (命中 + 未命中)，无访问时为 null。
+ */
+function variantCacheInfo() {
+  const reads = variantCacheStats.hits + variantCacheStats.misses
+  return {
+    entries: variantCache.size,
+    bytes: variantCacheBytes,
+    maxBytes: variantCacheMaxBytes,
+    hits: variantCacheStats.hits,
+    misses: variantCacheStats.misses,
+    generations: variantCacheStats.generations,
+    evictions: variantCacheStats.evictions,
+    clears: variantCacheStats.clears,
+    hitRate: reads > 0 ? Math.round((variantCacheStats.hits / reads) * 1000) / 10 : null
+  }
+}
+
+/**
+ * 手动清空缓存（后台「清理缓存」按钮）。统计累计值保留，只清数据。
+ */
+function clearVariantCache() {
+  variantCache.clear()
+  variantCacheBytes = 0
+  variantCacheStats.clears += 1
+  return variantCacheInfo()
 }
 
 /**
@@ -119,8 +157,11 @@ function sendImage(req, res, options) {
 module.exports = {
     parseVariantRequest,
     readVariantCache,
+    writeVariantCache,
     createVariant,
     createEtag,
     sendImage,
+    variantCacheInfo,
+    clearVariantCache,
     variantWidths,
 }

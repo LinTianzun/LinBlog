@@ -17,6 +17,8 @@ const {
     readVariantCache,
     createVariant,
     sendImage,
+    variantCacheInfo,
+    clearVariantCache,
 } = require('../utils/imageVariants')
 
 const uploadDir = fileStorage.activeDir
@@ -946,6 +948,52 @@ async function getStorageStatus(req, res) {
     }
 }
 
+/**
+ * 存储维护面板：缩略图缓存命中率与磁盘/内容图片/回收站占用分布。
+ */
+async function getMaintenanceStats(req, res) {
+    try {
+        if (!hasPermission(req.user, 'file.purge')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有查看存储维护信息的权限' })
+        }
+
+        const storage = await fileModel.getStorageDistribution()
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: { cache: variantCacheInfo(), storage }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '存储维护信息查询失败：' + err.message })
+    }
+}
+
+/**
+ * 手动清空缩略图缓存：下次请求会按需重新生成 WebP 变体。
+ */
+async function clearVariantCacheAction(req, res) {
+    try {
+        if (!hasPermission(req.user, 'file.purge')) {
+            return res.status(403).json({ code: 403, message: '当前账号没有清理缩略图缓存的权限' })
+        }
+
+        const cache = clearVariantCache()
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'file',
+            targetType: 'file',
+            targetId: null,
+            detail: '手动清理图片缩略图缓存',
+            ip: req.ip || null,
+        })
+
+        res.json({ code: 200, message: '缩略图缓存已清理', data: { cache } })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '缩略图缓存清理失败：' + err.message })
+    }
+}
+
 module.exports = {
     getFiles,
     getFileSummary,
@@ -959,5 +1007,7 @@ module.exports = {
     restoreFiles,
     cleanupFiles,
     purgeTrashFiles,
-    getStorageStatus
+    getStorageStatus,
+    getMaintenanceStats,
+    clearVariantCacheAction
 }

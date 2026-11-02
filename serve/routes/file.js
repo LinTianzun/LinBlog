@@ -25,6 +25,8 @@ module.exports = (app) => {
     app.delete('/api/file/trash', authMiddleware, requirePermission('file.purge'), fileController.purgeTrashFiles)
     app.get('/api/file/storage/status', authMiddleware, requirePermission('file.purge'), fileController.getStorageStatus)
     app.post('/api/file/maintenance/cleanup', authMiddleware, requirePermission('file.purge'), fileController.cleanupFiles)
+    app.get('/api/file/maintenance/stats', authMiddleware, requirePermission('file.purge'), fileController.getMaintenanceStats)
+    app.post('/api/file/maintenance/cache', authMiddleware, requirePermission('file.purge'), fileController.clearVariantCacheAction)
 
     // 文件上传（yk-upload 走 query token）
     app.post('/api/file/upload', authMiddlewareFromQuery, requirePermission('file.upload'), uploadLimit, fileController.uploadFile)

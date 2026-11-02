@@ -23,26 +23,55 @@
                 </yk-space>
             </div>
 
-            <div v-if="canPurge && storage" class="file-trash-capacity"
-                :class="`file-trash-capacity-${storage.level}`">
-                <div class="file-trash-capacity-head">
-                    <div class="file-trash-capacity-title">
-                        <span>备份区容量</span>
-                        <strong>{{ capacityLevelLabel }}</strong>
+            <div v-if="canPurge && (storage || maintenance)" class="file-trash-panels">
+                <div v-if="storage" class="file-trash-capacity"
+                    :class="`file-trash-capacity-${storage.level}`">
+                    <div class="file-trash-capacity-head">
+                        <div class="file-trash-capacity-title">
+                            <span>备份区容量</span>
+                            <strong>{{ capacityLevelLabel }}</strong>
+                        </div>
+                        <span class="file-trash-capacity-percent">{{ capacityPercentText }}</span>
                     </div>
-                    <span class="file-trash-capacity-percent">{{ capacityPercentText }}</span>
+                    <div class="file-trash-capacity-track" role="progressbar" :aria-valuenow="storage.usedPercent"
+                        aria-valuemin="0" aria-valuemax="100" :aria-label="`备份区容量 ${capacityPercentText}`">
+                        <span :style="{ width: `${capacityPercent}%` }" />
+                    </div>
+                    <div class="file-trash-capacity-meta">
+                        <span>{{ formatSize(storage.usedBytes) }} / {{ formatSize(storage.maxBytes) }}</span>
+                        <span>本地 {{ storage.local.files }} 个</span>
+                        <span>跨盘 {{ storage.mirror.files }} 个</span>
+                        <span>对象存储 {{ storage.offsite?.s3 ? '已启用' : '未启用' }}</span>
+                    </div>
+                    <p v-if="capacityTip" class="file-trash-capacity-tip">{{ capacityTip }}</p>
                 </div>
-                <div class="file-trash-capacity-track" role="progressbar" :aria-valuenow="storage.usedPercent"
-                    aria-valuemin="0" aria-valuemax="100" :aria-label="`备份区容量 ${capacityPercentText}`">
-                    <span :style="{ width: `${capacityPercent}%` }" />
+
+                <div v-if="maintenance" class="file-trash-maintenance">
+                    <div class="file-trash-capacity-head">
+                        <div class="file-trash-capacity-title">
+                            <span>缩略图缓存</span>
+                            <strong>{{ cacheHitRateLabel }}</strong>
+                        </div>
+                        <yk-button size="s" type="secondary" :loading="maintenanceBusy" @click="clearCache">
+                            清理缓存
+                        </yk-button>
+                    </div>
+                    <div class="file-trash-maintenance-bar" role="img"
+                        :aria-label="`缓存占用 ${cacheUsedPercent}%`">
+                        <span class="file-trash-maintenance-bar-fill"
+                            :style="{ width: `${cacheUsedPercent}%` }" />
+                    </div>
+                    <div class="file-trash-capacity-meta">
+                        <span>{{ formatSize(maintenance.cache.bytes) }} / {{ formatSize(maintenance.cache.maxBytes) }}</span>
+                        <span>{{ maintenance.cache.entries }} 个变体</span>
+                        <span>生成 {{ maintenance.cache.generations }} 次</span>
+                    </div>
+                    <div class="file-trash-capacity-meta">
+                        <span>磁盘 {{ storageDiskLabel }}</span>
+                        <span>内容图片 {{ storageImageLabel }}</span>
+                        <span>回收站 {{ trashCountLabel }}</span>
+                    </div>
                 </div>
-                <div class="file-trash-capacity-meta">
-                    <span>{{ formatSize(storage.usedBytes) }} / {{ formatSize(storage.maxBytes) }}</span>
-                    <span>本地 {{ storage.local.files }} 个</span>
-                    <span>跨盘 {{ storage.mirror.files }} 个</span>
-                    <span>对象存储 {{ storage.offsite?.s3 ? '已启用' : '未启用' }}</span>
-                </div>
-                <p v-if="capacityTip" class="file-trash-capacity-tip">{{ capacityTip }}</p>
             </div>
 
             <div v-if="loading" class="file-trash-state">
@@ -105,8 +134,11 @@ import {
     purgeTrashFiles,
     runFileCleanup,
     getFileStorageStatus,
+    getMaintenanceStats,
+    clearImageVariantCache,
     getRequestErrorMessage,
     type FileStorageStatus,
+    type MaintenanceStatsData,
     type TrashFileItem,
 } from '../../api/file'
 import './fileTrash.less'
@@ -134,6 +166,8 @@ const page = ref(1)
 const loading = ref(false)
 const busy = ref(false)
 const storage = ref<FileStorageStatus | null>(null)
+const maintenance = ref<MaintenanceStatsData | null>(null)
+const maintenanceBusy = ref(false)
 
 // 彻底删除/清理预演/容量状态都要求 file.purge，非授权用户不展示这些入口
 const canPurge = computed(() => session.can('file.purge'))
@@ -193,6 +227,66 @@ const fetchStorageStatus = async (): Promise<void> => {
         storage.value = result.code === 200 && result.data ? result.data : null
     } catch {
         storage.value = null
+    }
+}
+
+const fetchMaintenanceStats = async (): Promise<void> => {
+    if (!canPurge.value) return
+
+    try {
+        const result = await getMaintenanceStats()
+        maintenance.value = result.code === 200 && result.data ? result.data : null
+    } catch {
+        maintenance.value = null
+    }
+}
+
+const cacheHitRateLabel = computed(() => {
+    const rate = maintenance.value?.cache.hitRate
+    return rate === null || rate === undefined ? '暂无访问' : `命中率 ${rate}%`
+})
+
+const cacheUsedPercent = computed(() => {
+    const cache = maintenance.value?.cache
+    if (!cache?.maxBytes) return 0
+    return Math.min(Math.round((cache.bytes / cache.maxBytes) * 100), 100)
+})
+
+const storageDiskLabel = computed(() => {
+    const row = maintenance.value?.storage.disk
+    return row ? `${row.count} 个 / ${formatSize(row.bytes)}` : '无数据'
+})
+
+const storageImageLabel = computed(() => {
+    const row = maintenance.value?.storage.image
+    return row ? `${row.count} 个 / ${formatSize(row.bytes)}` : '无数据'
+})
+
+const trashCountLabel = computed(() => {
+    const storage = maintenance.value?.storage
+    if (!storage) return '无数据'
+    const count = storage.trashDisk.count + storage.trashImage.count
+    const bytes = storage.trashDisk.bytes + storage.trashImage.bytes
+    return `${count} 个 / ${formatSize(bytes)}`
+})
+
+const clearCache = async (): Promise<void> => {
+    if (maintenanceBusy.value) return
+    maintenanceBusy.value = true
+
+    try {
+        const result = await clearImageVariantCache()
+        if (result.code !== 200 || !result.data) {
+            throw new Error(result.message || '缓存清理失败')
+        }
+        if (maintenance.value) {
+            maintenance.value = { ...maintenance.value, cache: result.data.cache }
+        }
+        showMessage('primary', '缩略图缓存已清理，下次请求将按需重新生成')
+    } catch (error) {
+        showMessage('error', getRequestErrorMessage(error, '缩略图缓存清理失败，请稍后重试'))
+    } finally {
+        maintenanceBusy.value = false
     }
 }
 
@@ -350,7 +444,7 @@ watch(() => props.visible, value => {
     if (!value) return
     page.value = 1
     selectedIds.value = []
-    void Promise.all([fetchTrash(), fetchStorageStatus()])
+    void Promise.all([fetchTrash(), fetchStorageStatus(), fetchMaintenanceStats()])
 })
 
 defineExpose({ refresh: fetchTrash })

@@ -318,7 +318,52 @@ export async function installApiMock(page: Page): Promise<MockState> {
       await fulfill({
         usedBytes: 1048576,
         maxBytes: 10485760,
-        level: 'normal',
+        usedPercent: 10.5,
+        warnPercent: 80,
+        level: 'ok',
+        local: { bytes: 524288, files: 2 },
+        mirror: { bytes: 524288, files: 2 },
+        offsite: null,
+      })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/file/maintenance/stats') {
+      await fulfill({
+        cache: {
+          entries: 12,
+          bytes: 3145728,
+          maxBytes: 67108864,
+          hits: 48,
+          misses: 12,
+          generations: 12,
+          evictions: 0,
+          clears: 0,
+          hitRate: 80,
+        },
+        storage: {
+          disk: { count: 3, bytes: 409600 },
+          image: { count: 5, bytes: 1048576 },
+          trashDisk: { count: 1, bytes: 8192 },
+          trashImage: { count: 0, bytes: 0 },
+        },
+      })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/file/maintenance/cache') {
+      await fulfill({
+        cache: {
+          entries: 0,
+          bytes: 0,
+          maxBytes: 67108864,
+          hits: 48,
+          misses: 12,
+          generations: 12,
+          evictions: 0,
+          clears: 1,
+          hitRate: 80,
+        },
       })
       return
     }

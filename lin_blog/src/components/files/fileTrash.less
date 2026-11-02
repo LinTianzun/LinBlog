@@ -11,6 +11,14 @@
         flex-wrap: wrap;
     }
 
+    // 容量卡与存储维护卡并排；空间不足时自动换行
+    &-panels {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(264px, 1fr));
+        gap: @space-m;
+        align-items: stretch;
+    }
+
     &-capacity {
         --capacity-accent: var(--scolor, @scolor);
         --capacity-soft: var(--scolor1, @bg-color-m);
@@ -92,6 +100,65 @@
             color: var(--capacity-accent);
             font-size: @size-s;
             line-height: 1.6;
+        }
+    }
+
+    &-maintenance {
+        --maintenance-accent: var(--pcolor);
+        padding: @space-m;
+        border: 1px solid color-mix(in srgb, var(--maintenance-accent) 24%, var(--admin-line, var(--gray1)));
+        border-radius: var(--admin-radius-sm, @radius-m);
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--maintenance-accent) 8%, transparent), transparent 64%),
+            var(--admin-surface, @bg-color-m);
+
+        &-bar {
+            height: 8px;
+            margin: @space-s 0;
+            overflow: hidden;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--maintenance-accent) 10%, var(--admin-line, var(--gray1)));
+
+            &-fill {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, color-mix(in srgb, var(--maintenance-accent) 64%, #fff), var(--maintenance-accent));
+                transition: width 220ms ease;
+            }
+        }
+
+        .file-trash-capacity-head,
+        .file-trash-capacity-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: @space-s;
+        }
+
+        .file-trash-capacity-meta {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            color: var(--admin-muted, var(--font-color-s));
+            font-size: @size-s;
+        }
+
+        .file-trash-capacity-title {
+            display: flex;
+            align-items: center;
+            gap: @space-s;
+            color: var(--font-color-l);
+            font-size: @size-m;
+            font-weight: 600;
+
+            strong {
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: color-mix(in srgb, var(--maintenance-accent) 14%, transparent);
+                color: var(--maintenance-accent);
+                font-size: @size-s;
+                font-weight: 600;
+            }
         }
     }
 

@@ -89,6 +89,38 @@ export interface FileStorageStatus {
   } | null;
 }
 
+// 缩略图 LRU 缓存运行状态（存储维护面板）
+export interface VariantCacheInfo {
+  entries: number;
+  bytes: number;
+  maxBytes: number;
+  hits: number;
+  misses: number;
+  generations: number;
+  evictions: number;
+  clears: number;
+  // 命中率百分比；没有任何读请求时为 null
+  hitRate: number | null;
+}
+
+// 磁盘文件 / 内容图片 / 回收站的占用分布
+export interface StorageDistributionRow {
+  count: number;
+  bytes: number;
+}
+
+export interface StorageDistribution {
+  disk: StorageDistributionRow;
+  image: StorageDistributionRow;
+  trashDisk: StorageDistributionRow;
+  trashImage: StorageDistributionRow;
+}
+
+export interface MaintenanceStatsData {
+  cache: VariantCacheInfo;
+  storage: StorageDistribution;
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -168,6 +200,18 @@ export function runFileCleanup(dryRun: boolean) {
 // 备份区容量、告警级别与异地副本配置（仅管理员）
 export function getFileStorageStatus() {
   return request.get<ApiResult<FileStorageStatus>>("/file/storage/status");
+}
+
+// 存储维护面板：缓存命中率与占用分布（仅 file.purge）
+export function getMaintenanceStats() {
+  return request.get<ApiResult<MaintenanceStatsData>>("/file/maintenance/stats");
+}
+
+// 手动清空缩略图缓存（仅 file.purge）
+export function clearImageVariantCache() {
+  return request.post<ApiResult<{ cache: VariantCacheInfo }>>(
+    "/file/maintenance/cache"
+  );
 }
 
 // 上传地址：yk-upload 内部自己发 XHR，无法附加请求头，

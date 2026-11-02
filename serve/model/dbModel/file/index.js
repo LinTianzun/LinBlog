@@ -137,6 +137,34 @@ async function getSubsetCounts() {
     }))
 }
 
+/**
+ * 存储占用分布：磁盘文件与内容图片（二进制在 image 表）分开统计，
+ * 回收站（status=0）单独列出，供后台存储维护面板展示。
+ */
+async function getStorageDistribution() {
+    const rows = await query(
+        `SELECT
+            CASE WHEN f.source_image_id IS NOT NULL THEN 'image' ELSE 'disk' END AS kind,
+            f.status,
+            COUNT(*) AS total,
+            COALESCE(SUM(f.size), 0) AS bytes
+         FROM file f
+         GROUP BY kind, f.status`
+    )
+
+    const pick = (kind, status) => {
+        const row = rows.find(item => item.kind === kind && Number(item.status) === status)
+        return { count: Number(row?.total || 0), bytes: Number(row?.bytes || 0) }
+    }
+
+    return {
+        disk: pick('disk', 1),
+        image: pick('image', 1),
+        trashDisk: pick('disk', 0),
+        trashImage: pick('image', 0)
+    }
+}
+
 async function findFileById(id) {
     const rows = await query(
         `SELECT id, file_name, format, size, url, subset_id, status, created_at, source_image_id,
@@ -409,6 +437,7 @@ module.exports = {
     findContentOwnersByFileIds,
     countFilesSummary,
     getSubsetCounts,
+    getStorageDistribution,
     findFileById,
     getImageFilesByPage,
     countFileReferences,
