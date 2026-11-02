@@ -16,6 +16,22 @@
         <div class="card">
             <div class="card-title">
                 <div class="card-title-copy">
+                    <p class="card-title-name">数据监测</p>
+                    <span>访问设备与来源构成</span>
+                </div>
+                <yk-radio-group v-model="checkRadio" type="button" :solid="true" @change="changeCheck">
+                    <yk-radio value="week">近一周</yk-radio>
+                    <yk-radio value="moon">近一月</yk-radio>
+                </yk-radio-group>
+            </div>
+            <div class="datas-charts">
+                <PieChart :data="deviceData" title="设备总数" :chartHeight="'208px'" />
+                <PieChart :data="websiteData" title="访问总数" :chartHeight="'208px'" />
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">
+                <div class="card-title-copy">
                     <p class="card-title-name">热门路径</p>
                     <span>访问量最高的页面 TOP {{ topPaths.length || 10 }}</span>
                 </div>
@@ -33,22 +49,6 @@
                 </li>
             </ul>
             <p v-else class="top-paths-empty">暂无访问数据</p>
-        </div>
-        <div class="card">
-            <div class="card-title">
-                <div class="card-title-copy">
-                    <p class="card-title-name">数据监测</p>
-                    <span>访问设备与来源构成</span>
-                </div>
-                <yk-radio-group v-model="checkRadio" type="button" :solid="true" @change="changeCheck">
-                    <yk-radio value="week">近一周</yk-radio>
-                    <yk-radio value="moon">近一月</yk-radio>
-                </yk-radio-group>
-            </div>
-            <div class="datas-charts">
-                <PieChart :data="deviceData" title="设备总数" :chartHeight="'208px'" />
-                <PieChart :data="websiteData" title="访问总数" :chartHeight="'208px'" />
-            </div>
         </div>
     </div>
 </template>
