@@ -28,6 +28,7 @@ const articleWorkflowModel = require('./model/dbModel/articleWorkflow/index')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
+const { applyFrontendSecurityPolicy } = require('./middleware/frontendCsp')
 
 app.disable('x-powered-by')
 
@@ -72,22 +73,25 @@ app.use(recordMiddleware)
 // 6. 托管静态文件
 app.use(express.static(path.join(__dirname, 'data')))
 
-// 7. 引入路由
-require('./routes/index')(app)
-
-// 8. 生产环境中由 Express 托管 Vite 构建产物，前后端共享同一个域名
 const frontendDist = path.resolve(
     process.env.LINBLOG_FRONTEND_DIST || path.join(__dirname, '..', 'lin_blog', 'dist')
 )
 const frontendIndex = path.join(frontendDist, 'index.html')
+const hasFrontendBuild = fs.existsSync(frontendIndex)
 
-if (fs.existsSync(frontendIndex)) {
+// 7. 引入路由
+require('./routes/index')(app)
+
+// 8. 生产环境中由 Express 托管 Vite 构建产物，前后端共享同一个域名
+if (hasFrontendBuild) {
     app.use(express.static(frontendDist, {
         index: false,
         // dist/portal is an asset directory, but /portal is also a Vue route.
         // Disable directory redirects so /portal reaches the SPA fallback.
         redirect: false,
         setHeaders(res, filePath) {
+            // 前端构建产物不能用全局的 `default-src 'none'`，否则浏览器会拦掉脚本
+            applyFrontendSecurityPolicy(res)
             if (filePath.includes(`${path.sep}assets${path.sep}`)) {
                 res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
             } else {
@@ -98,6 +102,7 @@ if (fs.existsSync(frontendIndex)) {
 
     app.use((req, res, next) => {
         if (!isSpaFallbackRequest(req)) return next()
+        applyFrontendSecurityPolicy(res)
         res.setHeader('Cache-Control', 'no-cache')
         res.sendFile(frontendIndex, (err) => {
             if (err) next(err)

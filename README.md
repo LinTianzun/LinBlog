@@ -19,7 +19,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 * **定时发布以服务器时区为准**：计划时间的展示、解析与到期判定统一使用服务器时区，不再依赖浏览器时区。浏览器时区与实际挂钟不一致时（如容器 `TZ=UTC`、DevTools 时区覆盖），「1 小时后」依然得到正确时刻；后端另用 `GET /api/time/now` 把服务器时间与偏移下发给前端。
 * **数据库备份与恢复演练**：图片以 `MEDIUMBLOB` 存在数据库里，附件目录备份无法恢复站点，因此服务内置数据库逻辑备份（每天定时导出 gzip JSONL、按保留份数自动清理），并提供「隔离恢复演练」——还原到 `linlog_drill_<随机>` 临时库校验后自动删库。后台「系统设置 → 系统信息 → 数据库备份」支持手动备份、下载、删除与清理过期。详见 [Documentation/数据库备份与恢复.md](Documentation/数据库备份与恢复.md)。
 * **部署监控与安全加固**：`/healthz` 存活检查（不查库，避免 DB 抖动触发容器重启）、`/readyz` 就绪检查（DB 未连通返回 503）、`GET /api/health/runtime` 运行时信息（内存、运行时间、连接池占用）；公开写接口统一走同源校验中间件，前端带 CSP meta。连接池大小与获取超时可用 `LINBLOG_DB_CONNECTION_LIMIT` / `LINBLOG_DB_ACQUIRE_TIMEOUT_MS` 调整。
-* **自动化回归与错误边界**：后端 465 项单测 + 27 项真实 MySQL 集成测试，前端 119 项纯函数单测，Playwright 52 条端到端回归，GitHub Actions 在 push/PR 时自动跑三层回归并上传报告。任一后台页面渲染异常时由 `ErrorBoundary` 兜住，展示可重试卡片而不是整站白屏；未捕获的异步异常统一进 `app.config.errorHandler` 落日志。
+* **自动化回归与错误边界**：后端 466 项单测 + 27 项真实 MySQL 集成测试，前端 119 项纯函数单测，Playwright 52 条端到端回归，GitHub Actions 在 push/PR 时自动跑三层回归并上传报告。任一后台页面渲染异常时由 `ErrorBoundary` 兜住，展示可重试卡片而不是整站白屏；未捕获的异步异常统一进 `app.config.errorHandler` 落日志。
 
 ## 项目结构与当前状态
 
@@ -200,6 +200,7 @@ Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供�
 
 * AI 管理、用量配额与调用审计（2026-11-09）：把「AI 能力」正式收进权限体系与后台管理。新增权限组 `ai` 与两项权限：`ai.use`（使用 AI 写作/配图，管理员、编辑、普通用户默认拥有，游客无）与 `ai.manage`（管理接入模型与用量策略，risk high，仅管理员默认拥有）。新增三张表：`ai_model`（接入模型，密钥 AES-256-GCM 加密，密钥派生自 JWT 密钥，列表只回传掩码）、`ai_setting`（单行用量策略：是否启用限制、每用户每日/每月上限、超级管理员是否不限，默认每日 20 次、每月 100 次、0 表示不限）与 `ai_usage_log`（调用记录，含状态与备注），迁移版本 `20261109_ai_management`。运行时模型来源改为「数据库模型优先、环境变量 `LINBLOG_AI_*` 回退」：默认模型优先、其次第一个启用模型，`serve/utils/aiClient.js` 的调用链统一走注入的运行时配置。新增中间件 `serve/middleware/aiQuota.js`：无 `ai.use` 权限返回 403，超出每日/每月上限返回 429 并说明上限，超管在「超管不限」开启时豁免；`/api/ai/cover/confirm` 只落库不调用模型，因此不计入次数。每次 AI 调用都会写 `ai_usage_log` 与系统日志（action=`ai`、module=`ai`），系统日志页新增「AI」模块筛选项。新增后台页 `lin_blog/src/views/AiManageView.vue`（模型列表与新增/编辑弹窗、启停、设为默认、连通性测试、删除、用量策略表单、近期调用记录），侧边栏「运营」组新增「AI 管理」入口（路由 `/aiManage`，菜单权限 `ai.manage`）。验证：后端 `npm test` 462 项（新增 `test/aiManagement.test.js` 8 项）、前端 `npm test` 119 项、`vue-tsc` + Vite 生产构建、Playwright 49 条 E2E 全绿（新增 `e2e/ai-management.spec.ts` 两条用例）；顺带修掉 `serve/model/dbModel/ai/index.js` 里 secretBox 的相对路径层级错误，并修正 `backend-content.spec.ts` 删除用例的竞态断言。
 * AI 管理页与配置迁移优化（2026-11-10）：`.env` 中的 `LINBLOG_AI_*` 配置由迁移 `20261110_ai_env_import` 幂等导入为默认模型：同接口地址和模型名已存在时更新而非重复新增，密钥继续用 AES-256-GCM 加密，接口按域名自动识别服务商（`open.bigmodel.cn` 识别为「智谱 GLM」）；管理页新增「导入环境变量配置」能力（`POST /api/ai/models/import-env`）。AI 管理页重做为统计概览、模型卡片网格、用量策略与调用记录两栏布局；接入模型弹窗按「基础信息 / 模型能力 / 高级选项」分组，补充字段说明、必填标识与密钥明文切换。验证：后端 465 项、前端 119 项、`vue-tsc` + Vite 生产构建、Playwright 52 条 E2E 全绿。
+* CI 与前端托管加固（2026-11-10）：修掉两处会直接影响生产与流水线的问题。其一，CI 的后端任务此前引用并不存在的 `serve/package-lock.json`（仓库后端只维护 `pnpm-lock.yaml`），`npm ci` 必然失败导致整条流水线红灯；现改为 pnpm 固定 lockfile 安装（`pnpm/action-setup` + `pnpm install --frozen-lockfile`），与仓库实际包管理方式对齐。其二，后端全局 Helmet 策略是 `default-src 'none'`，适合纯接口响应，但 Express 托管前端构建产物时 HTML 文档也会被它命中，浏览器会拦掉同源脚本与样式导致整站白屏；现抽出 `serve/middleware/frontendCsp.js`，前端静态资源与 SPA 回退响应单独下发一条同源可用的策略（脚本限定 `'self'`，放开内联样式与 `data:` 图片以支持 AI 封面预览），接口响应继续保持严格策略。新增 `serve/test/appRuntime.test.js` 锁定两种策略的差异。验证：后端 `npm test` 466 项全绿。
 # LinBlog数据库
 
 ## 文档概述
