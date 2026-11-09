@@ -58,6 +58,23 @@ function aiQuota(feature) {
                 })
             }
 
+            // 模型级限额：给单个模型设更严的上限时，以模型维度再判一次
+            const modelLimit = await checkModelQuota(req.user.userId, activeModel)
+            if (modelLimit) {
+                await recordAiCall({
+                    req,
+                    feature,
+                    modelName: activeModel.model,
+                    modelId: activeModel.id,
+                    status: 'denied',
+                    detail: `${modelLimit.scope}模型次数已达上限（${modelLimit.limit}）`
+                })
+                return res.status(429).json({
+                    code: 429,
+                    message: `当前账号对该模型的调用次数已达${modelLimit.scope}上限（${modelLimit.limit} 次），请稍后再试`
+                })
+            }
+
             return next()
         } catch (err) {
             console.error('[AI] 用量检查失败：', err)
@@ -69,4 +86,32 @@ function aiQuota(feature) {
     }
 }
 
-module.exports = { aiQuota }
+/**
+ * 模型级限额判定：模型没配限额、或调用发生在环境变量回退场景时直接放行。
+ */
+async function checkModelQuota(userId, activeModel) {
+    const modelId = activeModel?.id
+    if (!modelId) return null
+
+    const dailyLimit = Number(activeModel.dailyLimitPerUser) || 0
+    const monthlyLimit = Number(activeModel.monthlyLimitPerUser) || 0
+    if (dailyLimit <= 0 && monthlyLimit <= 0) return null
+
+    const now = new Date()
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    if (dailyLimit > 0) {
+        const used = await aiModel.countUsageByModel(userId, modelId, dayStart)
+        if (used >= dailyLimit) return { scope: '每日', limit: dailyLimit }
+    }
+
+    if (monthlyLimit > 0) {
+        const used = await aiModel.countUsageByModel(userId, modelId, monthStart)
+        if (used >= monthlyLimit) return { scope: '每月', limit: monthlyLimit }
+    }
+
+    return null
+}
+
+module.exports = { aiQuota, checkModelQuota }

@@ -5,8 +5,12 @@ async function recordAiCall({
     req,
     feature,
     modelName = null,
+    modelId = null,
     status = 'success',
-    detail = null
+    detail = null,
+    durationMs = 0,
+    usage = null,
+    outputChars = 0
 }) {
     const userId = req?.user?.userId || null
     const ip = req?.ip || null
@@ -18,8 +22,13 @@ async function recordAiCall({
             userId,
             feature,
             modelName,
+            modelId,
             status,
-            detail
+            detail,
+            durationMs,
+            promptTokens: usage?.promptTokens || 0,
+            completionTokens: usage?.completionTokens || 0,
+            outputChars
         })
     } catch (err) {
         console.warn('[AI] 写入调用记录失败：', err?.message || err)

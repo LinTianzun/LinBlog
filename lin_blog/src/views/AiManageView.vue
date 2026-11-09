@@ -76,7 +76,29 @@
                                 <dt>接口地址</dt>
                                 <dd class="is-mono" :title="item.baseUrl">{{ item.baseUrl }}</dd>
                             </div>
+                            <div class="ai-model-fact is-wide">
+                                <dt>模型限额</dt>
+                                <dd>{{ modelLimitText(item) }}</dd>
+                            </div>
                         </dl>
+
+                        <div v-if="item.health && item.health.testCount > 0" class="ai-model-health">
+                            <span class="ai-model-health-item">
+                                延迟
+                                <strong>{{ formatDuration(item.health.avgLatencyMs) }}</strong>
+                            </span>
+                            <span class="ai-model-health-item">
+                                成功率
+                                <strong>{{ item.health.successRate }}%</strong>
+                            </span>
+                            <span class="ai-model-health-item">
+                                最近测试
+                                <strong>{{ formatTime(item.health.lastTestAt) }}</strong>
+                            </span>
+                            <yk-tag v-if="item.health.consecutiveFailures > 0" size="s" type="danger">
+                                连续失败 {{ item.health.consecutiveFailures }} 次
+                            </yk-tag>
+                        </div>
 
                         <p v-if="item.remark" class="ai-model-remark">{{ item.remark }}</p>
 
@@ -90,6 +112,119 @@
                             </yk-popconfirm>
                         </footer>
                     </article>
+                </div>
+            </section>
+
+            <!-- 用量统计 -->
+            <section v-if="stats" class="ai-panel">
+                <header class="ai-panel-header">
+                    <div class="ai-panel-heading">
+                        <yk-title :level="4" style="margin: 0;">用量统计</yk-title>
+                        <yk-text type="secondary">近 {{ stats.days }} 天的调用量、成功率与耗时</yk-text>
+                    </div>
+                </header>
+
+                <div class="ai-stats-grid">
+                    <div class="ai-stats-window">
+                        <p class="ai-stats-window-title">近 7 天</p>
+                        <p class="ai-stats-window-total">{{ stats.summary.last7Days.total }}<span>次调用</span></p>
+                        <ul class="ai-stats-window-facts">
+                            <li><span>成功率</span><strong>{{ stats.summary.last7Days.successRate }}%</strong></li>
+                            <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last7Days.avgDurationMs) }}</strong></li>
+                            <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last7Days.totalTokens) }}</strong></li>
+                        </ul>
+                    </div>
+                    <div class="ai-stats-window">
+                        <p class="ai-stats-window-title">近 30 天</p>
+                        <p class="ai-stats-window-total">{{ stats.summary.last30Days.total }}<span>次调用</span></p>
+                        <ul class="ai-stats-window-facts">
+                            <li><span>成功率</span><strong>{{ stats.summary.last30Days.successRate }}%</strong></li>
+                            <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last30Days.avgDurationMs) }}</strong></li>
+                            <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last30Days.totalTokens) }}</strong></li>
+                        </ul>
+                    </div>
+                    <div class="ai-stats-window">
+                        <p class="ai-stats-window-title">累计</p>
+                        <p class="ai-stats-window-total">{{ stats.summary.all.total }}<span>次调用</span></p>
+                        <ul class="ai-stats-window-facts">
+                            <li><span>失败次数</span><strong>{{ stats.summary.all.failed }}</strong></li>
+                            <li><span>待确认图片</span><strong>{{ stats.pending.total }} 张</strong></li>
+                            <li><span>占用空间</span><strong>{{ formatBytes(stats.pending.bytes) }}</strong></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="ai-stats-breaks">
+                    <div class="ai-stats-break">
+                        <p class="ai-stats-break-title">按模型</p>
+                        <yk-empty v-if="stats.byModel.length === 0" description="暂无数据" />
+                        <ul v-else class="ai-stats-list">
+                            <li v-for="row in stats.byModel" :key="row.modelName || 'unknown'">
+                                <div class="ai-stats-list-main">
+                                    <strong>{{ row.modelName || '未记录模型' }}</strong>
+                                    <span>{{ row.total }} 次 · 成功率 {{ row.successRate }}%</span>
+                                </div>
+                                <div class="ai-stats-list-side">
+                                    <span>{{ formatDuration(row.avgDurationMs) }}</span>
+                                    <span>{{ formatNumber(row.promptTokens + row.completionTokens) }} token</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="ai-stats-break">
+                        <p class="ai-stats-break-title">按功能</p>
+                        <yk-empty v-if="stats.byFeature.length === 0" description="暂无数据" />
+                        <ul v-else class="ai-stats-list">
+                            <li v-for="row in stats.byFeature" :key="row.feature">
+                                <div class="ai-stats-list-main">
+                                    <strong>{{ featureLabel(row.feature) }}</strong>
+                                    <span>{{ row.total }} 次 · 成功率 {{ row.successRate }}%</span>
+                                </div>
+                                <div class="ai-stats-list-side">
+                                    <span>平均 {{ formatDuration(row.avgDurationMs) }}</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="ai-stats-breaks">
+                    <div class="ai-stats-break">
+                        <p class="ai-stats-break-title">模型健康</p>
+                        <yk-empty v-if="stats.health.length === 0" description="尚未进行连通性测试" />
+                        <ul v-else class="ai-stats-list">
+                            <li v-for="row in stats.health" :key="row.modelId">
+                                <div class="ai-stats-list-main">
+                                    <strong>{{ row.modelName }}</strong>
+                                    <span>
+                                        平均 {{ formatDuration(row.avgLatencyMs) }} · 成功率 {{ row.successRate }}%
+                                        <template v-if="row.lastError"> · {{ row.lastError }}</template>
+                                    </span>
+                                </div>
+                                <div class="ai-stats-list-side">
+                                    <span>最近测试 {{ formatTime(row.lastTestAt) }}</span>
+                                    <yk-tag v-if="row.consecutiveFailures > 0" size="s" type="danger">
+                                        连续失败 {{ row.consecutiveFailures }} 次
+                                    </yk-tag>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="ai-stats-break">
+                        <p class="ai-stats-break-title">每日趋势</p>
+                        <yk-empty v-if="stats.trend.length === 0" description="暂无数据" />
+                        <ul v-else class="ai-stats-list">
+                            <li v-for="row in stats.trend" :key="row.day">
+                                <div class="ai-stats-list-main">
+                                    <strong>{{ row.day }}</strong>
+                                    <span>{{ row.total }} 次调用 · {{ row.tokens }} token</span>
+                                </div>
+                                <div class="ai-stats-list-side">
+                                    <span>成功 {{ row.success }}</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </section>
 
@@ -258,6 +393,20 @@
                         <span class="ai-form-tip">单次请求的最长等待时间，建议 20000</span>
                     </label>
 
+                    <div class="ai-form-pair">
+                        <label class="ai-form-field">
+                            <span class="ai-form-label">该模型每日上限</span>
+                            <input v-model.number="modelForm.dailyLimitPerUser" type="number" min="0" max="1000" />
+                            <span class="ai-form-tip">每用户对该模型的每日次数，0 表示不限</span>
+                        </label>
+
+                        <label class="ai-form-field">
+                            <span class="ai-form-label">该模型每月上限</span>
+                            <input v-model.number="modelForm.monthlyLimitPerUser" type="number" min="0" max="10000" />
+                            <span class="ai-form-tip">每用户对该模型的每月次数，0 表示不限</span>
+                        </label>
+                    </div>
+
                     <label class="ai-form-field">
                         <span class="ai-form-label">备注</span>
                         <input v-model.trim="modelForm.remark" type="text" placeholder="例如：由环境变量导入" />
@@ -305,6 +454,7 @@
         getAiModels,
         getAiSettings,
         getAiUsage,
+        getAiUsageStats,
         getRequestErrorMessage,
         importAiModelFromEnv,
         testAiModel,
@@ -313,10 +463,12 @@
         type AiModelItem,
         type AiSettings,
         type AiUsageRecord,
+        type AiUsageStats,
     } from '../api/ai'
 
     const models = ref<AiModelItem[]>([])
     const usage = ref<AiUsageRecord[]>([])
+    const stats = ref<AiUsageStats | null>(null)
     const loading = ref(true)
     const errorMessage = ref('')
     const noticeMessage = ref('')
@@ -345,6 +497,8 @@
         imageModel: '',
         imageSize: '1344x768',
         timeoutMs: 20000,
+        dailyLimitPerUser: 0,
+        monthlyLimitPerUser: 0,
         enabled: true,
         isDefault: false,
         remark: '',
@@ -389,7 +543,42 @@
         return labels[value] || value
     }
 
-    const formatTime = (value: string): string => String(value || '').replace('T', ' ').slice(0, 16)
+    const formatTime = (value: string | null | undefined): string =>
+        String(value || '').replace('T', ' ').slice(0, 16)
+
+    // 耗时按量级切换单位，避免面板上出现「1500 毫秒」这种不好读的数字
+    const formatDuration = (ms: number): string => {
+        const value = Number(ms) || 0
+        if (value <= 0) return '-'
+        if (value < 1000) return `${value} 毫秒`
+        return `${(value / 1000).toFixed(1)} 秒`
+    }
+
+    const formatNumber = (value: number): string => {
+        const num = Number(value) || 0
+        if (num < 1000) return String(num)
+        if (num < 10000) return num.toLocaleString('zh-CN')
+        return `${(num / 10000).toFixed(1)} 万`
+    }
+
+    const formatBytes = (value: number): string => {
+        const bytes = Number(value) || 0
+        if (bytes <= 0) return '0 B'
+        if (bytes < 1024) return `${bytes} B`
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    }
+
+    // 模型级限额：未设置时说明跟随全局策略
+    const modelLimitText = (item: AiModelItem): string => {
+        const daily = Number(item.dailyLimitPerUser) || 0
+        const monthly = Number(item.monthlyLimitPerUser) || 0
+        if (daily <= 0 && monthly <= 0) return '跟随全局策略'
+        const parts: string[] = []
+        parts.push(daily > 0 ? `每日 ${daily} 次` : '每日不限')
+        parts.push(monthly > 0 ? `每月 ${monthly} 次` : '每月不限')
+        return parts.join(' · ')
+    }
 
     const fetchModels = async (): Promise<void> => {
         const result = await getAiModels()
@@ -419,12 +608,24 @@
         }
     }
 
+    const fetchStats = async (): Promise<void> => {
+        try {
+            const result = await getAiUsageStats(30)
+            if (result.code === 200 && result.data) {
+                stats.value = result.data
+            }
+        } catch {
+            // 统计加载失败不阻塞模型与策略配置
+            stats.value = null
+        }
+    }
+
     const loadAll = async (): Promise<void> => {
         loading.value = true
         errorMessage.value = ''
         try {
             await Promise.all([fetchModels(), fetchSettings()])
-            await fetchUsage()
+            await Promise.all([fetchUsage(), fetchStats()])
         } catch (error) {
             errorMessage.value = getRequestErrorMessage(error, 'AI 配置加载失败，请稍后重试')
         } finally {
@@ -443,6 +644,8 @@
             imageModel: '',
             imageSize: '1344x768',
             timeoutMs: 20000,
+            dailyLimitPerUser: 0,
+            monthlyLimitPerUser: 0,
             enabled: true,
             isDefault: models.value.length === 0,
             remark: '',
@@ -461,6 +664,8 @@
             imageModel: item.imageModel,
             imageSize: item.imageSize,
             timeoutMs: item.timeoutMs,
+            dailyLimitPerUser: item.dailyLimitPerUser || 0,
+            monthlyLimitPerUser: item.monthlyLimitPerUser || 0,
             enabled: item.enabled,
             isDefault: item.isDefault,
             remark: item.remark,
@@ -484,6 +689,8 @@
                 imageModel: modelForm.imageModel,
                 imageSize: modelForm.imageSize,
                 timeoutMs: modelForm.timeoutMs,
+                dailyLimitPerUser: modelForm.dailyLimitPerUser,
+                monthlyLimitPerUser: modelForm.monthlyLimitPerUser,
                 enabled: modelForm.enabled,
                 isDefault: modelForm.isDefault,
                 remark: modelForm.remark,
@@ -720,6 +927,30 @@
             margin: 0;
         }
 
+        // 模型健康：延迟、成功率与最近测试时间
+        .ai-model-health {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 14px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: var(--admin-surface-soft, var(--bgColor2));
+            font-size: 12px;
+            color: var(--gray7);
+        }
+
+        .ai-model-health-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 5px;
+
+            strong {
+                color: var(--gray);
+                font-weight: 600;
+            }
+        }
+
         .ai-model-fact {
             min-width: 0;
             display: flex;
@@ -777,6 +1008,136 @@
             gap: @space-l;
             width: 100%;
             align-items: start;
+        }
+
+        // 用量统计：三个时间窗口并排
+        .ai-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: @space-m;
+        }
+
+        .ai-stats-window {
+            padding: 16px 18px;
+            border-radius: 14px;
+            background: var(--admin-surface-soft, var(--bgColor2));
+            border: 1px solid var(--admin-line, var(--gray1));
+        }
+
+        .ai-stats-window-title {
+            margin: 0 0 6px;
+            font-size: 12px;
+            color: var(--gray7);
+        }
+
+        .ai-stats-window-total {
+            margin: 0 0 12px;
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--gray);
+            line-height: 1.1;
+
+            span {
+                margin-left: 6px;
+                font-size: 12px;
+                font-weight: 400;
+                color: var(--gray7);
+            }
+        }
+
+        .ai-stats-window-facts {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+
+            li {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+                font-size: 13px;
+                color: var(--gray7);
+
+                strong {
+                    color: var(--gray);
+                    font-weight: 600;
+                }
+            }
+        }
+
+        // 按模型 / 按功能两栏
+        .ai-stats-breaks {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: @space-l;
+            margin-top: @space-l;
+        }
+
+        .ai-stats-break {
+            min-width: 0;
+        }
+
+        .ai-stats-break-title {
+            margin: 0 0 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray);
+        }
+
+        .ai-stats-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            li {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 11px 12px;
+                border-radius: 12px;
+                transition: background @animatb;
+
+                &:hover {
+                    background: var(--admin-surface-soft, var(--bgColor2));
+                }
+            }
+        }
+
+        .ai-stats-list-main {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            strong {
+                color: var(--gray);
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            span {
+                font-size: 12px;
+                color: var(--gray7);
+            }
+        }
+
+        .ai-stats-list-side {
+            flex: none;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            font-size: 12px;
+            color: var(--gray7);
         }
 
         .ai-policy {
@@ -986,10 +1347,22 @@
             .ai-columns {
                 grid-template-columns: 1fr;
             }
+
+            .ai-stats-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .ai-stats-breaks {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 720px) {
             .ai-model-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .ai-stats-grid {
                 grid-template-columns: 1fr;
             }
 

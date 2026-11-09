@@ -44,6 +44,8 @@ module.exports = (app) => {
     app.get('/api/ai/settings', authMiddleware, requirePermission('ai.manage'), aiManageController.getSettings)
     app.put('/api/ai/settings', authMiddleware, requirePermission('ai.manage'), aiManageController.updateSettings)
     app.get('/api/ai/usage', authMiddleware, requirePermission('ai.manage'), aiManageController.getUsage)
+    // 用量统计：总览、分组、趋势与待确认图片占用
+    app.get('/api/ai/usage/stats', authMiddleware, requirePermission('ai.manage'), aiManageController.getUsageStats)
     // 当前登录用户自己的用量：拥有 ai.use 权限即可查看
     app.get('/api/ai/usage/me', authMiddleware, requirePermission('ai.use'), aiManageController.getMyUsage)
 }

@@ -10,12 +10,8 @@ const MAX_OUTPUT_CHARS = 2000
 const MAX_SUMMARY_CHARS = 200
 const MAX_LABELS = 5
 const WRITING_ACTIONS = new Set(['polish', 'shorten', 'expand', 'continue'])
-const PENDING_COVER_TTL_MS = 10 * 60 * 1000
-const MAX_PENDING_COVERS = 20
 const MAX_COVER_IMAGE_BYTES = 8 * 1024 * 1024
 const COVER_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
-
-const pendingCoverImages = new Map()
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -220,7 +216,28 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 
 
     const payload = await response.json()
     const content = payload?.choices?.[0]?.message?.content
-    return typeof content === 'string' ? content : ''
+    const text = typeof content === 'string' ? content : ''
+    return { text, usage: normalizeUsage(payload?.usage) }
+}
+
+/**
+ * 服务商返回的 token 用量并不总是存在（免费模型常常直接省略），
+ * 这里做一次宽松归一化：拿不到就返回空对象，统计侧按 0 处理。
+ */
+function normalizeUsage(usage) {
+    if (!usage || typeof usage !== 'object') return {}
+    const pick = (...keys) => {
+        for (const key of keys) {
+            const value = Number(usage[key])
+            if (Number.isFinite(value) && value >= 0) return Math.round(value)
+        }
+        return 0
+    }
+    return {
+        promptTokens: pick('prompt_tokens', 'input_tokens'),
+        completionTokens: pick('completion_tokens', 'output_tokens'),
+        totalTokens: pick('total_tokens')
+    }
 }
 
 function normalizeWritingText(raw) {
@@ -228,16 +245,6 @@ function normalizeWritingText(raw) {
     text = text.replace(/^```(?:markdown|text)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     text = text.replace(/^["“](.*)["”]$/s, '$1').trim()
     return text.slice(0, MAX_OUTPUT_CHARS)
-}
-
-function cleanupPendingCovers(now = Date.now()) {
-    for (const [token, entry] of pendingCoverImages) {
-        if (entry.expiresAt <= now) pendingCoverImages.delete(token)
-    }
-    while (pendingCoverImages.size > MAX_PENDING_COVERS) {
-        const oldestToken = pendingCoverImages.keys().next().value
-        pendingCoverImages.delete(oldestToken)
-    }
 }
 
 function imageError(message) {
@@ -322,7 +329,8 @@ async function suggestArticleMeta({ title, content, aiConfig }) {
     if (!aiConfig) throw notConfiguredError()
 
     const raw = await chatCompletion(buildSuggestionPrompt({ title, content }), { aiConfig, json: true })
-    return parseSuggestionPayload(raw)
+    const parsed = parseSuggestionPayload(raw.text)
+    return { ...parsed, usage: raw.usage }
 }
 
 /**
@@ -338,16 +346,16 @@ async function rewriteText({ action, text, title = '', aiConfig }) {
     }
 
     const raw = await chatCompletion(buildWritingPrompt({ action, text: plainText, title }), { aiConfig, maxTokens: 700 })
-    const output = normalizeWritingText(raw)
+    const output = normalizeWritingText(raw.text)
     if (!output) {
         throw Object.assign(new Error('模型没有返回可用内容'), { code: 'AI_PARSE_ERROR' })
     }
 
-    return { action, text: output }
+    return { action, text: output, usage: raw.usage }
 }
 
 /**
- * 生成封面插画建议。图片先暂存在服务端内存并返回 data URI 预览，
+ * 生成封面插画建议。图片内容与预览由调用方负责暂存，
  * 作者确认前不会写入 image 表。
  */
 async function generateCoverImage({ title, introduce, content, aiConfig }) {
@@ -355,37 +363,19 @@ async function generateCoverImage({ title, introduce, content, aiConfig }) {
 
     const prompt = buildCoverPrompt({ title, introduce, content })
     const { buffer, mimeType } = await fetchCoverImage(prompt, aiConfig)
-    cleanupPendingCovers()
-
-    const token = crypto.randomBytes(24).toString('hex')
-    pendingCoverImages.set(token, {
-        buffer,
-        mimeType,
-        expiresAt: Date.now() + PENDING_COVER_TTL_MS
-    })
 
     return {
-        token,
+        buffer,
+        mimeType,
         dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`,
-        prompt
+        prompt,
+        usage: {},
+        outputChars: 0
     }
 }
 
 function isValidCoverToken(token) {
     return typeof token === 'string' && /^[0-9a-f]{48}$/.test(token)
-}
-
-/**
- * 取出待确认的封面图片：一次性消费，过期或未知 token 均返回 null。
- */
-function takePendingCoverImage(token) {
-    if (!isValidCoverToken(token)) return null
-
-    const entry = pendingCoverImages.get(token)
-    pendingCoverImages.delete(token)
-    if (!entry || entry.expiresAt <= Date.now()) return null
-
-    return { buffer: entry.buffer, mimeType: entry.mimeType }
 }
 
 module.exports = {
@@ -395,7 +385,7 @@ module.exports = {
     suggestArticleMeta,
     rewriteText,
     generateCoverImage,
-    takePendingCoverImage,
+    isValidCoverToken,
     buildCoverPrompt,
     parseSuggestionPayload,
     buildSuggestionPrompt,

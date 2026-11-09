@@ -26,6 +26,8 @@ function normalizeModelPayload(body = {}) {
             ? body.imageSize.trim()
             : '1344x768',
         timeoutMs: toInt(body.timeoutMs, 20000) || 20000,
+        dailyLimitPerUser: toInt(body.dailyLimitPerUser, 0),
+        monthlyLimitPerUser: toInt(body.monthlyLimitPerUser, 0),
         enabled: body.enabled !== false,
         isDefault: Boolean(body.isDefault),
         remark: typeof body.remark === 'string' ? body.remark.trim() : ''
@@ -33,6 +35,23 @@ function normalizeModelPayload(body = {}) {
 
     if (body.apiKey) payload.apiKey = String(body.apiKey).trim()
     return { data: payload }
+}
+
+/**
+ * 校验模型级限额：不能高于全局策略，否则这个字段没有意义。
+ * 全局为 0（不限）时，模型级也按不限处理，不再额外约束。
+ */
+async function validateModelQuota(payload) {
+    const settings = await aiModel.getSettings()
+    if (payload.dailyLimitPerUser > 0 && settings.dailyLimitPerUser > 0
+        && payload.dailyLimitPerUser > settings.dailyLimitPerUser) {
+        return '模型每日上限不能高于全局每日上限'
+    }
+    if (payload.monthlyLimitPerUser > 0 && settings.monthlyLimitPerUser > 0
+        && payload.monthlyLimitPerUser > settings.monthlyLimitPerUser) {
+        return '模型每月上限不能高于全局每月上限'
+    }
+    return null
 }
 
 async function getModels(req, res) {
@@ -52,6 +71,11 @@ async function createModel(req, res) {
     }
     if (!normalized.data.apiKey) {
         return res.status(400).json({ code: 400, message: '请填写接口密钥' })
+    }
+
+    const quotaError = await validateModelQuota(normalized.data)
+    if (quotaError) {
+        return res.status(400).json({ code: 400, message: quotaError })
     }
 
     try {
@@ -80,6 +104,11 @@ async function updateModel(req, res) {
     const normalized = normalizeModelPayload({ ...existing, ...req.body })
     if (normalized.error) {
         return res.status(400).json({ code: 400, message: normalized.error })
+    }
+
+    const quotaError = await validateModelQuota(normalized.data)
+    if (quotaError) {
+        return res.status(400).json({ code: 400, message: quotaError })
     }
 
     try {
@@ -129,6 +158,7 @@ async function testModel(req, res) {
             return res.status(404).json({ code: 404, message: 'AI 模型不存在' })
         }
 
+        const startedAt = Date.now()
         const response = await fetch(`${target.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -142,25 +172,40 @@ async function testModel(req, res) {
             }),
             signal: AbortSignal.timeout(target.timeoutMs || 20000)
         })
+        const latencyMs = Date.now() - startedAt
 
         if (!response.ok) {
+            const reason = `服务返回 HTTP ${response.status}`
+            const health = await aiModel.recordModelHealth(modelId, {
+                ok: false,
+                latencyMs,
+                error: reason
+            })
             return res.status(200).json({
                 code: 200,
-                message: `连通性测试失败：服务返回 HTTP ${response.status}`,
-                data: { ok: false, status: response.status }
+                message: `连通性测试失败：${reason}`,
+                data: { ok: false, status: response.status, latencyMs, health }
             })
         }
 
+        const health = await aiModel.recordModelHealth(modelId, { ok: true, latencyMs })
         return res.json({
             code: 200,
-            message: '连通性测试通过',
-            data: { ok: true }
+            message: `连通性测试通过（耗时 ${latencyMs} 毫秒）`,
+            data: { ok: true, latencyMs, health }
         })
     } catch (err) {
         console.error('[AI] 连通性测试失败：', err?.message || err)
+        const reason = err?.message || '无法连接到模型服务'
+        // 记录失败状态：健康表写失败不影响测试结论
+        try {
+            await aiModel.recordModelHealth(modelId, { ok: false, error: reason })
+        } catch (recordError) {
+            console.warn('[AI] 记录模型健康状态失败：', recordError?.message || recordError)
+        }
         return res.status(200).json({
             code: 200,
-            message: `连通性测试失败：${err?.message || '无法连接到模型服务'}`,
+            message: `连通性测试失败：${reason}`,
             data: { ok: false }
         })
     }
@@ -208,6 +253,31 @@ async function getUsage(req, res) {
     } catch (err) {
         console.error('[AI] 获取调用记录失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '获取 AI 调用记录失败' })
+    }
+}
+
+/**
+ * 用量统计：总览窗口、按模型/功能分组、每日趋势与待确认图片占用。
+ */
+async function getUsageStats(req, res) {
+    const days = Math.min(Math.max(toInt(req.query?.days, 30), 1), 90)
+    try {
+        const [summary, byModel, byFeature, trend, pending, health] = await Promise.all([
+            aiModel.getUsageSummary(),
+            aiModel.getUsageByModel(days),
+            aiModel.getUsageByFeature(days),
+            aiModel.getUsageTrend(Math.min(days, 30)),
+            aiModel.getPendingImageStats(),
+            aiModel.listModelHealth()
+        ])
+        return res.json({
+            code: 200,
+            message: '获取 AI 用量统计成功',
+            data: { summary, byModel, byFeature, trend, pending, health, days }
+        })
+    } catch (err) {
+        console.error('[AI] 获取用量统计失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '获取 AI 用量统计失败' })
     }
 }
 
@@ -262,6 +332,7 @@ module.exports = {
     getSettings,
     updateSettings,
     getUsage,
+    getUsageStats,
     importFromEnv,
     getMyUsage
 }

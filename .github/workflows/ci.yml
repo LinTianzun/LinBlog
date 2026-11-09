@@ -46,6 +46,48 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # 真实 MySQL 集成测试：此前只能手动设置 LINBLOG_INTEGRATION_DB 才跑，
+  # 迁移与数据一致性问题要到线上才会暴露。这里起一个独立的 MySQL 服务自动执行。
+  integration-test:
+    name: MySQL integration tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: serve
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: integration-root-pw
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pintegration-root-pw"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: serve/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Run integration tests against MySQL
+        run: npm run test:integration
+        env:
+          LINBLOG_INTEGRATION_DB: linblog_integration_ci
+          LINBLOG_DB_HOST: 127.0.0.1
+          LINBLOG_DB_PORT: 3306
+          LINBLOG_DB_USER: root
+          LINBLOG_DB_PASSWORD: integration-root-pw
+          LINBLOG_JWT_SECRET: ci-integration-secret-at-least-32-chars
+          LINBLOG_ALLOWED_ORIGINS: http://localhost:5173
+
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest

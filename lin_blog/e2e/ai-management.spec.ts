@@ -29,6 +29,10 @@ test('AI 管理页展示接入模型并可保存用量策略', async ({ page }) 
   await expect(card).not.toContainText('sk-')
   await expect(card).toContainText('默认')
 
+  // 模型级限额：展示在卡片事实区
+  await expect(card).toContainText('模型限额')
+  await expect(card).toContainText('每日 10 次')
+
   // 调用记录：功能名与状态
   await expect(page.locator('.ai-usage-item')).toContainText('写作建议')
   await expect(page.locator('.ai-usage-item')).toContainText('成功')
@@ -108,4 +112,40 @@ test('没有 ai.manage 权限时侧边栏不显示 AI 管理入口', async ({ pa
   // 直接访问也会被路由守卫拦回
   await page.goto('/aiManage')
   await expect(page).not.toHaveURL(/\/aiManage$/)
+})
+
+test('AI 管理页展示用量统计面板', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiManage')
+  await expect(page.locator('.ai-stats-window')).toHaveCount(3, { timeout: 30_000 })
+
+  // 三个时间窗口：近 7 天 / 近 30 天 / 累计
+  const windows = page.locator('.ai-stats-window')
+  await expect(windows.nth(0)).toContainText('近 7 天')
+  await expect(windows.nth(0)).toContainText('12')
+  await expect(windows.nth(0)).toContainText('100%')
+  await expect(windows.nth(1)).toContainText('近 30 天')
+  await expect(windows.nth(2)).toContainText('累计')
+  await expect(windows.nth(2)).toContainText('42')
+
+  // 按模型与按功能分组
+  const modelBreak = page.locator('.ai-stats-break').first()
+  const featureBreak = page.locator('.ai-stats-break').nth(1)
+  await expect(modelBreak).toContainText('按模型')
+  await expect(featureBreak).toContainText('按功能')
+  await expect(modelBreak.locator('.ai-stats-list')).toContainText('glm-4-flash')
+  await expect(featureBreak.locator('.ai-stats-list')).toContainText('写作建议')
+
+  // 模型健康与每日趋势
+  await expect(page.locator('.ai-stats-break').nth(2)).toContainText('模型健康')
+  await expect(page.locator('.ai-stats-break').nth(3)).toContainText('每日趋势')
+  await expect(page.locator('.ai-stats-break').nth(2)).toContainText('智谱 GLM')
 })

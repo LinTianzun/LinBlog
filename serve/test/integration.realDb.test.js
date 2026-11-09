@@ -1361,4 +1361,80 @@ if (!targetDb) {
         const afterPublish = await imageModel.deactivateImageIfUnreferenced('it-draft-cover.jpg')
         assert.equal(afterPublish.deactivated, false)
     })
+
+    test('待确认图片入库后可被一次性消费，且只允许生成者本人采用', async () => {
+        const aiModel = require('../model/dbModel/ai/index')
+        const token = 'c'.repeat(48)
+        const payload = Buffer.from('pending-cover-bytes')
+
+        await aiModel.savePendingImage({
+            token,
+            userId: ids.admin,
+            feature: 'cover',
+            mimeType: 'image/png',
+            buffer: payload
+        })
+
+        // 候选确实落在库里，不再只存在进程内存
+        const stats = await aiModel.getPendingImageStats()
+        assert.ok(stats.total >= 1)
+        assert.ok(stats.bytes >= payload.length)
+
+        // 别人拿同一个令牌采用：拿不到图片
+        const byOther = await aiModel.takePendingImage(token, ids.normal)
+        assert.equal(byOther, null)
+
+        // 生成者本人可以取到，并且令牌被一次性消费
+        const taken = await aiModel.takePendingImage(token, ids.admin)
+        assert.ok(taken)
+        assert.equal(taken.mimeType, 'image/png')
+        assert.ok(taken.buffer.equals(payload))
+
+        const replay = await aiModel.takePendingImage(token, ids.admin)
+        assert.equal(replay, null)
+    })
+
+    test('模型健康状态会滚动记录成功率、耗时与连续失败', async () => {
+        const aiModel = require('../model/dbModel/ai/index')
+        const created = await aiModel.createModel({
+            name: '集成测试模型',
+            baseUrl: 'https://ai.example.test/v4',
+            apiKey: 'integration-test-key',
+            chatModel: 'glm-4-flash',
+            imageModel: '',
+            imageSize: '1344x768',
+            timeoutMs: 20000,
+            enabled: true,
+            isDefault: false,
+            remark: ''
+        })
+
+        const modelId = created.id
+
+        await aiModel.recordModelHealth(modelId, { ok: true, latencyMs: 800 })
+        await aiModel.recordModelHealth(modelId, { ok: true, latencyMs: 1200 })
+        const failed = await aiModel.recordModelHealth(modelId, { ok: false, latencyMs: 300, error: '服务返回 HTTP 500' })
+
+        assert.equal(failed.testCount, 3)
+        assert.equal(failed.successCount, 2)
+        assert.equal(failed.consecutiveFailures, 1)
+        // 平均耗时按成功样本重算：(800 + 1200) / 2 = 1000
+        assert.equal(failed.avgLatencyMs, 1000)
+
+        const detail = await aiModel.findModelById(modelId)
+        assert.equal(detail.health.successRate, 66.7)
+        assert.equal(detail.health.consecutiveFailures, 1)
+        assert.match(detail.health.lastError, /HTTP 500/)
+
+        // 恢复成功后连续失败计数归零
+        const recovered = await aiModel.recordModelHealth(modelId, { ok: true, latencyMs: 1000 })
+        assert.equal(recovered.consecutiveFailures, 0)
+
+        const healthList = await aiModel.listModelHealth()
+        const row = healthList.find(item => item.modelId === modelId)
+        assert.ok(row)
+        assert.equal(row.modelName, '集成测试模型')
+
+        await aiModel.deleteModel(modelId)
+    })
 }

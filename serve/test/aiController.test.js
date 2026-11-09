@@ -9,6 +9,7 @@ process.env.LINBLOG_ALLOWED_ORIGINS = 'http://localhost:5173'
 const aiController = require(path.resolve(__dirname, '../controller/aiController.js'))
 const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
 const uploadController = require(path.resolve(__dirname, '../controller/uploadController.js'))
+const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -183,8 +184,12 @@ test('ai cover rejects a missing title before calling the provider', async () =>
 test('ai cover generates a preview and confirm persists it exactly once', async () => {
     const originalFetch = global.fetch
     const originalPersist = uploadController.persistImageBuffer
+    const originalSave = aiModel.savePendingImage
+    const originalTake = aiModel.takePendingImage
     const persisted = []
     const pngBytes = Buffer.from('89504e470d0a1a0a', 'hex')
+    // 候选图片现在入库暂存：用内存 Map 模拟表行为，覆盖一次性消费
+    const pendingStore = new Map()
 
     global.fetch = async (url) => {
         if (String(url).endsWith('/images/generations')) {
@@ -200,6 +205,16 @@ test('ai cover generates a preview and confirm persists it exactly once', async 
     uploadController.persistImageBuffer = async ({ buffer, mimetype, userId }) => {
         persisted.push({ buffer, mimetype, userId })
         return { filename: 'ai-cover.png', url: '/api/uploads/ai-cover.png' }
+    }
+    aiModel.savePendingImage = async ({ token, userId, mimeType, buffer }) => {
+        pendingStore.set(token, { userId, mimeType, buffer })
+        return { token }
+    }
+    aiModel.takePendingImage = async (token, userId) => {
+        const entry = pendingStore.get(token)
+        pendingStore.delete(token)
+        if (!entry || entry.userId !== userId) return null
+        return { mimeType: entry.mimeType, buffer: entry.buffer }
     }
 
     try {
@@ -239,6 +254,8 @@ test('ai cover generates a preview and confirm persists it exactly once', async 
     } finally {
         global.fetch = originalFetch
         uploadController.persistImageBuffer = originalPersist
+        aiModel.savePendingImage = originalSave
+        aiModel.takePendingImage = originalTake
     }
 })
 
@@ -259,13 +276,47 @@ test('ai cover degrades to 503 when the provider fails', async () => {
 })
 
 test('confirm cover rejects unknown tokens', async () => {
-    const res = createRes()
-    await aiController.confirmCover(
-        { body: { token: 'a'.repeat(48) }, user: { userId: 1 } },
-        res
-    )
-    assert.equal(res.statusCode, 400)
-    assert.match(res.body.message, /不存在或已过期/)
+    const originalTake = aiModel.takePendingImage
+    aiModel.takePendingImage = async () => null
+    try {
+        const res = createRes()
+        await aiController.confirmCover(
+            { body: { token: 'a'.repeat(48) }, user: { userId: 1 } },
+            res
+        )
+        assert.equal(res.statusCode, 400)
+        assert.match(res.body.message, /不存在或已过期/)
+    } finally {
+        aiModel.takePendingImage = originalTake
+    }
+})
+
+test('待确认图片只允许生成者本人采用', async () => {
+    const originalTake = aiModel.takePendingImage
+    const pendingStore = new Map()
+
+    aiModel.takePendingImage = async (token, userId) => {
+        const entry = pendingStore.get(token)
+        pendingStore.delete(token)
+        if (!entry || entry.userId !== userId) return null
+        return { mimeType: entry.mimeType, buffer: entry.buffer }
+    }
+
+    try {
+        const token = 'b'.repeat(48)
+        pendingStore.set(token, { userId: 7, mimeType: 'image/png', buffer: Buffer.from('x') })
+
+        // 别人拿着令牌来采用：令牌被消费但拿不到图片
+        const other = createRes()
+        await aiController.confirmCover(
+            { body: { token }, user: { userId: 8 } },
+            other
+        )
+        assert.equal(other.statusCode, 400)
+        assert.match(other.body.message, /不存在或已过期/)
+    } finally {
+        aiModel.takePendingImage = originalTake
+    }
 })
 
 test('parseSuggestionPayload strips code fences and clamps the result', () => {

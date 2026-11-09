@@ -30,11 +30,27 @@ export interface AiModelItem {
   imageModel: string;
   imageSize: string;
   timeoutMs: number;
+  dailyLimitPerUser: number;
+  monthlyLimitPerUser: number;
   enabled: boolean;
   isDefault: boolean;
   remark: string;
   createdAt?: string;
   updatedAt?: string;
+  health?: AiModelHealth;
+}
+
+// 模型健康状态：来自连通性测试的耗时、成功率与连续失败次数
+export interface AiModelHealth {
+  lastTestAt: string | null;
+  lastSuccessAt: string | null;
+  lastLatencyMs: number;
+  avgLatencyMs: number;
+  testCount: number;
+  successCount: number;
+  successRate: number;
+  consecutiveFailures: number;
+  lastError: string;
 }
 
 export interface AiModelPayload {
@@ -46,6 +62,8 @@ export interface AiModelPayload {
   imageModel?: string;
   imageSize?: string;
   timeoutMs?: number;
+  dailyLimitPerUser?: number;
+  monthlyLimitPerUser?: number;
   enabled?: boolean;
   isDefault?: boolean;
   remark?: string;
@@ -66,7 +84,66 @@ export interface AiUsageRecord {
   modelName: string;
   status: string;
   detail: string;
+  durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  outputChars: number;
   createdAt: string;
+}
+
+// 用量统计：总览窗口、按模型/功能分组、每日趋势与待确认图片占用
+export interface AiUsageWindow {
+  total: number;
+  success: number;
+  failed: number;
+  denied: number;
+  successRate: number;
+  avgDurationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  outputChars: number;
+}
+
+export interface AiUsageStats {
+  summary: {
+    all: AiUsageWindow;
+    last7Days: AiUsageWindow;
+    last30Days: AiUsageWindow;
+  };
+  byModel: {
+    modelName: string;
+    total: number;
+    success: number;
+    successRate: number;
+    avgDurationMs: number;
+    promptTokens: number;
+    completionTokens: number;
+  }[];
+  byFeature: {
+    feature: string;
+    total: number;
+    success: number;
+    successRate: number;
+    avgDurationMs: number;
+  }[];
+  trend: {
+    day: string;
+    total: number;
+    success: number;
+    tokens: number;
+  }[];
+  pending: {
+    total: number;
+    bytes: number;
+    expired: number;
+  };
+  health: (AiModelHealth & {
+    modelId: number;
+    modelName: string;
+    enabled: boolean;
+  })[];
+  days: number;
 }
 
 export interface AiMyUsage {
@@ -146,6 +223,10 @@ export function updateAiSettings(payload: AiSettings) {
 
 export function getAiUsage(limit = 50) {
   return request.get<ApiResult<{ list: AiUsageRecord[] }>>("/ai/usage", { params: { limit } });
+}
+
+export function getAiUsageStats(days = 30) {
+  return request.get<ApiResult<AiUsageStats>>("/ai/usage/stats", { params: { days } });
 }
 
 export function getMyAiUsage() {

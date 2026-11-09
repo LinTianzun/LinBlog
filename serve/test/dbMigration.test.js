@@ -33,7 +33,11 @@ const ALL_MIGRATIONS = [
     '20261102_file_image_binding',
     '20261103_content_image_subset',
     '20261109_ai_management',
-    '20261110_ai_env_import'
+    '20261110_ai_env_import',
+    '20261111_ai_pending_image',
+    '20261112_ai_usage_metrics',
+    '20261113_ai_model_health',
+    '20261114_ai_model_quota'
 ]
 
 // 除 exclude 外全部视为已应用

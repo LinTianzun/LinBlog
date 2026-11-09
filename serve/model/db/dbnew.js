@@ -496,6 +496,8 @@ const tablesSql = {
     image_model VARCHAR(128) NOT NULL DEFAULT '' COMMENT '图片模型名（可空）',
     image_size VARCHAR(16) NOT NULL DEFAULT '1344x768' COMMENT '图片尺寸',
     timeout_ms INT UNSIGNED NOT NULL DEFAULT 20000 COMMENT '单次请求超时',
+    daily_limit_per_user INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '该模型每用户每日次数（0 不限）',
+    monthly_limit_per_user INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '该模型每用户每月次数（0 不限）',
     enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
     is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认模型',
     remark VARCHAR(255) COMMENT '备注',
@@ -523,11 +525,46 @@ const tablesSql = {
     model_name VARCHAR(128) COMMENT '使用的模型',
     status VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT 'success/failed/denied',
     detail VARCHAR(255) COMMENT '备注',
+    duration_ms INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '调用耗时（毫秒）',
+    prompt_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '输入 token（服务商未返回时为 0）',
+    completion_tokens INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '输出 token（服务商未返回时为 0）',
+    output_chars INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '输出字符数',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     INDEX idx_ai_usage_user_time (user_id, created_at),
     INDEX idx_ai_usage_time (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 调用记录';`
+
+  ,ai_pending_image: `CREATE TABLE IF NOT EXISTS ai_pending_image(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '待确认图片ID',
+    token CHAR(48) NOT NULL COMMENT '一次性确认令牌',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '生成者用户ID',
+    feature VARCHAR(32) NOT NULL DEFAULT 'cover' COMMENT '来源功能（cover/image）',
+    mime_type VARCHAR(32) NOT NULL COMMENT '图片 MIME 类型',
+    size INT UNSIGNED NOT NULL COMMENT '图片大小（字节）',
+    data MEDIUMBLOB NOT NULL COMMENT '图片二进制内容',
+    expires_at DATETIME NOT NULL COMMENT '过期时间',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_pending_image_token (token),
+    INDEX idx_ai_pending_image_expires (expires_at),
+    INDEX idx_ai_pending_image_user (user_id, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 待确认图片暂存表';`
+
+  ,ai_model_health: `CREATE TABLE IF NOT EXISTS ai_model_health(
+    model_id INT UNSIGNED NOT NULL COMMENT '模型ID',
+    last_test_at DATETIME NULL COMMENT '最近一次连通性测试时间',
+    last_success_at DATETIME NULL COMMENT '最近一次测试成功时间',
+    last_latency_ms INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最近一次测试耗时（毫秒）',
+    avg_latency_ms INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '平均耗时（毫秒）',
+    test_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '测试总次数',
+    success_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '测试成功次数',
+    consecutive_failures INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '连续失败次数',
+    last_error VARCHAR(255) NULL COMMENT '最近一次失败原因',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (model_id),
+    FOREIGN KEY (model_id) REFERENCES ai_model(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 模型健康状态';`
 
   ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
@@ -715,6 +752,65 @@ async function ensureAiEnvImportSchema(exec = query) {
 async function countModels(exec = query) {
   const [row] = await exec('SELECT COUNT(*) AS total FROM ai_model WHERE is_default = 1');
   return Number(row?.total || 0) === 0 ? 1 : 0;
+}
+
+// AI 待确认图片改为入库暂存：此前候选图片只存在单实例内存里，
+// 多实例部署时「生成」与「采用」可能落在不同进程，作者点采用就会提示图片已过期。
+// 入库后任何实例都能取到候选，且令牌一次性消费、过期自动清理。
+async function ensureAiPendingImageSchema(exec = query) {
+  await exec(tablesSql.ai_pending_image);
+}
+
+// AI 调用记录补充度量字段：耗时、token 与输出字符数。
+// 存量库按列级幂等补全，新库由建表语句直接带上。
+async function ensureAiUsageMetricsSchema(exec = query) {
+  await exec(tablesSql.ai_usage_log);
+  await ensureColumn(exec, 'ai_usage_log', 'duration_ms', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '调用耗时（毫秒）'
+  });
+  await ensureColumn(exec, 'ai_usage_log', 'prompt_tokens', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '输入 token（服务商未返回时为 0）'
+  });
+  await ensureColumn(exec, 'ai_usage_log', 'completion_tokens', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '输出 token（服务商未返回时为 0）'
+  });
+  await ensureColumn(exec, 'ai_usage_log', 'output_chars', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '输出字符数'
+  });
+}
+
+// AI 模型健康状态：记录连通性测试的耗时、成功率和连续失败次数。
+// 后台据此看出哪个模型正在变慢或反复失败。
+async function ensureAiModelHealthSchema(exec = query) {
+  await exec(tablesSql.ai_model_health);
+}
+
+// AI 模型级限额：允许给单个模型设置比全局策略更严的次数上限。
+// 用量记录补上模型ID，才能按模型维度统计某个用户用了多少次。
+async function ensureAiModelQuotaSchema(exec = query) {
+  await exec(tablesSql.ai_model);
+  await ensureColumn(exec, 'ai_model', 'daily_limit_per_user', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '该模型每用户每日次数（0 不限）'
+  });
+  await ensureColumn(exec, 'ai_model', 'monthly_limit_per_user', {
+    definition: 'INT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '该模型每用户每月次数（0 不限）'
+  });
+  await ensureColumn(exec, 'ai_usage_log', 'model_id', {
+    definition: 'INT UNSIGNED NULL',
+    comment: '使用的模型ID'
+  });
+  await ensureIndex(
+    exec,
+    'ai_usage_log',
+    'idx_ai_usage_model_time',
+    'ALTER TABLE ai_usage_log ADD INDEX idx_ai_usage_model_time (model_id, created_at)'
+  );
 }
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -2140,6 +2236,22 @@ const migrations = [
   {
     version: '20261110_ai_env_import',
     up: ensureAiEnvImportSchema
+  },
+  {
+    version: '20261111_ai_pending_image',
+    up: ensureAiPendingImageSchema
+  },
+  {
+    version: '20261112_ai_usage_metrics',
+    up: ensureAiUsageMetricsSchema
+  },
+  {
+    version: '20261113_ai_model_health',
+    up: ensureAiModelHealthSchema
+  },
+  {
+    version: '20261114_ai_model_quota',
+    up: ensureAiModelQuotaSchema
   }
 ];
 

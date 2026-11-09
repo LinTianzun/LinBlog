@@ -1,6 +1,8 @@
+const crypto = require('node:crypto')
 const aiClient = require('../utils/aiClient')
 const uploadController = require('./uploadController')
 const { recordAiCall } = require('../utils/aiUsageLogger')
+const aiModel = require('../model/dbModel/ai/index')
 
 /**
  * AI 写作建议：按需生成简介与标签，返回给前端作为建议展示，
@@ -21,6 +23,7 @@ async function suggestArticleMeta(req, res) {
     }
 
     try {
+        const startedAt = Date.now()
         const suggestion = await aiClient.suggestArticleMeta({
             title,
             content,
@@ -30,8 +33,13 @@ async function suggestArticleMeta(req, res) {
             req,
             feature: 'suggest',
             modelName: req.aiModel.model,
+            modelId: req.aiModel.id,
             status: 'success',
-            detail: '生成文章简介与标签建议'
+            detail: '生成文章简介与标签建议',
+            durationMs: Date.now() - startedAt,
+            usage: suggestion.usage,
+            outputChars: (suggestion.summary || '').length
+                + (suggestion.labels || []).join(',').length
         })
         return res.json({
             code: 200,
@@ -69,6 +77,7 @@ async function rewriteArticleText(req, res) {
     }
 
     try {
+        const startedAt = Date.now()
         const suggestion = await aiClient.rewriteText({
             action,
             text,
@@ -79,8 +88,12 @@ async function rewriteArticleText(req, res) {
             req,
             feature: 'writing',
             modelName: req.aiModel.model,
+            modelId: req.aiModel.id,
             status: 'success',
-            detail: `AI 写作辅助：${action}`
+            detail: `AI 写作辅助：${action}`,
+            durationMs: Date.now() - startedAt,
+            usage: suggestion.usage,
+            outputChars: (suggestion.text || '').length
         })
         return res.json({
             code: 200,
@@ -103,8 +116,9 @@ async function rewriteArticleText(req, res) {
 }
 
 /**
- * AI 封面建议：生成结果先暂存服务端内存并返回 data URI 预览，
+ * AI 封面建议：生成结果先暂存到数据库并返回 data URI 预览，
  * 作者点「采用」调用 confirm 后才会写入 image 表。
+ * 暂存放在库里而不是进程内存，多实例部署时任意实例都能取到候选。
  */
 async function generateCover(req, res) {
     if (!req.aiModel) {
@@ -122,23 +136,39 @@ async function generateCover(req, res) {
     }
 
     try {
+        const startedAt = Date.now()
         const suggestion = await aiClient.generateCoverImage({
             title,
             introduce,
             content,
             aiConfig: req.aiModel
         })
+        const token = crypto.randomBytes(24).toString('hex')
+        await aiModel.savePendingImage({
+            token,
+            userId: req.user?.userId,
+            feature: 'cover',
+            mimeType: suggestion.mimeType,
+            buffer: suggestion.buffer
+        })
         await recordAiCall({
             req,
             feature: 'cover',
             modelName: req.aiModel.imageModel,
+            modelId: req.aiModel.id,
             status: 'success',
-            detail: '生成 AI 封面或配图'
+            detail: '生成 AI 封面或配图',
+            durationMs: Date.now() - startedAt,
+            outputChars: suggestion.outputChars || 0
         })
         return res.json({
             code: 200,
             message: 'AI 封面已生成，请确认后再采用',
-            data: suggestion
+            data: {
+                token,
+                dataUri: suggestion.dataUri,
+                prompt: suggestion.prompt
+            }
         })
     } catch (err) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
@@ -151,10 +181,15 @@ async function generateCover(req, res) {
 
 /**
  * 确认采用 AI 封面：一次性消费暂存 token，并复用上传的持久化路径落库。
+ * 令牌与生成者绑定，他人拿不到也用不了别人的候选。
  */
 async function confirmCover(req, res) {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : ''
-    const pending = aiClient.takePendingCoverImage(token)
+    if (!aiClient.isValidCoverToken(token)) {
+        return res.status(400).json({ code: 400, message: '封面建议不存在或已过期，请重新生成' })
+    }
+
+    const pending = await aiModel.takePendingImage(token, req.user?.userId)
     if (!pending) {
         return res.status(400).json({ code: 400, message: '封面建议不存在或已过期，请重新生成' })
     }

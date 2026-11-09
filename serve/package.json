@@ -10,7 +10,8 @@
 		"db:seed": "node scripts/seed-demo.js",
 		"db:seed-rich": "node scripts/seed-rich.js",
 		"db:backup": "node scripts/backup.js",
-		"db:restore": "node scripts/restore.js"
+		"db:restore": "node scripts/restore.js",
+		"test:integration": "node --env-file-if-exists=.env --test test/integration.realDb.test.js"
 	},
 	"dependencies": {
 		"bcrypt": "^6.0.0",
