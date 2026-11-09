@@ -318,7 +318,7 @@ async function listEnabledModelConfigs() {
 async function listPromptTemplates() {
     const { listDefaultTemplates } = require('../../../utils/aiPromptTemplates')
     const rows = await query(
-        'SELECT id, template_key, name, description, content, variables, enabled, is_default, updated_at FROM ai_prompt_template ORDER BY id ASC'
+        'SELECT id, template_key, feature_key, name, description, content, variables, enabled, is_default, updated_at FROM ai_prompt_template ORDER BY id ASC'
     )
 
     const stored = new Map((rows || []).map(row => [String(row.template_key), row]))
@@ -331,6 +331,7 @@ async function listPromptTemplates() {
             return {
                 id: null,
                 key: item.key,
+                featureKey: item.key,
                 name: item.name,
                 description: item.description,
                 content: item.content,
@@ -346,6 +347,7 @@ async function listPromptTemplates() {
         return {
             id: Number(row.id),
             key: String(row.template_key),
+            featureKey: String(row.feature_key || row.template_key),
             name: String(row.name || item.name),
             description: row.description ? String(row.description) : item.description,
             content,
@@ -364,6 +366,7 @@ async function listPromptTemplates() {
         merged.push({
             id: Number(row.id),
             key,
+            featureKey: String(row.feature_key || key),
             name: String(row.name || key),
             description: row.description ? String(row.description) : '',
             content: String(row.content || ''),
@@ -379,11 +382,111 @@ async function listPromptTemplates() {
 }
 
 /**
+ * 各功能当前选用的模板：featureKey → templateKey。
+ * 没有绑定的功能走内置默认提示词。
+ */
+async function listPromptBindings() {
+    const rows = await query('SELECT feature_key, template_key FROM ai_prompt_binding')
+    const bindings = {}
+    for (const row of rows || []) {
+        bindings[String(row.feature_key)] = String(row.template_key)
+    }
+    return bindings
+}
+
+/**
+ * 创建自定义提示词：挂在某个内置功能下，生成唯一模板标识。
+ * 内容可以随便写，但功能范围必须来自内置清单，避免出现无法被调用的模板。
+ */
+async function createPromptTemplate({ featureKey, name, description, content }) {
+    const { getDefaultTemplate } = require('../../../utils/aiPromptTemplates')
+    const feature = getDefaultTemplate(featureKey)
+    if (!feature) return null
+
+    const key = `custom_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+    await query(
+        `INSERT INTO ai_prompt_template
+            (template_key, feature_key, name, description, content, variables, enabled, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 0)`,
+        [key, featureKey, name, description || null, content, feature.variables]
+    )
+
+    const rows = await query('SELECT id, template_key, feature_key, name, description, content, variables, enabled, is_default, updated_at FROM ai_prompt_template WHERE template_key = ? LIMIT 1', [key])
+    const row = rows?.[0]
+    if (!row) return null
+    return {
+        id: Number(row.id),
+        key: String(row.template_key),
+        featureKey: String(row.feature_key),
+        name: String(row.name),
+        description: row.description ? String(row.description) : '',
+        content: String(row.content),
+        variables: String(row.variables || ''),
+        enabled: true,
+        isDefault: false,
+        customized: true,
+        updatedAt: row.updated_at
+    }
+}
+
+/**
+ * 删除自定义提示词：内置模板不可删除；
+ * 有功能正在选用它时，选用关系一并解除（回退到内置默认）。
+ */
+async function deletePromptTemplate(key) {
+    const rows = await query(
+        'SELECT id, is_default FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+        [key]
+    )
+    const row = rows?.[0]
+    if (!row) return false
+    if (Number(row.is_default) === 1) return null
+
+    await query('DELETE FROM ai_prompt_template WHERE id = ?', [Number(row.id)])
+    await query('DELETE FROM ai_prompt_binding WHERE template_key = ?', [key])
+    return true
+}
+
+/**
+ * 选用模板：把某个功能切换到指定模板。
+ * 模板停用后解析层会自动回退内置默认，不需要在这里额外校验 enabled。
+ */
+async function selectPromptTemplate(key) {
+    const rows = await query(
+        'SELECT template_key, feature_key FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+        [key]
+    )
+    const row = rows?.[0]
+    if (!row) return false
+
+    await query(
+        `INSERT INTO ai_prompt_binding (feature_key, template_key)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)`,
+        [String(row.feature_key), String(row.template_key)]
+    )
+    return true
+}
+
+/**
  * 读取单个启用中的模板内容：查不到或被停用时返回 null，
  * 由调用方回退到内置默认提示词。
  */
-async function getEnabledPromptTemplate(key) {
-    const rows = await query(
+async function getEnabledPromptTemplate(key, queryFn = query) {
+    // 先看该功能选用了哪个模板；绑定指向停用或已删除的模板时自动失效
+    const bound = await queryFn(
+        `SELECT t.content
+         FROM ai_prompt_binding b
+         JOIN ai_prompt_template t ON t.template_key = b.template_key
+         WHERE b.feature_key = ? AND t.enabled = 1
+         LIMIT 1`,
+        [key]
+    )
+    const boundContent = bound?.[0]?.content
+    if (boundContent) return String(boundContent)
+
+    // 没绑定或绑定失效：回退到内置模板（启用中的那份）
+    const rows = await queryFn(
         'SELECT content FROM ai_prompt_template WHERE template_key = ? AND enabled = 1 LIMIT 1',
         [key]
     )
@@ -402,13 +505,13 @@ async function savePromptTemplate(key, { name, description, content, variables, 
 
     if (existing?.[0]?.id) {
         await query(
-            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = ?, is_default = 0 WHERE id = ?',
+            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = ? WHERE id = ?',
             [name, description || null, content, variables || null, enabled ? 1 : 0, Number(existing[0].id)]
         )
     } else {
         await query(
-            'INSERT INTO ai_prompt_template (template_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, 0)',
-            [key, name, description || null, content, variables || null, enabled ? 1 : 0]
+            'INSERT INTO ai_prompt_template (template_key, feature_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
+            [key, key, name, description || null, content, variables || null, enabled ? 1 : 0]
         )
     }
 
@@ -430,13 +533,13 @@ async function resetPromptTemplate(key) {
 
     if (existing?.[0]?.id) {
         await query(
-            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = 1, is_default = 1 WHERE id = ?',
-            [fallback.name, fallback.description, fallback.content, fallback.variables, Number(existing[0].id)]
+            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = 1, is_default = 1, feature_key = ? WHERE id = ?',
+            [fallback.name, fallback.description, fallback.content, fallback.variables, fallback.key, Number(existing[0].id)]
         )
     } else {
         await query(
-            'INSERT INTO ai_prompt_template (template_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, 1, 1)',
-            [fallback.key, fallback.name, fallback.description, fallback.content, fallback.variables]
+            'INSERT INTO ai_prompt_template (template_key, feature_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, 1, 1)',
+            [fallback.key, fallback.key, fallback.name, fallback.description, fallback.content, fallback.variables]
         )
     }
 
@@ -1022,6 +1125,10 @@ module.exports = {
     listFallbackModelConfigs,
     getModelConfigById,
     listEnabledModelConfigs,
+    listPromptBindings,
+    createPromptTemplate,
+    deletePromptTemplate,
+    selectPromptTemplate,
     listPromptTemplates,
     getEnabledPromptTemplate,
     savePromptTemplate,

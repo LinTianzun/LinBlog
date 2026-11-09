@@ -177,6 +177,22 @@ interface MockState {
     consecutiveFailures: number
     lastError: string
   }
+  aiPrompts: AiPromptMock[]
+  aiPromptBindings: Record<string, string>
+}
+
+export interface AiPromptMock {
+  id: number | null
+  key: string
+  featureKey: string
+  name: string
+  description: string
+  variables: string
+  content: string
+  enabled: boolean
+  isDefault: boolean
+  customized: boolean
+  updatedAt: string | null
 }
 
 export interface WorkflowMock {
@@ -240,6 +256,35 @@ export async function installApiMock(page: Page): Promise<MockState> {
       consecutiveFailures: 0,
       lastError: '',
     },
+    aiPrompts: [
+      {
+        id: 1,
+        key: 'suggest',
+        featureKey: 'suggest',
+        name: '写作建议',
+        description: '生成文章简介与标签建议',
+        variables: '{{title}}\n{{content}}',
+        content: '请为文章《{{title}}》生成简介。',
+        enabled: true,
+        isDefault: true,
+        customized: false,
+        updatedAt: null,
+      },
+      {
+        id: 2,
+        key: 'cover',
+        featureKey: 'cover',
+        name: '封面配图',
+        description: '生成文章封面插画',
+        variables: '{{title}}\n{{introduce}}',
+        content: '请为《{{title}}》生成一张封面插画。',
+        enabled: true,
+        isDefault: true,
+        customized: false,
+        updatedAt: null,
+      },
+    ],
+    aiPromptBindings: {},
   }
 
   // 只拦截后端 /api 前缀：Vite dev 的 /@api/... 与 /@id/... 模块路径不能被
@@ -445,39 +490,97 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 提示词模板：按功能分组，内置模板 + 自定义模板 + 功能选用关系
     if (method === 'GET' && path === '/api/ai/prompts') {
       await fulfill({
-        list: [
-          {
-            key: 'suggest',
-            name: '写作建议',
-            description: '生成文章简介与标签建议',
-            variables: '{{title}}\n{{content}}',
-            content: '请为文章《{{title}}》生成简介。',
-            enabled: true,
-            customized: false,
-            updatedAt: null,
-          },
-        ],
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
       })
       return
     }
 
-    if (method === 'PUT' && path === '/api/ai/prompts/suggest') {
+    if (method === 'POST' && path === '/api/ai/prompts') {
+      const created = {
+        id: 30,
+        key: 'custom_e2e',
+        featureKey: String(body?.featureKey || 'suggest'),
+        name: String(body?.name || '自定义提示词'),
+        description: String(body?.description || ''),
+        variables: '{{title}}\n{{content}}',
+        content: String(body?.content || ''),
+        enabled: true,
+        isDefault: false,
+        customized: true,
+        updatedAt: '2026-11-10 09:00:00',
+      }
+      state.aiPrompts = [...state.aiPrompts, created]
       await fulfill({
-        list: [
-          {
-            key: 'suggest',
-            name: '写作建议',
-            description: '生成文章简介与标签建议',
-            variables: '{{title}}\n{{content}}',
-            content: String(body?.content || ''),
-            enabled: body?.enabled !== false,
-            customized: true,
-            updatedAt: '2026-11-09 21:14:00',
-          },
-        ],
+        created,
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
+      }, { message: '自定义提示词已创建' })
+      return
+    }
+
+    if (method === 'PUT' && /^\/api\/ai\/prompts\/[^/]+$/.test(path)) {
+      const key = path.split('/')[4]
+      state.aiPrompts = state.aiPrompts.map(item => item.key === key
+        ? {
+          ...item,
+          name: typeof body?.name === 'string' && body.name ? body.name : item.name,
+          description: typeof body?.description === 'string' ? body.description : item.description,
+          content: String(body?.content ?? item.content),
+          enabled: body?.enabled !== false,
+          customized: true,
+          updatedAt: '2026-11-10 09:00:00',
+        }
+        : item)
+      await fulfill({
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
       }, { message: '提示词模板已保存' })
+      return
+    }
+
+    if (method === 'POST' && /^\/api\/ai\/prompts\/[^/]+\/select$/.test(path)) {
+      const key = path.split('/')[4]
+      const target = state.aiPrompts.find(item => item.key === key)
+      if (!target) {
+        await fulfill(null, { code: 404, message: '提示词模板不存在', status: 404 })
+        return
+      }
+      state.aiPromptBindings = { ...state.aiPromptBindings, [target.featureKey]: key }
+      await fulfill({
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
+      }, { message: '已切换使用该提示词' })
+      return
+    }
+
+    if (method === 'DELETE' && /^\/api\/ai\/prompts\/[^/]+$/.test(path)) {
+      const key = path.split('/')[4]
+      state.aiPrompts = state.aiPrompts.filter(item => item.key !== key)
+      const bindings = { ...state.aiPromptBindings }
+      Object.keys(bindings).forEach(feature => {
+        if (bindings[feature] === key) delete bindings[feature]
+      })
+      state.aiPromptBindings = bindings
+      await fulfill({
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
+      }, { message: '自定义提示词已删除' })
+      return
+    }
+
+    if (method === 'POST' && /^\/api\/ai\/prompts\/[^/]+\/reset$/.test(path)) {
+      const key = path.split('/')[4]
+      state.aiPrompts = state.aiPrompts.map(item => item.key === key
+        ? { ...item, content: '请为文章《{{title}}》生成简介。', customized: false, enabled: true }
+        : item)
+      await fulfill({
+        list: state.aiPrompts,
+        bindings: state.aiPromptBindings,
+      }, { message: '已恢复默认提示词' })
       return
     }
 

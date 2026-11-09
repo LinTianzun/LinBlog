@@ -254,13 +254,16 @@ async function getHealthStatus(req, res) {
 }
 
 /**
- * 提示词模板列表：返回全部可配置模板，
- * 未自定义过的模板也会以内置默认内容呈现，作者能直接看到原文。
+ * 提示词模板列表：返回全部模板（内置 + 自定义）
+ * 与各功能当前选用的模板映射，作者在新页面里按功能挑选。
  */
 async function getPromptTemplates(req, res) {
     try {
-        const list = await aiModel.listPromptTemplates()
-        return res.json({ code: 200, message: '获取提示词模板成功', data: { list } })
+        const [list, bindings] = await Promise.all([
+            aiModel.listPromptTemplates(),
+            aiModel.listPromptBindings()
+        ])
+        return res.json({ code: 200, message: '获取提示词模板成功', data: { list, bindings } })
     } catch (err) {
         console.error('[AI] 获取提示词模板失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '获取提示词模板失败' })
@@ -268,17 +271,51 @@ async function getPromptTemplates(req, res) {
 }
 
 /**
- * 保存提示词模板：只接受内置模板里存在的标识，
- * 避免前端传任意键值写进数据库。
+ * 新建自定义提示词：必须挂在内置功能下，创建后默认启用。
+ */
+async function createPromptTemplate(req, res) {
+    const featureKey = typeof req.body?.featureKey === 'string' ? req.body.featureKey.trim() : ''
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+    const description = typeof req.body?.description === 'string' ? req.body.description.trim() : ''
+    const content = typeof req.body?.content === 'string' ? req.body.content : ''
+
+    if (!name) {
+        return res.status(400).json({ code: 400, message: '请填写提示词名称' })
+    }
+    if (!content.trim()) {
+        return res.status(400).json({ code: 400, message: '提示词内容不能为空' })
+    }
+    if (content.length > 20000) {
+        return res.status(400).json({ code: 400, message: '提示词内容过长' })
+    }
+
+    try {
+        const created = await aiModel.createPromptTemplate({
+            featureKey,
+            name: name.slice(0, 64),
+            description: description.slice(0, 255),
+            content
+        })
+        if (!created) {
+            return res.status(404).json({ code: 404, message: '提示词所属功能不存在' })
+        }
+        const [list, bindings] = await Promise.all([
+            aiModel.listPromptTemplates(),
+            aiModel.listPromptBindings()
+        ])
+        return res.json({ code: 200, message: '自定义提示词已创建', data: { created, list, bindings } })
+    } catch (err) {
+        console.error('[AI] 创建提示词模板失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '创建提示词模板失败' })
+    }
+}
+
+/**
+ * 保存提示词模板：内置与自定义模板都走这里；
+ * 变量清单跟随所属功能，自定义模板不许改变所属功能。
  */
 async function updatePromptTemplate(req, res) {
     const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
-    const { getDefaultTemplate } = require('../utils/aiPromptTemplates')
-    const fallback = getDefaultTemplate(key)
-    if (!fallback) {
-        return res.status(404).json({ code: 404, message: '提示词模板不存在' })
-    }
-
     const content = typeof req.body?.content === 'string' ? req.body.content : ''
     if (!content.trim()) {
         return res.status(400).json({ code: 400, message: '提示词内容不能为空' })
@@ -287,26 +324,84 @@ async function updatePromptTemplate(req, res) {
         return res.status(400).json({ code: 400, message: '提示词内容过长' })
     }
 
-    const name = typeof req.body?.name === 'string' && req.body.name.trim()
-        ? req.body.name.trim().slice(0, 64)
-        : fallback.name
-    const description = typeof req.body?.description === 'string' && req.body.description.trim()
-        ? req.body.description.trim().slice(0, 255)
-        : fallback.description
+    try {
+        const templates = await aiModel.listPromptTemplates()
+        const existing = templates.find(item => item.key === key)
+        if (!existing) {
+            return res.status(404).json({ code: 404, message: '提示词模板不存在' })
+        }
+
+        const { getDefaultTemplate } = require('../utils/aiPromptTemplates')
+        const feature = getDefaultTemplate(existing.featureKey)
+        if (!feature) {
+            return res.status(404).json({ code: 404, message: '提示词所属功能不存在' })
+        }
+
+        const name = typeof req.body?.name === 'string' && req.body.name.trim()
+            ? req.body.name.trim().slice(0, 64)
+            : existing.name
+        const description = typeof req.body?.description === 'string' && req.body.description.trim()
+            ? req.body.description.trim().slice(0, 255)
+            : existing.description
     const enabled = req.body?.enabled !== false
 
-    try {
         const list = await aiModel.savePromptTemplate(key, {
             name,
             description,
             content,
-            variables: fallback.variables,
+            variables: feature.variables,
             enabled
         })
-        return res.json({ code: 200, message: '提示词模板已保存', data: { list } })
+        const bindings = await aiModel.listPromptBindings()
+        return res.json({ code: 200, message: '提示词模板已保存', data: { list, bindings } })
     } catch (err) {
         console.error('[AI] 保存提示词模板失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '保存提示词模板失败' })
+    }
+}
+
+/**
+ * 选用模板：把某个功能切换到指定模板，之后该功能调用模型时优先用它。
+ */
+async function selectPromptTemplate(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    try {
+        const ok = await aiModel.selectPromptTemplate(key)
+        if (!ok) {
+            return res.status(404).json({ code: 404, message: '提示词模板不存在' })
+        }
+        const [list, bindings] = await Promise.all([
+            aiModel.listPromptTemplates(),
+            aiModel.listPromptBindings()
+        ])
+        return res.json({ code: 200, message: '已切换使用该提示词', data: { list, bindings } })
+    } catch (err) {
+        console.error('[AI] 选用提示词模板失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '选用提示词模板失败' })
+    }
+}
+
+/**
+ * 删除自定义提示词：内置模板不可删除。
+ */
+async function deletePromptTemplate(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    try {
+        const deleted = await aiModel.deletePromptTemplate(key)
+        if (deleted === null) {
+            return res.status(400).json({ code: 400, message: '内置提示词不能删除，可以恢复默认' })
+        }
+        if (deleted === false) {
+            return res.status(404).json({ code: 404, message: '提示词模板不存在' })
+        }
+        const [list, bindings] = await Promise.all([
+            aiModel.listPromptTemplates(),
+            aiModel.listPromptBindings()
+        ])
+        return res.json({ code: 200, message: '自定义提示词已删除', data: { list, bindings } })
+    } catch (err) {
+        console.error('[AI] 删除提示词模板失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '删除提示词模板失败' })
     }
 }
 
@@ -322,7 +417,8 @@ async function resetPromptTemplate(req, res) {
 
     try {
         const list = await aiModel.resetPromptTemplate(key)
-        return res.json({ code: 200, message: '已恢复默认提示词', data: { list } })
+        const bindings = await aiModel.listPromptBindings()
+        return res.json({ code: 200, message: '已恢复默认提示词', data: { list, bindings } })
     } catch (err) {
         console.error('[AI] 恢复默认提示词失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '恢复默认提示词失败' })
@@ -452,7 +548,10 @@ module.exports = {
     checkAllModels,
     getHealthStatus,
     getPromptTemplates,
+    createPromptTemplate,
     updatePromptTemplate,
+    selectPromptTemplate,
+    deletePromptTemplate,
     resetPromptTemplate,
     getSettings,
     updateSettings,

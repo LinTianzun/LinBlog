@@ -39,7 +39,8 @@ const ALL_MIGRATIONS = [
     '20261113_ai_model_health',
     '20261114_ai_model_quota',
     '20261115_ai_content_marker',
-    '20261116_ai_prompt_template'
+    '20261116_ai_prompt_template',
+    '20261117_ai_prompt_custom'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -679,5 +680,36 @@ test('ai prompt template migration creates the table and seeds default templates
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261116_ai_prompt_template'
+    ))
+})
+
+test('ai prompt custom migration adds feature key and binding table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261117_ai_prompt_custom')
+        }
+        // feature_key 列已存在时 ADD COLUMN 不会执行；这里直接返回空让迁移走完整流程
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    // 存量库要补 feature_key 列，并把旧模板的所属功能回填成自己的标识
+    assert.ok(calls.some(call => call.sql.includes('ADD COLUMN feature_key')))
+    assert.ok(calls.some(call =>
+        call.sql.includes("UPDATE ai_prompt_template SET feature_key = template_key WHERE feature_key = ''")
+    ))
+
+    // 新建「功能 → 选用的模板」绑定表，支撑自定义提示词切换
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS ai_prompt_binding')
+    ))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261117_ai_prompt_custom'
     ))
 })

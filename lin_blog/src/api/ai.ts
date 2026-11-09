@@ -336,6 +336,7 @@ export function getAiUsageStats(days = 30) {
 export interface AiPromptTemplate {
   id: number | null;
   key: string;
+  featureKey: string;
   name: string;
   description: string;
   content: string;
@@ -346,19 +347,42 @@ export interface AiPromptTemplate {
   updatedAt: string | null;
 }
 
+// 各功能当前选用的模板：featureKey → templateKey
+export type AiPromptBindings = Record<string, string>;
+
 export function getAiPromptTemplates() {
-  return request.get<ApiResult<{ list: AiPromptTemplate[] }>>("/ai/prompts");
+  return request.get<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>("/ai/prompts");
+}
+
+// 新建自定义提示词：挂在某个内置功能下，创建后可随时切换选用
+export function createAiPromptTemplate(payload: {
+  featureKey: string;
+  name: string;
+  description?: string;
+  content: string;
+}) {
+  return request.post<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>("/ai/prompts", payload);
 }
 
 export function updateAiPromptTemplate(
   key: string,
   payload: { content: string; name?: string; description?: string; enabled?: boolean }
 ) {
-  return request.put<ApiResult<{ list: AiPromptTemplate[] }>>(`/ai/prompts/${key}`, payload);
+  return request.put<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(`/ai/prompts/${key}`, payload);
+}
+
+// 选用模板：该功能后续调用模型时优先使用它
+export function selectAiPromptTemplate(key: string) {
+  return request.post<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(`/ai/prompts/${key}/select`);
+}
+
+// 删除自定义提示词（内置模板不可删除）
+export function deleteAiPromptTemplate(key: string) {
+  return request.delete<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(`/ai/prompts/${key}`);
 }
 
 export function resetAiPromptTemplate(key: string) {
-  return request.post<ApiResult<{ list: AiPromptTemplate[] }>>(`/ai/prompts/${key}/reset`);
+  return request.post<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(`/ai/prompts/${key}/reset`);
 }
 
 export function getMyAiUsage() {

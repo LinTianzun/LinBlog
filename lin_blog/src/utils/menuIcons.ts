@@ -9,6 +9,7 @@
 import { markRaw, type Component } from 'vue'
 import {
     IconAvatarFill,
+    IconEditFill,
     IconFileFill,
     IconFillFill,
     IconFolderCloseFill,
@@ -25,6 +26,7 @@ import {
 
 const iconMap: Record<string, Component> = {
     IconAvatarFill,
+    IconEditFill,
     IconFileFill,
     IconFillFill,
     IconFolderCloseFill,

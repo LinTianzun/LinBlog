@@ -575,6 +575,7 @@ const tablesSql = {
   ,ai_prompt_template: `CREATE TABLE IF NOT EXISTS ai_prompt_template(
     id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '模板ID',
     template_key VARCHAR(64) NOT NULL COMMENT '模板标识（与代码内提示词一一对应）',
+    feature_key VARCHAR(64) NOT NULL DEFAULT '' COMMENT '所属功能标识（内置模板与 template_key 相同）',
     name VARCHAR(64) NOT NULL COMMENT '显示名称',
     description VARCHAR(255) NULL COMMENT '用途说明',
     content LONGTEXT NOT NULL COMMENT '提示词正文（支持 {{变量}} 占位符）',
@@ -584,8 +585,16 @@ const tablesSql = {
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_ai_prompt_key (template_key)
+    UNIQUE KEY uk_ai_prompt_key (template_key),
+    INDEX idx_ai_prompt_feature (feature_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 提示词模板';`
+
+  ,ai_prompt_binding: `CREATE TABLE IF NOT EXISTS ai_prompt_binding(
+    feature_key VARCHAR(64) NOT NULL COMMENT '功能标识（suggest/writing/cover 等）',
+    template_key VARCHAR(64) NOT NULL COMMENT '该功能当前选用的模板标识',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (feature_key)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 功能选用的提示词模板';`
 
   ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
@@ -881,6 +890,19 @@ async function ensureAiPromptTemplateSchema(exec = query) {
       [item.key, item.name, item.description, item.content, item.variables]
     );
   }
+}
+
+// 自定义提示词：存量库补 feature_key 列并回填，新建「功能 → 模板」选用绑定表。
+async function ensureAiPromptCustomSchema(exec = query) {
+  await exec(tablesSql.ai_prompt_template);
+  await ensureColumn(exec, 'ai_prompt_template', 'feature_key', {
+    definition: "VARCHAR(64) NOT NULL DEFAULT ''",
+    comment: '所属功能标识（内置模板与 template_key 相同）'
+  });
+  await exec("UPDATE ai_prompt_template SET feature_key = template_key WHERE feature_key = ''");
+  await ensureIndex(exec, 'ai_prompt_template', 'idx_ai_prompt_feature',
+    'ALTER TABLE ai_prompt_template ADD INDEX idx_ai_prompt_feature (feature_key)');
+  await exec(tablesSql.ai_prompt_binding);
 }
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -1517,7 +1539,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2330,6 +2352,10 @@ const migrations = [
   {
     version: '20261116_ai_prompt_template',
     up: ensureAiPromptTemplateSchema
+  },
+  {
+    version: '20261117_ai_prompt_custom',
+    up: ensureAiPromptCustomSchema
   }
 ];
 

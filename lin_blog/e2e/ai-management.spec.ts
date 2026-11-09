@@ -215,7 +215,7 @@ test('AI 管理页可生成运营周报并展示统计与文字小节', async ({
   await expect(report).toContainText('下周建议')
 })
 
-test('AI 管理页支持巡检和提示词模板', async ({ page }) => {
+test('AI 管理页支持手动巡检模型', async ({ page }) => {
   await seedSession(page, {
     id: 1,
     isSuperAdmin: true,
@@ -231,11 +231,4 @@ test('AI 管理页支持巡检和提示词模板', async ({ page }) => {
 
   await page.getByRole('button', { name: '立即巡检' }).click()
   await expect(page.locator('.ai-health-checked')).toContainText(localText('2026-11-09T21:14:00.000Z'))
-
-  const prompt = page.locator('.ai-prompt-item').first()
-  await expect(prompt).toContainText('写作建议')
-  await prompt.locator('textarea').fill('自定义提示词 {{title}}')
-  await prompt.getByRole('button', { name: '保存' }).click()
-  await expect(prompt).toContainText('已自定义')
-  await expect(prompt.locator('textarea')).toHaveValue('自定义提示词 {{title}}')
 })

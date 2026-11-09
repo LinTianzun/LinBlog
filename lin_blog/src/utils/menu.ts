@@ -33,6 +33,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconPaintBrushFill'
     },
     {
+        path: 'aiPrompt',
+        name: '提示词模板',
+        icon: 'IconEditFill'
+    },
+    {
         path: 'reportedComments',
         name: '举报处理',
         icon: 'IconWarningOutline'

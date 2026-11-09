@@ -1521,12 +1521,14 @@ test('立即巡检接口返回总数、失败数与巡检时间', async () => {
 
 test('提示词模板列表补齐未配置的默认模板', async () => {
     const originalList = aiModel.listPromptTemplates
+    const originalBindings = aiModel.listPromptBindings
     const { listDefaultTemplates } = require(path.resolve(__dirname, '../utils/aiPromptTemplates.js'))
     const defaults = listDefaultTemplates()
 
     aiModel.listPromptTemplates = async () => defaults.map(item => ({
         id: null,
         key: item.key,
+        featureKey: item.key,
         name: item.name,
         description: item.description,
         content: item.content,
@@ -1536,6 +1538,7 @@ test('提示词模板列表补齐未配置的默认模板', async () => {
         customized: false,
         updatedAt: null
     }))
+    aiModel.listPromptBindings = async () => ({})
 
     try {
         const res = createRes()
@@ -1543,20 +1546,39 @@ test('提示词模板列表补齐未配置的默认模板', async () => {
 
         assert.equal(res.body.code, 200)
         assert.ok(res.body.data.list.length >= 8)
+        assert.ok(typeof res.body.data.bindings === 'object')
         // 每个模板都要能看出可用变量，作者才知道能填什么
         assert.ok(res.body.data.list.every(item => typeof item.variables === 'string' && item.variables))
+        // 每个模板都标明所属功能，页面按功能分组展示
+        assert.ok(res.body.data.list.every(item => typeof item.featureKey === 'string' && item.featureKey))
     } finally {
         aiModel.listPromptTemplates = originalList
+        aiModel.listPromptBindings = originalBindings
     }
 })
 
-test('保存提示词模板只接受内置模板标识', async () => {
+test('保存提示词模板：未知模板 404，内置与自定义都可编辑', async () => {
     const originalSave = aiModel.savePromptTemplate
+    const originalList = aiModel.listPromptTemplates
+    const originalBindings = aiModel.listPromptBindings
     let saved = null
     aiModel.savePromptTemplate = async (key, payload) => {
         saved = { key, payload }
         return []
     }
+    aiModel.listPromptTemplates = async () => ([
+        {
+            id: 1, key: 'suggest', featureKey: 'suggest', name: '写作建议',
+            description: '', content: '内置内容', variables: '', enabled: true,
+            isDefault: true, customized: false, updatedAt: null
+        },
+        {
+            id: 2, key: 'custom_abc', featureKey: 'suggest', name: '我的风格',
+            description: '', content: '自定义内容', variables: '', enabled: true,
+            isDefault: false, customized: true, updatedAt: null
+        }
+    ])
+    aiModel.listPromptBindings = async () => ({})
 
     try {
         const missing = createRes()
@@ -1577,9 +1599,117 @@ test('保存提示词模板只接受内置模板标识', async () => {
         assert.equal(saved.payload.content, '自定义提示词')
         // 未显式传启用状态时默认启用
         assert.equal(saved.payload.enabled, true)
+
+        const custom = createRes()
+        await aiManageController.updatePromptTemplate(
+            { params: { key: 'custom_abc' }, body: { content: '改一版自定义内容' } },
+            custom
+        )
+        assert.equal(custom.body.code, 200)
+        assert.equal(saved.key, 'custom_abc')
     } finally {
         aiModel.savePromptTemplate = originalSave
+        aiModel.listPromptTemplates = originalList
+        aiModel.listPromptBindings = originalBindings
     }
+})
+
+test('自定义提示词可以创建、选用与删除，内置模板拒绝删除', async () => {
+    const originalCreate = aiModel.createPromptTemplate
+    const originalSelect = aiModel.selectPromptTemplate
+    const originalDelete = aiModel.deletePromptTemplate
+    const originalList = aiModel.listPromptTemplates
+    const originalBindings = aiModel.listPromptBindings
+
+    let created = null
+    let selected = null
+    let deleted = null
+    aiModel.createPromptTemplate = async (payload) => {
+        created = payload
+        // 与真实实现一致：功能必须来自内置清单，否则视为功能不存在
+        const { getDefaultTemplate } = require(path.resolve(__dirname, '../utils/aiPromptTemplates.js'))
+        if (!getDefaultTemplate(payload.featureKey)) return null
+        return { id: 9, key: 'custom_xyz', featureKey: payload.featureKey }
+    }
+    aiModel.selectPromptTemplate = async (key) => {
+        selected = key
+        return key !== 'missing'
+    }
+    aiModel.deletePromptTemplate = async (key) => {
+        deleted = key
+        return key === 'builtin' ? null : true
+    }
+    aiModel.listPromptTemplates = async () => []
+    aiModel.listPromptBindings = async () => ({ suggest: 'custom_xyz' })
+
+    try {
+        const createdRes = createRes()
+        await aiManageController.createPromptTemplate(
+            { body: { featureKey: 'suggest', name: '我的风格', content: '内容' } },
+            createdRes
+        )
+        assert.equal(createdRes.body.code, 200)
+        assert.equal(created.featureKey, 'suggest')
+        assert.equal(created.name, '我的风格')
+
+        const unknownFeature = createRes()
+        await aiManageController.createPromptTemplate(
+            { body: { featureKey: 'no-such', name: 'x', content: '内容' } },
+            unknownFeature
+        )
+        assert.equal(unknownFeature.statusCode, 404)
+
+        const selectRes = createRes()
+        await aiManageController.selectPromptTemplate({ params: { key: 'custom_xyz' } }, selectRes)
+        assert.equal(selectRes.body.code, 200)
+        assert.equal(selected, 'custom_xyz')
+
+        const missingSelect = createRes()
+        await aiManageController.selectPromptTemplate({ params: { key: 'missing' } }, missingSelect)
+        assert.equal(missingSelect.statusCode, 404)
+
+        const deleteBuiltin = createRes()
+        await aiManageController.deletePromptTemplate({ params: { key: 'builtin' } }, deleteBuiltin)
+        assert.equal(deleteBuiltin.statusCode, 400)
+
+        const deleteCustom = createRes()
+        await aiManageController.deletePromptTemplate({ params: { key: 'custom_xyz' } }, deleteCustom)
+        assert.equal(deleteCustom.body.code, 200)
+        assert.equal(deleted, 'custom_xyz')
+    } finally {
+        aiModel.createPromptTemplate = originalCreate
+        aiModel.selectPromptTemplate = originalSelect
+        aiModel.deletePromptTemplate = originalDelete
+        aiModel.listPromptTemplates = originalList
+        aiModel.listPromptBindings = originalBindings
+    }
+})
+
+test('提示词解析顺序：选用模板优先，其次启用中的内置模板', async () => {
+    const queries = []
+
+    const queryFn = async (sql, values) => {
+        queries.push({ sql, values })
+        if (sql.includes('ai_prompt_binding')) {
+            return [{ content: '选用中的自定义内容' }]
+        }
+        return [{ content: '内置默认内容' }]
+    }
+
+    try {
+        const bound = await aiModel.getEnabledPromptTemplate('suggest', queryFn)
+        assert.equal(bound, '选用中的自定义内容')
+        assert.equal(queries[0].values[0], 'suggest')
+
+        queries.length = 0
+        const emptyFn = async (sql) => {
+            queries.push(sql)
+            if (sql.includes('ai_prompt_binding')) return []
+            return []
+        }
+        const fallback = await aiModel.getEnabledPromptTemplate('suggest', emptyFn)
+        assert.equal(fallback, null)
+    } finally { /* nothing to restore */ }
 })
 
 test('提示词模板渲染会把变量填进正文', () => {
