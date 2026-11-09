@@ -3,6 +3,13 @@ import { installApiMock, seedSession } from './fixtures/mockApi'
 
 const MANAGE_PERMISSIONS = ['ai.manage', 'ai.use']
 
+// 后端回传 ISO（UTC），页面按浏览器本地时区显示；断言时同样换算本地时间
+const localText = (iso: string): string => {
+  const date = new Date(iso)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 test('AI 管理页展示接入模型并可保存用量策略', async ({ page }) => {
   await seedSession(page, {
     id: 1,
@@ -93,6 +100,9 @@ test('可以从环境变量导入 AI 配置', async ({ page }) => {
 
   await page.getByRole('button', { name: '导入环境变量配置' }).click()
   await expect(page.locator('.ai-model-card')).toHaveCount(1)
+  // 导入后要有可见反馈，且页面主体不被提示替换
+  await expect(page.locator('.ai-banner.is-success')).toContainText('环境变量配置')
+  await expect(page.locator('.ai-model-card')).toHaveCount(1)
 })
 
 test('没有 ai.manage 权限时侧边栏不显示 AI 管理入口', async ({ page }) => {
@@ -148,4 +158,33 @@ test('AI 管理页展示用量统计面板', async ({ page }) => {
   await expect(page.locator('.ai-stats-break').nth(2)).toContainText('模型健康')
   await expect(page.locator('.ai-stats-break').nth(3)).toContainText('每日趋势')
   await expect(page.locator('.ai-stats-break').nth(2)).toContainText('智谱 GLM')
+
+  // 每日趋势改用 ECharts 折线，不再是长列表
+  await expect(page.locator('.ai-trend-chart canvas')).toBeVisible()
+})
+
+test('连通性测试后模型健康信息立即刷新', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiManage')
+  await expect(page.locator('.ai-model-card')).toHaveCount(1, { timeout: 30_000 })
+
+  const card = page.locator('.ai-model-card').first()
+  await expect(card.locator('.ai-model-health')).toContainText(localText('2026-11-09T01:40:00.000Z'))
+
+  // 点连通性测试后，健康数据与最近测试时间要立刻更新
+  await card.getByRole('button', { name: '连通性测试' }).click()
+  await expect(card.locator('.ai-model-health')).toContainText(localText('2026-11-09T13:14:00.000Z'))
+  await expect(card.locator('.ai-model-health')).toContainText('1.1 秒')
+
+  // 统计面板里的「模型健康」也要跟着刷新
+  const healthBreak = page.locator('.ai-stats-break').nth(2)
+  await expect(healthBreak).toContainText(localText('2026-11-09T13:14:00.000Z'))
 })

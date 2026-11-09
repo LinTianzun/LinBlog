@@ -166,6 +166,17 @@ interface MockState {
   workflows: Record<number, WorkflowMock>
   versions: WorkflowVersionMock[]
   session: { permissions: string[]; isSuperAdmin: boolean }
+  aiHealth: {
+    lastTestAt: string
+    lastSuccessAt: string
+    lastLatencyMs: number
+    avgLatencyMs: number
+    testCount: number
+    successCount: number
+    successRate: number
+    consecutiveFailures: number
+    lastError: string
+  }
 }
 
 export interface WorkflowMock {
@@ -218,6 +229,17 @@ export async function installApiMock(page: Page): Promise<MockState> {
     workflows: {},
     versions: [],
     session: { permissions: [], isSuperAdmin: false },
+    aiHealth: {
+      lastTestAt: '2026-11-09T01:40:00.000Z',
+      lastSuccessAt: '2026-11-09T01:40:00.000Z',
+      lastLatencyMs: 1180,
+      avgLatencyMs: 1250,
+      testCount: 6,
+      successCount: 6,
+      successRate: 100,
+      consecutiveFailures: 0,
+      lastError: '',
+    },
   }
 
   // 只拦截后端 /api 前缀：Vite dev 的 /@api/... 与 /@id/... 模块路径不能被
@@ -331,17 +353,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
             remark: '默认写作与配图模型',
             createdAt: '2026-11-09 10:00:00',
             updatedAt: '2026-11-09 10:00:00',
-            health: {
-              lastTestAt: '2026-11-09 09:40:00',
-              lastSuccessAt: '2026-11-09 09:40:00',
-              lastLatencyMs: 1180,
-              avgLatencyMs: 1250,
-              testCount: 6,
-              successCount: 6,
-              successRate: 100,
-              consecutiveFailures: 0,
-              lastError: '',
-            },
+            health: { ...state.aiHealth },
           },
         ],
       })
@@ -382,7 +394,28 @@ export async function installApiMock(page: Page): Promise<MockState> {
         enabled: true,
         isDefault: true,
         remark: '由环境变量 LINBLOG_AI_* 导入，可在后台继续维护',
-      }, { message: '环境变量配置已导入为默认模型' })
+      }, { message: '环境变量配置已导入为接入模型' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/models/1/test') {
+      // 连通性测试返回健康快照，前端应立即写回模型卡片
+      state.aiHealth = {
+        lastTestAt: '2026-11-09T13:14:00.000Z',
+        lastSuccessAt: '2026-11-09T13:14:00.000Z',
+        lastLatencyMs: 880,
+        avgLatencyMs: 1080,
+        testCount: 7,
+        successCount: 7,
+        successRate: 100,
+        consecutiveFailures: 0,
+        lastError: '',
+      }
+      await fulfill({
+        ok: true,
+        latencyMs: 880,
+        health: state.aiHealth,
+      }, { message: '连通性测试通过（耗时 880 毫秒）' })
       return
     }
 
@@ -478,15 +511,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
             modelId: 1,
             modelName: '智谱 GLM',
             enabled: true,
-            lastTestAt: '2026-11-09 09:40:00',
-            lastSuccessAt: '2026-11-09 09:40:00',
-            lastLatencyMs: 1180,
-            avgLatencyMs: 1250,
-            testCount: 6,
-            successCount: 6,
-            successRate: 100,
-            consecutiveFailures: 0,
-            lastError: '',
+            ...state.aiHealth,
           },
         ],
         days: 30,

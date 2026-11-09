@@ -35,8 +35,8 @@ function normalizeHealthRow(row) {
     const testCount = Number(row.test_count) || 0
     const successCount = Number(row.success_count) || 0
     return {
-        lastTestAt: row.last_test_at,
-        lastSuccessAt: row.last_success_at,
+        lastTestAt: toIsoString(row.last_test_at),
+        lastSuccessAt: toIsoString(row.last_success_at),
         lastLatencyMs: Number(row.last_latency_ms) || 0,
         avgLatencyMs: Number(row.avg_latency_ms) || 0,
         testCount,
@@ -45,6 +45,22 @@ function normalizeHealthRow(row) {
         consecutiveFailures: Number(row.consecutive_failures) || 0,
         lastError: row.last_error ? String(row.last_error) : ''
     }
+}
+
+/**
+ * 把数据库里的 DATETIME 统一转成 ISO（UTC）字符串。
+ * mysql2 按进程时区解析 DATETIME，直接透传会让前端按访客本地时区解读时出现时差。
+ */
+function toIsoString(value) {
+    if (!value) return null
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value.toISOString()
+    }
+    const text = String(value).trim()
+    if (!text) return null
+    // DATETIME 形如 "2026-11-09 13:14:00"，按进程本地时区解析后再转 UTC
+    const date = new Date(text.includes('T') ? text : text.replace(' ', 'T'))
+    return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
 function normalizeModelRow(row) {
@@ -113,7 +129,7 @@ function findModelById(id) {
  * 密钥在这里才解密，调用方拿到的是可直接用于请求的明文配置。
  */
 async function getActiveModelConfig() {
-    const rows = await query(
+    const envRows = await query(
         `SELECT ${MODEL_FIELDS} FROM ai_model
          WHERE enabled = 1
          ORDER BY is_default DESC, id ASC
@@ -141,17 +157,27 @@ async function getActiveModelConfig() {
  * 把环境变量里的 AI 配置导入成可管理的模型记录。
  * 已有同地址同模型的记录时只更新密钥与参数，不重复插入。
  */
-async function importEnvModel() {
+async function importEnvModel({
+    queryFn = query,
+    createFn = createModel,
+    updateFn = updateModel
+} = {}) {
     const config = require('../../../config/default')
     if (!config.ai) {
         return { imported: false, reason: '环境变量未配置 AI（需要 LINBLOG_AI_BASE_URL / LINBLOG_AI_API_KEY / LINBLOG_AI_MODEL）' }
     }
 
-    const rows = await query(
-        `SELECT id FROM ai_model WHERE base_url = ? AND chat_model = ? LIMIT 1`,
+    const anyModelRows = await queryFn('SELECT id FROM ai_model LIMIT 1')
+    const isFirstModel = (anyModelRows?.length || 0) === 0
+    const envRows = await queryFn(
+        `SELECT id, chat_model, image_model FROM ai_model WHERE base_url = ?`,
         [config.ai.baseUrl, config.ai.model]
     )
-    const existingId = rows?.[0]?.id
+    const matched = (envRows || []).find(row =>
+        String(row.chat_model || '') === config.ai.model
+        || (config.ai.imageModel && String(row.image_model || '') === config.ai.imageModel)
+    )
+    const existingId = matched?.id
 
     const payload = {
         name: guessProviderLabel(config.ai.baseUrl, config.ai.model),
@@ -163,16 +189,26 @@ async function importEnvModel() {
         imageSize: config.ai.imageSize,
         timeoutMs: config.ai.timeoutMs,
         enabled: true,
-        isDefault: true,
+        isDefault: isFirstModel,
         remark: '由环境变量 LINBLOG_AI_* 导入，可在后台继续维护'
     }
 
     if (existingId) {
-        const updated = await updateModel(Number(existingId), payload)
+        // 已存在的模型只同步「连接信息」：密钥、地址与模型名。
+        // 作者在后台改过的名称、启停、默认标记与备注都保留，避免导入把配置冲掉。
+        const updated = await updateFn(Number(existingId), {
+            provider: payload.provider,
+            baseUrl: payload.baseUrl,
+            apiKey: payload.apiKey,
+            chatModel: payload.chatModel,
+            imageModel: payload.imageModel,
+            imageSize: payload.imageSize,
+            timeoutMs: payload.timeoutMs
+        })
         return { imported: true, created: false, model: updated }
     }
 
-    const created = await createModel(payload)
+    const created = await createFn(payload)
     return { imported: true, created: true, model: created }
 }
 
@@ -312,9 +348,9 @@ async function deleteModel(id) {
 /**
  * 记录一次连通性测试的结果：耗时、成功率与连续失败次数都会滚动更新。
  */
-async function recordModelHealth(modelId, { ok, latencyMs = 0, error = null }) {
-    const rows = await query(
-        `SELECT test_count, success_count, avg_latency_ms, consecutive_failures
+async function recordModelHealth(modelId, { ok, latencyMs = 0, error = null }, queryFn = query) {
+    const rows = await queryFn(
+        `SELECT test_count, success_count, avg_latency_ms, consecutive_failures, last_success_at
          FROM ai_model_health WHERE model_id = ? LIMIT 1`,
         [modelId]
     )
@@ -329,8 +365,13 @@ async function recordModelHealth(modelId, { ok, latencyMs = 0, error = null }) {
         ? Math.round((previousAvg * previousSuccess + latencyMs) / (previousSuccess + 1))
         : previousAvg
     const consecutiveFailures = ok ? 0 : (Number(previous?.consecutive_failures) || 0) + 1
+    // 用 ISO（UTC）回传时间点，前端才能按访客本地时区显示
+    const testedAt = new Date().toISOString()
+    const lastSuccessAt = ok
+        ? testedAt
+        : toIsoString(previous?.last_success_at)
 
-    await query(
+    await queryFn(
         `INSERT INTO ai_model_health
             (model_id, last_test_at, last_success_at, last_latency_ms, avg_latency_ms,
              test_count, success_count, consecutive_failures, last_error)
@@ -363,7 +404,9 @@ async function recordModelHealth(modelId, { ok, latencyMs = 0, error = null }) {
         lastLatencyMs: Math.max(0, Math.round(Number(latencyMs) || 0)),
         avgLatencyMs,
         consecutiveFailures,
-        lastError: error ? String(error).slice(0, 255) : ''
+        lastError: error ? String(error).slice(0, 255) : '',
+        lastTestAt: testedAt,
+        lastSuccessAt
     }
 }
 

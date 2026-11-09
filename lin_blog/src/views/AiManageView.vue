@@ -12,9 +12,12 @@
         </top-title>
 
         <yk-text v-if="loading" type="secondary">正在加载 AI 配置...</yk-text>
-        <yk-text v-else-if="errorMessage" type="danger">{{ errorMessage }}</yk-text>
 
         <template v-else>
+            <!-- 提示条：失败或成功都只占一行，不再替换整页内容 -->
+            <div v-if="errorMessage" class="ai-banner is-error">{{ errorMessage }}</div>
+            <div v-else-if="noticeMessage" class="ai-banner is-success">{{ noticeMessage }}</div>
+
             <!-- 概览 -->
             <yk-space class="ai-overview" size="m">
                 <stat-card name="接入模型" :total="models.length" tone="primary" :icon="IconAppFill" />
@@ -30,7 +33,6 @@
                         <yk-title :level="4" style="margin: 0;">接入模型</yk-title>
                         <yk-text type="secondary">默认模型优先被调用，停用的模型不参与请求</yk-text>
                     </div>
-                    <yk-button size="s" type="primary" @click="openCreateModel">+ 接入模型</yk-button>
                 </header>
 
                 <yk-empty v-if="models.length === 0"
@@ -213,17 +215,9 @@
                     <div class="ai-stats-break">
                         <p class="ai-stats-break-title">每日趋势</p>
                         <yk-empty v-if="stats.trend.length === 0" description="暂无数据" />
-                        <ul v-else class="ai-stats-list">
-                            <li v-for="row in stats.trend" :key="row.day">
-                                <div class="ai-stats-list-main">
-                                    <strong>{{ row.day }}</strong>
-                                    <span>{{ row.total }} 次调用 · {{ row.tokens }} token</span>
-                                </div>
-                                <div class="ai-stats-list-side">
-                                    <span>成功 {{ row.success }}</span>
-                                </div>
-                            </li>
-                        </ul>
+                        <div v-else class="ai-trend-chart">
+                            <LineChart :data="trendChartData" chart-height="160px" />
+                        </div>
                     </div>
                 </div>
             </section>
@@ -439,7 +433,8 @@
 </template>
 
 <script lang="ts" setup>
-    import { computed, onMounted, reactive, ref } from 'vue'
+    import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
+    import { LineChart } from '../components/echarts'
     import {
         IconAppFill,
         IconPaintBrushFill,
@@ -472,6 +467,22 @@
     const loading = ref(true)
     const errorMessage = ref('')
     const noticeMessage = ref('')
+
+    type MessageOptions = {
+        type: 'primary' | 'error'
+        message: string
+    }
+
+    type ProxyWithMessage = {
+        $message?: (options: MessageOptions) => void
+    }
+
+    const proxy = getCurrentInstance()?.proxy as ProxyWithMessage | null | undefined
+
+    // 成功与失败都给可见反馈：页面顶部的提示条容易被滚动区挡住
+    const notify = (type: 'primary' | 'error', message: string): void => {
+        proxy?.$message?.({ type, message })
+    }
 
     const settings = reactive<AiSettings>({
         quotaEnabled: true,
@@ -525,6 +536,10 @@
         settings.quotaEnabled && settings.monthlyLimitPerUser > 0 ? String(settings.monthlyLimitPerUser) : '不限'
     ))
 
+    const trendChartData = computed(() => (
+        (stats.value?.trend || []).map(item => ({ date: item.day, count: item.total }))
+    ))
+
     const featureLabel = (value: string): string => {
         const labels: Record<string, string> = {
             suggest: '写作建议',
@@ -543,8 +558,18 @@
         return labels[value] || value
     }
 
-    const formatTime = (value: string | null | undefined): string =>
-        String(value || '').replace('T', ' ').slice(0, 16)
+    // 后端回传 ISO（UTC），这里统一按访客本地时区显示，避免出现「差 8 小时」的错觉
+    const formatTime = (value: string | null | undefined): string => {
+        if (!value) return '-'
+        const date = new Date(String(value).includes('T')
+            ? String(value)
+            : String(value).replace(' ', 'T'))
+        if (Number.isNaN(date.getTime())) {
+            return String(value).replace('T', ' ').slice(0, 16)
+        }
+        const pad = (input: number): string => String(input).padStart(2, '0')
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+    }
 
     // 耗时按量级切换单位，避免面板上出现「1500 毫秒」这种不好读的数字
     const formatDuration = (ms: number): string => {
@@ -754,13 +779,28 @@
         try {
             const result = await testAiModel(item.id)
             const ok = Boolean(result.data?.ok)
+            if (result.data?.health) {
+                const index = models.value.findIndex(target => target.id === item.id)
+                if (index >= 0) {
+                    // 合并而非整体替换：后端快照可能只带回部分字段
+                    models.value[index] = {
+                        ...models.value[index],
+                        health: { ...models.value[index].health, ...result.data.health }
+                    }
+                }
+            }
             if (ok) {
-                noticeMessage.value = `「${item.name}」连通性测试通过`
+                noticeMessage.value = `「${item.name}」连通性测试通过，耗时 ${formatDuration(result.data?.latencyMs || 0)}`
+                notify('primary', noticeMessage.value)
             } else {
                 errorMessage.value = result.message || '连通性测试失败'
+                notify('error', errorMessage.value)
             }
+            // 统计面板里的「模型健康」也要跟着刷新，避免卡片与列表显示不一致
+            await fetchStats()
         } catch (error) {
             errorMessage.value = getRequestErrorMessage(error, '连通性测试失败')
+            notify('error', errorMessage.value)
         } finally {
             testingId.value = null
         }
@@ -776,9 +816,12 @@
                 throw new Error(result.message || '导入环境变量配置失败')
             }
             noticeMessage.value = result.message || '环境变量配置已导入'
+            notify('primary', noticeMessage.value)
             await fetchModels()
+            await fetchStats()
         } catch (error) {
             errorMessage.value = getRequestErrorMessage(error, '导入环境变量配置失败')
+            notify('error', errorMessage.value)
         } finally {
             importing.value = false
         }
@@ -794,8 +837,10 @@
             }
             Object.assign(settings, result.data || settings)
             noticeMessage.value = '用量策略已保存'
+            notify('primary', '用量策略已保存')
         } catch (error) {
             errorMessage.value = getRequestErrorMessage(error, '保存用量策略失败')
+            notify('error', errorMessage.value)
         } finally {
             savingSettings.value = false
         }
@@ -821,6 +866,28 @@
             border-radius: var(--admin-radius, 18px);
             background: var(--admin-surface, var(--bgColor1));
             box-shadow: var(--admin-shadow-sm, @shadow-s);
+        }
+
+        // 提示条：成功与失败都保持一行，不遮挡页面主体
+        .ai-banner {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+
+            &.is-error {
+                border-color: color-mix(in srgb, #fa5247 32%, transparent);
+                background: color-mix(in srgb, #fa5247 10%, transparent);
+                color: #d8412f;
+            }
+
+            &.is-success {
+                border-color: color-mix(in srgb, #1fb4a2 30%, transparent);
+                background: color-mix(in srgb, #1fb4a2 10%, transparent);
+                color: #14897b;
+            }
         }
 
         .ai-panel-header {
@@ -1074,6 +1141,12 @@
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: @space-l;
             margin-top: @space-l;
+        }
+
+        .ai-trend-chart {
+            margin-top: 4px;
+            width: 100%;
+            min-width: 0;
         }
 
         .ai-stats-break {

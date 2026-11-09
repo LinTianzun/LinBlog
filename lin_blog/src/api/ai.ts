@@ -205,7 +205,12 @@ export function deleteAiModel(id: number) {
 }
 
 export function testAiModel(id: number) {
-  return request.post<ApiResult<{ ok: boolean; status?: number }>>(`/ai/models/${id}/test`);
+  return request.post<ApiResult<{
+    ok: boolean;
+    status?: number;
+    latencyMs?: number;
+    health?: AiModelHealth;
+  }>>(`/ai/models/${id}/test`);
 }
 
 // 从环境变量导入：把 .env 里的 AI 密钥转成后台可管理的模型记录

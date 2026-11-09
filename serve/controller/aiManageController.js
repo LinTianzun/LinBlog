@@ -294,7 +294,9 @@ async function importFromEnv(req, res) {
 
         return res.json({
             code: 200,
-            message: result.created ? '环境变量配置已导入为默认模型' : '环境变量配置已同步到现有模型',
+            message: result.created
+                ? '环境变量配置已导入为接入模型'
+                : '环境变量配置已同步到现有模型（密钥与模型名已更新）',
             data: result.model
         })
     } catch (err) {

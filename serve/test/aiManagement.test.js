@@ -475,6 +475,21 @@ test('连通性测试会记录耗时并更新模型健康状态', async () => {
     }
 })
 
+test('健康快照回传 ISO 时间，前端可按本地时区显示', async () => {
+    const queryFn = async (sql) => {
+        if (sql.includes('SELECT test_count')) {
+            return [{ test_count: 2, success_count: 2, avg_latency_ms: 1000, consecutive_failures: 0, last_success_at: new Date('2026-11-09T01:40:00.000Z') }]
+        }
+        return { affectedRows: 1 }
+    }
+
+    const snapshot = await aiModel.recordModelHealth(1, { ok: true, latencyMs: 1200 }, queryFn)
+    assert.match(snapshot.lastTestAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    assert.match(snapshot.lastSuccessAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    assert.equal(snapshot.testCount, 3)
+    assert.equal(snapshot.successCount, 3)
+})
+
 test('连通性测试失败时记录连续失败与错误原因', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth
@@ -692,6 +707,89 @@ test('ai provider label is inferred from the base url', () => {
     assert.equal(guessProviderLabel('https://api.deepseek.com/v1', 'deepseek-chat'), 'DeepSeek')
     assert.equal(guessProviderLabel('https://example.test/v1', 'glm-4-plus'), '智谱 GLM')
     assert.equal(guessProviderLabel('https://example.test/v1', 'my-model'), '自定义模型')
+})
+
+test('importing an additional env model does not steal the default flag', async () => {
+    const config = require(path.resolve(__dirname, '../config/default.js'))
+    const originalAi = config.ai
+
+    config.ai = {
+        baseUrl: 'https://ai.example.test/v4',
+        apiKey: 'sk-env-key',
+        model: 'glm-4-flash',
+        imageModel: 'cogview-3-flash',
+        imageSize: '1344x768',
+        timeoutMs: 20000
+    }
+    const queryFn = async (sql) => {
+        if (sql.startsWith('SELECT id FROM ai_model LIMIT 1')) return [{ id: 2 }]
+        if (sql.startsWith('SELECT id, chat_model, image_model FROM ai_model WHERE base_url')) return []
+        throw new Error(`unexpected query: ${sql}`)
+    }
+    let created = null
+    const updateFn = async () => {
+        throw new Error('不应更新不匹配的已有模型')
+    }
+    const createFn = async (payload) => {
+        created = payload
+        return { id: 3, ...payload }
+    }
+
+    try {
+        const result = await aiModel.importEnvModel({ queryFn, createFn, updateFn })
+        assert.equal(result.imported, true)
+        assert.equal(result.created, true)
+        assert.equal(created.isDefault, false)
+        assert.equal(created.baseUrl, 'https://ai.example.test/v4')
+    } finally {
+        config.ai = originalAi
+    }
+})
+
+test('importing env config onto an existing model keeps author settings', async () => {
+    const config = require(path.resolve(__dirname, '../config/default.js'))
+    const originalAi = config.ai
+
+    config.ai = {
+        baseUrl: 'https://ai.example.test/v4',
+        apiKey: 'sk-env-key',
+        model: 'glm-4-flash',
+        imageModel: 'cogview-3-flash',
+        imageSize: '1344x768',
+        timeoutMs: 20000
+    }
+
+    const queryFn = async (sql) => {
+        if (sql.startsWith('SELECT id FROM ai_model LIMIT 1')) return [{ id: 2 }]
+        if (sql.startsWith('SELECT id, chat_model, image_model FROM ai_model WHERE base_url')) {
+            return [{ id: 2, chat_model: 'glm-4-flash', image_model: 'cogview-3-flash' }]
+        }
+        throw new Error(`unexpected query: ${sql}`)
+    }
+
+    let updatedPayload = null
+    const updateFn = async (id, payload) => {
+        updatedPayload = payload
+        return { id, ...payload }
+    }
+    const createFn = async () => {
+        throw new Error('已存在的模型不应重复创建')
+    }
+
+    try {
+        const result = await aiModel.importEnvModel({ queryFn, createFn, updateFn })
+        assert.equal(result.imported, true)
+        assert.equal(result.created, false)
+        // 只同步连接信息，作者自定义的字段不应出现在更新载荷里
+        assert.equal(updatedPayload.apiKey, 'sk-env-key')
+        assert.equal(updatedPayload.chatModel, 'glm-4-flash')
+        assert.equal(updatedPayload.name, undefined)
+        assert.equal(updatedPayload.enabled, undefined)
+        assert.equal(updatedPayload.isDefault, undefined)
+        assert.equal(updatedPayload.remark, undefined)
+    } finally {
+        config.ai = originalAi
+    }
 })
 
 test('importing env models reports missing env configuration', async () => {
