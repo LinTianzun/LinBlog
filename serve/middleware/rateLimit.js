@@ -164,6 +164,14 @@ const aiCoverLimit = createRateLimit({
     message: 'AI 封面生成过于频繁，请稍后再试',
 })
 
+// 门户 AI 问答：匿名访客也能用，频率限制比后台更严
+const aiAskLimit = createRateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    keyGenerator: userOrIpKey,
+    message: '提问过于频繁，请稍后再试',
+})
+
 module.exports = {
     createRateLimit,
     ipKey,
@@ -183,5 +191,6 @@ module.exports = {
     uploadTicketLimit,
     publicMessageLimit,
     aiSuggestLimit,
+    aiAskLimit,
     aiCoverLimit,
 }

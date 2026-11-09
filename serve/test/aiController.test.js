@@ -77,7 +77,12 @@ test('ai suggest returns the suggestion for confirmed authors', async () => {
         )
         assert.equal(res.statusCode, 0)
         assert.equal(res.body.code, 200)
-        assert.deepEqual(res.body.data, { summary: '这是一段建议简介', labels: ['前端', 'Vue'] })
+        assert.deepEqual(res.body.data, {
+            summary: '这是一段建议简介',
+            labels: ['前端', 'Vue'],
+            degraded: false,
+            modelName: ''
+        })
         assert.equal(received.title, '我的文章')
         assert.equal(received.content, '<p>正文内容</p>')
         assert.equal(received.aiConfig.model, 'glm-4-flash')
@@ -139,7 +144,12 @@ test('ai writing returns text for confirmed authors', async () => {
         )
         assert.equal(res.statusCode, 0)
         assert.equal(res.body.code, 200)
-        assert.deepEqual(res.body.data, { action: 'polish', text: '润色后的文本' })
+        assert.deepEqual(res.body.data, {
+            action: 'polish',
+            text: '润色后的文本',
+            degraded: false,
+            modelName: ''
+        })
         assert.equal(received.title, '标题')
     } finally {
         aiClient.rewriteText = originalRewrite

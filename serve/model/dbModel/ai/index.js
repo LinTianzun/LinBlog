@@ -154,6 +154,40 @@ async function getActiveModelConfig() {
 }
 
 /**
+ * 列出可用于降级的候选模型（启用状态，按健康度排序）。
+ * 默认模型优先，其后按「连续失败次数少、平均耗时长」的顺序排列，
+ * 让调用方在首选模型故障时可以退到更稳的模型。
+ */
+async function listFallbackModelConfigs(limit = 3) {
+    const rows = await query(
+        `SELECT ${MODEL_FIELDS},
+                COALESCE(h.consecutive_failures, 0) AS consecutive_failures,
+                COALESCE(h.avg_latency_ms, 0) AS avg_latency_ms
+         FROM ai_model m
+         LEFT JOIN ai_model_health h ON h.model_id = m.id
+         WHERE m.enabled = 1 AND m.chat_model != ''
+         ORDER BY m.is_default DESC,
+                  COALESCE(h.consecutive_failures, 0) ASC,
+                  COALESCE(h.avg_latency_ms, 0) ASC,
+                  m.id ASC
+         LIMIT ?`,
+        [Math.min(Math.max(Number(limit) || 3, 1), 10)]
+    )
+
+    return (rows || []).map(row => ({
+        id: Number(row.id),
+        name: String(row.name || ''),
+        baseUrl: String(row.base_url || '').replace(/\/+$/, ''),
+        apiKey: decryptSecret(row.api_key),
+        chatModel: String(row.chat_model || ''),
+        imageModel: String(row.image_model || ''),
+        imageSize: String(row.image_size || '1344x768'),
+        timeoutMs: Number(row.timeout_ms) || 20000,
+        consecutiveFailures: Number(row.consecutive_failures) || 0
+    }))
+}
+
+/**
  * 把环境变量里的 AI 配置导入成可管理的模型记录。
  * 已有同地址同模型的记录时只更新密钥与参数，不重复插入。
  */
@@ -809,6 +843,7 @@ module.exports = {
     listModels,
     findModelById,
     getActiveModelConfig,
+    listFallbackModelConfigs,
     getModelConfigById,
     importEnvModel,
     createModel,

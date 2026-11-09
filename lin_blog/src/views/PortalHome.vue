@@ -181,6 +181,9 @@
             </div>
         </section>
 
+        <!-- 门户 AI 问答：基于站内已发布文章作答 -->
+        <PortalAskBox />
+
         <!-- 摄影图库预览 -->
         <section class="block portal-reveal">
             <div class="block-head">
@@ -264,6 +267,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
+import PortalAskBox from '../components/portal/PortalAskBox.vue'
 import PortalPhotoWall, { type WallPrint } from '../components/portal/PortalPhotoWall.vue'
 import PortalArticleDetail from '../components/portal/PortalArticleDetail.vue'
 import PortalDiaryDetail from '../components/portal/PortalDiaryDetail.vue'

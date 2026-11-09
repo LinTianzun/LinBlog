@@ -4,6 +4,9 @@ import type { ApiResult } from "./article";
 export interface AiSuggestion {
   summary: string;
   labels: string[];
+  // 首选模型故障时自动降级到备用模型，这里回传实际生效的模型
+  degraded?: boolean;
+  modelName?: string;
 }
 
 export type AiWritingAction = "polish" | "shorten" | "expand" | "continue";
@@ -11,12 +14,16 @@ export type AiWritingAction = "polish" | "shorten" | "expand" | "continue";
 export interface AiWritingSuggestion {
   action: AiWritingAction;
   text: string;
+  degraded?: boolean;
+  modelName?: string;
 }
 
 export interface AiCoverSuggestion {
   token: string;
   dataUri: string;
   prompt: string;
+  degraded?: boolean;
+  modelName?: string;
 }
 
 // 后台「AI 管理」使用的接入模型（密钥只返回掩码，不回传明文）

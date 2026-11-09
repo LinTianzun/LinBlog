@@ -93,6 +93,7 @@ declare module 'vue' {
     Pie: typeof import('./src/components/echarts/pie.vue')['default']
     PortalAmbientBackground: typeof import('./src/components/portal/PortalAmbientBackground.vue')['default']
     PortalArticleDetail: typeof import('./src/components/portal/PortalArticleDetail.vue')['default']
+    PortalAskBox: typeof import('./src/components/portal/PortalAskBox.vue')['default']
     PortalCommentSection: typeof import('./src/components/portal/PortalCommentSection.vue')['default']
     PortalDiaryDetail: typeof import('./src/components/portal/PortalDiaryDetail.vue')['default']
     PortalGalleryDetail: typeof import('./src/components/portal/PortalGalleryDetail.vue')['default']

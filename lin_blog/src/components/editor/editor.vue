@@ -28,6 +28,9 @@
                 <p class="editor-ai-result-title">
                     AI 生成的{{ getWritingActionLabel(aiWriting.action) }}内容（采用后才会写入编辑器）：
                 </p>
+                <p v-if="aiWriting.degraded" class="editor-ai-result-degraded">
+                    默认模型暂时不可用，本次由「{{ aiWriting.modelName }}」生成
+                </p>
                 <p class="editor-ai-result-text">{{ aiWriting.text }}</p>
                 <yk-space size="s" class="editor-ai-result-actions">
                     <yk-button size="s" @click="applyAiWriting">采用</yk-button>
@@ -284,6 +287,17 @@ onBeforeUnmount(() => {
             line-height: 1.7;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        // 降级提示：首选模型故障时改用备用模型，明确告诉作者
+        &-degraded {
+            margin: 0 0 @space-s;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: color-mix(in srgb, #d98716 12%, transparent);
+            color: #a86a10;
+            font-size: @size-s;
+            line-height: 1.5;
         }
     }
 

@@ -519,6 +519,28 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 门户 AI 问答：基于站内已发布文章作答并返回引用来源
+    if (method === 'POST' && path === '/api/public/ai/ask') {
+      const question = String(body?.question || '').trim()
+      if (!question) {
+        await fulfill(null, { code: 400, message: '请先输入你想问的问题', status: 400 })
+        return
+      }
+      await fulfill({
+        answer: '我在《把日常写成一条慢速河流》里写过这件事 [1]。',
+        sources: [
+          {
+            id: article.id,
+            title: article.title,
+            snippet: '这是一篇用于端到端回归的文章。',
+            index: 1,
+          },
+        ],
+        found: true,
+      }, { message: '回答已生成' })
+      return
+    }
+
     if (method === 'POST' && path === '/api/user/login') {
       await fulfill({
         token: 'mock-token',

@@ -3,6 +3,95 @@ const aiClient = require('../utils/aiClient')
 const uploadController = require('./uploadController')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 const aiModel = require('../model/dbModel/ai/index')
+const articleModel = require('../model/dbModel/article/index')
+
+/**
+ * 门户 AI 问答：访客提问，先检索站内已发布文章，再让模型基于片段作答。
+ * 匿名可用，因此不占用后台账号的 AI 次数配额，只走独立的频率限制。
+ */
+async function answerPublicQuestion(req, res, options = {}) {
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : ''
+    if (!question) {
+        return res.status(400).json({ code: 400, message: '请先输入你想问的问题' })
+    }
+    if (question.length > 200) {
+        return res.status(400).json({ code: 400, message: '问题不能超过 200 字' })
+    }
+
+    let aiConfig = null
+    try {
+        aiConfig = options.aiConfig || await aiClient.getActiveAiConfig()
+    } catch (err) {
+        console.warn('[AI] 读取门户问答模型配置失败：', err?.message || err)
+    }
+    if (!aiConfig) {
+        return res.status(503).json({ code: 503, message: 'AI 问答暂未开启，请稍后再试' })
+    }
+
+    try {
+        const startedAt = Date.now()
+        const candidates = await articleModel.searchPublishedContentForAsk(question, 6)
+
+        if (candidates.length === 0) {
+            return res.json({
+                code: 200,
+                message: '没有找到相关的站内文章',
+                data: {
+                    answer: '暂时没有在站内文章里找到相关内容。你可以换个说法，或者直接看看文章归档。',
+                    sources: [],
+                    found: false
+                }
+            })
+        }
+
+        const snippets = candidates.map(item => ({
+            id: item.id,
+            title: item.title,
+            snippet: aiClient.pickRelevantSnippet(item.content, question) || item.introduce || ''
+        })).filter(item => item.snippet)
+
+        const result = await aiClient.answerFromPublishedContent({
+            question,
+            snippets,
+            aiConfig
+        })
+
+        const answer = result.text
+        const sources = snippets
+            .map((item, index) => ({ ...item, index: index + 1 }))
+            .filter(item => answer.includes(`[${item.index}]`) || answer.includes(`[${item.index}，`))
+
+        await recordAiCall({
+            req,
+            feature: 'ask',
+            modelName: result.modelUsed?.model || aiConfig.model,
+            modelId: result.modelUsed?.id ?? aiConfig.id,
+            status: 'success',
+            detail: result.modelUsed?.degraded
+                ? `门户 AI 问答（默认模型不可用，已降级到「${result.modelUsed.name}」）`
+                : '门户 AI 问答',
+            durationMs: Date.now() - startedAt,
+            usage: result.usage,
+            outputChars: answer.length
+        })
+
+        return res.json({
+            code: 200,
+            message: '回答已生成',
+            data: {
+                answer,
+                sources,
+                found: true
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 问答暂未开启，请稍后再试' })
+        }
+        console.error('[AI] 门户问答失败：', err?.message || err)
+        return res.status(503).json({ code: 503, message: 'AI 问答暂时不可用，请稍后重试' })
+    }
+}
 
 /**
  * AI 写作建议：按需生成简介与标签，返回给前端作为建议展示，
@@ -32,10 +121,12 @@ async function suggestArticleMeta(req, res) {
         await recordAiCall({
             req,
             feature: 'suggest',
-            modelName: req.aiModel.model,
-            modelId: req.aiModel.id,
+            modelName: suggestion.modelUsed?.model || req.aiModel.model,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
             status: 'success',
-            detail: '生成文章简介与标签建议',
+            detail: suggestion.modelUsed?.degraded
+                ? `生成文章简介与标签建议（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : '生成文章简介与标签建议',
             durationMs: Date.now() - startedAt,
             usage: suggestion.usage,
             outputChars: (suggestion.summary || '').length
@@ -44,7 +135,12 @@ async function suggestArticleMeta(req, res) {
         return res.json({
             code: 200,
             message: 'AI 建议已生成，请确认后再填充',
-            data: suggestion
+            data: {
+                summary: suggestion.summary,
+                labels: suggestion.labels,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
+            }
         })
     } catch (err) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
@@ -87,10 +183,12 @@ async function rewriteArticleText(req, res) {
         await recordAiCall({
             req,
             feature: 'writing',
-            modelName: req.aiModel.model,
-            modelId: req.aiModel.id,
+            modelName: suggestion.modelUsed?.model || req.aiModel.model,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
             status: 'success',
-            detail: `AI 写作辅助：${action}`,
+            detail: suggestion.modelUsed?.degraded
+                ? `AI 写作辅助：${action}（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : `AI 写作辅助：${action}`,
             durationMs: Date.now() - startedAt,
             usage: suggestion.usage,
             outputChars: (suggestion.text || '').length
@@ -98,7 +196,12 @@ async function rewriteArticleText(req, res) {
         return res.json({
             code: 200,
             message: 'AI 写作建议已生成，请确认后再写入编辑器',
-            data: suggestion
+            data: {
+                action: suggestion.action,
+                text: suggestion.text,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
+            }
         })
     } catch (err) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
@@ -154,10 +257,12 @@ async function generateCover(req, res) {
         await recordAiCall({
             req,
             feature: 'cover',
-            modelName: req.aiModel.imageModel,
-            modelId: req.aiModel.id,
+            modelName: suggestion.modelUsed?.aiConfig?.imageModel || req.aiModel.imageModel,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
             status: 'success',
-            detail: '生成 AI 封面或配图',
+            detail: suggestion.modelUsed?.degraded
+                ? `生成 AI 封面或配图（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : '生成 AI 封面或配图',
             durationMs: Date.now() - startedAt,
             outputChars: suggestion.outputChars || 0
         })
@@ -167,7 +272,9 @@ async function generateCover(req, res) {
             data: {
                 token,
                 dataUri: suggestion.dataUri,
-                prompt: suggestion.prompt
+                prompt: suggestion.prompt,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
             }
         })
     } catch (err) {
@@ -211,4 +318,10 @@ async function confirmCover(req, res) {
     }
 }
 
-module.exports = { suggestArticleMeta, rewriteArticleText, generateCover, confirmCover }
+module.exports = {
+    suggestArticleMeta,
+    rewriteArticleText,
+    generateCover,
+    confirmCover,
+    answerPublicQuestion
+}

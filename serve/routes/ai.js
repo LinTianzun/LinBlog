@@ -1,7 +1,7 @@
 const aiController = require('../controller/aiController')
 const aiManageController = require('../controller/aiManageController')
 const { authMiddleware } = require('../middleware/auth')
-const { aiSuggestLimit, aiCoverLimit } = require('../middleware/rateLimit')
+const { aiSuggestLimit, aiCoverLimit, aiAskLimit } = require('../middleware/rateLimit')
 const { aiQuota } = require('../middleware/aiQuota')
 const { requirePermission } = require('../utils/accessControl')
 
@@ -32,6 +32,9 @@ module.exports = (app) => {
     )
     // 确认采用只做落库，不再调用模型，因此不计入次数
     app.post('/api/ai/cover/confirm', authMiddleware, aiSuggestLimit, aiController.confirmCover)
+
+    // 门户 AI 问答：访客可匿名提问，只走独立限流，不占用后台账号配额
+    app.post('/api/public/ai/ask', aiAskLimit, aiController.answerPublicQuestion)
 
     // ─── AI 管理（需要 ai.manage 权限）─────────────────────────────
     app.get('/api/ai/models', authMiddleware, requirePermission('ai.manage'), aiManageController.getModels)

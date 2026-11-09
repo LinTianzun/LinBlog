@@ -49,6 +49,24 @@ export interface PortalLabel {
   moment: string;
 }
 
+// 门户 AI 问答：访客提问，服务端基于站内已发布文章作答并给出引用来源
+export interface PortalAskSource {
+  id: number;
+  title: string;
+  snippet: string;
+  index: number;
+}
+
+export interface PortalAskResult {
+  answer: string;
+  sources: PortalAskSource[];
+  found: boolean;
+}
+
+export function askPortalQuestion(question: string) {
+  return request.post<ApiResult<PortalAskResult>>("/public/ai/ask", { question });
+}
+
 // 门户公开接口：无需登录，后端只返回已发布内容
 export function getPublicArticles(params: ArticleListParams = {}) {
   return request.get<ApiResult<ArticlePageData>>("/public/article", {

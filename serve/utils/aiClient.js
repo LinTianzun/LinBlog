@@ -32,13 +32,45 @@ async function getActiveAiConfig() {
     return null
 }
 
-async function isAiConfigured() {
-    return Boolean(await getActiveAiConfig())
+/**
+ * 组装可用的模型候选链：首选模型在前，其后是其它启用模型（按健康度排序）。
+ * 首选模型 id 为空时说明走的是环境变量回退，数据库里没有可切换的模型。
+ */
+async function getAiConfigChain(primary, chainFn = null) {
+    if (!primary) return []
+
+    const chain = [primary]
+    if (!primary.id) return chain
+
+    try {
+        const fallbacks = chainFn
+            ? await chainFn()
+            : await aiModel.listFallbackModelConfigs(3)
+        for (const item of fallbacks) {
+            if (item.id === primary.id) continue
+            const candidateModel = item.model || item.chatModel
+            if (!candidateModel || !item.apiKey) continue
+            chain.push({
+                id: item.id,
+                name: item.name,
+                baseUrl: item.baseUrl,
+                apiKey: item.apiKey,
+                model: candidateModel,
+                imageModel: item.imageModel || candidateModel,
+                imageSize: item.imageSize,
+                timeoutMs: item.timeoutMs
+            })
+        }
+    } catch (err) {
+        // 取候选失败不影响主流程：只是这次没有降级可用
+        console.warn('[AI] 读取降级候选模型失败：', err?.message || err)
+    }
+
+    return chain
 }
 
-function getAiConfig() {
-    if (!config.ai) throw notConfiguredError()
-    return config.ai
+async function isAiConfigured() {
+    return Boolean(await getActiveAiConfig())
 }
 
 function getAiConfig() {
@@ -184,6 +216,7 @@ function parseSuggestionPayload(raw) {
 }
 
 async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 } = {}) {
+    const timeoutMs = Number(aiConfig.timeoutMs) || 20000
     const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -204,13 +237,13 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 
             temperature: 0.6,
             max_tokens: maxTokens
         }),
-        signal: AbortSignal.timeout(aiConfig.timeoutMs)
+        signal: AbortSignal.timeout(timeoutMs)
     })
 
     if (!response.ok) {
         throw Object.assign(
             new Error(`AI 服务商响应异常：HTTP ${response.status}`),
-            { code: 'AI_PROVIDER_ERROR' }
+            { code: 'AI_PROVIDER_ERROR', status: response.status }
         )
     }
 
@@ -218,6 +251,66 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 
     const content = payload?.choices?.[0]?.message?.content
     const text = typeof content === 'string' ? content : ''
     return { text, usage: normalizeUsage(payload?.usage) }
+}
+
+/**
+ * 判断错误是否值得换一个模型重试。
+ * 限流与服务端故障说明模型暂时不可用，换一个模型可能成功；
+ * 参数或鉴权错误换模型也救不回来，直接抛出让作者看到真实原因。
+ */
+function isRetryableModelError(error) {
+    if (error?.code !== 'AI_PROVIDER_ERROR') return false
+    const status = Number(error?.status || 0)
+    return status === 408 || status === 429 || status >= 500
+}
+
+/**
+ * 依次尝试候选模型：首选失败且属于可重试错误时，自动退到下一个模型。
+ * 返回结果里带上实际生效的模型，便于调用记录与统计如实反映。
+ */
+async function runWithFallback(chain, run) {
+    if (!Array.isArray(chain) || chain.length === 0) {
+        throw notConfiguredError()
+    }
+
+    let lastError = null
+    for (let index = 0; index < chain.length; index += 1) {
+        const aiConfig = chain[index]
+        try {
+            const result = await run(aiConfig)
+            return {
+                ...result,
+                aiConfig,
+                modelUsed: {
+                    id: aiConfig.id ?? null,
+                    name: aiConfig.name || aiConfig.model || '',
+                    model: aiConfig.model || '',
+                    degraded: index > 0
+                }
+            }
+        } catch (error) {
+            lastError = error
+            const hasNext = index < chain.length - 1
+            if (!hasNext || !isRetryableModelError(error)) break
+            // 降级说明这个模型真的出了问题，把失败记进健康状态，
+            // 下次候选排序时它会自动排到后面
+            if (aiConfig.id) {
+                try {
+                    await aiModel.recordModelHealth(aiConfig.id, {
+                        ok: false,
+                        error: error?.message || '模型调用失败'
+                    })
+                } catch (recordError) {
+                    console.warn('[AI] 记录模型失败状态出错：', recordError?.message || recordError)
+                }
+            }
+            console.warn(
+                `[AI] 模型「${aiConfig.name || aiConfig.model}」调用失败（${error.message}），自动降级到下一个模型`
+            )
+        }
+    }
+
+    throw lastError || notConfiguredError()
 }
 
 /**
@@ -268,6 +361,7 @@ function detectCoverMimeType(buffer, headerType) {
 }
 
 async function fetchCoverImage(prompt, aiConfig) {
+    const timeoutMs = Number(aiConfig.timeoutMs) || 20000
     const response = await fetch(`${aiConfig.baseUrl}/images/generations`, {
         method: 'POST',
         headers: {
@@ -279,7 +373,7 @@ async function fetchCoverImage(prompt, aiConfig) {
             prompt,
             size: aiConfig.imageSize
         }),
-        signal: AbortSignal.timeout(aiConfig.timeoutMs)
+        signal: AbortSignal.timeout(timeoutMs)
     })
 
     if (!response.ok) {
@@ -296,7 +390,7 @@ async function fetchCoverImage(prompt, aiConfig) {
     }
 
     const imageResponse = await fetch(imageUrl, {
-        signal: AbortSignal.timeout(aiConfig.timeoutMs)
+        signal: AbortSignal.timeout(timeoutMs)
     })
     if (!imageResponse.ok) {
         throw imageError(`封面图片下载失败：HTTP ${imageResponse.status}`)
@@ -325,18 +419,23 @@ function validateWritingAction(action) {
 /**
  * 生成文章简介与标签建议。只提供建议，是否采用由作者在前端确认。
  */
-async function suggestArticleMeta({ title, content, aiConfig }) {
+async function suggestArticleMeta({ title, content, aiConfig, chainFn = null }) {
     if (!aiConfig) throw notConfiguredError()
 
-    const raw = await chatCompletion(buildSuggestionPrompt({ title, content }), { aiConfig, json: true })
-    const parsed = parseSuggestionPayload(raw.text)
-    return { ...parsed, usage: raw.usage }
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const candidates = chain.length > 0 ? chain : [aiConfig]
+    const result = await runWithFallback(candidates, async (candidate) => {
+        const raw = await chatCompletion(buildSuggestionPrompt({ title, content }), { aiConfig: candidate, json: true })
+        const parsed = parseSuggestionPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+    return result
 }
 
 /**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
-async function rewriteText({ action, text, title = '', aiConfig }) {
+async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
     validateWritingAction(action)
     if (!aiConfig) throw notConfiguredError()
 
@@ -345,46 +444,139 @@ async function rewriteText({ action, text, title = '', aiConfig }) {
         throw Object.assign(new Error('没有可处理的正文'), { code: 'AI_EMPTY_TEXT' })
     }
 
-    const raw = await chatCompletion(buildWritingPrompt({ action, text: plainText, title }), { aiConfig, maxTokens: 700 })
-    const output = normalizeWritingText(raw.text)
-    if (!output) {
-        throw Object.assign(new Error('模型没有返回可用内容'), { code: 'AI_PARSE_ERROR' })
-    }
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const candidates = chain.length > 0 ? chain : [aiConfig]
+    const result = await runWithFallback(candidates, async (candidate) => {
+        const raw = await chatCompletion(buildWritingPrompt({ action, text: plainText, title }), { aiConfig: candidate, maxTokens: 700 })
+        const output = normalizeWritingText(raw.text)
+        if (!output) {
+            throw Object.assign(new Error('模型没有返回可用内容'), { code: 'AI_PARSE_ERROR' })
+        }
 
-    return { action, text: output, usage: raw.usage }
+        return { action, text: output, usage: raw.usage }
+    })
+
+    return result
 }
 
 /**
  * 生成封面插画建议。图片内容与预览由调用方负责暂存，
  * 作者确认前不会写入 image 表。
  */
-async function generateCoverImage({ title, introduce, content, aiConfig }) {
+async function generateCoverImage({ title, introduce, content, aiConfig, chainFn = null }) {
     if (!aiConfig) throw notConfiguredError()
 
     const prompt = buildCoverPrompt({ title, introduce, content })
-    const { buffer, mimeType } = await fetchCoverImage(prompt, aiConfig)
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    // 配图只退到同样具备配图能力的模型，否则换过去也出不了图
+    const withImage = chain.filter(item => item.imageModel)
+    const candidates = withImage.length > 0 ? withImage : [aiConfig]
+    const result = await runWithFallback(candidates, async (candidate) => {
+        const { buffer, mimeType } = await fetchCoverImage(prompt, candidate)
+        return {
+            buffer,
+            mimeType,
+            dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`,
+            prompt,
+            usage: {},
+            outputChars: 0
+        }
+    })
 
-    return {
-        buffer,
-        mimeType,
-        dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`,
-        prompt,
-        usage: {},
-        outputChars: 0
-    }
+    return result
 }
 
 function isValidCoverToken(token) {
     return typeof token === 'string' && /^[0-9a-f]{48}$/.test(token)
 }
 
+// 门户问答：单次提问上限与引用片段上限，避免把整站内容塞进上下文
+const MAX_ASK_QUESTION_CHARS = 200
+const MAX_ASK_CONTEXT_CHARS = 1200
+const MAX_ASK_SNIPPETS = 6
+
+/**
+ * 从正文中截取与提问最相关的片段。
+ * 优先按关键词命中位置取窗口，取不到就从开头截断，保证语料始终可用。
+ */
+function pickRelevantSnippet(content, keyword) {
+    const text = htmlToText(content)
+    if (!text) return ''
+    if (text.length <= MAX_ASK_CONTEXT_CHARS) return text
+
+    const terms = String(keyword || '')
+        .split(/[\s,，。？！、;；:：]+/)
+        .map(item => item.trim())
+        .filter(Boolean)
+
+    for (const term of terms) {
+        const index = text.indexOf(term)
+        if (index >= 0) {
+            const start = Math.max(0, index - Math.floor(MAX_ASK_CONTEXT_CHARS / 3))
+            return text.slice(start, start + MAX_ASK_CONTEXT_CHARS)
+        }
+    }
+
+    return text.slice(0, MAX_ASK_CONTEXT_CHARS)
+}
+
+/**
+ * 构建门户问答的提示词：只允许依据给定片段回答，并要求给出引用编号。
+ */
+function buildAskPrompt({ question, snippets }) {
+    const context = snippets.map((item, index) => {
+        return `【${index + 1}】${item.title}\n${item.snippet}`
+    }).join('\n\n')
+
+    return [
+        '你是一名博客站主的助手，负责根据站内已发布的文章回答访客的问题。',
+        '要求：',
+        '1. 只能依据下面给出的文章片段回答，不要编造片段里没有的信息；',
+        '2. 如果片段不足以回答，请直接说明没有找到相关内容，并邀请访客换个说法；',
+        '3. 引用了哪几篇内容，就在答案末尾用 [1]、[2] 这样的编号标出来；',
+        '4. 用简体中文回答，语气自然，不要使用 Markdown 标题或代码块；',
+        '',
+        '站内文章片段：',
+        context,
+        '',
+        `访客问题：${question}`
+    ].join('\n')
+}
+
+/**
+ * 门户 AI 问答：先检索站内已发布内容，再让模型基于这些片段作答。
+ * 返回答案与实际生效的模型，便于调用记录如实反映。
+ */
+async function answerFromPublishedContent({ question, snippets, aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildAskPrompt({ question, snippets })
+    const result = await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, maxTokens: 700 })
+        const text = normalizeWritingText(raw.text)
+        if (!text) {
+            throw Object.assign(new Error('模型没有返回可用内容'), { code: 'AI_PARSE_ERROR' })
+        }
+        return { text, usage: raw.usage }
+    })
+
+    return result
+}
+
 module.exports = {
     isAiConfigured,
     getAiConfig,
     getActiveAiConfig,
+    getAiConfigChain,
+    runWithFallback,
+    isRetryableModelError,
     suggestArticleMeta,
     rewriteText,
     generateCoverImage,
+    answerFromPublishedContent,
+    buildAskPrompt,
+    pickRelevantSnippet,
     isValidCoverToken,
     buildCoverPrompt,
     parseSuggestionPayload,

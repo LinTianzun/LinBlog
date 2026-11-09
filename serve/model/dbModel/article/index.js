@@ -298,6 +298,41 @@ async function listPublishedContentForFeed(limit = 5000) {
 }
 
 /**
+ * 门户 AI 问答的语料检索：在已发布内容里按关键词找候选片段。
+ * 只取公开内容，草稿与随笔工作稿不会出现在回答依据里。
+ */
+async function searchPublishedContentForAsk(keyword, limit = 6) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 6, 1), 10)
+    const term = String(keyword || '').trim()
+    if (!term) return []
+
+    const like = `%${term}%`
+    const rows = await query(
+        `SELECT id, title, introduce, content, classify, subset_id AS subsetId,
+                published_at AS publishedAt
+         FROM article
+         WHERE state = 'published'
+           AND (title LIKE ? OR introduce LIKE ? OR content LIKE ? OR label LIKE ?)
+         ORDER BY
+            (CASE WHEN title LIKE ? THEN 0 ELSE 1 END),
+            (CASE WHEN introduce LIKE ? THEN 0 ELSE 1 END),
+            COALESCE(published_at, created_at) DESC
+         LIMIT ?`,
+        [like, like, like, like, like, like, safeLimit]
+    )
+
+    return (rows || []).map(row => ({
+        id: Number(row.id),
+        title: String(row.title || ''),
+        introduce: String(row.introduce || ''),
+        content: String(row.content || ''),
+        classify: String(row.classify || 'article'),
+        subsetId: row.subsetId ? Number(row.subsetId) : null,
+        publishedAt: row.publishedAt
+    }))
+}
+
+/**
  * 更新前判断文章是否存在及当前用户是否有修改权限。
  * 避免把“字段值未变化”产生的 0 影响行数误判为无权限。
  */
@@ -516,6 +551,7 @@ module.exports = {
     countArticlesByState,
     findAtricleById,
     listPublishedContentForFeed,
+    searchPublishedContentForAsk,
     findArticleMutationAccess,
     updateArticle,
     deleteArticle,

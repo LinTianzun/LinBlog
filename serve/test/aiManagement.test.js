@@ -8,8 +8,10 @@ process.env.LINBLOG_ALLOWED_ORIGINS = 'http://localhost:5173'
 const accessControlConfig = require(path.resolve(__dirname, '../config/accessControl.js'))
 const secretBox = require(path.resolve(__dirname, '../utils/secretBox.js'))
 const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
+const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/index.js'))
 const { aiQuota } = require(path.resolve(__dirname, '../middleware/aiQuota.js'))
 const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
+const aiController = require(path.resolve(__dirname, '../controller/aiController.js'))
 const aiManageController = require(path.resolve(__dirname, '../controller/aiManageController.js'))
 const aiUsageLogger = require(path.resolve(__dirname, '../utils/aiUsageLogger.js'))
 const systemLogModel = require(path.resolve(__dirname, '../model/dbModel/systemLog/index.js'))
@@ -488,6 +490,189 @@ test('健康快照回传 ISO 时间，前端可按本地时区显示', async () 
     assert.match(snapshot.lastSuccessAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     assert.equal(snapshot.testCount, 3)
     assert.equal(snapshot.successCount, 3)
+})
+
+test('首选模型可重试故障时自动降级到候选模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 503 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '备用模型的结果' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 }
+        }), { status: 200 })
+    }
+
+    try {
+        const result = await aiClient.runWithFallback(
+            [
+                { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k' }
+            ],
+            async (aiConfig) => {
+                const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: aiConfig.model, messages: [] })
+                })
+                if (!response.ok) {
+                    throw Object.assign(new Error(`AI 服务商响应异常：HTTP ${response.status}`), {
+                        code: 'AI_PROVIDER_ERROR',
+                        status: response.status
+                    })
+                }
+                const payload = await response.json()
+                return { text: payload.choices[0].message.content }
+            }
+        )
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.equal(result.text, '备用模型的结果')
+        assert.equal(result.modelUsed.id, 2)
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
+test('参数或鉴权类错误不触发降级，直接抛出真实原因', () => {
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 400 }), false)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 401 }), false)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 429 }), true)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 500 }), true)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PARSE_ERROR' }), false)
+})
+
+test('所有候选模型都失败时抛出最后一次错误', async () => {
+    await assert.rejects(
+        () => aiClient.runWithFallback(
+            [
+                { id: 1, name: '首选模型', model: 'm1', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+                { id: 2, name: '备用模型', model: 'm2', baseUrl: 'https://b.test/v1', apiKey: 'k' }
+            ],
+            async () => {
+                throw Object.assign(new Error('AI 服务商响应异常：HTTP 503'), {
+                    code: 'AI_PROVIDER_ERROR',
+                    status: 503
+                })
+            }
+        ),
+        /HTTP 503/
+    )
+})
+
+test('门户问答只依据站内已发布内容作答，并给出引用来源', async () => {
+    const originalSearch = articleModel.searchPublishedContentForAsk
+    const originalFetch = global.fetch
+    let prompt = null
+
+    articleModel.searchPublishedContentForAsk = async () => ([
+        { id: 12, title: '把日常写成一条慢速河流', introduce: '简介', content: '<p>关于慢速河流的记录</p>', classify: 'article' },
+        { id: 13, title: '摄影笔记', introduce: '简介', content: '<p>另一篇文章</p>', classify: 'article' }
+    ])
+    global.fetch = async (url, init) => {
+        prompt = JSON.parse(init.body).messages[1].content
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '你在《把日常写成一条慢速河流》里写过这件事 [1]。' } }]
+        }), { status: 200 })
+    }
+
+    try {
+        const res = createRes()
+        await aiController.answerPublicQuestion(
+            { body: { question: '慢速河流' }, ip: '127.0.0.1' },
+            res,
+            { aiConfig: { id: 1, name: '智谱 GLM', model: 'glm-4-flash', baseUrl: 'https://a.test/v1', apiKey: 'k', timeoutMs: 5000 } }
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.match(res.body.data.answer, /慢速河流/)
+        // 提示词必须带上检索到的片段
+        assert.match(prompt, /把日常写成一条慢速河流/)
+        assert.match(prompt, /访客问题：慢速河流/)
+        // 只把答案里引用到的片段作为来源返回
+        assert.equal(res.body.data.sources.length, 1)
+        assert.equal(res.body.data.sources[0].id, 12)
+    } finally {
+        articleModel.searchPublishedContentForAsk = originalSearch
+        global.fetch = originalFetch
+    }
+})
+
+test('门户问答检索不到内容时直接给出提示，不调用模型', async () => {
+    const originalSearch = articleModel.searchPublishedContentForAsk
+    const originalFetch = global.fetch
+    let called = false
+
+    articleModel.searchPublishedContentForAsk = async () => []
+    global.fetch = async () => {
+        called = true
+        return new Response('{}', { status: 200 })
+    }
+
+    try {
+        const res = createRes()
+        await aiController.answerPublicQuestion(
+            { body: { question: '不存在的内容' }, ip: '127.0.0.1' },
+            res,
+            { aiConfig: { id: 1, name: '智谱 GLM', model: 'glm-4-flash', baseUrl: 'https://a.test/v1', apiKey: 'k', timeoutMs: 5000 } }
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.found, false)
+        assert.equal(called, false)
+    } finally {
+        articleModel.searchPublishedContentForAsk = originalSearch
+        global.fetch = originalFetch
+    }
+})
+
+test('门户问答拒绝空问题与超长问题', async () => {
+    const res1 = createRes()
+    await aiController.answerPublicQuestion({ body: { question: '  ' } }, res1)
+    assert.equal(res1.statusCode, 400)
+
+    const res2 = createRes()
+    await aiController.answerPublicQuestion({ body: { question: '问'.repeat(201) } }, res2)
+    assert.equal(res2.statusCode, 400)
+})
+
+test('写作建议在首选模型故障时自动切换到备用模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 500 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '{"summary":"备用模型的简介","labels":["备用"]}' } }]
+        }), { status: 200 })
+    }
+    try {
+        const result = await aiClient.suggestArticleMeta({
+            title: '标题',
+            content: '<p>正文</p>',
+            aiConfig: { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+            chainFn: async () => ([
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k', timeoutMs: 5000 }
+            ])
+        })
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.equal(result.summary, '备用模型的简介')
+        assert.equal(result.modelUsed.degraded, true)
+        assert.equal(result.modelUsed.name, '备用模型')
+    } finally {
+        global.fetch = originalFetch
+    }
 })
 
 test('连通性测试失败时记录连续失败与错误原因', async () => {
