@@ -18,7 +18,7 @@ test('提示词模板页按功能分组展示且每条模板只占一行', async
 
   // 功能分组：写作建议与封面配图各自一组
   const groups = page.locator('.ai-prompt-group')
-  await expect(groups).toHaveCount(2)
+  await expect(groups).toHaveCount(3)
   await expect(groups.nth(0)).toContainText('写作建议')
   await expect(groups.nth(1)).toContainText('封面配图')
 
@@ -65,13 +65,42 @@ test('提示词模板页可新建自定义提示词', async ({ page }) => {
   const modal = page.locator('.yk-modal__main')
   await expect(modal).toBeVisible()
 
+  // 所属功能必须用中文下拉，不再直接暴露 featureKey
+  const featureSelect = modal.locator('select')
+  await expect(featureSelect).toBeVisible()
+  await expect(featureSelect).toContainText('自由创作')
+  await expect(featureSelect).not.toContainText('freeform')
+
   await modal.locator('input[type="text"]').first().fill('我的写作风格')
   await modal.locator('textarea').fill('请用更口语化的语气写简介：{{title}}')
   await modal.getByRole('button', { name: '确认保存' }).click()
 
   // 新建的模板出现在列表里，并可被选用
   await expect(page.locator('.ai-prompt-row').filter({ hasText: '我的写作风格' })).toBeVisible()
-  await expect(page.locator('.ai-prompt-row').filter({ hasText: '自定义' })).toHaveCount(1)
+  await expect(page.locator('.ai-prompt-row').filter({ hasText: '我的写作风格' }).getByText('自定义')).toHaveCount(1)
+})
+
+test('提示词模板页可在右侧试跑并选用模板', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.ai-prompt-preview')).toContainText('自由创作 · 草稿')
+
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(page.locator('.ai-prompt-result')).toContainText('这是提示词试跑结果。')
+
+  await page.locator('.ai-prompt-row').first().getByRole('button', { name: '试跑' }).click()
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(page.locator('.ai-prompt-preview')).toContainText('写作建议')
+  await expect(page.locator('.ai-prompt-preview').getByRole('button', { name: '选用此套提示词' })).toBeVisible()
 })
 
 test('没有 ai.manage 权限时不显示提示词模板入口', async ({ page }) => {

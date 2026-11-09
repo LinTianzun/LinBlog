@@ -1545,7 +1545,7 @@ test('提示词模板列表补齐未配置的默认模板', async () => {
         await aiManageController.getPromptTemplates({ user: { userId: 1 } }, res)
 
         assert.equal(res.body.code, 200)
-        assert.ok(res.body.data.list.length >= 8)
+        assert.ok(res.body.data.list.length >= 9)
         assert.ok(typeof res.body.data.bindings === 'object')
         // 每个模板都要能看出可用变量，作者才知道能填什么
         assert.ok(res.body.data.list.every(item => typeof item.variables === 'string' && item.variables))
@@ -1555,6 +1555,71 @@ test('提示词模板列表补齐未配置的默认模板', async () => {
         aiModel.listPromptTemplates = originalList
         aiModel.listPromptBindings = originalBindings
     }
+})
+
+test('提示词试跑支持未保存草稿并写入 AI 调用日志', async () => {
+    const originalPreview = aiClient.previewPrompt
+    const originalGetDefault = aiClient.getDefaultTemplate
+    const originalLog = aiModel.logUsage
+    const originalInsertLog = systemLogModel.insertLog
+    let previewPayload = null
+    let logged = null
+    aiClient.previewPrompt = async (payload) => {
+        previewPayload = payload
+        return {
+            kind: 'text',
+            prompt: '自定义内容：秋季',
+            text: '试跑成功',
+            usage: { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
+            outputChars: 4,
+            modelUsed: { id: 3, name: 'GLM', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    aiClient.getDefaultTemplate = (featureKey) => featureKey === 'freeform'
+        ? { key: 'freeform', name: '自由创作', content: '', variables: '{{input}}' }
+        : null
+    aiModel.logUsage = async (payload) => {
+        logged = payload
+    }
+    systemLogModel.insertLog = async () => {}
+
+    try {
+        const res = createRes()
+        await aiManageController.previewPromptTemplate({
+            user: { userId: 1 },
+            aiModel: { id: 3, model: 'glm-4-flash' },
+            body: {
+                featureKey: 'freeform',
+                content: '自定义内容：{{input}}',
+                variables: { input: '秋季', 'not-a-name': 'value' }
+            }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.kind, 'text')
+        assert.equal(res.body.data.text, '试跑成功')
+        assert.equal(previewPayload.variables.input, '秋季')
+        assert.equal(previewPayload.variables['not-a-name'], undefined)
+        assert.equal(logged.feature, 'prompt-preview')
+        assert.equal(logged.status, 'success')
+        assert.equal(logged.modelId, 3)
+        assert.equal(logged.outputChars, 4)
+    } finally {
+        aiClient.previewPrompt = originalPreview
+        aiClient.getDefaultTemplate = originalGetDefault
+        aiModel.logUsage = originalLog
+        systemLogModel.insertLog = originalInsertLog
+    }
+})
+
+test('提示词试跑遇到未知所属功能时返回 400', async () => {
+    const res = createRes()
+    await aiManageController.previewPromptTemplate({
+        body: { featureKey: 'no-such', content: 'x' },
+        aiModel: { id: 1, model: 'glm-4-flash' }
+    }, res)
+
+    assert.equal(res.statusCode, 400)
 })
 
 test('保存提示词模板：未知模板 404，内置与自定义都可编辑', async () => {

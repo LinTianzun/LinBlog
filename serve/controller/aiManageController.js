@@ -1,4 +1,6 @@
 const aiModel = require('../model/dbModel/ai/index')
+const aiClient = require('../utils/aiClient')
+const { recordAiCall } = require('../utils/aiUsageLogger')
 const { probeModel, runHealthCheck, getLastCheckedAt } = require('../utils/aiHealthCheck')
 
 function toInt(value, fallback = 0) {
@@ -311,6 +313,85 @@ async function createPromptTemplate(req, res) {
 }
 
 /**
+ * 提示词试跑：支持未保存草稿与已保存模板。
+ * 试跑是真实模型调用，因此必须经过配额，并写入调用日志与系统日志。
+ */
+async function previewPromptTemplate(req, res) {
+    const previewStartedAt = Date.now()
+    const featureKey = typeof req.body?.featureKey === 'string' ? req.body.featureKey.trim() : ''
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : ''
+    const variables = req.body?.variables && typeof req.body.variables === 'object' && !Array.isArray(req.body.variables)
+        ? req.body.variables
+        : {}
+
+    if (!featureKey) {
+        return res.status(400).json({ code: 400, message: '请选择提示词所属功能' })
+    }
+    if (content.length > 20000) {
+        return res.status(400).json({ code: 400, message: '提示词内容过长' })
+    }
+
+    const safeVariables = {}
+    for (const [name, value] of Object.entries(variables)) {
+        if (!/^\w+$/.test(name)) continue
+        safeVariables[name] = String(value ?? '').slice(0, 4000)
+    }
+
+    try {
+        const result = await aiClient.previewPrompt({
+            featureKey,
+            content,
+            variables: safeVariables,
+            aiConfig: req.aiModel
+        })
+        await recordAiCall({
+            req,
+            feature: 'prompt-preview',
+            modelName: result.modelUsed?.model || req.aiModel.model,
+            modelId: result.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: result.modelUsed?.degraded
+                ? `提示词试跑（默认模型不可用，已降级到「${result.modelUsed.name}」）`
+                : '提示词试跑',
+            durationMs: Date.now() - previewStartedAt,
+            usage: result.usage,
+            outputChars: result.outputChars
+        })
+
+        return res.json({
+            code: 200,
+            message: '提示词试跑完成',
+            data: {
+                kind: result.kind,
+                prompt: result.prompt,
+                text: result.text || '',
+                dataUri: result.dataUri || '',
+                degraded: Boolean(result.modelUsed?.degraded),
+                modelName: result.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_INVALID_PROMPT_FEATURE') {
+            return res.status(400).json({ code: 400, message: '提示词所属功能不存在' })
+        }
+        console.error('[AI] 提示词试跑失败：', err?.message || err)
+        await recordAiCall({
+            req,
+            feature: 'prompt-preview',
+            modelName: req.aiModel?.model || null,
+            modelId: req.aiModel?.id ?? null,
+            status: 'failed',
+            detail: `提示词试跑失败：${err?.message || '未知错误'}`,
+            durationMs: Date.now() - previewStartedAt
+        })
+        return res.status(503).json({ code: 503, message: err?.message || '提示词试跑失败，请稍后重试' })
+    }
+}
+
+/**
  * 保存提示词模板：内置与自定义模板都走这里；
  * 变量清单跟随所属功能，自定义模板不许改变所属功能。
  */
@@ -549,6 +630,7 @@ module.exports = {
     getHealthStatus,
     getPromptTemplates,
     createPromptTemplate,
+    previewPromptTemplate,
     updatePromptTemplate,
     selectPromptTemplate,
     deletePromptTemplate,

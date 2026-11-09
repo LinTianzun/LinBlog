@@ -283,6 +283,19 @@ export async function installApiMock(page: Page): Promise<MockState> {
         customized: false,
         updatedAt: null,
       },
+      {
+        id: 3,
+        key: 'freeform',
+        featureKey: 'freeform',
+        name: '自由创作',
+        description: '自定义提示词的试跑功能，不绑定业务入口',
+        variables: '{{input}}',
+        content: '请根据输入自由创作：{{input}}',
+        enabled: true,
+        isDefault: true,
+        customized: false,
+        updatedAt: null,
+      },
     ],
     aiPromptBindings: {},
   }
@@ -496,6 +509,22 @@ export async function installApiMock(page: Page): Promise<MockState> {
         list: state.aiPrompts,
         bindings: state.aiPromptBindings,
       })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/prompts/preview') {
+      const featureKey = String(body?.featureKey || 'freeform')
+      const target = state.aiPrompts.find(item => item.featureKey === featureKey && item.isDefault)
+      await fulfill({
+        kind: featureKey === 'cover' ? 'image' : 'text',
+        prompt: String(body?.content || target?.content || ''),
+        text: featureKey === 'cover' ? undefined : '这是提示词试跑结果。',
+        dataUri: featureKey === 'cover'
+          ? 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="teal"/></svg>'
+          : undefined,
+        degraded: false,
+        modelName: 'Mock GLM',
+      }, { message: '提示词试跑完成' })
       return
     }
 

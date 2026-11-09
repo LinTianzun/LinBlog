@@ -792,6 +792,52 @@ async function generateCoverImage({ title, introduce, content, aiConfig, chainFn
     return result
 }
 
+/**
+ * 提示词试跑：管理员可以在保存/选用前验证草稿效果。
+ * 配图模板走图片模型，其它模板走对话模型；只返回预览结果，不落任何业务数据。
+ */
+async function previewPrompt({ featureKey, content, variables = {}, aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+    const feature = getDefaultTemplate(featureKey)
+    if (!feature) {
+        throw Object.assign(new Error('提示词所属功能不存在'), { code: 'AI_INVALID_PROMPT_FEATURE' })
+    }
+
+    const prompt = renderTemplate(String(content || '').trim() || feature.content, variables)
+    const isImageFeature = featureKey === 'cover'
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const candidates = isImageFeature
+        ? chain.filter(item => item.imageModel)
+        : chain
+    const validCandidates = candidates.length > 0 ? candidates : [aiConfig]
+
+    return await runWithFallback(validCandidates, async (candidate) => {
+        if (isImageFeature) {
+            const { buffer, mimeType } = await fetchCoverImage(prompt, candidate)
+            return {
+                kind: 'image',
+                prompt,
+                dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`,
+                usage: {},
+                outputChars: 0
+            }
+        }
+
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, maxTokens: 700 })
+        const text = normalizeWritingText(raw.text)
+        if (!text) {
+            throw Object.assign(new Error('模型没有返回可用内容'), { code: 'AI_PARSE_ERROR' })
+        }
+        return {
+            kind: 'text',
+            prompt,
+            text,
+            usage: raw.usage,
+            outputChars: text.length
+        }
+    })
+}
+
 function isValidCoverToken(token) {
     return typeof token === 'string' && /^[0-9a-f]{48}$/.test(token)
 }
@@ -873,6 +919,7 @@ module.exports = {
     reviewReportedComment,
     rewriteText,
     generateCoverImage,
+    previewPrompt,
     answerFromPublishedContent,
     buildAskPrompt,
     pickRelevantSnippet,

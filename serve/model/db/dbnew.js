@@ -905,6 +905,28 @@ async function ensureAiPromptCustomSchema(exec = query) {
   await exec(tablesSql.ai_prompt_binding);
 }
 
+// 新增内置模板（如「自由创作」）后，存量库里没有对应记录，
+// 选用与绑定都查不到。这里只补齐缺失的行，不覆盖作者改过的内容。
+async function ensureAiPromptSeedSchema(exec = query) {
+  await exec(tablesSql.ai_prompt_template);
+  await ensureColumn(exec, 'ai_prompt_template', 'feature_key', {
+    definition: "VARCHAR(64) NOT NULL DEFAULT ''",
+    comment: '所属功能标识（内置模板与 template_key 相同）'
+  });
+  await exec(tablesSql.ai_prompt_binding);
+
+  const { listDefaultTemplates } = require('../../utils/aiPromptTemplates');
+  for (const item of listDefaultTemplates()) {
+    await exec(
+      `INSERT INTO ai_prompt_template
+         (template_key, feature_key, name, description, content, variables, enabled, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+       ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)`,
+      [item.key, item.key, item.name, item.description, item.content, item.variables]
+    );
+  }
+}
+
 // -------------------------- 显式、事务化演示数据 --------------------------
 async function seedDemoData() {
   return withTransaction(async (connection) => {
@@ -2356,6 +2378,10 @@ const migrations = [
   {
     version: '20261117_ai_prompt_custom',
     up: ensureAiPromptCustomSchema
+  },
+  {
+    version: '20261118_ai_prompt_seed',
+    up: ensureAiPromptSeedSchema
   }
 ];
 

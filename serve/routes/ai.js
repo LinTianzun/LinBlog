@@ -91,6 +91,15 @@ module.exports = (app) => {
     app.get('/api/ai/prompts', authMiddleware, requirePermission('ai.manage'), aiManageController.getPromptTemplates)
     // 新建自定义提示词：挂在某个内置功能下，可在页面上随时切换选用
     app.post('/api/ai/prompts', authMiddleware, requirePermission('ai.manage'), aiManageController.createPromptTemplate)
+    // 提示词试跑：支持保存前验证草稿，调用计入 AI 次数与系统日志
+    app.post(
+        '/api/ai/prompts/preview',
+        authMiddleware,
+        requirePermission('ai.manage'),
+        aiQuota('prompt-preview'),
+        aiSuggestLimit,
+        aiManageController.previewPromptTemplate
+    )
     app.put('/api/ai/prompts/:key', authMiddleware, requirePermission('ai.manage'), aiManageController.updatePromptTemplate)
     // 选用模板：某个功能的调用改用指定模板，停用或删除后自动回退内置默认
     app.post('/api/ai/prompts/:key/select', authMiddleware, requirePermission('ai.manage'), aiManageController.selectPromptTemplate)

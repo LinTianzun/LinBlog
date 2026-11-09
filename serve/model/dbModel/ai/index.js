@@ -452,11 +452,30 @@ async function deletePromptTemplate(key) {
  * 模板停用后解析层会自动回退内置默认，不需要在这里额外校验 enabled。
  */
 async function selectPromptTemplate(key) {
-    const rows = await query(
+    let rows = await query(
         'SELECT template_key, feature_key FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
         [key]
     )
-    const row = rows?.[0]
+    let row = rows?.[0]
+    if (!row) {
+        // 内置模板在存量库里可能还没有行（后来新增的功能），
+        // 这时补一条默认记录，功能才能被正常选用
+        const { getDefaultTemplate } = require('../../../utils/aiPromptTemplates')
+        const fallback = getDefaultTemplate(key)
+        if (!fallback) return false
+        await query(
+            `INSERT INTO ai_prompt_template
+                (template_key, feature_key, name, description, content, variables, enabled, is_default)
+             VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+             ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)`,
+            [fallback.key, fallback.key, fallback.name, fallback.description, fallback.content, fallback.variables]
+        )
+        rows = await query(
+            'SELECT template_key, feature_key FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+            [key]
+        )
+        row = rows?.[0]
+    }
     if (!row) return false
 
     await query(

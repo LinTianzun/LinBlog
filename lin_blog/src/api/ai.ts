@@ -350,6 +350,23 @@ export interface AiPromptTemplate {
 // 各功能当前选用的模板：featureKey → templateKey
 export type AiPromptBindings = Record<string, string>;
 
+export interface AiPromptPreviewResult {
+  kind: "text" | "image";
+  prompt: string;
+  text?: string;
+  dataUri?: string;
+  degraded: boolean;
+  modelName: string;
+}
+
+export function previewAiPromptTemplate(payload: {
+  featureKey: string;
+  content?: string;
+  variables?: Record<string, string>;
+}) {
+  return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload);
+}
+
 export function getAiPromptTemplates() {
   return request.get<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>("/ai/prompts");
 }

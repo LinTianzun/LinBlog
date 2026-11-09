@@ -172,6 +172,20 @@ const DEFAULT_TEMPLATES = [
             '',
             `访客问题：{{question}}`
         ].join('\n')
+    },
+    {
+        key: 'freeform',
+        name: '自由创作',
+        description: '自定义提示词的试跑功能，不绑定业务入口',
+        variables: '{{input}} 自由输入内容',
+        content: [
+            '你是一名中文创作助手。请根据用户输入自由创作。',
+            '要求：',
+            '1. 使用简体中文，输出自然、连贯、可读；',
+            '2. 不要额外解释创作过程；',
+            '',
+            `创作输入：{{input}}`
+        ].join('\n')
     }
 ]
 

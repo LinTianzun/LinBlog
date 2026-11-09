@@ -40,7 +40,8 @@ const ALL_MIGRATIONS = [
     '20261114_ai_model_quota',
     '20261115_ai_content_marker',
     '20261116_ai_prompt_template',
-    '20261117_ai_prompt_custom'
+    '20261117_ai_prompt_custom',
+    '20261118_ai_prompt_seed'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -711,5 +712,32 @@ test('ai prompt custom migration adds feature key and binding table', async () =
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261117_ai_prompt_custom'
+    ))
+})
+
+test('ai prompt seed migration backfills newly added built-in templates', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261118_ai_prompt_seed')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    // 新增的内置模板（如自由创作）要在存量库补一条默认记录，
+    // 且不能覆盖作者已经改过的内容
+    const inserts = calls.filter(call => call.sql.includes('INSERT INTO ai_prompt_template'))
+    assert.ok(inserts.length >= 10)
+    assert.ok(inserts.some(call => call.values[0] === 'freeform'))
+    assert.ok(inserts.every(call => call.sql.includes('ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)')) === false
+        || inserts.every(call => !/UPDATE\s+name\s*=/i.test(call.sql)))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261118_ai_prompt_seed'
     ))
 })

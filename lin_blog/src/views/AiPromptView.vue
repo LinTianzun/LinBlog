@@ -14,50 +14,109 @@
 
             <yk-empty v-if="groups.length === 0" description="暂无可配置的提示词模板" />
 
-            <!-- 按功能分组：每组一行一个模板，默认收起正文，编辑走弹窗 -->
-            <section v-for="group in groups" :key="group.key" class="ai-prompt-group">
-                <header class="ai-prompt-group-head">
-                    <div class="ai-prompt-group-heading">
-                        <yk-title :level="4" style="margin: 0;">{{ group.name }}</yk-title>
-                        <yk-text type="secondary">{{ group.description }}</yk-text>
-                    </div>
-                    <yk-space align="center" size="s">
-                        <yk-text type="secondary" class="ai-prompt-active-label">当前使用</yk-text>
-                        <strong class="ai-prompt-active-name">{{ activeName(group) }}</strong>
-                    </yk-space>
-                </header>
+            <div v-else class="ai-prompt-workspace">
+                <section class="ai-prompt-list" aria-label="提示词模板列表">
+                    <!-- 按功能分组：每组一行一个模板，默认收起正文，编辑走弹窗 -->
+                    <section v-for="group in groups" :key="group.key" class="ai-prompt-group">
+                        <header class="ai-prompt-group-head">
+                            <div class="ai-prompt-group-heading">
+                                <yk-title :level="5" style="margin: 0;">{{ group.name }}</yk-title>
+                                <yk-text type="secondary">{{ group.description }}</yk-text>
+                            </div>
+                            <yk-space align="center" size="s">
+                                <yk-text type="secondary" class="ai-prompt-active-label">当前使用</yk-text>
+                                <strong class="ai-prompt-active-name">{{ activeName(group) }}</strong>
+                            </yk-space>
+                        </header>
 
-                <div class="ai-prompt-rows">
-                    <div v-for="item in group.templates" :key="item.key" class="ai-prompt-row"
-                        :class="{ 'is-active': isActive(group, item) }">
-                        <div class="ai-prompt-row-main">
-                            <strong>{{ item.name }}</strong>
-                            <yk-tag v-if="item.isDefault" size="s">内置</yk-tag>
-                            <yk-tag v-else size="s" type="primary">自定义</yk-tag>
-                            <yk-tag v-if="item.customized" size="s" type="warning">已修改</yk-tag>
-                            <yk-tag v-if="!item.enabled" size="s" type="danger">已停用</yk-tag>
-                            <yk-tag v-if="isActive(group, item)" size="s" type="success">使用中</yk-tag>
+                        <div class="ai-prompt-rows">
+                            <div v-for="item in group.templates" :key="item.key" class="ai-prompt-row"
+                                :class="{ 'is-active': isActive(group, item) }">
+                                <div class="ai-prompt-row-main">
+                                    <strong>{{ item.name }}</strong>
+                                    <yk-tag v-if="item.isDefault" size="s">内置</yk-tag>
+                                    <yk-tag v-else size="s" type="primary">自定义</yk-tag>
+                                    <yk-tag v-if="item.customized" size="s" type="warning">已修改</yk-tag>
+                                    <yk-tag v-if="!item.enabled" size="s" type="danger">已停用</yk-tag>
+                                    <yk-tag v-if="isActive(group, item)" size="s" type="success">使用中</yk-tag>
+                                </div>
+
+                                <p class="ai-prompt-row-meta">
+                                    <span>{{ item.description || '暂无说明' }}</span>
+                                    <span v-if="item.updatedAt" class="ai-prompt-row-time">更新于 {{ formatTime(item.updatedAt) }}</span>
+                                </p>
+
+                                <div class="ai-prompt-row-actions">
+                                    <yk-button size="s" type="primary" :disabled="isActive(group, item)" @click="handleSelect(item)">
+                                        选用
+                                    </yk-button>
+                                    <yk-button size="s" type="secondary" @click="openEdit(item)">编辑</yk-button>
+                                    <yk-button size="s" type="secondary" @click="openDuplicate(item)">复制</yk-button>
+                                    <yk-button size="s" type="secondary" @click="openPreview(item)">试跑</yk-button>
+                                    <yk-button v-if="item.isDefault" size="s" type="secondary" @click="handleReset(item)">
+                                        恢复默认
+                                    </yk-button>
+                                    <yk-button v-else size="s" type="danger" @click="handleDelete(item)">删除</yk-button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+
+                <aside class="ai-prompt-preview" aria-label="提示词试跑验证区">
+                    <header class="ai-prompt-preview-head">
+                        <div>
+                            <yk-title :level="5" style="margin: 0;">试跑验证区</yk-title>
+                            <yk-text type="secondary">先用示例变量验证效果，满意后再选用</yk-text>
+                        </div>
+                        <yk-tag size="s" type="primary">{{ draftSourceLabel }}</yk-tag>
+                    </header>
+
+                    <div class="ai-prompt-preview-body">
+                        <div class="ai-prompt-preview-field">
+                            <span class="ai-prompt-label">所属功能</span>
+                            <select v-model="draft.featureKey" class="ai-prompt-select" :disabled="previewing">
+                                <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
+                            </select>
                         </div>
 
-                        <p class="ai-prompt-row-meta">
-                            <span>{{ item.description || '暂无说明' }}</span>
-                            <span v-if="item.updatedAt" class="ai-prompt-row-time">更新于 {{ formatTime(item.updatedAt) }}</span>
-                        </p>
+                        <label class="ai-prompt-preview-field">
+                            <span class="ai-prompt-label">提示词内容</span>
+                            <textarea v-model="draft.content" class="ai-prompt-editor" rows="8" spellcheck="false" />
+                        </label>
 
-                        <div class="ai-prompt-row-actions">
-                            <yk-button size="s" type="primary" :disabled="isActive(group, item)" @click="handleSelect(item)">
-                                选用
+                        <div class="ai-prompt-preview-field">
+                            <span class="ai-prompt-label">示例变量</span>
+                            <textarea v-model="draftVariablesText" class="ai-prompt-editor is-small" rows="6"
+                                spellcheck="false" placeholder="变量名=示例内容，每行一个" />
+                            <span class="ai-prompt-tip">可用变量：{{ draftVariables }}</span>
+                        </div>
+
+                        <div class="ai-prompt-preview-actions">
+                            <yk-button type="primary" :loading="previewing" @click="startPreview">开始试跑</yk-button>
+                            <yk-button type="secondary" :disabled="previewing" @click="resetDraft">重置示例</yk-button>
+                            <yk-button v-if="draft.key && draftTemplate" type="primary"
+                                :disabled="previewing || isActiveKey(draft.key)"
+                                @click="handleSelect(draftTemplate)">
+                                选用此套提示词
                             </yk-button>
-                            <yk-button size="s" type="secondary" @click="openEdit(item)">编辑</yk-button>
-                            <yk-button size="s" type="secondary" @click="openDuplicate(item)">复制</yk-button>
-                            <yk-button v-if="item.isDefault" size="s" type="secondary" @click="handleReset(item)">
-                                恢复默认
-                            </yk-button>
-                            <yk-button v-else size="s" type="danger" @click="handleDelete(item)">删除</yk-button>
+                        </div>
+
+                        <div v-if="previewError" class="ai-banner is-error">{{ previewError }}</div>
+                        <div v-else-if="previewNotice" class="ai-banner is-success">{{ previewNotice }}</div>
+
+                        <div v-if="previewResult?.kind === 'image'" class="ai-prompt-result">
+                            <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
+                        </div>
+                        <pre v-else-if="previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
+                        <div v-if="previewResult" class="ai-prompt-result-meta">
+                            <span>{{ previewResult.modelName || '当前模型' }}</span>
+                            <span v-if="previewResult.degraded">已自动降级</span>
+                            <span>{{ previewResult.kind === 'image' ? '图片结果' : '文本结果' }}</span>
                         </div>
                     </div>
-                </div>
-            </section>
+                </aside>
+            </div>
         </template>
 
         <!-- 新建 / 编辑弹窗 -->
@@ -66,9 +125,9 @@
             <form class="ai-prompt-form" @submit.prevent="submitForm">
                 <label class="ai-prompt-field">
                     <span class="ai-prompt-label">所属功能<i>*</i></span>
-                    <yk-radio-group v-model="form.featureKey" :disabled="Boolean(editingKey)" type="button" :solid="true">
-                        <yk-radio v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</yk-radio>
-                    </yk-radio-group>
+                    <select v-model="form.featureKey" class="ai-prompt-select" :disabled="Boolean(editingKey)">
+                        <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
+                    </select>
                     <span class="ai-prompt-tip">提示词只会用于所选功能，切换功能不影响其它入口</span>
                 </label>
 
@@ -118,6 +177,8 @@
         resetAiPromptTemplate,
         selectAiPromptTemplate,
         updateAiPromptTemplate,
+        previewAiPromptTemplate,
+        type AiPromptPreviewResult,
         type AiPromptTemplate,
     } from '../api/ai'
 
@@ -150,6 +211,10 @@
     const noticeMessage = ref('')
     const templates = ref<AiPromptTemplate[]>([])
     const bindings = ref<Record<string, string>>({})
+    const previewing = ref(false)
+    const previewError = ref('')
+    const previewNotice = ref('')
+    const previewResult = ref<AiPromptPreviewResult | null>(null)
 
     const modalVisible = ref(false)
     const editingKey = ref('')
@@ -161,14 +226,23 @@
         enabled: true,
     })
 
-    // 内置功能清单：取自模板自身的 featureKey，保证与后端一致
+    const draft = reactive({
+        key: '',
+        featureKey: 'freeform',
+        name: '',
+        content: '',
+        variablesText: 'input=写一段关于秋天傍晚的短文',
+    })
+
+    // 内置功能清单：按内置模板顺序展示中文名，避免把 featureKey 暴露给作者
     const features = computed<PromptGroup[]>(() => {
         const map = new Map<string, PromptGroup>()
         for (const item of templates.value) {
+            if (!item.isDefault) continue
             if (!map.has(item.featureKey)) {
                 map.set(item.featureKey, {
                     key: item.featureKey,
-                    name: item.featureKey,
+                    name: item.name || item.featureKey,
                     description: '',
                     templates: [],
                 })
@@ -193,23 +267,27 @@
                 templates: templates.value.filter(template => template.featureKey === key),
             })
         }
-        // 只有自定义模板、没有内置模板的功能也要显示出来
-        for (const item of templates.value) {
-            if (item.isDefault) continue
-            if (result.some(group => group.key === item.featureKey)) continue
-            result.push({
-                key: item.featureKey,
-                name: item.featureKey,
-                description: '',
-                templates: templates.value.filter(template => template.featureKey === item.featureKey),
-            })
-        }
         return result
     })
 
     const currentVariables = computed(() => {
         const match = templates.value.find(item => item.featureKey === form.featureKey)
         return match?.variables || '暂无变量'
+    })
+
+    const draftTemplate = computed(() => templates.value.find(item => item.key === draft.key) || null)
+
+    const draftVariables = computed(() => draftTemplate.value?.variables
+        || templates.value.find(item => item.isDefault && item.featureKey === draft.featureKey)?.variables
+        || '暂无变量')
+
+    const draftSourceLabel = computed(() => draft.key
+        ? (draftTemplate.value?.name || '已选模板')
+        : `${features.value.find(item => item.key === draft.featureKey)?.name || '自由创作'} · 草稿`)
+
+    const draftVariablesText = computed({
+        get: () => draft.variablesText,
+        set: (value: string) => { draft.variablesText = value },
     })
 
     const activeKeyOf = (group: PromptGroup): string => {
@@ -219,6 +297,11 @@
     }
 
     const isActive = (group: PromptGroup, item: AiPromptTemplate): boolean => activeKeyOf(group) === item.key
+
+    const isActiveGroup = (item: AiPromptTemplate): boolean => {
+        const group = groups.value.find(candidate => candidate.key === item.featureKey)
+        return Boolean(group && isActive(group, item))
+    }
 
     const activeName = (group: PromptGroup): string => {
         const key = activeKeyOf(group)
@@ -235,6 +318,11 @@
     const applyData = (data: { list?: AiPromptTemplate[]; bindings?: Record<string, string> } | undefined): void => {
         templates.value = data?.list || []
         bindings.value = data?.bindings || {}
+        // 模板列表到位后再补默认草稿内容，避免试跑区出现空提示词
+        if (!draft.content.trim()) {
+            const freeform = templates.value.find(item => item.isDefault && item.featureKey === 'freeform')
+            draft.content = freeform?.content || ''
+        }
     }
 
     const load = async (): Promise<void> => {
@@ -261,6 +349,72 @@
         form.content = ''
         form.enabled = true
         modalVisible.value = true
+    }
+
+    const parseVariablesText = (value: string): Record<string, string> => {
+        const variables: Record<string, string> = {}
+        for (const line of value.split(/\r?\n/)) {
+            const index = line.indexOf('=')
+            if (index <= 0) continue
+            const name = line.slice(0, index).trim()
+            const content = line.slice(index + 1).trim()
+            if (/^\w+$/.test(name) && content) variables[name] = content
+        }
+        return variables
+    }
+
+    const buildVariablesText = (content: string): string => {
+        const names = Array.from(new Set(Array.from(String(content || '').matchAll(/\{\{\s*(\w+)\s*\}\}/g), match => match[1])))
+        return names.map(name => `${name}=`).join('\n')
+    }
+
+    const startPreview = async (): Promise<void> => {
+        if (previewing.value) return
+        if (!draft.content.trim()) {
+            previewError.value = '请先填写要验证的提示词内容'
+            return
+        }
+
+        previewing.value = true
+        previewError.value = ''
+        previewNotice.value = ''
+        previewResult.value = null
+        try {
+            const result = await previewAiPromptTemplate({
+                featureKey: draft.featureKey,
+                content: draft.content,
+                variables: parseVariablesText(draft.variablesText),
+            })
+            if (result.code !== 200) throw new Error(result.message || '提示词试跑失败')
+            previewResult.value = result.data || null
+            previewNotice.value = '试跑完成，效果满意后可以选用该套提示词'
+        } catch (error) {
+            previewError.value = getRequestErrorMessage(error, '提示词试跑失败，请稍后重试')
+        } finally {
+            previewing.value = false
+        }
+    }
+
+    const openPreview = (item: AiPromptTemplate): void => {
+        draft.key = item.key
+        draft.featureKey = item.featureKey
+        draft.name = item.name
+        draft.content = item.content
+        draft.variablesText = buildVariablesText(item.content)
+        previewError.value = ''
+        previewNotice.value = ''
+        previewResult.value = null
+    }
+
+    const resetDraft = (): void => {
+        draft.key = ''
+        draft.featureKey = 'freeform'
+        draft.name = ''
+        draft.content = templates.value.find(item => item.isDefault && item.key === 'freeform')?.content || ''
+        draft.variablesText = 'input=写一段关于秋天傍晚的短文'
+        previewError.value = ''
+        previewNotice.value = ''
+        previewResult.value = null
     }
 
     const openEdit = (item: AiPromptTemplate): void => {
@@ -384,12 +538,94 @@
         }
     }
 
+    const isActiveKey = (key: string): boolean => Boolean(templates.value.find(item => item.key === key && isActiveGroup(item)))
+
     onMounted(load)
+
+    onMounted(() => {
+        resetDraft()
+    })
 </script>
 
 <style scoped lang="less">
     .ai-prompt-page {
         width: 100%;
+    }
+
+    .ai-prompt-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, min(46%, 620px)) minmax(340px, 1fr);
+        align-items: stretch;
+        gap: 20px;
+        min-height: min(760px, calc(100vh - 170px));
+    }
+
+    .ai-prompt-list {
+        min-width: 0;
+        max-height: 100%;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-gutter: stable;
+    }
+
+    .ai-prompt-preview {
+        position: sticky;
+        top: 0;
+        min-width: 0;
+        align-self: start;
+        max-height: 100%;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 16px;
+        background: var(--admin-surface-soft, var(--bgColor2));
+        box-shadow: var(--admin-shadow-sm);
+        overflow: hidden;
+    }
+
+    .ai-prompt-preview-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--admin-line, var(--gray1));
+
+        :deep(.yk-text) {
+            margin-top: 3px;
+            font-size: 12px;
+        }
+    }
+
+    .ai-prompt-preview-body {
+        min-height: 0;
+        overflow-y: auto;
+        padding: 16px 18px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .ai-prompt-preview-field {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .ai-prompt-select {
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--admin-line-strong, var(--gray1));
+        border-radius: 10px;
+        color: var(--gray);
+        background: var(--admin-surface, var(--bgColor1));
+        font-size: 14px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--pcolor);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+        }
     }
 
     .ai-banner {
@@ -513,6 +749,48 @@
         gap: 8px;
     }
 
+    .ai-prompt-preview-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .ai-prompt-result {
+        margin: 0;
+        min-height: 140px;
+        max-height: 320px;
+        overflow: auto;
+        padding: 14px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 12px;
+        background: var(--admin-surface, var(--bgColor1));
+        color: var(--gray);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.7;
+
+        &.is-text {
+            font-family: inherit;
+        }
+
+        img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+    }
+
+    .ai-prompt-result-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--admin-muted, var(--gray6));
+        font-size: 12px;
+    }
+
     // 弹窗表单
     .ai-prompt-form {
         display: flex;
@@ -582,6 +860,21 @@
     }
 
     @media (max-width: 900px) {
+        .ai-prompt-workspace {
+            grid-template-columns: minmax(0, 1fr);
+            min-height: auto;
+        }
+
+        .ai-prompt-list {
+            max-height: none;
+            overflow: visible;
+        }
+
+        .ai-prompt-preview {
+            position: static;
+            max-height: none;
+        }
+
         .ai-prompt-row {
             grid-template-columns: minmax(0, 1fr);
         }
