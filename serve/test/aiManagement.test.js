@@ -1622,6 +1622,56 @@ test('提示词试跑遇到未知所属功能时返回 400', async () => {
     assert.equal(res.statusCode, 400)
 })
 
+test('提示词试跑可指定生成文字或生成图片', async () => {
+    const originalPreview = aiClient.previewPrompt
+    let previewPayload = null
+    aiClient.previewPrompt = async (payload) => {
+        previewPayload = payload
+        return {
+            kind: payload.mode === 'image' ? 'image' : 'text',
+            prompt: '渲染后的提示词',
+            text: payload.mode === 'image' ? '' : '生成的文字',
+            dataUri: payload.mode === 'image' ? 'data:image/png;base64,AAAA' : '',
+            usage: {},
+            outputChars: 4,
+            modelUsed: { id: 1, name: 'GLM', model: 'glm-4-flash', degraded: false }
+        }
+    }
+
+    try {
+        const textRes = createRes()
+        await aiManageController.previewPromptTemplate({
+            user: { userId: 1 },
+            aiModel: { id: 1, model: 'glm-4-flash' },
+            body: { featureKey: 'freeform', content: '内容', mode: 'text' }
+        }, textRes)
+        assert.equal(textRes.body.code, 200)
+        assert.equal(previewPayload.mode, 'text')
+        assert.equal(textRes.body.data.kind, 'text')
+        assert.equal(textRes.body.data.text, '生成的文字')
+
+        const imageRes = createRes()
+        await aiManageController.previewPromptTemplate({
+            user: { userId: 1 },
+            aiModel: { id: 1, model: 'glm-4-flash' },
+            body: { featureKey: 'freeform', content: '内容', mode: 'image' }
+        }, imageRes)
+        assert.equal(imageRes.body.code, 200)
+        assert.equal(previewPayload.mode, 'image')
+        assert.equal(imageRes.body.data.kind, 'image')
+        assert.equal(imageRes.body.data.dataUri, 'data:image/png;base64,AAAA')
+
+        // 不支持的输出类型直接拒绝
+        const badRes = createRes()
+        await aiManageController.previewPromptTemplate({
+            body: { featureKey: 'freeform', content: '内容', mode: 'video' },
+            aiModel: { id: 1, model: 'glm-4-flash' }
+        }, badRes)
+        assert.equal(badRes.statusCode, 400)
+    } finally {
+        aiClient.previewPrompt = originalPreview
+    }
+})
 test('保存提示词模板：未知模板 404，内置与自定义都可编辑', async () => {
     const originalSave = aiModel.savePromptTemplate
     const originalList = aiModel.listPromptTemplates

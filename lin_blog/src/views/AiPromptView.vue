@@ -77,9 +77,20 @@
                         <div class="ai-prompt-preview-form">
                             <div class="ai-prompt-preview-field">
                                 <span class="ai-prompt-label">所属功能<i>*</i></span>
-                                <select v-model="draft.featureKey" class="ai-prompt-select" :disabled="previewing">
-                                    <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
-                                </select>
+                                <select-field v-model="draft.featureKey" :options="featureOptions" :disabled="previewing" />
+                            </div>
+
+                            <div class="ai-prompt-preview-field">
+                                <span class="ai-prompt-label">输出类型</span>
+                                <div class="ai-prompt-mode" role="radiogroup" aria-label="试跑输出类型">
+                                    <button v-for="item in previewModes" :key="item.value" type="button"
+                                        class="ai-prompt-mode-item" :class="{ 'is-active': draft.mode === item.value }"
+                                        role="radio" :aria-checked="draft.mode === item.value"
+                                        :disabled="previewing" @click="draft.mode = item.value">
+                                        {{ item.label }}
+                                    </button>
+                                </div>
+                                <span class="ai-prompt-tip">{{ previewModeTip }}</span>
                             </div>
 
                             <label class="ai-prompt-preview-field">
@@ -139,9 +150,7 @@
             <form class="ai-prompt-form" @submit.prevent="submitForm">
                 <label class="ai-prompt-field">
                     <span class="ai-prompt-label">所属功能<i>*</i></span>
-                    <select v-model="form.featureKey" class="ai-prompt-select" :disabled="Boolean(editingKey)">
-                        <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
-                    </select>
+                    <select-field v-model="form.featureKey" :options="featureOptions" :disabled="Boolean(editingKey)" />
                     <span class="ai-prompt-tip">提示词只会用于所选功能，切换功能不影响其它入口</span>
                 </label>
 
@@ -183,6 +192,7 @@
 <script lang="ts" setup>
     import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
     import TopTitle from '../components/bar/TopTitle.vue'
+    import SelectField from '../components/common/SelectField.vue'
     import {
         createAiPromptTemplate,
         deleteAiPromptTemplate,
@@ -246,6 +256,7 @@
         name: '',
         content: '',
         variablesText: 'input=写一段关于秋天傍晚的短文',
+        mode: 'text' as 'text' | 'image',
     })
 
     // 内置功能清单：按内置模板顺序展示中文名，避免把 featureKey 暴露给作者
@@ -288,6 +299,22 @@
         const match = templates.value.find(item => item.featureKey === form.featureKey)
         return match?.variables || '暂无变量'
     })
+
+    // 下拉选项：中文功能名 + 功能标识
+    const featureOptions = computed(() => features.value.map(item => ({
+        label: item.name,
+        value: item.key,
+    })))
+
+    // 试跑输出类型：文字走对话模型，图片走图片模型
+    const previewModes = [
+        { label: '生成文字', value: 'text' as const },
+        { label: '生成图片', value: 'image' as const },
+    ]
+
+    const previewModeTip = computed(() => draft.mode === 'image'
+        ? '用图片模型生成一张示例图，适合验证配图类提示词'
+        : '用对话模型生成一段文字，适合验证写作类提示词')
 
     const draftTemplate = computed(() => templates.value.find(item => item.key === draft.key) || null)
 
@@ -398,6 +425,7 @@
                 featureKey: draft.featureKey,
                 content: draft.content,
                 variables: parseVariablesText(draft.variablesText),
+                mode: draft.mode,
             })
             if (result.code !== 200) throw new Error(result.message || '提示词试跑失败')
             previewResult.value = result.data || null
@@ -415,6 +443,8 @@
         draft.name = item.name
         draft.content = item.content
         draft.variablesText = buildVariablesText(item.content)
+        // 配图类模板默认出图，其余默认出文字，作者仍可手动切换
+        draft.mode = item.featureKey === 'cover' ? 'image' : 'text'
         previewError.value = ''
         previewNotice.value = ''
         previewResult.value = null
@@ -426,6 +456,7 @@
         draft.name = ''
         draft.content = templates.value.find(item => item.isDefault && item.key === 'freeform')?.content || ''
         draft.variablesText = 'input=写一段关于秋天傍晚的短文'
+        draft.mode = 'text'
         previewError.value = ''
         previewNotice.value = ''
         previewResult.value = null
@@ -687,19 +718,47 @@
         gap: 7px;
     }
 
-    .ai-prompt-select {
-        height: 40px;
-        padding: 0 12px;
-        border: 1px solid var(--admin-line-strong, var(--gray1));
+    // 输出类型：分段切换
+    .ai-prompt-mode {
+        display: inline-flex;
+        align-self: flex-start;
+        padding: 3px;
+        gap: 3px;
+        border: 1px solid var(--admin-line, var(--gray1));
         border-radius: 10px;
-        color: var(--gray);
-        background: var(--admin-surface, var(--bgColor1));
-        font-size: 14px;
-        outline: none;
+        background: var(--admin-surface-soft, var(--bgColor2));
+    }
 
-        &:focus {
-            border-color: var(--pcolor);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+    .ai-prompt-mode-item {
+        padding: 6px 16px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--gray7);
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        outline: none;
+        transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+
+        &:hover:not(:disabled):not(.is-active) {
+            color: var(--gray);
+        }
+
+        &:focus-visible {
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--pcolor) 30%, transparent);
+        }
+
+        &.is-active {
+            background: var(--admin-surface, var(--bgColor1));
+            color: var(--pcolor);
+            font-weight: 600;
+            box-shadow: var(--admin-shadow-sm);
+        }
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
         }
     }
 
@@ -833,11 +892,6 @@
         flex-wrap: wrap;
         // 操作行不被压缩，始终可见
         flex: none;
-    }
-
-    .ai-prompt-select.is-inline {
-        flex: 1 1 150px;
-        min-width: 130px;
     }
 
     .ai-prompt-label-tip {

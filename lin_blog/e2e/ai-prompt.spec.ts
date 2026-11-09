@@ -105,10 +105,19 @@ test('提示词模板页可新建自定义提示词', async ({ page }) => {
   await expect(modal).toBeVisible()
 
   // 所属功能必须用中文下拉，不再直接暴露 featureKey
-  const featureSelect = modal.locator('select')
+  const featureSelect = modal.locator('.select-field-trigger')
   await expect(featureSelect).toBeVisible()
-  await expect(featureSelect).toContainText('自由创作')
+  await expect(featureSelect).toContainText('写作建议')
   await expect(featureSelect).not.toContainText('freeform')
+
+  // 展开后能看到全部中文功能名
+  await featureSelect.click()
+  const featureMenu = modal.locator('.select-field-menu')
+  await expect(featureMenu).toBeVisible()
+  await expect(featureMenu).toContainText('自由创作')
+  await expect(featureMenu).not.toContainText('freeform')
+  await featureMenu.getByText('自由创作').click()
+  await expect(featureSelect).toContainText('自由创作')
 
   await modal.locator('input[type="text"]').first().fill('我的写作风格')
   await modal.locator('textarea').fill('请用更口语化的语气写简介：{{title}}')
@@ -216,6 +225,61 @@ test('每个功能分组都展示自己的提示词行，右侧整块留给试�
   // 结果区位于右栏内部、靠右排布
   expect(resultBox?.x ?? 0).toBeGreaterThan(previewBox?.x ?? 0)
   expect(Math.abs((resultBox?.x ?? 0) + (resultBox?.width ?? 0) - ((previewBox?.x ?? 0) + (previewBox?.width ?? 0)))).toBeLessThan(80)
+})
+
+test('试跑区可选择生成文字或生成图片', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  // 默认生成文字
+  const modeGroup = page.locator('.ai-prompt-mode')
+  await expect(modeGroup).toBeVisible()
+  await expect(modeGroup.getByRole('radio', { name: '生成文字' })).toHaveAttribute('aria-checked', 'true')
+
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(page.locator('.ai-prompt-result.is-text')).toContainText('这是提示词试跑结果。')
+
+  // 切到生成图片后，结果区应换成图片
+  await modeGroup.getByRole('radio', { name: '生成图片' }).click()
+  await expect(modeGroup.getByRole('radio', { name: '生成图片' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(page.locator('.ai-prompt-result img')).toBeVisible()
+})
+
+test('所属功能下拉展示中文名并可切换', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  const trigger = page.locator('.ai-prompt-preview .select-field-trigger')
+  await expect(trigger).toContainText('自由创作')
+  await trigger.click()
+
+  // 展开后是中文功能名，不出现英文 featureKey
+  const menu = page.locator('.ai-prompt-preview .select-field-menu')
+  await expect(menu).toBeVisible()
+  await expect(menu).toContainText('封面配图')
+  await expect(menu).not.toContainText('freeform')
+
+  await menu.getByText('封面配图').click()
+  await expect(trigger).toContainText('封面配图')
 })
 test('没有 ai.manage 权限时不显示提示词模板入口', async ({ page }) => {
   await seedSession(page, {

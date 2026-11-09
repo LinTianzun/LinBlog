@@ -320,12 +320,16 @@ async function previewPromptTemplate(req, res) {
     const previewStartedAt = Date.now()
     const featureKey = typeof req.body?.featureKey === 'string' ? req.body.featureKey.trim() : ''
     const content = typeof req.body?.content === 'string' ? req.body.content.trim() : ''
+    const mode = typeof req.body?.mode === 'string' ? req.body.mode.trim() : 'auto'
     const variables = req.body?.variables && typeof req.body.variables === 'object' && !Array.isArray(req.body.variables)
         ? req.body.variables
         : {}
 
     if (!featureKey) {
         return res.status(400).json({ code: 400, message: '请选择提示词所属功能' })
+    }
+    if (!['auto', 'text', 'image'].includes(mode)) {
+        return res.status(400).json({ code: 400, message: '不支持的试跑输出类型' })
     }
     if (content.length > 20000) {
         return res.status(400).json({ code: 400, message: '提示词内容过长' })
@@ -342,6 +346,7 @@ async function previewPromptTemplate(req, res) {
             featureKey,
             content,
             variables: safeVariables,
+            mode,
             aiConfig: req.aiModel
         })
         await recordAiCall({
@@ -352,7 +357,7 @@ async function previewPromptTemplate(req, res) {
             status: 'success',
             detail: result.modelUsed?.degraded
                 ? `提示词试跑（默认模型不可用，已降级到「${result.modelUsed.name}」）`
-                : '提示词试跑',
+                : `提示词试跑（${result.kind === 'image' ? '生成图片' : '生成文字'}）`,
             durationMs: Date.now() - previewStartedAt,
             usage: result.usage,
             outputChars: result.outputChars

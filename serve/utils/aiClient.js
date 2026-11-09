@@ -794,9 +794,11 @@ async function generateCoverImage({ title, introduce, content, aiConfig, chainFn
 
 /**
  * 提示词试跑：管理员可以在保存/选用前验证草稿效果。
- * 配图模板走图片模型，其它模板走对话模型；只返回预览结果，不落任何业务数据。
+ * mode 决定走哪种模型：text 走对话模型、image 走图片模型；
+ * 不传时按所属功能推断（配图类默认出图，其它默认出文字）。
+ * 只返回预览结果，不落任何业务数据。
  */
-async function previewPrompt({ featureKey, content, variables = {}, aiConfig, chainFn = null }) {
+async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto', aiConfig, chainFn = null }) {
     if (!aiConfig) throw notConfiguredError()
     const feature = getDefaultTemplate(featureKey)
     if (!feature) {
@@ -804,7 +806,9 @@ async function previewPrompt({ featureKey, content, variables = {}, aiConfig, ch
     }
 
     const prompt = renderTemplate(String(content || '').trim() || feature.content, variables)
-    const isImageFeature = featureKey === 'cover'
+    // 试跑模式：作者可以显式指定出文字还是出图片，不指定时按功能推断
+    const normalizedMode = ['text', 'image'].includes(mode) ? mode : (featureKey === 'cover' ? 'image' : 'text')
+    const isImageFeature = normalizedMode === 'image'
     const chain = await getAiConfigChain(aiConfig, chainFn)
     const candidates = isImageFeature
         ? chain.filter(item => item.imageModel)

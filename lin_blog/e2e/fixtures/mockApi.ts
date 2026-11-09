@@ -514,12 +514,17 @@ export async function installApiMock(page: Page): Promise<MockState> {
 
     if (method === 'POST' && path === '/api/ai/prompts/preview') {
       const featureKey = String(body?.featureKey || 'freeform')
+      const mode = String(body?.mode || 'auto')
+      // auto 时按所属功能推断：配图类出图片，其余出文字
+      const kind = mode === 'auto'
+        ? (featureKey === 'cover' ? 'image' : 'text')
+        : mode
       const target = state.aiPrompts.find(item => item.featureKey === featureKey && item.isDefault)
       await fulfill({
-        kind: featureKey === 'cover' ? 'image' : 'text',
+        kind,
         prompt: String(body?.content || target?.content || ''),
-        text: featureKey === 'cover' ? undefined : '这是提示词试跑结果。',
-        dataUri: featureKey === 'cover'
+        text: kind === 'image' ? undefined : '这是提示词试跑结果。',
+        dataUri: kind === 'image'
           ? 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="teal"/></svg>'
           : undefined,
         degraded: false,

@@ -363,6 +363,8 @@ export function previewAiPromptTemplate(payload: {
   featureKey: string;
   content?: string;
   variables?: Record<string, string>;
+  // 输出类型：text 走对话模型、image 走图片模型；不传则按所属功能推断
+  mode?: "text" | "image";
 }) {
   return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload);
 }
