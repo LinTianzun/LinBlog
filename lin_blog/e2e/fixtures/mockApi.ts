@@ -428,6 +428,59 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'POST' && path === '/api/ai/health/check') {
+      state.aiHealth.lastTestAt = '2026-11-09T21:14:00.000Z'
+      state.aiHealth.lastSuccessAt = '2026-11-09T21:14:00.000Z'
+      await fulfill({
+        checkedAt: '2026-11-09T21:14:00.000Z',
+        totalCount: 1,
+        successCount: 1,
+        failedCount: 0,
+      }, { message: '模型巡检完成：1 个模型在线' })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/ai/health') {
+      await fulfill({ lastCheckedAt: state.aiHealth.lastTestAt })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/ai/prompts') {
+      await fulfill({
+        list: [
+          {
+            key: 'suggest',
+            name: '写作建议',
+            description: '生成文章简介与标签建议',
+            variables: '{{title}}\n{{content}}',
+            content: '请为文章《{{title}}》生成简介。',
+            enabled: true,
+            customized: false,
+            updatedAt: null,
+          },
+        ],
+      })
+      return
+    }
+
+    if (method === 'PUT' && path === '/api/ai/prompts/suggest') {
+      await fulfill({
+        list: [
+          {
+            key: 'suggest',
+            name: '写作建议',
+            description: '生成文章简介与标签建议',
+            variables: '{{title}}\n{{content}}',
+            content: String(body?.content || ''),
+            enabled: body?.enabled !== false,
+            customized: true,
+            updatedAt: '2026-11-09 21:14:00',
+          },
+        ],
+      }, { message: '提示词模板已保存' })
+      return
+    }
+
     if (method === 'GET' && path === '/api/ai/usage') {
       await fulfill({
         list: [

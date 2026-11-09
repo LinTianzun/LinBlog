@@ -7,6 +7,21 @@ const {
     getDiaryAccessType
 } = require('../utils/accessControl')
 
+// AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
+const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery'])
+
+/**
+ * 归一化前端传来的 AI 辅助环节列表。
+ */
+function normalizeAiFeatures(features) {
+    if (!Array.isArray(features)) return []
+    return [...new Set(
+        features
+            .map(item => String(item || '').trim())
+            .filter(item => AI_FEATURE_SET.has(item))
+    )].slice(0, AI_FEATURE_SET.size)
+}
+
 /**
  * 将图片字段解析为数组（数据库以逗号分隔存储）
  */
@@ -74,6 +89,11 @@ async function getDiaries(req, res) {
                     comments: Number(item.comments || 0),
                     rootComments: Number(item.root_comments || 0),
                     replyComments: Number(item.reply_comments || 0),
+                    aiAssisted: Number(item.ai_assisted || 0) === 1,
+                    aiAssistFeatures: item.ai_assist_features
+                        ? String(item.ai_assist_features).split(',').filter(Boolean)
+                        : [],
+                    aiAssistedAt: item.ai_assisted_at || null,
                     createdAt: item.created_at
                 }))
             }
@@ -209,6 +229,12 @@ async function createDiary(req, res) {
             ip: req.ip || null,
         })
 
+        // AI 辅助标记：作者采用了 AI 结果才写
+        const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)
+        if (aiFeatures.length > 0) {
+            await diaryModel.markAiAssisted(result.diaryId, aiFeatures)
+        }
+
         res.status(201).json({
             code: 200,
             message: '日记创建成功',
@@ -291,6 +317,12 @@ async function updateDiary(req, res) {
             detail: `编辑日记「${normalized.data.title}」`,
             ip: req.ip || null,
         })
+
+        // AI 辅助标记：作者采用了 AI 结果才写
+        const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)
+        if (aiFeatures.length > 0) {
+            await diaryModel.markAiAssisted(diaryId, aiFeatures)
+        }
 
         res.json({ code: 200, message: '日记更新成功' })
     } catch (err) {

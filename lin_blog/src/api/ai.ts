@@ -279,6 +279,38 @@ export function testAiModel(id: number) {
   }>>(`/ai/models/${id}/test`);
 }
 
+// 立即巡检全部启用模型：与后台定时巡检共用同一份逻辑
+export interface AiHealthCheckResult {
+  checkedAt: string;
+  total: number;
+  failedCount: number;
+  results: {
+    modelId: number;
+    modelName: string;
+    ok: boolean;
+    latencyMs: number;
+    error: string;
+  }[];
+}
+
+export function checkAllAiModels() {
+  return request.post<ApiResult<AiHealthCheckResult>>("/ai/health/check");
+}
+
+// 巡检状态：上次巡检时间与各模型最近一次探测结果
+export interface AiHealthStatus {
+  lastCheckedAt: string | null;
+  health: (AiModelHealth & {
+    modelId: number;
+    modelName: string;
+    enabled: boolean;
+  })[];
+}
+
+export function getAiHealthStatus() {
+  return request.get<ApiResult<AiHealthStatus>>("/ai/health");
+}
+
 // 从环境变量导入：把 .env 里的 AI 密钥转成后台可管理的模型记录
 export function importAiModelFromEnv() {
   return request.post<ApiResult<AiModelItem>>("/ai/models/import-env");
@@ -298,6 +330,35 @@ export function getAiUsage(limit = 50) {
 
 export function getAiUsageStats(days = 30) {
   return request.get<ApiResult<AiUsageStats>>("/ai/usage/stats", { params: { days } });
+}
+
+// 提示词模板：把写死在服务端的提示词搬到后台可编辑
+export interface AiPromptTemplate {
+  id: number | null;
+  key: string;
+  name: string;
+  description: string;
+  content: string;
+  variables: string;
+  enabled: boolean;
+  isDefault: boolean;
+  customized: boolean;
+  updatedAt: string | null;
+}
+
+export function getAiPromptTemplates() {
+  return request.get<ApiResult<{ list: AiPromptTemplate[] }>>("/ai/prompts");
+}
+
+export function updateAiPromptTemplate(
+  key: string,
+  payload: { content: string; name?: string; description?: string; enabled?: boolean }
+) {
+  return request.put<ApiResult<{ list: AiPromptTemplate[] }>>(`/ai/prompts/${key}`, payload);
+}
+
+export function resetAiPromptTemplate(key: string) {
+  return request.post<ApiResult<{ list: AiPromptTemplate[] }>>(`/ai/prompts/${key}/reset`);
 }
 
 export function getMyAiUsage() {

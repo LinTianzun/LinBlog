@@ -1,4 +1,5 @@
 const aiModel = require('../model/dbModel/ai/index')
+const { probeModel, runHealthCheck, getLastCheckedAt } = require('../utils/aiHealthCheck')
 
 function toInt(value, fallback = 0) {
     const parsed = Number.parseInt(String(value ?? ''), 10)
@@ -158,41 +159,29 @@ async function testModel(req, res) {
             return res.status(404).json({ code: 404, message: 'AI 模型不存在' })
         }
 
-        const startedAt = Date.now()
-        const response = await fetch(`${target.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${target.apiKey}`
-            },
-            body: JSON.stringify({
-                model: target.model,
-                messages: [{ role: 'user', content: 'ping' }],
-                max_tokens: 1
-            }),
-            signal: AbortSignal.timeout(target.timeoutMs || 20000)
-        })
-        const latencyMs = Date.now() - startedAt
+        const result = await probeModel(target)
 
-        if (!response.ok) {
-            const reason = `服务返回 HTTP ${response.status}`
-            const health = await aiModel.recordModelHealth(modelId, {
-                ok: false,
-                latencyMs,
-                error: reason
-            })
+        if (!result.ok) {
             return res.status(200).json({
                 code: 200,
-                message: `连通性测试失败：${reason}`,
-                data: { ok: false, status: response.status, latencyMs, health }
+                message: `连通性测试失败：${result.error}`,
+                data: {
+                    ok: false,
+                    status: result.status,
+                    latencyMs: result.latencyMs,
+                    health: result.health
+                }
             })
         }
 
-        const health = await aiModel.recordModelHealth(modelId, { ok: true, latencyMs })
         return res.json({
             code: 200,
-            message: `连通性测试通过（耗时 ${latencyMs} 毫秒）`,
-            data: { ok: true, latencyMs, health }
+            message: `连通性测试通过（耗时 ${result.latencyMs} 毫秒）`,
+            data: {
+                ok: true,
+                latencyMs: result.latencyMs,
+                health: result.health
+            }
         })
     } catch (err) {
         console.error('[AI] 连通性测试失败：', err?.message || err)
@@ -208,6 +197,135 @@ async function testModel(req, res) {
             message: `连通性测试失败：${reason}`,
             data: { ok: false }
         })
+    }
+}
+
+/**
+ * 立即巡检全部启用的模型：与后台定时任务共用同一份逻辑，
+ * 便于管理员随时确认各个模型的可用性。
+ */
+async function checkAllModels(req, res) {
+    try {
+        const result = await runHealthCheck({ source: 'manual' })
+        const message = result.failedCount > 0
+            ? `巡检完成：${result.total} 个模型中有 ${result.failedCount} 个不可用`
+            : `巡检完成：${result.total} 个模型全部可用`
+
+        return res.json({
+            code: 200,
+            message,
+            data: {
+                checkedAt: result.checkedAt,
+                total: result.total,
+                failedCount: result.failedCount,
+                results: result.results.map(item => ({
+                    modelId: item.modelId,
+                    modelName: item.modelName,
+                    ok: item.ok,
+                    latencyMs: item.latencyMs,
+                    error: item.error
+                }))
+            }
+        })
+    } catch (err) {
+        console.error('[AI] 模型巡检失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '模型巡检失败，请稍后重试' })
+    }
+}
+
+/**
+ * 巡检状态：上次巡检时间与各模型最近一次探测时间。
+ */
+async function getHealthStatus(req, res) {
+    try {
+        const health = await aiModel.listModelHealth()
+        return res.json({
+            code: 200,
+            message: '获取模型健康状态成功',
+            data: {
+                lastCheckedAt: getLastCheckedAt(),
+                health
+            }
+        })
+    } catch (err) {
+        console.error('[AI] 获取模型健康状态失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '获取模型健康状态失败' })
+    }
+}
+
+/**
+ * 提示词模板列表：返回全部可配置模板，
+ * 未自定义过的模板也会以内置默认内容呈现，作者能直接看到原文。
+ */
+async function getPromptTemplates(req, res) {
+    try {
+        const list = await aiModel.listPromptTemplates()
+        return res.json({ code: 200, message: '获取提示词模板成功', data: { list } })
+    } catch (err) {
+        console.error('[AI] 获取提示词模板失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '获取提示词模板失败' })
+    }
+}
+
+/**
+ * 保存提示词模板：只接受内置模板里存在的标识，
+ * 避免前端传任意键值写进数据库。
+ */
+async function updatePromptTemplate(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    const { getDefaultTemplate } = require('../utils/aiPromptTemplates')
+    const fallback = getDefaultTemplate(key)
+    if (!fallback) {
+        return res.status(404).json({ code: 404, message: '提示词模板不存在' })
+    }
+
+    const content = typeof req.body?.content === 'string' ? req.body.content : ''
+    if (!content.trim()) {
+        return res.status(400).json({ code: 400, message: '提示词内容不能为空' })
+    }
+    if (content.length > 20000) {
+        return res.status(400).json({ code: 400, message: '提示词内容过长' })
+    }
+
+    const name = typeof req.body?.name === 'string' && req.body.name.trim()
+        ? req.body.name.trim().slice(0, 64)
+        : fallback.name
+    const description = typeof req.body?.description === 'string' && req.body.description.trim()
+        ? req.body.description.trim().slice(0, 255)
+        : fallback.description
+    const enabled = req.body?.enabled !== false
+
+    try {
+        const list = await aiModel.savePromptTemplate(key, {
+            name,
+            description,
+            content,
+            variables: fallback.variables,
+            enabled
+        })
+        return res.json({ code: 200, message: '提示词模板已保存', data: { list } })
+    } catch (err) {
+        console.error('[AI] 保存提示词模板失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '保存提示词模板失败' })
+    }
+}
+
+/**
+ * 恢复默认提示词：把模板内容还原成内置版本。
+ */
+async function resetPromptTemplate(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    const { getDefaultTemplate } = require('../utils/aiPromptTemplates')
+    if (!getDefaultTemplate(key)) {
+        return res.status(404).json({ code: 404, message: '提示词模板不存在' })
+    }
+
+    try {
+        const list = await aiModel.resetPromptTemplate(key)
+        return res.json({ code: 200, message: '已恢复默认提示词', data: { list } })
+    } catch (err) {
+        console.error('[AI] 恢复默认提示词失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '恢复默认提示词失败' })
     }
 }
 
@@ -331,6 +449,11 @@ module.exports = {
     updateModel,
     deleteModel,
     testModel,
+    checkAllModels,
+    getHealthStatus,
+    getPromptTemplates,
+    updatePromptTemplate,
+    resetPromptTemplate,
     getSettings,
     updateSettings,
     getUsage,

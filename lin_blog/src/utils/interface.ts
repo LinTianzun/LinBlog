@@ -93,4 +93,10 @@ export interface DiaryData {
     // 后台卡片区分「评论」与「回复」：一级评论数与回复数由后端按 parent_id 统计
     rootComments?: number;
     replyComments?: number;
+    // 该随笔是否被 AI 辅助过
+    aiAssisted?: boolean;
+    // 用过的 AI 环节：suggest/writing/cover/gallery
+    aiAssistFeatures?: string[];
+    // 最近一次 AI 辅助时间
+    aiAssistedAt?: string | null;
 }

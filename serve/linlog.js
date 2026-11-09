@@ -24,6 +24,7 @@ const { startRecordRetention } = require('./utils/recordRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
 const { startArticleScheduler } = require('./utils/articleScheduler')
+const { startAiHealthCheck } = require('./utils/aiHealthCheck')
 const articleWorkflowModel = require('./model/dbModel/articleWorkflow/index')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
@@ -140,6 +141,8 @@ db.initDatabase()
             // 数据库定时备份：图片以 BLOB 存在库里，必须单独备份数据库本体
             const databaseBackup = startScheduledBackup();
             const articleScheduler = startArticleScheduler();
+            // AI 模型健康巡检：定时主动探测接入模型，及时发现故障
+            const aiHealthCheck = startAiHealthCheck();
 
             const shutdown = createGracefulShutdown({
                 server,
@@ -148,6 +151,7 @@ db.initDatabase()
                     () => fileLifecycle.stop(),
                     () => databaseBackup.stop(),
                     () => articleScheduler.stop(),
+                    () => aiHealthCheck.stop(),
                 ],
                 closeDatabase: db.closeDatabase,
             })

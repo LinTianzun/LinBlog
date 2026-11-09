@@ -16,6 +16,10 @@
                 <!-- 分类与日期：卡片顶部的信息行，与前台文章卡片的时间/分类语言对齐 -->
                 <div class="article-item-kicker">
                     <span class="article-item-subset">{{ subsetName }}</span>
+                    <!-- AI 辅助标记：便于区分自己写的与 AI 参与过的内容 -->
+                    <yk-tooltip v-if="props.data.aiAssisted" placement="top" :title="aiFeatureTip">
+                        <span class="article-item-workflow is-ai">AI 辅助</span>
+                    </yk-tooltip>
                     <span v-if="props.data.hasUnpublishedChanges" class="article-item-workflow is-draft">
                         有未发布修改
                     </span>
@@ -102,6 +106,7 @@ import {
 } from '../../api/article'
 import { useSubsetStore } from '../../store/subset'
 import { optimizedImageUrl } from '../../utils/imageOptimization'
+import { aiFeatureLabel } from '../../utils/aiMarker.ts'
 
 type ArticleItemProps = {
     data: ArticleItem
@@ -133,6 +138,12 @@ const subsetName = computed(
 )
 const coverText = computed(() => props.data.title.trim().slice(0, 1) || '文')
 const scheduledText = computed(() => formatArticleDate(props.data.scheduledAt))
+// AI 辅助的具体环节：鼠标悬停时能看到用了哪些能力
+const aiFeatureTip = computed(() => {
+    const features = props.data.aiAssistFeatures || []
+    if (features.length === 0) return '该内容使用过 AI 辅助'
+    return `AI 辅助环节：${features.map(item => aiFeatureLabel(item)).join('、')}`
+})
 
 // 评论与回复分开统计：后端按 parent_id 聚合，没回传时按总数兜底
 const rootComments = computed(() => props.data.rootComments ?? props.data.comments ?? 0)
@@ -292,6 +303,11 @@ const updateState = (state: ArticleState): void => {
         &.is-scheduled {
             background: color-mix(in srgb, var(--pcolor) 14%, transparent);
             color: var(--pcolor);
+        }
+
+        &.is-ai {
+            background: color-mix(in srgb, #7c5cff 14%, transparent);
+            color: #6141d6;
         }
     }
 

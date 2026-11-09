@@ -67,6 +67,7 @@ import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 import ImageSourceActions from '../common/ImageSourceActions.vue'
+import { getAiFeatures, markAiFeature, resetAiFeatures } from '../../utils/aiMarker.ts'
 
 type DiaryForm = {
     title?: string
@@ -222,6 +223,8 @@ const handleAiPhoto = (url: string): void => {
         return
     }
 
+    // 记录 AI 辅助标记：随笔配图来自 AI 生成
+    markAiFeature('cover')
     photos.value = [...photos.value, url]
     diaryForm.value.picture = [...photos.value]
     proxy?.$message?.({ type: 'primary', message: 'AI 配图已添加' })
@@ -255,12 +258,15 @@ const submitDiary = async (): Promise<void> => {
 
     submitting.value = true
     try {
+        // 作者采用过 AI 结果时带上标记，落库后随笔会带上「AI 辅助」标记
+        const aiFeatures = getAiFeatures()
         if (editingId.value) {
             const result = await updateDiary(editingId.value, {
                 title,
                 content,
                 picture: photos.value,
                 weatherName: selectedWeatherName.value || undefined,
+                ...(aiFeatures.length > 0 ? { aiFeatures } : {}),
             })
             if (result.code !== 200) throw new Error(result.message || '日记保存失败')
 
@@ -273,6 +279,7 @@ const submitDiary = async (): Promise<void> => {
                 content,
                 picture: photos.value,
                 weatherName: selectedWeatherName.value || undefined,
+                ...(aiFeatures.length > 0 ? { aiFeatures } : {}),
             })
             if (result.code !== 200) throw new Error(result.message || '日记创建失败')
 
@@ -297,6 +304,8 @@ const resetForm = (): void => {
     editingId.value = null
     diaryForm.value = { weatherId: swWeatherId.value, picture: [] }
     photos.value = []
+    // 表单清空后重新统计 AI 环节，避免上一条随笔的标记串到下一条
+    resetAiFeatures()
     uploaderVisible.value = false
     void nextTick(() => {
         uploaderVisible.value = true
@@ -320,6 +329,8 @@ onMounted(() => {
 // 编辑日记：回显标题/内容/天气/图片
 const startEdit = (diary: DiaryData): void => {
     editingId.value = diary.id
+    // 编辑已有随笔时重新统计：本次采用 AI 才会再次记标记
+    resetAiFeatures()
     diaryForm.value = {
         title: diary.title,
         content: diary.content,

@@ -33,6 +33,14 @@
                         <yk-title :level="4" style="margin: 0;">接入模型</yk-title>
                         <yk-text type="secondary">默认模型优先被调用，停用的模型不参与请求</yk-text>
                     </div>
+                    <yk-space align="center" size="s">
+                        <yk-text type="secondary" class="ai-health-checked">
+                            上次巡检：{{ lastCheckedAt ? formatTime(lastCheckedAt) : '尚未巡检' }}
+                        </yk-text>
+                        <yk-button size="s" type="secondary" :loading="checkingAll" @click="handleCheckAll">
+                            立即巡检
+                        </yk-button>
+                    </yk-space>
                 </header>
 
                 <yk-empty v-if="models.length === 0"
@@ -274,6 +282,56 @@
                 <yk-empty v-else-if="!reportError" description="点击「生成周报」查看本周运营总结" />
             </section>
 
+            <!-- 提示词模板 -->
+            <section class="ai-panel">
+                <header class="ai-panel-header">
+                    <div class="ai-panel-heading">
+                        <yk-title :level="4" style="margin: 0;">提示词模板</yk-title>
+                        <yk-text type="secondary">按自己的写作习惯改写提示词，变量用双花括号占位</yk-text>
+                    </div>
+                </header>
+
+                <yk-empty v-if="prompts.length === 0" description="暂无可配置的提示词模板" />
+
+                <div v-else class="ai-prompt-list">
+                    <article v-for="item in prompts" :key="item.key" class="ai-prompt-item">
+                        <header class="ai-prompt-head">
+                            <div class="ai-prompt-heading">
+                                <strong>{{ item.name }}</strong>
+                                <yk-tag v-if="item.customized" size="s" type="primary">已自定义</yk-tag>
+                                <yk-tag v-else size="s" type="warning">默认</yk-tag>
+                                <yk-tag v-if="!item.enabled" size="s" type="danger">已停用</yk-tag>
+                            </div>
+                            <yk-text type="secondary">{{ item.description }}</yk-text>
+                        </header>
+
+                        <p v-if="item.variables" class="ai-prompt-variables">
+                            可用变量：{{ item.variables }}
+                        </p>
+
+                        <textarea v-model="item.content" class="ai-prompt-content" rows="8" spellcheck="false" />
+
+                        <footer class="ai-prompt-foot">
+                            <yk-switch v-model="item.enabled" :checked-value="true" :unchecked-value="false"
+                                checked-color="#1fb4a2" unchecked-color="#fa5247" />
+                            <yk-text type="third" class="ai-prompt-tip">
+                                停用后该功能改用内置默认提示词
+                            </yk-text>
+                            <yk-space align="center" size="s">
+                                <yk-button size="s" type="secondary" :loading="resettingPrompt === item.key"
+                                    @click="handleResetPrompt(item)">
+                                    恢复默认
+                                </yk-button>
+                                <yk-button size="s" type="primary" :loading="savingPrompt === item.key"
+                                    @click="handleSavePrompt(item)">
+                                    保存
+                                </yk-button>
+                            </yk-space>
+                        </footer>
+                    </article>
+                </div>
+            </section>
+
             <div class="ai-columns">
                 <!-- 用量策略 -->
                 <section class="ai-panel">
@@ -498,19 +556,25 @@
     import TopTitle from '../components/bar/TopTitle.vue'
     import StatCard from '../components/common/StatCard.vue'
     import {
+        checkAllAiModels,
         createAiModel,
         deleteAiModel,
         generateOperationsReport,
+        getAiHealthStatus,
         getAiModels,
+        getAiPromptTemplates,
         getAiSettings,
         getAiUsage,
         getAiUsageStats,
         getRequestErrorMessage,
         importAiModelFromEnv,
+        resetAiPromptTemplate,
         testAiModel,
         updateAiModel,
+        updateAiPromptTemplate,
         updateAiSettings,
         type AiModelItem,
+        type AiPromptTemplate,
         type AiSettings,
         type AiUsageRecord,
         type AiUsageStats,
@@ -555,6 +619,14 @@
     const togglingId = ref<number | null>(null)
     const importing = ref(false)
     const showSecret = ref(false)
+    // 定时巡检：后台每 30 分钟主动探测一次，这里展示上次巡检时间
+    const checkingAll = ref(false)
+    const lastCheckedAt = ref<string | null>(null)
+
+    // 提示词模板：可编辑服务端硬编码的提示词
+    const prompts = ref<AiPromptTemplate[]>([])
+    const savingPrompt = ref<string | null>(null)
+    const resettingPrompt = ref<string | null>(null)
 
     // 运营周报：按周期聚合真实统计后交给模型组织文字
     const reportDays = ref(7)
@@ -707,12 +779,36 @@
         }
     }
 
+    // 巡检状态：读取上次巡检时间，失败不阻塞页面其它内容
+    const fetchHealthStatus = async (): Promise<void> => {
+        try {
+            const result = await getAiHealthStatus()
+            if (result.code === 200 && result.data) {
+                lastCheckedAt.value = result.data.lastCheckedAt || null
+            }
+        } catch {
+            lastCheckedAt.value = null
+        }
+    }
+
+    // 提示词模板：加载失败不阻塞模型与策略配置
+    const fetchPrompts = async (): Promise<void> => {
+        try {
+            const result = await getAiPromptTemplates()
+            if (result.code === 200 && result.data) {
+                prompts.value = result.data.list || []
+            }
+        } catch {
+            prompts.value = []
+        }
+    }
+
     const loadAll = async (): Promise<void> => {
         loading.value = true
         errorMessage.value = ''
         try {
             await Promise.all([fetchModels(), fetchSettings()])
-            await Promise.all([fetchUsage(), fetchStats()])
+            await Promise.all([fetchUsage(), fetchStats(), fetchHealthStatus(), fetchPrompts()])
         } catch (error) {
             errorMessage.value = getRequestErrorMessage(error, 'AI 配置加载失败，请稍后重试')
         } finally {
@@ -868,6 +964,29 @@
         }
     }
 
+    // 立即巡检全部模型：与后台定时巡检走同一套服务端逻辑
+    const handleCheckAll = async (): Promise<void> => {
+        if (checkingAll.value) return
+        checkingAll.value = true
+        errorMessage.value = ''
+        noticeMessage.value = ''
+        try {
+            const result = await checkAllAiModels()
+            if (result.code !== 200) {
+                throw new Error(result.message || '模型巡检失败')
+            }
+            noticeMessage.value = result.message || '模型巡检完成'
+            notify(result.data?.failedCount ? 'error' : 'primary', noticeMessage.value)
+            lastCheckedAt.value = result.data?.checkedAt || lastCheckedAt.value
+            await Promise.all([fetchModels(), fetchStats(), fetchHealthStatus()])
+        } catch (error) {
+            errorMessage.value = getRequestErrorMessage(error, '模型巡检失败，请稍后重试')
+            notify('error', errorMessage.value)
+        } finally {
+            checkingAll.value = false
+        }
+    }
+
     const requestReport = async (): Promise<void> => {
         if (reportBusy.value) return
         reportBusy.value = true
@@ -904,6 +1023,57 @@
             notify('error', errorMessage.value)
         } finally {
             importing.value = false
+        }
+    }
+
+    // 保存单个提示词模板
+    const handleSavePrompt = async (item: AiPromptTemplate): Promise<void> => {
+        if (savingPrompt.value) return
+        savingPrompt.value = item.key
+        errorMessage.value = ''
+        noticeMessage.value = ''
+        try {
+            const result = await updateAiPromptTemplate(item.key, {
+                content: item.content,
+                enabled: item.enabled,
+            })
+            if (result.code !== 200) {
+                throw new Error(result.message || '保存提示词模板失败')
+            }
+            if (result.data?.list) {
+                prompts.value = result.data.list
+            }
+            noticeMessage.value = `「${item.name}」提示词已保存`
+            notify('primary', noticeMessage.value)
+        } catch (error) {
+            errorMessage.value = getRequestErrorMessage(error, '保存提示词模板失败')
+            notify('error', errorMessage.value)
+        } finally {
+            savingPrompt.value = null
+        }
+    }
+
+    // 恢复内置默认提示词
+    const handleResetPrompt = async (item: AiPromptTemplate): Promise<void> => {
+        if (resettingPrompt.value) return
+        resettingPrompt.value = item.key
+        errorMessage.value = ''
+        noticeMessage.value = ''
+        try {
+            const result = await resetAiPromptTemplate(item.key)
+            if (result.code !== 200) {
+                throw new Error(result.message || '恢复默认提示词失败')
+            }
+            if (result.data?.list) {
+                prompts.value = result.data.list
+            }
+            noticeMessage.value = `「${item.name}」已恢复默认提示词`
+            notify('primary', noticeMessage.value)
+        } catch (error) {
+            errorMessage.value = getRequestErrorMessage(error, '恢复默认提示词失败')
+            notify('error', errorMessage.value)
+        } finally {
+            resettingPrompt.value = null
         }
     }
 
@@ -976,6 +1146,88 @@
             justify-content: space-between;
             gap: 16px;
             margin-bottom: 16px;
+        }
+
+        .ai-health-checked {
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        // 提示词模板：左侧标题说明，右侧文本框直接改写
+        .ai-prompt-list {
+            display: flex;
+            flex-direction: column;
+            gap: @space-m;
+        }
+
+        .ai-prompt-item {
+            padding: 16px 18px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: 14px;
+            background: var(--admin-surface-soft, var(--bgColor2));
+        }
+
+        .ai-prompt-head {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .ai-prompt-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            strong {
+                color: var(--gray);
+                font-size: 14px;
+                font-weight: 650;
+            }
+        }
+
+        .ai-prompt-variables {
+            margin: 8px 0 0;
+            padding: 8px 10px;
+            border-radius: @radius-s;
+            background: color-mix(in srgb, var(--pcolor) 7%, transparent);
+            color: var(--gray7);
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+
+        .ai-prompt-content {
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 10px;
+            padding: 12px 14px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: @radius-s;
+            background: var(--bgColor1);
+            color: var(--gray);
+            font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            resize: vertical;
+            transition: border-color @animatb, box-shadow @animatb;
+
+            &:focus {
+                outline: none;
+                border-color: var(--pcolor);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+            }
+        }
+
+        .ai-prompt-foot {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .ai-prompt-tip {
+            font-size: 12px;
         }
 
         .ai-panel-heading {

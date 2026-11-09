@@ -184,6 +184,7 @@ import { optimizeRichContentImages } from '../utils/imageOptimization'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import { validateScheduleValue, isScheduleOverdue } from '../utils/scheduledPublish'
+import { getAiFeatures, resetAiFeatures } from '../utils/aiMarker.ts'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
@@ -429,6 +430,8 @@ function discardLocalDraft(): void {
 
 function buildPayload(): CreateArticleParams {
     if (!form.value) throw new Error('文章表单尚未准备好')
+    // 作者采用过 AI 结果时带上标记，服务端落库后内容会打上「AI 辅助」标记
+    const aiFeatures = getAiFeatures()
     return {
         title: form.value.title.trim(),
         content: content.value,
@@ -437,6 +440,7 @@ function buildPayload(): CreateArticleParams {
         label: formatArticleLabels(form.value.label),
         introduce: form.value.introduce.trim(),
         cover: form.value.cover.trim(),
+        ...(aiFeatures.length > 0 ? { aiFeatures } : {}),
     }
 }
 
@@ -528,6 +532,8 @@ async function loadArticle(): Promise<void> {
         workflow.value = workflowResult.data
         loadedCopy.value = workflowResult.data.workingCopy
         content.value = workflowResult.data.workingCopy.content || ''
+        // 打开已有文章时重新统计：本次编辑采用 AI 才会再记一次
+        resetAiFeatures()
         lastSavedSnapshot.value = {
             title: workflowResult.data.workingCopy.title,
             content: workflowResult.data.workingCopy.content,

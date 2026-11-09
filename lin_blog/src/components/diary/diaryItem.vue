@@ -10,6 +10,10 @@
                             <img :src="weatherIcon" :alt="props.data.weatherName" />
                             {{ props.data.weatherName }}
                         </span>
+                        <!-- AI 辅助标记：便于区分自己写的与 AI 参与过的随笔 -->
+                        <yk-tooltip v-if="props.data.aiAssisted" placement="top" :title="aiFeatureTip">
+                            <span class="diary-item-badge is-ai">AI 辅助</span>
+                        </yk-tooltip>
                         <span class="diary-item-time">{{ momentm(props.data.moment) }}</span>
                     </yk-space>
                 </yk-space>
@@ -81,6 +85,7 @@ import { momentm } from '../../utils/moment'
 import ConfirmPopover from '../common/ConfirmPopover.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 import { optimizedImageUrl } from '../../utils/imageOptimization'
+import { aiFeatureLabel } from '../../utils/aiMarker.ts'
 
 type DiaryItemProps = {
     data: DiaryData
@@ -109,6 +114,12 @@ const views = props.data.views ?? 0
 const likes = props.data.likes ?? 0
 const rootComments = props.data.rootComments ?? props.data.comments ?? 0
 const replyComments = props.data.replyComments ?? 0
+// AI 辅助的具体环节：鼠标悬停时能看到用了哪些能力
+const aiFeatureTip = computed(() => {
+    const features = props.data.aiAssistFeatures || []
+    if (features.length === 0) return '该随笔使用过 AI 辅助'
+    return `AI 辅助环节：${features.map(item => aiFeatureLabel(item)).join('、')}`
+})
 
 // 预览列表：随笔配图是可选字段，缺图时灯箱不打开
 const previewList = computed(() => props.data.picture ?? [])
@@ -226,6 +237,11 @@ const openDetail = (): void => {
             color: var(--admin-accent, @pcolor);
             font-size: 12px;
             line-height: 20px;
+
+            &.is-ai {
+                background: color-mix(in srgb, #7c5cff 14%, transparent);
+                color: #6141d6;
+            }
 
             img {
                 width: 14px;

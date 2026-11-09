@@ -13,6 +13,21 @@ function parsePositiveId(value) {
     return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
+// AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
+const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery'])
+
+/**
+ * 归一化前端传来的 AI 辅助环节列表。
+ */
+function normalizeAiFeatures(features) {
+    if (!Array.isArray(features)) return []
+    return [...new Set(
+        features
+            .map(item => String(item || '').trim())
+            .filter(item => AI_FEATURE_SET.has(item))
+    )].slice(0, AI_FEATURE_SET.size)
+}
+
 function validatePayload(body = {}) {
     const {
         title, content, classify, subsetId,
@@ -185,6 +200,12 @@ async function saveDraft(req, res) {
             detail: req.body?.source === 'manual' ? '保存内容工作稿' : '自动保存内容工作稿',
             ip: req.ip || null,
         })
+
+        // AI 辅助标记：作者采用过 AI 结果才写，标记会一直保留在内容上
+        const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)
+        if (aiFeatures.length > 0) {
+            await articleModel.markAiAssisted(articleId, aiFeatures)
+        }
 
         res.json({
             code: 200,

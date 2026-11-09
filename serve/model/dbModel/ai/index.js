@@ -271,6 +271,170 @@ async function getModelConfigById(id) {
     }
 }
 
+/**
+ * 全部启用模型的连接配置（含明文密钥）。
+ * 定时巡检要逐个探测，所以这里返回的是可直接发起请求的配置，
+ * 只在服务端内部使用，接口层不会把它透给前端。
+ */
+async function listEnabledModelConfigs() {
+    const rows = await query(
+        `SELECT ${MODEL_FIELDS} FROM ai_model
+         WHERE enabled = 1
+         ORDER BY is_default DESC, id ASC`
+    )
+
+    return (rows || []).map(row => {
+        let apiKey = ''
+        try {
+            apiKey = decryptSecret(row.api_key)
+        } catch {
+            // 密钥损坏时按空密钥处理，探测会失败并记录原因
+            apiKey = ''
+        }
+
+        return {
+            id: Number(row.id),
+            name: String(row.name || ''),
+            baseUrl: String(row.base_url || '').replace(/\/+$/, ''),
+            apiKey,
+            chatModel: String(row.chat_model || ''),
+            timeoutMs: Number(row.timeout_ms) || 20000
+        }
+    })
+}
+
+/**
+ * 读取全部提示词模板（按模板标识排序）。
+ * 未在数据库中配置的模板会以内置默认内容补齐，保证后台看到的是完整列表。
+ */
+async function listPromptTemplates() {
+    const { listDefaultTemplates } = require('../../../utils/aiPromptTemplates')
+    const rows = await query(
+        'SELECT id, template_key, name, description, content, variables, enabled, is_default, updated_at FROM ai_prompt_template ORDER BY id ASC'
+    )
+
+    const stored = new Map((rows || []).map(row => [String(row.template_key), row]))
+    const defaults = listDefaultTemplates()
+
+    // 数据库里没有的模板用内置默认值补齐，管理员一眼就能看到还有哪些可配
+    const merged = defaults.map(item => {
+        const row = stored.get(item.key)
+        if (!row) {
+            return {
+                id: null,
+                key: item.key,
+                name: item.name,
+                description: item.description,
+                content: item.content,
+                variables: item.variables,
+                enabled: true,
+                isDefault: true,
+                customized: false,
+                updatedAt: null
+            }
+        }
+
+        const content = String(row.content || '')
+        return {
+            id: Number(row.id),
+            key: String(row.template_key),
+            name: String(row.name || item.name),
+            description: row.description ? String(row.description) : item.description,
+            content,
+            variables: row.variables ? String(row.variables) : item.variables,
+            enabled: Number(row.enabled) === 1,
+            isDefault: Number(row.is_default) === 1,
+            customized: content.trim() !== item.content.trim(),
+            updatedAt: row.updated_at
+        }
+    })
+
+    // 数据库里存在但内置没有的模板（历史版本遗留）也一并返回
+    for (const row of rows || []) {
+        const key = String(row.template_key)
+        if (merged.some(item => item.key === key)) continue
+        merged.push({
+            id: Number(row.id),
+            key,
+            name: String(row.name || key),
+            description: row.description ? String(row.description) : '',
+            content: String(row.content || ''),
+            variables: row.variables ? String(row.variables) : '',
+            enabled: Number(row.enabled) === 1,
+            isDefault: Number(row.is_default) === 1,
+            customized: true,
+            updatedAt: row.updated_at
+        })
+    }
+
+    return merged
+}
+
+/**
+ * 读取单个启用中的模板内容：查不到或被停用时返回 null，
+ * 由调用方回退到内置默认提示词。
+ */
+async function getEnabledPromptTemplate(key) {
+    const rows = await query(
+        'SELECT content FROM ai_prompt_template WHERE template_key = ? AND enabled = 1 LIMIT 1',
+        [key]
+    )
+    const content = rows?.[0]?.content
+    return content ? String(content) : null
+}
+
+/**
+ * 保存提示词模板：存在则更新，不存在则插入。
+ */
+async function savePromptTemplate(key, { name, description, content, variables, enabled }) {
+    const existing = await query(
+        'SELECT id FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+        [key]
+    )
+
+    if (existing?.[0]?.id) {
+        await query(
+            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = ?, is_default = 0 WHERE id = ?',
+            [name, description || null, content, variables || null, enabled ? 1 : 0, Number(existing[0].id)]
+        )
+    } else {
+        await query(
+            'INSERT INTO ai_prompt_template (template_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, 0)',
+            [key, name, description || null, content, variables || null, enabled ? 1 : 0]
+        )
+    }
+
+    return listPromptTemplates()
+}
+
+/**
+ * 把模板恢复成内置默认内容。
+ */
+async function resetPromptTemplate(key) {
+    const { getDefaultTemplate } = require('../../../utils/aiPromptTemplates')
+    const fallback = getDefaultTemplate(key)
+    if (!fallback) return null
+
+    const existing = await query(
+        'SELECT id FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+        [key]
+    )
+
+    if (existing?.[0]?.id) {
+        await query(
+            'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = 1, is_default = 1 WHERE id = ?',
+            [fallback.name, fallback.description, fallback.content, fallback.variables, Number(existing[0].id)]
+        )
+    } else {
+        await query(
+            'INSERT INTO ai_prompt_template (template_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, 1, 1)',
+            [fallback.key, fallback.name, fallback.description, fallback.content, fallback.variables]
+        )
+    }
+
+    return listPromptTemplates()
+}
+
 async function createModel(payload) {
     const result = await query(
         `INSERT INTO ai_model
@@ -845,6 +1009,11 @@ module.exports = {
     getActiveModelConfig,
     listFallbackModelConfigs,
     getModelConfigById,
+    listEnabledModelConfigs,
+    listPromptTemplates,
+    getEnabledPromptTemplate,
+    savePromptTemplate,
+    resetPromptTemplate,
     importEnvModel,
     createModel,
     updateModel,

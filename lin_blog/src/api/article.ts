@@ -33,6 +33,13 @@ export interface ArticleItem {
   /** 计划发布时间；有值时表示已安排定时发布 */
   scheduledAt?: string | null;
 
+  /** 该内容是否被 AI 辅助过 */
+  aiAssisted?: boolean;
+  /** 用过的 AI 环节：suggest/writing/cover/gallery */
+  aiAssistFeatures?: string[];
+  /** 最近一次 AI 辅助时间 */
+  aiAssistedAt?: string | null;
+
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
@@ -75,6 +82,8 @@ export interface CreateArticleParams {
   label?: string | string[];
   introduce?: string;
   cover?: string;
+  // 作者采用过 AI 结果时带上，落库后内容会被打上 AI 辅助标记
+  aiFeatures?: string[];
 }
 
 export type UpdateArticleParams = Partial<CreateArticleParams> & {

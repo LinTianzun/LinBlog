@@ -141,6 +141,7 @@ import {
     suggestGalleryCuration,
     getRequestErrorMessage as getAiRequestErrorMessage,
 } from '../../api/ai.ts'
+import { markAiFeature } from '../../utils/aiMarker.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 import ImageSourceActions from '../common/ImageSourceActions.vue'
 
@@ -314,6 +315,8 @@ const applyAiSuggestion = (): void => {
             labelArr.value = labelArr.value.filter(item => item !== label)
         }
     }
+    // 记录 AI 辅助标记：作者点了「采用建议」才算数
+    markAiFeature('suggest')
     aiSuggestion.value = null
 }
 
@@ -360,6 +363,7 @@ const requestGalleryCuration = async (): Promise<void> => {
 
 const applyGalleryTitle = (title: string): void => {
     formData.value.title = title
+    markAiFeature('gallery')
     if (galleryAiSuggestion.value?.titles.length) {
         galleryAiSuggestion.value.titles = galleryAiSuggestion.value.titles.filter(item => item !== title)
     }
@@ -372,12 +376,14 @@ const applyGallerySummary = (): void => {
     const suggestion = galleryAiSuggestion.value
     if (!suggestion?.summary) return
     formData.value.introduce = suggestion.summary
+    markAiFeature('gallery')
     suggestion.summary = ''
 }
 
 const applyGalleryLabels = (): void => {
     const suggestion = galleryAiSuggestion.value
     if (!suggestion) return
+    markAiFeature('gallery')
     const remaining: string[] = []
     for (const label of suggestion.labels) {
         if (formData.value.label.length >= 3) {
@@ -477,6 +483,8 @@ const applyAiCover = (url: string): void => {
     coverUploadError.value = ''
     formData.value.cover = url
     coverFileList.value = [{ name: '文章封面', url }]
+    // 记录 AI 辅助标记：封面来自 AI 生成
+    markAiFeature('cover')
 }
 
 const getSubset = () => {

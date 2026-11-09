@@ -183,6 +183,7 @@ import forms from '../components/forms/forms.vue'
 import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import { validateScheduleValue } from '../utils/scheduledPublish'
+import { getAiFeatures, resetAiFeatures } from '../utils/aiMarker.ts'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
@@ -433,6 +434,8 @@ function buildPayload(): CreateArticleParams {
         throw new Error('图库表单尚未准备好')
     }
 
+    // 作者采用过 AI 结果时带上标记，服务端落库后内容会打上「AI 辅助」标记
+    const aiFeatures = getAiFeatures()
     return {
         title: form.value.title.trim(),
         content: JSON.stringify(photos.value),
@@ -441,6 +444,7 @@ function buildPayload(): CreateArticleParams {
         label: formatArticleLabels(form.value.label),
         introduce: form.value.introduce.trim(),
         cover: cover.value || photos.value[0] || '',
+        ...(aiFeatures.length > 0 ? { aiFeatures } : {}),
     }
 }
 
@@ -533,6 +537,8 @@ const loadGallery = async (): Promise<void> => {
         loadedCopy.value = workflowResult.data.workingCopy
         photos.value = parseGalleryContent(workflowResult.data.workingCopy.content)
         cover.value = workflowResult.data.workingCopy.cover || photos.value[0] || ''
+        // 打开已有图库时重新统计：本次编辑采用 AI 才会再记一次
+        resetAiFeatures()
         lastSavedSnapshot.value = {
             title: workflowResult.data.workingCopy.title,
             content: workflowResult.data.workingCopy.content,

@@ -149,6 +149,9 @@ async function findArticlesByPage(params) {
               WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
             (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
+            a.ai_assisted AS aiAssisted,
+            a.ai_assist_features AS aiAssistFeatures,
+            a.ai_assisted_at AS aiAssistedAt,
             a.scheduled_at AS scheduledAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
@@ -267,6 +270,9 @@ async function findAtricleById(articleId, userId, userType) {
               WHERE c2.article_id = a.id AND c2.status = 1 AND c2.parent_id > 0) AS reply_comments,
             a.state,
             (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
+            a.ai_assisted AS aiAssisted,
+            a.ai_assist_features AS aiAssistFeatures,
+            a.ai_assisted_at AS aiAssistedAt,
             a.scheduled_at AS scheduledAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
@@ -544,6 +550,47 @@ async function deleteArticle(articleId, userId, userType) {
 }
 
 /**
+ * 标记文章经过 AI 辅助，并累计用过的环节。
+ * 环节用逗号分隔存储，便于后台列表直接展示「AI 润色 / AI 封面」这类来源。
+ */
+async function markAiAssisted(articleId, features = []) {
+    const list = (Array.isArray(features) ? features : [])
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    if (list.length === 0) return 0
+
+    const rows = await query(
+        'SELECT ai_assist_features FROM article WHERE id = ? AND state != ? LIMIT 1',
+        [articleId, 'deleted']
+    )
+    if (!rows || rows.length === 0) return 0
+
+    const existing = String(rows[0].ai_assist_features || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
+    const merged = [...new Set([...existing, ...list])].slice(0, 8)
+
+    const result = await query(
+        'UPDATE article SET ai_assisted = 1, ai_assist_features = ?, ai_assisted_at = NOW() WHERE id = ?',
+        [merged.join(','), articleId]
+    )
+    return result.affectedRows
+}
+
+/**
+ * 清除文章的 AI 标记：作者手动重写后可以手动摘掉这个标记。
+ */
+async function clearAiMarker(articleId) {
+    const result = await query(
+        'UPDATE article SET ai_assisted = 0, ai_assist_features = NULL, ai_assisted_at = NULL WHERE id = ?',
+        [articleId]
+    )
+    return result.affectedRows
+}
+
+/**
  * 修改文章状态（支持draft/published/rejected）
  * @param {number} articleId - 文章ID
  * @param {string} state - 目标状态（必须传，函数参数不能漏）
@@ -616,5 +663,7 @@ module.exports = {
     updateArticle,
     deleteArticle,
     updateArticleStatus,
+    markAiAssisted,
+    clearAiMarker,
     insertArticle
 }

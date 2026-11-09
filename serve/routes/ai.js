@@ -76,6 +76,10 @@ module.exports = (app) => {
     app.put('/api/ai/models/:id', authMiddleware, requirePermission('ai.manage'), aiManageController.updateModel)
     app.delete('/api/ai/models/:id', authMiddleware, requirePermission('ai.manage'), aiManageController.deleteModel)
     app.post('/api/ai/models/:id/test', authMiddleware, requirePermission('ai.manage'), aiManageController.testModel)
+    // 立即巡检全部启用模型：与后台定时巡检共用同一份逻辑
+    app.post('/api/ai/health/check', authMiddleware, requirePermission('ai.manage'), aiManageController.checkAllModels)
+    // 巡检状态：上次巡检时间与各模型最近一次探测结果
+    app.get('/api/ai/health', authMiddleware, requirePermission('ai.manage'), aiManageController.getHealthStatus)
     // 从环境变量导入：把 .env 里的密钥转成后台可管理的模型记录
     app.post('/api/ai/models/import-env', authMiddleware, requirePermission('ai.manage'), aiManageController.importFromEnv)
     app.get('/api/ai/settings', authMiddleware, requirePermission('ai.manage'), aiManageController.getSettings)
@@ -83,6 +87,10 @@ module.exports = (app) => {
     app.get('/api/ai/usage', authMiddleware, requirePermission('ai.manage'), aiManageController.getUsage)
     // 用量统计：总览、分组、趋势与待确认图片占用
     app.get('/api/ai/usage/stats', authMiddleware, requirePermission('ai.manage'), aiManageController.getUsageStats)
+    // 提示词模板：把写死在代码里的提示词搬到后台，方便按自己的风格调整
+    app.get('/api/ai/prompts', authMiddleware, requirePermission('ai.manage'), aiManageController.getPromptTemplates)
+    app.put('/api/ai/prompts/:key', authMiddleware, requirePermission('ai.manage'), aiManageController.updatePromptTemplate)
+    app.post('/api/ai/prompts/:key/reset', authMiddleware, requirePermission('ai.manage'), aiManageController.resetPromptTemplate)
     // 当前登录用户自己的用量：拥有 ai.use 权限即可查看
     app.get('/api/ai/usage/me', authMiddleware, requirePermission('ai.use'), aiManageController.getMyUsage)
 }

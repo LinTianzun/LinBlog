@@ -249,6 +249,9 @@ const tablesSql = {
     draft_payload LONGTEXT NULL COMMENT '未发布的编辑工作稿元数据（JSON）',
     draft_revision INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '工作稿修订号（用于自动保存冲突检测）',
     draft_saved_at DATETIME NULL COMMENT '工作稿最后保存时间',
+    ai_assisted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否经过 AI 辅助',
+    ai_assist_features VARCHAR(200) NULL COMMENT 'AI 辅助环节（suggest/writing/cover/gallery）',
+    ai_assisted_at DATETIME NULL COMMENT '最近一次 AI 辅助时间',
     PRIMARY KEY (id),
     CONSTRAINT fk_article_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (subset_id) REFERENCES subset(id) ON DELETE SET NULL,
@@ -337,6 +340,9 @@ const tablesSql = {
     mood ENUM('happy', 'sad', 'angry', 'calm', 'excited', 'tired') DEFAULT 'calm' COMMENT '心情状态',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
     views INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '查看次数',
+    ai_assisted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否经过 AI 辅助',
+    ai_assist_features VARCHAR(200) NULL COMMENT 'AI 辅助环节（cover/writing 等）',
+    ai_assisted_at DATETIME NULL COMMENT '最近一次 AI 辅助时间',
     created_at DATE NOT NULL COMMENT '记录日期（YYYY-MM-DD）',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -565,6 +571,21 @@ const tablesSql = {
     PRIMARY KEY (model_id),
     FOREIGN KEY (model_id) REFERENCES ai_model(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 模型健康状态';`
+
+  ,ai_prompt_template: `CREATE TABLE IF NOT EXISTS ai_prompt_template(
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '模板ID',
+    template_key VARCHAR(64) NOT NULL COMMENT '模板标识（与代码内提示词一一对应）',
+    name VARCHAR(64) NOT NULL COMMENT '显示名称',
+    description VARCHAR(255) NULL COMMENT '用途说明',
+    content LONGTEXT NOT NULL COMMENT '提示词正文（支持 {{变量}} 占位符）',
+    variables VARCHAR(500) NULL COMMENT '可用变量说明',
+    enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用（关闭后回退内置提示词）',
+    is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为内置默认模板',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_prompt_key (template_key)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 提示词模板';`
 
   ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
@@ -811,6 +832,55 @@ async function ensureAiModelQuotaSchema(exec = query) {
     'idx_ai_usage_model_time',
     'ALTER TABLE ai_usage_log ADD INDEX idx_ai_usage_model_time (model_id, created_at)'
   );
+}
+
+// AI 内容标记：记录文章与随笔是否被 AI 辅助过，以及用过哪些环节。
+// 作者据此区分「自己写的」与「AI 参与过的」，方便日后回头二次润色。
+async function ensureAiContentMarkerSchema(exec = query) {
+  await ensureColumn(exec, 'article', 'ai_assisted', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 0',
+    comment: '是否经过 AI 辅助'
+  });
+  await ensureColumn(exec, 'article', 'ai_assist_features', {
+    definition: 'VARCHAR(200) NULL',
+    comment: 'AI 辅助环节（suggest/writing/cover/gallery）'
+  });
+  await ensureColumn(exec, 'article', 'ai_assisted_at', {
+    definition: 'DATETIME NULL',
+    comment: '最近一次 AI 辅助时间'
+  });
+  await ensureColumn(exec, 'diary', 'ai_assisted', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 0',
+    comment: '是否经过 AI 辅助'
+  });
+  await ensureColumn(exec, 'diary', 'ai_assist_features', {
+    definition: 'VARCHAR(200) NULL',
+    comment: 'AI 辅助环节（cover/writing 等）'
+  });
+  await ensureColumn(exec, 'diary', 'ai_assisted_at', {
+    definition: 'DATETIME NULL',
+    comment: '最近一次 AI 辅助时间'
+  });
+}
+
+// AI 提示词模板：把硬编码在 aiClient 里的提示词搬到后台可编辑。
+// 首次建表时用内置默认模板初始化，管理员改过之后不会被迁移覆盖。
+async function ensureAiPromptTemplateSchema(exec = query) {
+  await exec(tablesSql.ai_prompt_template);
+
+  const { listDefaultTemplates } = require('../../utils/aiPromptTemplates');
+  for (const item of listDefaultTemplates()) {
+    await exec(
+      `INSERT INTO ai_prompt_template
+         (template_key, name, description, content, variables, enabled, is_default)
+       VALUES (?, ?, ?, ?, ?, 1, 1)
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         description = VALUES(description),
+         variables = VALUES(variables)`,
+      [item.key, item.name, item.description, item.content, item.variables]
+    );
+  }
 }
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -1447,7 +1517,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2252,6 +2322,14 @@ const migrations = [
   {
     version: '20261114_ai_model_quota',
     up: ensureAiModelQuotaSchema
+  },
+  {
+    version: '20261115_ai_content_marker',
+    up: ensureAiContentMarkerSchema
+  },
+  {
+    version: '20261116_ai_prompt_template',
+    up: ensureAiPromptTemplateSchema
   }
 ];
 

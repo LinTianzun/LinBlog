@@ -57,6 +57,7 @@ import {
     type AiWritingAction,
     type AiWritingSuggestion,
 } from '../../api/ai'
+import { markAiFeature } from '../../utils/aiMarker.ts'
 
 const props = withDefaults(defineProps<{
     modelValue?: string
@@ -186,6 +187,9 @@ const applyAiWriting = (): void => {
     const editor = editorRef.value
     const suggestion = aiWriting.value
     if (!editor || !suggestion) return
+
+    // 记录 AI 辅助标记：作者点了「采用」才写入编辑器
+    markAiFeature('writing')
 
     if (suggestion.action === 'continue') {
         editor.focus(true)

@@ -13,8 +13,10 @@ const { aiQuota } = require(path.resolve(__dirname, '../middleware/aiQuota.js'))
 const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
 const aiController = require(path.resolve(__dirname, '../controller/aiController.js'))
 const aiManageController = require(path.resolve(__dirname, '../controller/aiManageController.js'))
+const articleController = require(path.resolve(__dirname, '../controller/articleController.js'))
 const aiUsageLogger = require(path.resolve(__dirname, '../utils/aiUsageLogger.js'))
 const systemLogModel = require(path.resolve(__dirname, '../model/dbModel/systemLog/index.js'))
+const aiHealthCheck = require(path.resolve(__dirname, '../utils/aiHealthCheck.js'))
 
 function createRes() {
     return {
@@ -1233,4 +1235,315 @@ test('ai manage controller refuses to import when env is not configured', async 
     } finally {
         aiModel.importEnvModel = originalImport
     }
+})
+
+test('定时巡检只探测启用中的模型，并汇总失败数量', async () => {
+    const originalList = aiModel.listEnabledModelConfigs
+    const originalHealth = aiModel.recordModelHealth
+    const probed = []
+    const originalFetch = global.fetch
+
+    aiModel.listEnabledModelConfigs = async () => [
+        { id: 1, name: '智谱 GLM', baseUrl: 'https://a.example.test/v4', apiKey: 'k1', chatModel: 'glm-4-flash', timeoutMs: 5000 },
+        { id: 2, name: '备用模型', baseUrl: 'https://b.example.test/v4', apiKey: 'k2', chatModel: 'deepseek-chat', timeoutMs: 5000 }
+    ]
+    aiModel.recordModelHealth = async (modelId, payload) => {
+        probed.push({ modelId, ok: payload.ok })
+        return { consecutiveFailures: payload.ok ? 0 : 2 }
+    }
+    global.fetch = async (url) => {
+        // 备用模型返回 502，模拟一个不可用的模型
+        if (String(url).includes('b.example.test')) {
+            return new Response(null, { status: 502 })
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'pong' } }] }), { status: 200 })
+    }
+
+    try {
+        const result = await aiHealthCheck.runHealthCheck({ source: 'manual' })
+
+        assert.equal(result.total, 2)
+        assert.equal(result.failedCount, 1)
+        assert.equal(result.results.length, 2)
+        assert.equal(result.results[0].ok, true)
+        assert.equal(result.results[1].ok, false)
+        assert.match(result.results[1].error, /HTTP 502/)
+        assert.equal(probed.length, 2)
+        // 上次巡检时间要落成 ISO，前端才能按本地时区显示
+        assert.match(result.checkedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    } finally {
+        aiModel.listEnabledModelConfigs = originalList
+        aiModel.recordModelHealth = originalHealth
+        global.fetch = originalFetch
+    }
+})
+
+test('AI 辅助标记只累计作者真正采用的环节', async () => {
+    const originalMark = articleModel.markAiAssisted
+    const originalInsert = articleModel.insertArticle
+    const marked = []
+    articleModel.markAiAssisted = async (articleId, features) => {
+        marked.push({ articleId, features })
+        return 1
+    }
+    articleModel.insertArticle = async () => ({ articleId: 77 })
+
+    try {
+        const res = createRes()
+        await articleController.createArticle({
+            body: {
+                title: 'AI 辅助的文章',
+                content: '<p>正文</p>',
+                classify: 'article',
+                introduce: '简介',
+                aiFeatures: ['suggest', 'writing', 'suggest']
+            },
+            user: { userId: 1, userType: 'admin', permissions: [], isSuperAdmin: true }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(marked.length, 1)
+        assert.deepEqual(marked[0].features, ['suggest', 'writing'])
+    } finally {
+        articleModel.markAiAssisted = originalMark
+        articleModel.insertArticle = originalInsert
+    }
+})
+
+test('未采用 AI 结果时不写辅助标记', async () => {
+    const originalMark = articleModel.markAiAssisted
+    const originalInsert = articleModel.insertArticle
+    let markCalls = 0
+    articleModel.markAiAssisted = async () => {
+        markCalls += 1
+        return 1
+    }
+    articleModel.insertArticle = async () => ({ articleId: 78 })
+
+    try {
+        const res = createRes()
+        await articleController.createArticle({
+            body: {
+                title: '纯手写文章',
+                content: '<p>正文</p>',
+                classify: 'article',
+                introduce: '简介'
+            },
+            user: { userId: 1, userType: 'admin', permissions: [], isSuperAdmin: true }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(markCalls, 0)
+    } finally {
+        articleModel.markAiAssisted = originalMark
+        articleModel.insertArticle = originalInsert
+    }
+})
+
+test('AI 辅助标记忽略白名单之外的环节', async () => {
+    const originalMark = articleModel.markAiAssisted
+    const originalInsert = articleModel.insertArticle
+    const marked = []
+    articleModel.markAiAssisted = async (articleId, features) => {
+        marked.push({ articleId, features })
+        return 1
+    }
+    articleModel.insertArticle = async () => ({ articleId: 79 })
+
+    try {
+        const res = createRes()
+        await articleController.createArticle({
+            body: {
+                title: '带脏标记的文章',
+                content: '<p>正文</p>',
+                classify: 'article',
+                introduce: '简介',
+                aiFeatures: ['suggest', 'DROP TABLE', 'cover']
+            },
+            user: { userId: 1, userType: 'admin', permissions: [], isSuperAdmin: true }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(marked[0].features, ['suggest', 'cover'])
+    } finally {
+        articleModel.markAiAssisted = originalMark
+        articleModel.insertArticle = originalInsert
+    }
+})
+
+test('巡检连续失败达到阈值时写系统日志告警', async () => {
+    const originalHealth = aiModel.recordModelHealth
+    const originalInsert = systemLogModel.insertLog
+    const logs = []
+    const originalFetch = global.fetch
+
+    aiModel.recordModelHealth = async () => ({ consecutiveFailures: 3 })
+    systemLogModel.insertLog = async (payload) => {
+        logs.push(payload)
+        return { insertId: 1 }
+    }
+    global.fetch = async () => new Response(null, { status: 500 })
+
+    try {
+        const result = await aiHealthCheck.runHealthCheck({
+            models: [{
+                id: 9,
+                name: '故障模型',
+                baseUrl: 'https://c.example.test/v4',
+                apiKey: 'k',
+                chatModel: 'glm-4-flash',
+                timeoutMs: 5000
+            }]
+        })
+
+        assert.equal(result.failedCount, 1)
+        assert.equal(logs.length, 1)
+        assert.equal(logs[0].module, 'ai')
+        assert.match(logs[0].detail, /连续失败 3 次/)
+    } finally {
+        aiModel.recordModelHealth = originalHealth
+        systemLogModel.insertLog = originalInsert
+        global.fetch = originalFetch
+    }
+})
+
+test('定时巡检调度器可以停止，且 stop 之后不再触发探测', async () => {
+    const originalList = aiModel.listEnabledModelConfigs
+    const originalHealth = aiModel.recordModelHealth
+    let probes = 0
+    const originalFetch = global.fetch
+
+    aiModel.listEnabledModelConfigs = async () => {
+        probes += 1
+        return []
+    }
+    aiModel.recordModelHealth = async () => ({ consecutiveFailures: 0 })
+    global.fetch = async () => new Response(null, { status: 200 })
+
+    try {
+        const scheduler = aiHealthCheck.startAiHealthCheck({ intervalMs: 20, runOnceAtStart: false })
+        await new Promise(resolve => setTimeout(resolve, 60))
+        const probesBeforeStop = probes
+        scheduler.stop()
+        await new Promise(resolve => setTimeout(resolve, 60))
+
+        assert.ok(probesBeforeStop > 0, '定时器应当至少触发一次巡检')
+        assert.equal(probes, probesBeforeStop, '停止后不应继续巡检')
+    } finally {
+        aiModel.listEnabledModelConfigs = originalList
+        aiModel.recordModelHealth = originalHealth
+        global.fetch = originalFetch
+    }
+})
+
+test('立即巡检接口返回总数、失败数与巡检时间', async () => {
+    const originalList = aiModel.listEnabledModelConfigs
+    const originalHealth = aiModel.recordModelHealth
+    const originalFetch = global.fetch
+
+    aiModel.listEnabledModelConfigs = async () => ([
+        { id: 1, name: '智谱 GLM', baseUrl: 'https://a.example.test/v4', apiKey: 'k', chatModel: 'glm-4-flash', timeoutMs: 5000 }
+    ])
+    aiModel.recordModelHealth = async () => ({ consecutiveFailures: 0 })
+    global.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: 'pong' } }] }), { status: 200 })
+
+    try {
+        const res = createRes()
+        await aiManageController.checkAllModels({ user: { userId: 1 } }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.total, 1)
+        assert.equal(res.body.data.failedCount, 0)
+        assert.equal(res.body.data.results[0].ok, true)
+        assert.match(res.body.data.checkedAt, /^\d{4}-\d{2}-\d{2}T/)
+    } finally {
+        aiModel.listEnabledModelConfigs = originalList
+        aiModel.recordModelHealth = originalHealth
+        global.fetch = originalFetch
+    }
+})
+
+test('提示词模板列表补齐未配置的默认模板', async () => {
+    const originalList = aiModel.listPromptTemplates
+    const { listDefaultTemplates } = require(path.resolve(__dirname, '../utils/aiPromptTemplates.js'))
+    const defaults = listDefaultTemplates()
+
+    aiModel.listPromptTemplates = async () => defaults.map(item => ({
+        id: null,
+        key: item.key,
+        name: item.name,
+        description: item.description,
+        content: item.content,
+        variables: item.variables,
+        enabled: true,
+        isDefault: true,
+        customized: false,
+        updatedAt: null
+    }))
+
+    try {
+        const res = createRes()
+        await aiManageController.getPromptTemplates({ user: { userId: 1 } }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.ok(res.body.data.list.length >= 8)
+        // 每个模板都要能看出可用变量，作者才知道能填什么
+        assert.ok(res.body.data.list.every(item => typeof item.variables === 'string' && item.variables))
+    } finally {
+        aiModel.listPromptTemplates = originalList
+    }
+})
+
+test('保存提示词模板只接受内置模板标识', async () => {
+    const originalSave = aiModel.savePromptTemplate
+    let saved = null
+    aiModel.savePromptTemplate = async (key, payload) => {
+        saved = { key, payload }
+        return []
+    }
+
+    try {
+        const missing = createRes()
+        await aiManageController.updatePromptTemplate({ params: { key: 'not-exist' }, body: { content: 'x' } }, missing)
+        assert.equal(missing.statusCode, 404)
+
+        const empty = createRes()
+        await aiManageController.updatePromptTemplate({ params: { key: 'suggest' }, body: { content: '  ' } }, empty)
+        assert.equal(empty.statusCode, 400)
+
+        const ok = createRes()
+        await aiManageController.updatePromptTemplate(
+            { params: { key: 'suggest' }, body: { content: '自定义提示词' } },
+            ok
+        )
+        assert.equal(ok.body.code, 200)
+        assert.equal(saved.key, 'suggest')
+        assert.equal(saved.payload.content, '自定义提示词')
+        // 未显式传启用状态时默认启用
+        assert.equal(saved.payload.enabled, true)
+    } finally {
+        aiModel.savePromptTemplate = originalSave
+    }
+})
+
+test('提示词模板渲染会把变量填进正文', () => {
+    const { renderTemplate, getDefaultTemplate } = require(path.resolve(__dirname, '../utils/aiPromptTemplates.js'))
+
+    const template = getDefaultTemplate('suggest')
+    const rendered = renderTemplate(template.content, { title: '我的标题', content: '我的正文' })
+
+    assert.match(rendered, /标题：我的标题/)
+    assert.match(rendered, /正文：我的正文/)
+    assert.ok(!rendered.includes('{{title}}'))
+})
+
+test('提示词模板变量为空时不留下多余空行', () => {
+    const { renderTemplate } = require(path.resolve(__dirname, '../utils/aiPromptTemplates.js'))
+
+    const rendered = renderTemplate('第一行：{{title}}\n{{emptyLine}}\n最后一行', {
+        title: '标题',
+        emptyLine: ''
+    })
+
+    assert.equal(rendered, '第一行：标题\n最后一行')
 })

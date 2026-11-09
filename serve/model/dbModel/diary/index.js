@@ -52,6 +52,9 @@ async function getDiariesByPage({ keyword, weather, pageSize, offset, sort, owne
     const list = await query(
         `SELECT d.id, d.user_id, d.title, d.content, d.picture, d.weather_id, w.weather_name, d.mood,
                 d.views, d.likes, d.comments,
+                d.ai_assisted AS aiAssisted,
+                d.ai_assist_features AS aiAssistFeatures,
+                d.ai_assisted_at AS aiAssistedAt,
                 -- 一级评论数与回复数：后台卡片要区分「评论」与「回复」两个口径
                 (SELECT COUNT(*) FROM diary_comment c
                   WHERE c.diary_id = d.id AND c.status = 1 AND c.parent_id = 0) AS root_comments,
@@ -242,6 +245,46 @@ async function deleteDiary(id, ownerScope = null) {
     await query(`UPDATE diary SET status = 0 WHERE id = ?`, [id])
 }
 
+/**
+ * 标记随笔经过 AI 辅助，并累计用过的环节。
+ */
+async function markAiAssisted(diaryId, features = []) {
+    const list = (Array.isArray(features) ? features : [])
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    if (list.length === 0) return 0
+
+    const rows = await query(
+        'SELECT ai_assist_features FROM diary WHERE id = ? AND status = 1 LIMIT 1',
+        [diaryId]
+    )
+    if (!rows || rows.length === 0) return 0
+
+    const existing = String(rows[0].ai_assist_features || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
+    const merged = [...new Set([...existing, ...list])].slice(0, 8)
+
+    const result = await query(
+        'UPDATE diary SET ai_assisted = 1, ai_assist_features = ?, ai_assisted_at = NOW() WHERE id = ?',
+        [merged.join(','), diaryId]
+    )
+    return result.affectedRows
+}
+
+/**
+ * 清除随笔的 AI 标记。
+ */
+async function clearAiMarker(diaryId) {
+    const result = await query(
+        'UPDATE diary SET ai_assisted = 0, ai_assist_features = NULL, ai_assisted_at = NULL WHERE id = ?',
+        [diaryId]
+    )
+    return result.affectedRows
+}
+
 module.exports = {
     getDiariesByPage,
     countDiariesByWeather,
@@ -251,5 +294,7 @@ module.exports = {
     findPublicDiaryById,
     listPublicDiariesForFeed,
     updateDiary,
-    deleteDiary
+    deleteDiary,
+    markAiAssisted,
+    clearAiMarker
 }

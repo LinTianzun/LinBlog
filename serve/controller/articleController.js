@@ -5,6 +5,21 @@ const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getArticleScope } = require('../utils/accessControl')
 const { cleanupCover, extractUploadsFilename } = require('../utils/coverCleanup')
 
+// AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
+const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery'])
+
+/**
+ * 归一化前端传来的 AI 辅助环节列表。
+ */
+function normalizeAiFeatures(features) {
+    if (!Array.isArray(features)) return []
+    return [...new Set(
+        features
+            .map(item => String(item || '').trim())
+            .filter(item => AI_FEATURE_SET.has(item))
+    )].slice(0, AI_FEATURE_SET.size)
+}
+
 /**
  * 新增文章
  */
@@ -64,6 +79,12 @@ async function createArticle(req, res) {
             detail: `创建${classify === 'image' ? '图库' : '文章'}「${title}」`,
             ip: req.ip || null,
         })
+
+        // AI 辅助标记：作者在编辑器里采用了 AI 结果才带上，这里只做落库标记
+        const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)
+        if (aiFeatures.length > 0) {
+            await articleModel.markAiAssisted(result.articleId, aiFeatures)
+        }
 
         res.status(201).json({
             code: 200,
@@ -416,6 +437,12 @@ async function updateArticle(req, res) {
             previousCover !== updateData.cover
         ) {
             await cleanupCover(previousCover)
+        }
+
+        // AI 辅助标记：作者在编辑器里采用了 AI 结果才带上
+        const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)
+        if (aiFeatures.length > 0) {
+            await articleModel.markAiAssisted(articleId, aiFeatures)
         }
 
         writeSystemLog({

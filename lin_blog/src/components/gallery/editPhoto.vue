@@ -41,6 +41,7 @@ import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 import ImageSourceActions from '../common/ImageSourceActions.vue'
+import { markAiFeature } from '../../utils/aiMarker.ts'
 
 type UploadResponse = {
     data?: {
@@ -118,6 +119,8 @@ const handleAiPhoto = (url: string): void => {
         return
     }
 
+    // 记录 AI 辅助标记：图库配图来自 AI 生成
+    markAiFeature('cover')
     photos.value = [...photos.value, url]
     if (!cover.value) {
         cover.value = url

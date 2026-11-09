@@ -37,7 +37,9 @@ const ALL_MIGRATIONS = [
     '20261111_ai_pending_image',
     '20261112_ai_usage_metrics',
     '20261113_ai_model_health',
-    '20261114_ai_model_quota'
+    '20261114_ai_model_quota',
+    '20261115_ai_content_marker',
+    '20261116_ai_prompt_template'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -610,5 +612,72 @@ test('content image subset migration creates the group and moves content images 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261103_content_image_subset'
+    ))
+})
+
+test('ai content marker migration adds marker columns to article and diary', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261115_ai_content_marker')
+        }
+        // 列不存在，触发 ADD COLUMN
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    const alters = calls
+        .filter(call => call.sql.includes('ADD COLUMN'))
+        .map(call => call.sql)
+
+    // 文章与随笔各三列：是否 AI 辅助、环节、时间
+    assert.equal(alters.length, 6)
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE article ADD COLUMN ai_assisted')))
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE article ADD COLUMN ai_assist_features')))
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE article ADD COLUMN ai_assisted_at')))
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE diary ADD COLUMN ai_assisted')))
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE diary ADD COLUMN ai_assist_features')))
+    assert.ok(alters.some(sql => sql.includes('ALTER TABLE diary ADD COLUMN ai_assisted_at')))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261115_ai_content_marker'
+    ))
+})
+
+test('ai prompt template migration creates the table and seeds default templates', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261116_ai_prompt_template')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS ai_prompt_template')
+    ))
+
+    // 内置模板要写进库，管理员打开页面就能看到并修改
+    const seeds = calls.filter(call =>
+        call.sql.includes('INSERT INTO ai_prompt_template')
+    )
+    assert.ok(seeds.length >= 8)
+    assert.ok(seeds.some(call => call.values.includes('suggest')))
+    assert.ok(seeds.some(call => call.values.includes('cover')))
+
+    // 重复执行时不能覆盖管理员改过的内容
+    assert.ok(seeds.every(call => !call.sql.includes('content = VALUES(content)')))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261116_ai_prompt_template'
     ))
 })
