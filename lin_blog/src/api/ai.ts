@@ -357,6 +357,7 @@ export interface AiPromptPreviewResult {
   prompt: string;
   text?: string;
   dataUri?: string;
+  token?: string;
   degraded: boolean;
   modelName: string;
 }
@@ -371,6 +372,10 @@ export function previewAiPromptTemplate(payload: {
   return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload, {
     timeout: 60000
   });
+}
+
+export function saveAiPreviewImage(token: string) {
+  return request.post<ApiResult<{ url: string }>>("/ai/prompts/preview/save", { token });
 }
 
 export function getAiPromptTemplates() {

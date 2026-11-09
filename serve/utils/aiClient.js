@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const config = require('../config/default')
 const aiModel = require('../model/dbModel/ai/index')
 const { getDefaultTemplate, renderTemplate } = require('./aiPromptTemplates')
+const { removeWatermark } = require('./aiWatermark')
 
 // 单次请求携带的正文上限：超长正文先截断，避免打爆上下文与 token 费用
 const MAX_CONTENT_CHARS = 4000
@@ -571,7 +572,8 @@ async function fetchCoverImage(prompt, aiConfig) {
         body: JSON.stringify({
             model: aiConfig.imageModel,
             prompt,
-            size: aiConfig.imageSize
+            size: aiConfig.imageSize,
+            watermark_enabled: false
         }),
         signal: AbortSignal.timeout(timeoutMs)
     })
@@ -607,7 +609,8 @@ async function fetchCoverImage(prompt, aiConfig) {
         throw imageError('模型返回的封面格式不受支持')
     }
 
-    return { buffer, mimeType }
+    const cleaned = await removeWatermark(buffer, mimeType)
+    return { buffer: cleaned.buffer, mimeType: cleaned.mimeType }
 }
 
 function validateWritingAction(action) {
@@ -798,7 +801,7 @@ async function generateCoverImage({ title, introduce, content, aiConfig, chainFn
  * 不传时按所属功能推断（配图类默认出图，其它默认出文字）。
  * 只返回预览结果，不落任何业务数据。
  */
-async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto', aiConfig, chainFn = null }) {
+async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto', aiConfig, userId = null, chainFn = null }) {
     if (!aiConfig) throw notConfiguredError()
     const feature = getDefaultTemplate(featureKey)
     if (!feature) {
@@ -818,9 +821,18 @@ async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto
     return await runWithFallback(validCandidates, async (candidate) => {
         if (isImageFeature) {
             const { buffer, mimeType } = await fetchCoverImage(prompt, candidate)
+            const token = crypto.randomBytes(24).toString('hex')
+            await aiModel.savePendingImage({
+                token,
+                userId,
+                feature: 'prompt-preview',
+                mimeType,
+                buffer
+            })
             return {
                 kind: 'image',
                 prompt,
+                token,
                 dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`,
                 usage: {},
                 outputChars: 0

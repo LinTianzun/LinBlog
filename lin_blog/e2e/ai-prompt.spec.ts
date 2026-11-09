@@ -253,6 +253,8 @@ test('试跑区可选择生成文字或生成图片', async ({ page }) => {
   await expect(modeGroup.getByRole('radio', { name: '生成图片' })).toHaveAttribute('aria-checked', 'true')
   await page.getByRole('button', { name: '开始试跑' }).click()
   await expect(page.locator('.ai-prompt-result img')).toBeVisible()
+  await page.getByRole('button', { name: '存入本地文件' }).click()
+  await expect(page.locator('.ai-banner.is-success')).toContainText('/api/uploads/ai-preview.png')
 })
 
 test('所属功能下拉展示中文名并可切换', async ({ page }) => {

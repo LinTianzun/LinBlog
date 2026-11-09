@@ -135,6 +135,12 @@
 
                             <div v-if="previewResult?.kind === 'image'" class="ai-prompt-result">
                                 <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
+                                <div class="ai-prompt-result-toolbar">
+                                    <yk-button type="secondary" :disabled="savingPreview || !previewResult.token"
+                                        :loading="savingPreview" @click="savePreviewImage">
+                                        存入本地文件
+                                    </yk-button>
+                                </div>
                             </div>
                             <pre v-else-if="previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
                             <div v-else class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
@@ -202,6 +208,7 @@
         selectAiPromptTemplate,
         updateAiPromptTemplate,
         previewAiPromptTemplate,
+        saveAiPreviewImage,
         type AiPromptPreviewResult,
         type AiPromptTemplate,
     } from '../api/ai'
@@ -236,6 +243,7 @@
     const templates = ref<AiPromptTemplate[]>([])
     const bindings = ref<Record<string, string>>({})
     const previewing = ref(false)
+    const savingPreview = ref(false)
     const previewError = ref('')
     const previewNotice = ref('')
     const previewResult = ref<AiPromptPreviewResult | null>(null)
@@ -434,6 +442,24 @@
             previewError.value = getRequestErrorMessage(error, '提示词试跑失败，请稍后重试')
         } finally {
             previewing.value = false
+        }
+    }
+
+    const savePreviewImage = async (): Promise<void> => {
+        if (savingPreview.value || previewResult.value?.kind !== 'image' || !previewResult.value.token) return
+        savingPreview.value = true
+        previewError.value = ''
+        try {
+            const result = await saveAiPreviewImage(previewResult.value.token)
+            if (result.code !== 200) throw new Error(result.message || '试跑图片保存失败')
+            previewNotice.value = `已保存到本地文件：${result.data?.url || ''}`
+            notify('primary', '试跑图片已保存到本地文件')
+            previewResult.value = { ...previewResult.value, token: '' }
+        } catch (error) {
+            previewError.value = getRequestErrorMessage(error, '试跑图片保存失败，请稍后重试')
+            notify('error', previewError.value)
+        } finally {
+            savingPreview.value = false
         }
     }
 
@@ -936,6 +962,12 @@
             height: auto;
             border-radius: 8px;
         }
+    }
+
+    .ai-prompt-result-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
     }
 
     // 弹窗表单

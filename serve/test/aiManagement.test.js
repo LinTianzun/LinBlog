@@ -13,6 +13,7 @@ const { aiQuota } = require(path.resolve(__dirname, '../middleware/aiQuota.js'))
 const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
 const aiController = require(path.resolve(__dirname, '../controller/aiController.js'))
 const aiManageController = require(path.resolve(__dirname, '../controller/aiManageController.js'))
+const uploadController = require(path.resolve(__dirname, '../controller/uploadController.js'))
 const articleController = require(path.resolve(__dirname, '../controller/articleController.js'))
 const aiUsageLogger = require(path.resolve(__dirname, '../utils/aiUsageLogger.js'))
 const systemLogModel = require(path.resolve(__dirname, '../model/dbModel/systemLog/index.js'))
@@ -1847,4 +1848,103 @@ test('提示词模板变量为空时不留下多余空行', () => {
     })
 
     assert.equal(rendered, '第一行：标题\n最后一行')
+})
+
+test('AI 图片去水印：命中右下角徽标时裁掉并缩小尺寸', async () => {
+    const sharp = require(path.resolve(__dirname, '../node_modules/sharp'))
+    const { removeWatermark, detectBadge } = require(path.resolve(__dirname, '../utils/aiWatermark.js'))
+
+    // 构造一张与真实徽标同构的图片：深色底板 + 中性白文字块，贴在右下角
+    const width = 1024
+    const height = 1024
+    const textHeight = Math.round(height * 0.0365)
+    const textWidth = Math.round(textHeight * 3.14)
+    const plateLeft = width - Math.round(height * 0.043) - textWidth - Math.round(textHeight * 0.68)
+    const plateTop = height - Math.round(height * 0.03) - textHeight - Math.round(textHeight * 0.39)
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <rect width="${width}" height="${height}" fill="#3a4a5a"/>
+        <rect x="${plateLeft}" y="${plateTop}" width="${textWidth + Math.round(textHeight * 1.7)}"
+            height="${textHeight + Math.round(textHeight * 1.46)}" rx="${textHeight * 0.3}" fill="#101820"/>
+        <rect x="${width - Math.round(height * 0.043) - textWidth}" y="${height - Math.round(height * 0.03) - textHeight}"
+            width="${textWidth}" height="${textHeight}" fill="#f2f4f5"/>
+    </svg>`
+
+    const buffer = await sharp(Buffer.from(svg)).png().toBuffer()
+
+    const badge = await detectBadge(buffer)
+    assert.ok(badge, '应能识别出右下角徽标')
+
+    const result = await removeWatermark(buffer, 'image/png')
+    assert.equal(result.removed, true)
+
+    const after = await sharp(result.buffer).metadata()
+    assert.ok(after.width < width)
+    assert.ok(after.height < height)
+    // 裁掉之后右下角不应再残留徽标
+    assert.equal(await detectBadge(result.buffer), null)
+})
+
+test('AI 图片去水印：没有徽标的图片保持原样', async () => {
+    const sharp = require(path.resolve(__dirname, '../node_modules/sharp'))
+    const { removeWatermark } = require(path.resolve(__dirname, '../utils/aiWatermark.js'))
+
+    const buffer = await sharp({
+        create: { width: 800, height: 600, channels: 3, background: { r: 120, g: 160, b: 200 } }
+    }).png().toBuffer()
+
+    const result = await removeWatermark(buffer, 'image/png')
+    assert.equal(result.removed, false)
+    assert.equal(result.buffer, buffer)
+})
+
+test('提示词试跑图片可保存到本地文件素材库', async () => {
+    const originalTake = aiModel.takePendingImage
+    const originalPersist = uploadController.persistImageBuffer
+    const originalInsertLog = systemLogModel.insertLog
+    const persisted = []
+    let logged = null
+
+    aiModel.takePendingImage = async (token, userId) => {
+        if (token !== 'd'.repeat(48) || userId !== 9) return null
+        return { mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') }
+    }
+    uploadController.persistImageBuffer = async (payload) => {
+        persisted.push(payload)
+        return { filename: 'ai-preview.png', url: '/api/uploads/ai-preview.png' }
+    }
+    systemLogModel.insertLog = async (payload) => {
+        logged = payload
+        return { insertId: 1 }
+    }
+
+    try {
+        const res = createRes()
+        await aiManageController.savePreviewImage({
+            body: { token: 'd'.repeat(48) },
+            user: { userId: 9 },
+            ip: '127.0.0.1'
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.url, '/api/uploads/ai-preview.png')
+        assert.equal(persisted.length, 1)
+        assert.equal(persisted[0].mimetype, 'image/png')
+        assert.equal(persisted[0].userId, 9)
+        assert.equal(logged.module, 'file')
+        assert.equal(logged.action, 'create')
+
+        // 无效令牌直接拒绝
+        const bad = createRes()
+        await aiManageController.savePreviewImage({
+            body: { token: 'not-a-token' },
+            user: { userId: 9 }
+        }, bad)
+        assert.equal(bad.statusCode, 400)
+        assert.equal(persisted.length, 1)
+    } finally {
+        aiModel.takePendingImage = originalTake
+        uploadController.persistImageBuffer = originalPersist
+        systemLogModel.insertLog = originalInsertLog
+    }
 })

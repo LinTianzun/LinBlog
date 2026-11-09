@@ -100,6 +100,13 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiManageController.previewPromptTemplate
     )
+    // 试跑满意后保存候选图：只落素材库，不再调用模型，因此不计 AI 次数
+    app.post(
+        '/api/ai/prompts/preview/save',
+        authMiddleware,
+        requirePermission('ai.manage'),
+        aiManageController.savePreviewImage
+    )
     app.put('/api/ai/prompts/:key', authMiddleware, requirePermission('ai.manage'), aiManageController.updatePromptTemplate)
     // 选用模板：某个功能的调用改用指定模板，停用或删除后自动回退内置默认
     app.post('/api/ai/prompts/:key/select', authMiddleware, requirePermission('ai.manage'), aiManageController.selectPromptTemplate)

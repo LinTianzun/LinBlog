@@ -2,6 +2,8 @@ const aiModel = require('../model/dbModel/ai/index')
 const aiClient = require('../utils/aiClient')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 const { probeModel, runHealthCheck, getLastCheckedAt } = require('../utils/aiHealthCheck')
+const uploadController = require('./uploadController')
+const { writeSystemLog } = require('../utils/logHelper')
 
 function toInt(value, fallback = 0) {
     const parsed = Number.parseInt(String(value ?? ''), 10)
@@ -347,7 +349,8 @@ async function previewPromptTemplate(req, res) {
             content,
             variables: safeVariables,
             mode,
-            aiConfig: req.aiModel
+            aiConfig: req.aiModel,
+            userId: req.user?.userId ?? null
         })
         await recordAiCall({
             req,
@@ -371,6 +374,7 @@ async function previewPromptTemplate(req, res) {
                 prompt: result.prompt,
                 text: result.text || '',
                 dataUri: result.dataUri || '',
+                token: result.token || '',
                 degraded: Boolean(result.modelUsed?.degraded),
                 modelName: result.modelUsed?.name || ''
             }
@@ -393,6 +397,46 @@ async function previewPromptTemplate(req, res) {
             durationMs: Date.now() - previewStartedAt
         })
         return res.status(503).json({ code: 503, message: err?.message || '提示词试跑失败，请稍后重试' })
+    }
+}
+
+/**
+ * 试跑满意后把候选图保存到本地文件素材库。
+ * 复用 AI 候选图令牌与上传持久化路径，避免绕过素材库的引用统计口径。
+ */
+async function savePreviewImage(req, res) {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : ''
+    if (!aiClient.isValidCoverToken(token)) {
+        return res.status(400).json({ code: 400, message: '试跑结果不存在或已过期，请重新试跑' })
+    }
+
+    const pending = await aiModel.takePendingImage(token, req.user?.userId)
+    if (!pending) {
+        return res.status(400).json({ code: 400, message: '试跑结果不存在或已过期，请重新试跑' })
+    }
+
+    try {
+        const { url } = await uploadController.persistImageBuffer({
+            buffer: pending.buffer,
+            mimetype: pending.mimeType,
+            userId: req.user?.userId
+        })
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'create',
+            module: 'file',
+            targetType: 'file',
+            detail: '保存 AI 提示词试跑图片到素材库',
+            ip: req.ip || null,
+        })
+        return res.json({
+            code: 200,
+            message: '试跑图片已保存到本地文件',
+            data: { url }
+        })
+    } catch (err) {
+        console.error('[AI] 保存提示词试跑图片失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '试跑图片保存失败，请稍后重试' })
     }
 }
 
@@ -636,6 +680,7 @@ module.exports = {
     getPromptTemplates,
     createPromptTemplate,
     previewPromptTemplate,
+    savePreviewImage,
     updatePromptTemplate,
     selectPromptTemplate,
     deletePromptTemplate,

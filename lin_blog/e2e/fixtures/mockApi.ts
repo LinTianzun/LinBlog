@@ -527,9 +527,15 @@ export async function installApiMock(page: Page): Promise<MockState> {
         dataUri: kind === 'image'
           ? 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="teal"/></svg>'
           : undefined,
+        token: kind === 'image' ? 'c'.repeat(48) : undefined,
         degraded: false,
         modelName: 'Mock GLM',
       }, { message: '提示词试跑完成' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/prompts/preview/save') {
+      await fulfill({ url: '/api/uploads/ai-preview.png' }, { message: '试跑图片已保存到本地文件' })
       return
     }
 
