@@ -72,11 +72,19 @@
                         <yk-tag size="s" type="primary">{{ draftSourceLabel }}</yk-tag>
                     </header>
 
-                    <div class="ai-prompt-preview-body">
+                    <div class="ai-prompt-preview-layout">
+                        <!-- 左侧输入：所属功能、提示词内容与示例变量 -->
                         <div class="ai-prompt-preview-form">
+                            <div class="ai-prompt-preview-field">
+                                <span class="ai-prompt-label">所属功能<i>*</i></span>
+                                <select v-model="draft.featureKey" class="ai-prompt-select" :disabled="previewing">
+                                    <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
+                                </select>
+                            </div>
+
                             <label class="ai-prompt-preview-field">
                                 <span class="ai-prompt-label">提示词内容<i>*</i></span>
-                                <textarea v-model="draft.content" class="ai-prompt-editor" rows="5" spellcheck="false" />
+                                <textarea v-model="draft.content" class="ai-prompt-editor" rows="8" spellcheck="false" />
                             </label>
 
                             <div class="ai-prompt-preview-field">
@@ -84,27 +92,23 @@
                                     示例变量
                                     <em class="ai-prompt-label-tip">可用变量：{{ draftVariables }}</em>
                                 </span>
-                                <textarea v-model="draftVariablesText" class="ai-prompt-editor is-small" rows="4"
+                                <textarea v-model="draftVariablesText" class="ai-prompt-editor is-small" rows="6"
                                     spellcheck="false" placeholder="变量名=示例内容，每行一个" />
                             </div>
 
+                            <!-- 操作按钮固定在输入区底部，始终可见 -->
+                            <div class="ai-prompt-preview-actions">
+                                <yk-button type="primary" :loading="previewing" @click="startPreview">开始试跑</yk-button>
+                                <yk-button type="secondary" :disabled="previewing" @click="resetDraft">重置示例</yk-button>
+                                <yk-button v-if="draft.key && draftTemplate" type="primary"
+                                    :disabled="previewing || isActiveKey(draft.key)"
+                                    @click="handleSelect(draftTemplate)">
+                                    选用此套提示词
+                                </yk-button>
+                            </div>
                         </div>
 
-                        <!-- 功能选择与操作按钮同排：省下纵向空间，操作始终可见 -->
-                        <div class="ai-prompt-preview-actions">
-                            <select v-model="draft.featureKey" class="ai-prompt-select is-inline" :disabled="previewing">
-                                <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
-                            </select>
-                            <yk-button type="primary" :loading="previewing" @click="startPreview">开始试跑</yk-button>
-                            <yk-button type="secondary" :disabled="previewing" @click="resetDraft">重置示例</yk-button>
-                            <yk-button v-if="draft.key && draftTemplate" type="primary"
-                                :disabled="previewing || isActiveKey(draft.key)"
-                                @click="handleSelect(draftTemplate)">
-                                选用此套提示词
-                            </yk-button>
-                        </div>
-
-                        <!-- 结果区始终占位，避免试跑完成后整块布局跳动 -->
+                        <!-- 右侧结果：整块留给模型输出，试跑前后位置与高度都不变 -->
                         <section class="ai-prompt-result-panel" aria-label="试跑结果">
                             <header class="ai-prompt-result-head">
                                 <span class="ai-prompt-label">试跑结果</span>
@@ -565,13 +569,17 @@
         height: calc(100vh - 64px - 26px - 48px - 8px);
         min-height: 480px;
         overflow: hidden;
+        // yk-space 默认 align-start 会让子项不占满宽度，这里改为纵向拉伸
+        align-items: stretch;
     }
 
     .ai-prompt-workspace {
         display: grid;
-        grid-template-columns: minmax(0, min(44%, 560px)) minmax(360px, 1fr);
+        // 左侧固定一档宽度，右侧吃掉全部剩余空间，专门放试跑验证
+        grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
         align-items: stretch;
         gap: 20px;
+        width: 100%;
         // 吃掉标题栏之外的全部高度，自己不再撑大页面
         flex: 1 1 auto;
         min-height: 0;
@@ -604,6 +612,10 @@
         overflow: hidden;
     }
 
+    .ai-prompt-preview > .ai-prompt-preview-layout {
+        flex: 1 1 auto;
+    }
+
     .ai-prompt-preview-head {
         display: flex;
         align-items: flex-start;
@@ -618,29 +630,31 @@
         }
     }
 
-    .ai-prompt-preview-body {
+    // 右栏分两段：左侧输入、右侧结果，结果区占主要位置
+    .ai-prompt-preview-layout {
         min-height: 0;
         overflow: hidden;
         padding: 16px 18px 18px;
         display: flex;
-        flex-direction: column;
-        gap: 16px;
+        flex-direction: row;
+        gap: 18px;
     }
 
     .ai-prompt-preview-form {
         display: flex;
         flex-direction: column;
         gap: 14px;
-        // 表单区可压缩：空间不够时只滚动这块，
-        // 按钮行与结果区位置不变，始终可见
-        flex: 1 1 auto;
+        // 输入区固定一档宽度，空间不够时只滚动这块
+        flex: 0 0 min(46%, 420px);
         min-height: 0;
         overflow-y: auto;
     }
 
-    // 结果区固定占据剩余空间：试跑前后高度不变，只换里面的内容
+    // 结果区吃掉右栏全部剩余空间：试跑前后位置与高度都不变
     .ai-prompt-result-panel {
-        flex: 0 0 240px;
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -707,6 +721,8 @@
 
     // 功能分组：标题 + 紧凑的一行式模板列表
     .ai-prompt-group {
+        // 不参与弹性压缩：否则分组会被压扁，内部模板行被裁掉看不见
+        flex: none;
         border: 1px solid var(--admin-line, var(--gray1));
         border-radius: 14px;
         background: var(--admin-surface-soft, var(--bgColor2));
