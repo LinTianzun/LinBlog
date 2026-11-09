@@ -129,7 +129,7 @@ function findModelById(id) {
  * 密钥在这里才解密，调用方拿到的是可直接用于请求的明文配置。
  */
 async function getActiveModelConfig() {
-    const envRows = await query(
+    const rows = await query(
         `SELECT ${MODEL_FIELDS} FROM ai_model
          WHERE enabled = 1
          ORDER BY is_default DESC, id ASC
