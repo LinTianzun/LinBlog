@@ -103,6 +103,43 @@ test('提示词模板页可在右侧试跑并选用模板', async ({ page }) => 
   await expect(page.locator('.ai-prompt-preview').getByRole('button', { name: '选用此套提示词' })).toBeVisible()
 })
 
+test('提示词模板页不触发浏览器滚动，试跑前后布局不跳动', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  // 整页不产生浏览器滚动，内容由左右两栏各自内部滚动
+  const pageScroll = await page.evaluate(() =>
+    document.documentElement.scrollHeight - document.documentElement.clientHeight)
+  expect(pageScroll).toBe(0)
+
+  // 结果区一开始就在页面上，且不因试跑完成而改变位置
+  const panel = page.locator('.ai-prompt-result-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('还没有试跑结果')
+  const before = await panel.boundingBox()
+
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(panel).toContainText('这是提示词试跑结果。')
+  const after = await panel.boundingBox()
+
+  expect(after?.y).toBeCloseTo(before?.y ?? 0, 0)
+  expect(after?.height).toBeCloseTo(before?.height ?? 0, 0)
+
+  // 试跑后依然不产生浏览器滚动
+  const scrollAfter = await page.evaluate(() =>
+    document.documentElement.scrollHeight - document.documentElement.clientHeight)
+  expect(scrollAfter).toBe(0)
+})
 test('没有 ai.manage 权限时不显示提示词模板入口', async ({ page }) => {
   await seedSession(page, {
     id: 5,

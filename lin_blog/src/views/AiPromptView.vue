@@ -73,26 +73,28 @@
                     </header>
 
                     <div class="ai-prompt-preview-body">
-                        <div class="ai-prompt-preview-field">
-                            <span class="ai-prompt-label">所属功能</span>
-                            <select v-model="draft.featureKey" class="ai-prompt-select" :disabled="previewing">
+                        <div class="ai-prompt-preview-form">
+                            <label class="ai-prompt-preview-field">
+                                <span class="ai-prompt-label">提示词内容<i>*</i></span>
+                                <textarea v-model="draft.content" class="ai-prompt-editor" rows="5" spellcheck="false" />
+                            </label>
+
+                            <div class="ai-prompt-preview-field">
+                                <span class="ai-prompt-label">
+                                    示例变量
+                                    <em class="ai-prompt-label-tip">可用变量：{{ draftVariables }}</em>
+                                </span>
+                                <textarea v-model="draftVariablesText" class="ai-prompt-editor is-small" rows="4"
+                                    spellcheck="false" placeholder="变量名=示例内容，每行一个" />
+                            </div>
+
+                        </div>
+
+                        <!-- 功能选择与操作按钮同排：省下纵向空间，操作始终可见 -->
+                        <div class="ai-prompt-preview-actions">
+                            <select v-model="draft.featureKey" class="ai-prompt-select is-inline" :disabled="previewing">
                                 <option v-for="item in features" :key="item.key" :value="item.key">{{ item.name }}</option>
                             </select>
-                        </div>
-
-                        <label class="ai-prompt-preview-field">
-                            <span class="ai-prompt-label">提示词内容</span>
-                            <textarea v-model="draft.content" class="ai-prompt-editor" rows="8" spellcheck="false" />
-                        </label>
-
-                        <div class="ai-prompt-preview-field">
-                            <span class="ai-prompt-label">示例变量</span>
-                            <textarea v-model="draftVariablesText" class="ai-prompt-editor is-small" rows="6"
-                                spellcheck="false" placeholder="变量名=示例内容，每行一个" />
-                            <span class="ai-prompt-tip">可用变量：{{ draftVariables }}</span>
-                        </div>
-
-                        <div class="ai-prompt-preview-actions">
                             <yk-button type="primary" :loading="previewing" @click="startPreview">开始试跑</yk-button>
                             <yk-button type="secondary" :disabled="previewing" @click="resetDraft">重置示例</yk-button>
                             <yk-button v-if="draft.key && draftTemplate" type="primary"
@@ -102,18 +104,26 @@
                             </yk-button>
                         </div>
 
-                        <div v-if="previewError" class="ai-banner is-error">{{ previewError }}</div>
-                        <div v-else-if="previewNotice" class="ai-banner is-success">{{ previewNotice }}</div>
+                        <!-- 结果区始终占位，避免试跑完成后整块布局跳动 -->
+                        <section class="ai-prompt-result-panel" aria-label="试跑结果">
+                            <header class="ai-prompt-result-head">
+                                <span class="ai-prompt-label">试跑结果</span>
+                                <div v-if="previewResult" class="ai-prompt-result-meta">
+                                    <span>{{ previewResult.modelName || '当前模型' }}</span>
+                                    <span v-if="previewResult.degraded">已自动降级</span>
+                                    <span>{{ previewResult.kind === 'image' ? '图片结果' : '文本结果' }}</span>
+                                </div>
+                            </header>
 
-                        <div v-if="previewResult?.kind === 'image'" class="ai-prompt-result">
-                            <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
-                        </div>
-                        <pre v-else-if="previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
-                        <div v-if="previewResult" class="ai-prompt-result-meta">
-                            <span>{{ previewResult.modelName || '当前模型' }}</span>
-                            <span v-if="previewResult.degraded">已自动降级</span>
-                            <span>{{ previewResult.kind === 'image' ? '图片结果' : '文本结果' }}</span>
-                        </div>
+                            <div v-if="previewError" class="ai-banner is-error">{{ previewError }}</div>
+                            <div v-else-if="previewNotice" class="ai-banner is-success">{{ previewNotice }}</div>
+
+                            <div v-if="previewResult?.kind === 'image'" class="ai-prompt-result">
+                                <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
+                            </div>
+                            <pre v-else-if="previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
+                            <div v-else class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
+                        </section>
                     </div>
                 </aside>
             </div>
@@ -550,30 +560,41 @@
 <style scoped lang="less">
     .ai-prompt-page {
         width: 100%;
+        // 整页不触发浏览器滚动：高度按视口扣掉顶栏与页面留白，
+        // 标题栏之下剩余空间全部分给工作区，左右两栏各自内部滚动
+        height: calc(100vh - 64px - 26px - 48px - 8px);
+        min-height: 480px;
+        overflow: hidden;
     }
 
     .ai-prompt-workspace {
         display: grid;
-        grid-template-columns: minmax(0, min(46%, 620px)) minmax(340px, 1fr);
+        grid-template-columns: minmax(0, min(44%, 560px)) minmax(360px, 1fr);
         align-items: stretch;
         gap: 20px;
-        min-height: min(760px, calc(100vh - 170px));
+        // 吃掉标题栏之外的全部高度，自己不再撑大页面
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     .ai-prompt-list {
+        display: flex;
+        flex-direction: column;
+        // 功能分组之间留出呼吸感，不再挤成一坨
+        gap: 18px;
         min-width: 0;
-        max-height: 100%;
+        height: 100%;
+        min-height: 0;
         overflow-y: auto;
-        padding-right: 4px;
+        padding-right: 6px;
+        padding-bottom: 4px;
         scrollbar-gutter: stable;
     }
 
     .ai-prompt-preview {
-        position: sticky;
-        top: 0;
         min-width: 0;
-        align-self: start;
-        max-height: 100%;
+        height: 100%;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         border: 1px solid var(--admin-line, var(--gray1));
@@ -599,11 +620,51 @@
 
     .ai-prompt-preview-body {
         min-height: 0;
-        overflow-y: auto;
+        overflow: hidden;
         padding: 16px 18px 18px;
         display: flex;
         flex-direction: column;
+        gap: 16px;
+    }
+
+    .ai-prompt-preview-form {
+        display: flex;
+        flex-direction: column;
         gap: 14px;
+        // 表单区可压缩：空间不够时只滚动这块，
+        // 按钮行与结果区位置不变，始终可见
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    // 结果区固定占据剩余空间：试跑前后高度不变，只换里面的内容
+    .ai-prompt-result-panel {
+        flex: 0 0 240px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 12px;
+        background: var(--admin-surface, var(--bgColor1));
+        overflow: hidden;
+    }
+
+    .ai-prompt-result-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex: none;
+    }
+
+    .ai-prompt-result-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--admin-muted, var(--gray6));
+        font-size: 12px;
     }
 
     .ai-prompt-preview-field {
@@ -657,7 +718,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 14px 18px;
+        padding: 16px 20px;
         border-bottom: 1px solid var(--admin-line, var(--gray1));
     }
 
@@ -691,8 +752,8 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        gap: 6px 16px;
-        padding: 11px 18px;
+        gap: 9px 16px;
+        padding: 15px 20px;
         border-bottom: 1px solid var(--admin-line, var(--gray1));
 
         &:last-child {
@@ -754,17 +815,30 @@
         align-items: center;
         gap: 10px;
         flex-wrap: wrap;
+        // 操作行不被压缩，始终可见
+        flex: none;
+    }
+
+    .ai-prompt-select.is-inline {
+        flex: 1 1 150px;
+        min-width: 130px;
+    }
+
+    .ai-prompt-label-tip {
+        margin-left: 8px;
+        font-style: normal;
+        font-weight: 400;
+        color: var(--admin-muted, var(--gray6));
     }
 
     .ai-prompt-result {
         margin: 0;
-        min-height: 140px;
-        max-height: 320px;
+        flex: 1;
+        min-height: 0;
         overflow: auto;
-        padding: 14px;
-        border: 1px solid var(--admin-line, var(--gray1));
-        border-radius: 12px;
-        background: var(--admin-surface, var(--bgColor1));
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: var(--admin-surface-soft, var(--bgColor2));
         color: var(--gray);
         white-space: pre-wrap;
         word-break: break-word;
@@ -775,20 +849,23 @@
             font-family: inherit;
         }
 
+        &.is-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--admin-muted, var(--gray6));
+            font-size: 13px;
+            line-height: 1.8;
+            border: 1px dashed var(--admin-line-strong, var(--gray1));
+        }
+
         img {
             display: block;
             width: 100%;
             height: auto;
             border-radius: 8px;
         }
-    }
-
-    .ai-prompt-result-meta {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        color: var(--admin-muted, var(--gray6));
-        font-size: 12px;
     }
 
     // 弹窗表单
@@ -860,19 +937,30 @@
     }
 
     @media (max-width: 900px) {
+        // 窄屏放不下双栏：恢复整页自然滚动，交给手机自己滚
+        .ai-prompt-page {
+            height: auto;
+            min-height: 0;
+            overflow: visible;
+        }
+
         .ai-prompt-workspace {
             grid-template-columns: minmax(0, 1fr);
             min-height: auto;
+            height: auto;
         }
 
         .ai-prompt-list {
-            max-height: none;
+            height: auto;
             overflow: visible;
         }
 
         .ai-prompt-preview {
-            position: static;
-            max-height: none;
+            height: auto;
+        }
+
+        .ai-prompt-result-panel {
+            min-height: 180px;
         }
 
         .ai-prompt-row {
