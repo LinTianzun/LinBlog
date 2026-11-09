@@ -13,6 +13,7 @@ const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
 const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/index.js'))
 const messageModel = require(path.resolve(__dirname, '../model/dbModel/message/index.js'))
 const recordModel = require(path.resolve(__dirname, '../model/dbModel/record/index.js'))
+const commentInteractionModel = require(path.resolve(__dirname, '../model/dbModel/commentInteraction/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -345,6 +346,78 @@ test('运营周报在没有全站统计权限时拒绝', async () => {
         res
     )
     assert.equal(res.statusCode, 403)
+})
+
+test('举报辅助判断给出结论、原因、处置与备注', async () => {
+    const originalReview = aiClient.reviewReportedComment
+    const originalFind = commentInteractionModel.findReportById
+    let received = null
+
+    aiClient.reviewReportedComment = async (payload) => {
+        received = payload
+        return {
+            verdict: '成立',
+            reason: 'spam',
+            action: 'process',
+            note: '评论含联系方式，属于广告引流。',
+            modelUsed: { id: 1, name: '智谱', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    commentInteractionModel.findReportById = async () => ({
+        id: 5,
+        targetType: 'article',
+        reason: 'other',
+        detail: '这条评论有问题',
+        status: 0,
+        reporterName: '读者甲',
+        commentContent: '加我微信 abc123',
+        commentUserName: '某用户',
+        commentComplaint: 3,
+        sourceTitle: '一篇文章',
+        sourceType: 'article'
+    })
+
+    try {
+        const res = createRes()
+        await aiController.reviewReport(
+            { body: { reportId: 5 }, user: { userId: 1, permissions: ['comment.moderate'] }, aiModel: TEST_AI_MODEL },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.verdict, '成立')
+        assert.equal(res.body.data.reason, 'spam')
+        assert.equal(res.body.data.reasonLabel, '广告或引流')
+        assert.equal(res.body.data.action, 'process')
+        assert.equal(received.reasonLabel, '其他原因')
+        assert.equal(received.report.commentContent, '加我微信 abc123')
+    } finally {
+        aiClient.reviewReportedComment = originalReview
+        commentInteractionModel.findReportById = originalFind
+    }
+})
+
+test('举报辅助判断在没有处理举报权限时拒绝', async () => {
+    const res = createRes()
+    await aiController.reviewReport(
+        { body: { reportId: 5 }, user: { userId: 1, permissions: [] }, aiModel: TEST_AI_MODEL },
+        res
+    )
+    assert.equal(res.statusCode, 403)
+})
+
+test('举报辅助判断在举报不存在时返回 404', async () => {
+    const originalFind = commentInteractionModel.findReportById
+    commentInteractionModel.findReportById = async () => null
+    try {
+        const res = createRes()
+        await aiController.reviewReport(
+            { body: { reportId: 5 }, user: { userId: 1, permissions: ['comment.moderate'] }, aiModel: TEST_AI_MODEL },
+            res
+        )
+        assert.equal(res.statusCode, 404)
+    } finally {
+        commentInteractionModel.findReportById = originalFind
+    }
 })
 
 test('ai writing rejects unknown actions and empty text before calling the provider', async () => {

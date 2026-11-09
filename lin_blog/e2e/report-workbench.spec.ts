@@ -72,6 +72,7 @@ interface ReportMocks {
   listQuery: URLSearchParams | null
   batchPayload: Record<string, unknown> | null
   singlePayload: Record<string, unknown> | null
+  reviewPayload: Record<string, unknown> | null
 }
 
 async function installReportMock(page: Page): Promise<ReportMocks> {
@@ -79,6 +80,7 @@ async function installReportMock(page: Page): Promise<ReportMocks> {
     listQuery: null,
     batchPayload: null,
     singlePayload: null,
+    reviewPayload: null,
   }
 
   const fulfill = async (route: Route, data: unknown) => {
@@ -195,4 +197,61 @@ test('举报工作台支持日期筛选与单条备注处理', async ({ page }) 
   })
   await expect(noteDialog).toBeHidden()
   expect(mocks.listQuery?.get('startDate')).toBe('2026-10-01')
+})
+
+test('举报工作台的 AI 辅助判断只给建议，不自动处置', async ({ page }) => {
+  await installApiMock(page)
+  const mocks = await installReportMock(page)
+  await seedSession(page, {
+    id: 1,
+    username: '林知雨',
+    isSuperAdmin: false,
+    permissions: ['comment.moderate', 'ai.use'],
+  })
+
+  await page.route('**/api/ai/report/review', async (route) => {
+    mocks.reviewPayload = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: '举报判断建议已生成',
+        data: {
+          reportId: 101,
+          verdict: '成立',
+          reason: 'spam',
+          reasonLabel: '广告或引流',
+          action: 'process',
+          note: '评论含联系方式，属于广告引流。',
+          degraded: false,
+          modelName: '',
+        },
+      }),
+    })
+  })
+
+  await page.goto('/reportedComments')
+  await expect(page.locator('.report-card')).toHaveCount(3)
+
+  const card = page.locator('.report-card').first()
+  await card.getByRole('button', { name: 'AI 辅助判断' }).click()
+
+  const review = card.locator('.report-ai-review')
+  await expect(review).toBeVisible()
+  await expect(review).toContainText('成立')
+  await expect(review).toContainText('广告或引流')
+  await expect(review).toContainText('评论含联系方式，属于广告引流。')
+
+  // 只给建议：没有任何处置请求发出
+  expect(mocks.singlePayload).toBeNull()
+  expect(mocks.batchPayload).toBeNull()
+
+  // 建议可以带进备注弹窗，但仍要运营自己保存
+  await review.getByRole('button', { name: '带入备注' }).click()
+  const noteDialog = page.locator(modalRootClass).filter({ hasText: '处理举报并填写备注' })
+  await expect(noteDialog).toBeVisible()
+  await expect(noteDialog.getByPlaceholder('例如：已删除违规评论并通知作者'))
+    .toHaveValue('评论含联系方式，属于广告引流。')
+  expect(mocks.singlePayload).toBeNull()
 })

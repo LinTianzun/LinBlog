@@ -116,6 +116,22 @@ export function generateOperationsReport(params: { days?: number }) {
   return request.post<ApiResult<AiOperationsReport>>("/ai/report/operations", params);
 }
 
+// AI 举报辅助判断：只给处置建议，处置状态仍由运营自己改
+export interface AiReportReview {
+  reportId: number;
+  verdict: "成立" | "部分成立" | "不成立";
+  reason: string;
+  reasonLabel: string;
+  action: "process" | "dismiss" | "warn";
+  note: string;
+  degraded?: boolean;
+  modelName?: string;
+}
+
+export function reviewCommentReport(reportId: number) {
+  return request.post<ApiResult<AiReportReview>>("/ai/report/review", { reportId });
+}
+
 export interface AiUsageRecord {
   id: number;
   userId: number;

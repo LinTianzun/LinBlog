@@ -38,6 +38,14 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiController.generateOperationsReport
     )
+    // AI 举报辅助判断：只给处置建议，处置状态仍由运营自己改
+    app.post(
+        '/api/ai/report/review',
+        authMiddleware,
+        aiQuota('report-review'),
+        aiSuggestLimit,
+        aiController.reviewReport
+    )
     // AI 写作辅助：结果只作为候选文本展示，作者确认后才写入编辑器
     app.post(
         '/api/ai/writing',

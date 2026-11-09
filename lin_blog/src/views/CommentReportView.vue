@@ -207,6 +207,43 @@
                         <span>处理备注</span>{{ item.handleNote }}
                     </p>
 
+                    <div v-if="aiReviewMap[item.id]" class="report-ai-review">
+                        <p class="report-ai-review-title">
+                            AI 辅助判断（仅供参考，处置仍由你决定）
+                        </p>
+                        <p v-if="aiReviewMap[item.id].degraded" class="report-ai-review-degraded">
+                            默认模型暂时不可用，本次由「{{ aiReviewMap[item.id].modelName }}」生成
+                        </p>
+                        <dl class="report-ai-review-facts">
+                            <div>
+                                <dt>判断</dt>
+                                <dd>{{ aiReviewMap[item.id].verdict }}</dd>
+                            </div>
+                            <div>
+                                <dt>建议原因</dt>
+                                <dd>{{ aiReviewMap[item.id].reasonLabel }}</dd>
+                            </div>
+                            <div>
+                                <dt>建议处置</dt>
+                                <dd>{{ aiReviewActionLabel(aiReviewMap[item.id].action) }}</dd>
+                            </div>
+                        </dl>
+                        <p class="report-ai-review-note">{{ aiReviewMap[item.id].note }}</p>
+                        <yk-space size="s" class="report-ai-review-actions">
+                            <yk-button size="s" type="secondary"
+                                @click="applyAiReviewToNote(item)">
+                                带入备注
+                            </yk-button>
+                            <yk-button size="s" type="secondary"
+                                @click="delete aiReviewMap[item.id]">
+                                忽略建议
+                            </yk-button>
+                        </yk-space>
+                    </div>
+                    <p v-if="aiReviewErrorMap[item.id]" class="report-ai-review-error">
+                        {{ aiReviewErrorMap[item.id] }}
+                    </p>
+
                     <footer class="report-card-foot">
                         <span v-if="item.status !== 0" class="report-handled">
                             由 {{ item.handlerName || '管理员' }} 于 {{ formatTime(item.handledAt) }}
@@ -218,6 +255,12 @@
 
                         <span class="report-card-actions">
                             <template v-if="item.status === 0">
+                                <yk-button v-if="canUseAi" size="s" type="secondary"
+                                    :loading="aiReviewingId === item.id"
+                                    :disabled="aiReviewingId === item.id"
+                                    @click="requestAiReview(item)">
+                                    AI 辅助判断
+                                </yk-button>
                                 <yk-button size="s" type="secondary" :disabled="actingId === item.id"
                                     @click="openNoteModal(item)">
                                     备注处理
@@ -322,6 +365,8 @@ import {
     type CommentReportTrendPoint,
 } from '../api/commentReport'
 import { deleteInteractionComment, type CommentReportReason } from '../api/comment'
+import { reviewCommentReport, type AiReportReview } from '../api/ai'
+import { useSessionStore } from '../store/session.ts'
 import { COMMENT_REPORT_REASONS, commentReportReasonLabel } from '../utils/commentReport'
 import {
     REPORT_RANGE_OPTIONS,
@@ -359,6 +404,13 @@ const reasonFilter = ref<CommentReportReason | ''>('')
 const targetFilter = ref<CommentReportSourceFilter | ''>('')
 const keyword = ref('')
 const actingId = ref(0)
+
+// AI 辅助判断：只给建议，处置状态仍由运营自己改
+const session = useSessionStore()
+const canUseAi = computed(() => session.can('ai.use'))
+const aiReviewingId = ref(0)
+const aiReviewMap = ref<Record<number, AiReportReview>>({})
+const aiReviewErrorMap = ref<Record<number, string>>({})
 
 const startDate = ref('')
 const endDate = ref('')
@@ -576,6 +628,49 @@ const openNoteModal = (item: CommentReportItem): void => {
     noteTarget.value = item
     noteNextStatus.value = item.status === 0 || item.status === 1 ? 1 : 2
     noteDraft.value = item.handleNote || ''
+}
+
+const aiReviewActionLabel = (action: AiReportReview['action']): string => ({
+    process: '删除评论并标记已处理',
+    dismiss: '忽略举报',
+    warn: '保留评论但标记已处理',
+}[action])
+
+const requestAiReview = async (item: CommentReportItem): Promise<void> => {
+    if (aiReviewingId.value) return
+
+    aiReviewingId.value = item.id
+    const errorMap = { ...aiReviewErrorMap.value }
+    delete errorMap[item.id]
+    aiReviewErrorMap.value = errorMap
+    try {
+        const result = await reviewCommentReport(item.id)
+        if (result.code === 200 && result.data) {
+            aiReviewMap.value = { ...aiReviewMap.value, [item.id]: result.data }
+        } else {
+            aiReviewErrorMap.value = {
+                ...aiReviewErrorMap.value,
+                [item.id]: result.message || 'AI 判断建议生成失败，请稍后重试',
+            }
+        }
+    } catch (error) {
+        aiReviewErrorMap.value = {
+            ...aiReviewErrorMap.value,
+            [item.id]: getRequestErrorMessage(error, 'AI 判断建议生成失败，请稍后重试'),
+        }
+    } finally {
+        aiReviewingId.value = 0
+    }
+}
+
+// 把 AI 写的备注带进处理弹窗：仍然要运营自己确认并保存
+const applyAiReviewToNote = (item: CommentReportItem): void => {
+    const review = aiReviewMap.value[item.id]
+    if (!review) return
+
+    noteTarget.value = item
+    noteNextStatus.value = review.action === 'dismiss' ? 2 : 1
+    noteDraft.value = review.note.slice(0, 200)
 }
 
 const closeNoteModal = (open?: boolean): void => {
@@ -1251,6 +1346,67 @@ onMounted(() => {
             margin-right: 8px;
             font-weight: 700;
         }
+    }
+
+    .report-ai-review {
+        margin-top: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: var(--admin-radius-sm, 12px);
+        background: var(--admin-surface-soft, var(--bgColor2));
+
+        &-title {
+            margin: 0 0 8px;
+            color: var(--gray8);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        &-degraded {
+            margin: 0 0 8px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: color-mix(in srgb, #d98716 12%, transparent);
+            color: #a86a10;
+            font-size: 12px;
+        }
+
+        &-facts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin: 0 0 8px;
+
+            dt {
+                font-size: 11px;
+                color: var(--gray7);
+            }
+
+            dd {
+                margin: 2px 0 0;
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--gray);
+            }
+        }
+
+        &-note {
+            margin: 0;
+            color: var(--gray8);
+            font-size: 12px;
+            line-height: 1.7;
+            word-break: break-word;
+        }
+
+        &-actions {
+            margin-top: 10px;
+        }
+    }
+
+    .report-ai-review-error {
+        margin: 8px 0 0;
+        color: @ecolor;
+        font-size: 12px;
     }
 
     .report-detail {

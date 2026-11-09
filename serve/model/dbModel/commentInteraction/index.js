@@ -487,6 +487,63 @@ async function listReports({
 }
 
 /**
+ * 按 ID 取单条举报详情（含被举报评论与来源内容），供 AI 辅助判断使用。
+ */
+async function findReportById(reportId) {
+    const id = Number(reportId)
+    if (!Number.isSafeInteger(id) || id <= 0) return null
+
+    const rows = await query(
+        `SELECT
+            r.id, r.target_type, r.comment_id, r.reason, r.detail, r.status,
+            r.created_at,
+            ru.username AS reporter_name,
+            COALESCE(c.user_id, dc.user_id) AS comment_user_id,
+            cu.username AS comment_user_name,
+            COALESCE(c.content, dc.content) AS comment_content,
+            COALESCE(c.complaint, dc.complaint, 0) AS comment_complaint,
+            c.article_id AS article_id,
+            a.title AS article_title,
+            a.classify AS article_classify,
+            dc.diary_id AS diary_id,
+            d.title AS diary_title
+         FROM comment_report r
+         LEFT JOIN users ru ON ru.id = r.user_id
+         LEFT JOIN comment c ON r.target_type = 'article' AND c.id = r.comment_id
+         LEFT JOIN diary_comment dc ON r.target_type = 'diary' AND dc.id = r.comment_id
+         LEFT JOIN users cu ON cu.id = COALESCE(c.user_id, dc.user_id)
+         LEFT JOIN article a ON a.id = c.article_id
+         LEFT JOIN diary d ON d.id = dc.diary_id
+         WHERE r.id = ?
+         LIMIT 1`,
+        [id]
+    )
+
+    const item = rows?.[0]
+    if (!item) return null
+
+    const isArticle = item.target_type === 'article'
+    return {
+        id: Number(item.id),
+        targetType: item.target_type,
+        reason: String(item.reason || 'other'),
+        detail: String(item.detail || ''),
+        status: Number(item.status || 0),
+        createdAt: item.created_at,
+        reporterName: item.reporter_name || '已注销用户',
+        commentContent: String(item.comment_content || '（评论已删除或不存在）'),
+        commentUserName: item.comment_user_name || '已注销用户',
+        commentComplaint: Number(item.comment_complaint || 0),
+        sourceTitle: isArticle
+            ? (item.article_title || '文章已删除')
+            : (item.diary_title || '随笔已删除'),
+        sourceType: isArticle
+            ? (item.article_classify === 'image' ? 'gallery' : 'article')
+            : 'diary'
+    }
+}
+
+/**
  * 举报趋势：按天统计最近 N 天的新增举报与已处理量。
  * 复用 listReports 的基础过滤（来源 + 关键词 + 时间范围），
  * 忽略状态筛选，让趋势始终反映整体水位而不是某个状态。
@@ -662,6 +719,7 @@ module.exports = {
     report,
     deleteComment,
     listReports,
+    findReportById,
     updateReportStatus,
     updateReportStatusBatch,
     listReportTrend

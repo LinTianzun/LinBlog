@@ -848,6 +848,65 @@ test('运营周报在首选模型故障时自动切换到备用模型', async ()
     }
 })
 
+test('举报辅助判断把非法取值收敛到安全默认', () => {
+    const parsed = aiClient.parseReportReviewPayload(JSON.stringify({
+        verdict: '随便写的',
+        reason: 'not-a-reason',
+        action: 'delete-everything',
+        note: '  这是一条备注  ',
+    }))
+    assert.equal(parsed.verdict, '不成立')
+    assert.equal(parsed.reason, 'other')
+    assert.equal(parsed.action, 'dismiss')
+    assert.equal(parsed.note, '这是一条备注')
+})
+
+test('举报辅助判断在首选模型故障时自动切换到备用模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 500 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{
+                message: {
+                    content: '{"verdict":"成立","reason":"abuse","action":"process","note":"人身攻击"}'
+                }
+            }]
+        }), { status: 200 })
+    }
+    try {
+        const result = await aiClient.reviewReportedComment({
+            report: {
+                id: 1,
+                reason: 'abuse',
+                detail: '',
+                commentContent: '你太蠢了',
+                commentUserName: '某用户',
+                commentComplaint: 2,
+                sourceTitle: '一篇文章',
+                sourceType: 'article'
+            },
+            reasonLabel: '辱骂或攻击',
+            aiConfig: { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+            chainFn: async () => ([
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k', timeoutMs: 5000 }
+            ])
+        })
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.equal(result.verdict, '成立')
+        assert.equal(result.action, 'process')
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
 test('连通性测试失败时记录连续失败与错误原因', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth

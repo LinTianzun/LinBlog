@@ -6,6 +6,7 @@ const aiModel = require('../model/dbModel/ai/index')
 const articleModel = require('../model/dbModel/article/index')
 const messageModel = require('../model/dbModel/message/index')
 const recordModel = require('../model/dbModel/record/index')
+const commentInteractionModel = require('../model/dbModel/commentInteraction/index')
 const { hasPermission } = require('../utils/accessControl')
 
 /**
@@ -378,6 +379,88 @@ async function suggestArticleMeta(req, res) {
     }
 }
 
+// 举报原因的中文标签，与前台举报弹窗保持同一套文案
+const REPORT_REASON_LABELS = {
+    spam: '广告或引流',
+    abuse: '辱骂或攻击',
+    porn: '色情或低俗',
+    illegal: '违法或危险',
+    misinformation: '虚假或误导',
+    other: '其他原因'
+}
+
+/**
+ * AI 举报辅助判断：给出是否成立、更贴切的原因、建议处置与处理备注。
+ * 只产出建议：处置状态仍由运营在举报工作台自己改。
+ */
+async function reviewReport(req, res, options = {}) {
+    if (!req.aiModel) {
+        return res.status(503).json({
+            code: 503,
+            message: 'AI 功能未配置，请先在 AI 管理中启用接入模型'
+        })
+    }
+    if (!hasPermission(req.user, 'comment.moderate')) {
+        return res.status(403).json({ code: 403, message: '当前账号没有处理举报的权限' })
+    }
+
+    const reportId = Number(req.body?.reportId)
+    if (!Number.isSafeInteger(reportId) || reportId <= 0) {
+        return res.status(400).json({ code: 400, message: '请先选择要判断的举报' })
+    }
+
+    try {
+        const report = await commentInteractionModel.findReportById(reportId)
+        if (!report) {
+            return res.status(404).json({ code: 404, message: '举报不存在或已被删除' })
+        }
+
+        const startedAt = Date.now()
+        const suggestion = await aiClient.reviewReportedComment({
+            report,
+            reasonLabel: REPORT_REASON_LABELS[report.reason] || report.reason,
+            aiConfig: req.aiModel
+        })
+
+        await recordAiCall({
+            req,
+            feature: 'report-review',
+            modelName: suggestion.modelUsed?.model || req.aiModel.model,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: suggestion.modelUsed?.degraded
+                ? `举报辅助判断（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : '举报辅助判断',
+            durationMs: Date.now() - startedAt,
+            usage: suggestion.usage,
+            outputChars: suggestion.note.length
+        })
+
+        return res.json({
+            code: 200,
+            message: '举报判断建议已生成',
+            data: {
+                reportId,
+                verdict: suggestion.verdict,
+                reason: suggestion.reason,
+                reasonLabel: REPORT_REASON_LABELS[suggestion.reason] || suggestion.reason,
+                action: suggestion.action,
+                note: suggestion.note,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_PARSE_ERROR') {
+            return res.status(503).json({ code: 503, message: 'AI 没有返回可用的判断建议，请稍后重试' })
+        }
+        console.error('[AI] 举报辅助判断失败：', err?.message || err)
+        return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
+    }
+}
 /**
  * AI 图库策展：基于当前标题、简介、照片数量与作者补充主题生成候选信息。
  * 返回的标题、简介与标签都只作为建议，作者逐项采用后走正常保存流程。
@@ -625,5 +708,6 @@ module.exports = {
     answerPublicQuestion,
     searchPublicContent,
     suggestMessageReply,
-    generateOperationsReport
+    generateOperationsReport,
+    reviewReport
 }

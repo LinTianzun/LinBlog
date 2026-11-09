@@ -19,6 +19,9 @@ const MAX_SEARCH_TERM_CHARS = 20
 const MAX_REPLY_CHARS = 300
 const MAX_REPLY_CANDIDATES = 2
 const MAX_REPORT_SECTIONS = 4
+const REPORT_REASON_VALUES = ['spam', 'abuse', 'porn', 'illegal', 'misinformation', 'other']
+const REPORT_ACTIONS = ['process', 'dismiss', 'warn']
+const MAX_REPORT_NOTE_CHARS = 200
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -371,6 +374,50 @@ function parseOperationsReportPayload(raw) {
     return { sections }
 }
 
+/**
+ * 举报辅助判断的提示词：模型只给判断建议，最终处置仍由运营自己做。
+ */
+function buildReportReviewPrompt({ report, reasonLabel }) {
+    return [
+        '你是一名中文内容社区的审核助理。请根据举报信息给出处置建议。',
+        '要求：',
+        '1. 判断举报是否成立，只能取 "成立"、"部分成立"、"不成立" 三种；',
+        '2. 给出一个更贴切的举报原因，只能取：spam（广告或引流）、abuse（辱骂或攻击）、porn（色情或低俗）、illegal（违法或危险）、misinformation（虚假或误导）、other（其他原因）；',
+        '3. 建议处置只能取：process（删除评论并标记已处理）、dismiss（忽略举报）、warn（保留评论但标记已处理）；',
+        '4. 写一段不超过 80 字的处理备注，说明判断依据；',
+        '5. 只输出一个 JSON 对象，格式为 {"verdict":"...","reason":"...","action":"...","note":"..."}，不要输出解释或 Markdown 代码块。',
+        '',
+        `举报原因（读者选择）：${reasonLabel}`,
+        report.detail ? `读者补充说明：${report.detail}` : '读者补充说明：无',
+        `被举报评论作者：${report.commentUserName}`,
+        `被举报评论内容：${report.commentContent}`,
+        `所在内容：${report.sourceTitle}`,
+        `该评论累计被举报：${report.commentComplaint} 次`
+    ].join('\n')
+}
+
+function parseReportReviewPayload(raw) {
+    const parsed = extractJsonBlock(String(raw || ''))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw Object.assign(new Error('模型输出不是合法的 JSON 建议'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    const verdictRaw = String(parsed.verdict || '').trim()
+    const verdict = ['成立', '部分成立', '不成立'].includes(verdictRaw) ? verdictRaw : '不成立'
+    const reason = REPORT_REASON_VALUES.includes(String(parsed.reason || ''))
+        ? String(parsed.reason)
+        : 'other'
+    const action = REPORT_ACTIONS.includes(String(parsed.action || ''))
+        ? String(parsed.action)
+        : 'dismiss'
+    const note = typeof parsed.note === 'string' ? parsed.note.trim().slice(0, MAX_REPORT_NOTE_CHARS) : ''
+    if (!note) {
+        throw Object.assign(new Error('模型建议缺少处理备注'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { verdict, reason, action, note }
+}
+
 function parseGalleryCurationPayload(raw) {
     const parsed = extractJsonBlock(String(raw || ''))
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -696,6 +743,23 @@ async function generateOperationsReport({ summary, aiUsage, aiConfig, chainFn = 
 }
 
 /**
+ * 举报辅助判断：给出是否成立、更贴切的原因、建议处置与处理备注。
+ * 只是建议，处置动作仍由运营在举报工作台自己执行。
+ */
+async function reviewReportedComment({ report, reasonLabel = '', aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+    if (!report) throw Object.assign(new Error('缺少举报信息'), { code: 'AI_EMPTY_CONTEXT' })
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildReportReviewPrompt({ report, reasonLabel })
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true })
+        const parsed = parseReportReviewPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+}
+
+/**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
 async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
@@ -839,6 +903,7 @@ module.exports = {
     expandSearchQuery,
     suggestMessageReplies,
     generateOperationsReport,
+    reviewReportedComment,
     rewriteText,
     generateCoverImage,
     answerFromPublishedContent,
@@ -855,6 +920,8 @@ module.exports = {
     parseMessageReplyPayload,
     buildOperationsReportPrompt,
     parseOperationsReportPayload,
+    buildReportReviewPrompt,
+    parseReportReviewPayload,
     buildSuggestionPrompt,
     buildWritingPrompt,
     normalizeWritingText,
