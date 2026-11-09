@@ -242,7 +242,9 @@ export function generateCoverImage(params: {
   introduce?: string;
   content?: string;
 }) {
-  return request.post<ApiResult<AiCoverSuggestion>>("/ai/cover", params);
+  return request.post<ApiResult<AiCoverSuggestion>>("/ai/cover", params, {
+    timeout: 60000
+  });
 }
 
 export function confirmCoverImage(token: string) {
@@ -366,7 +368,9 @@ export function previewAiPromptTemplate(payload: {
   // 输出类型：text 走对话模型、image 走图片模型；不传则按所属功能推断
   mode?: "text" | "image";
 }) {
-  return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload);
+  return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload, {
+    timeout: 60000
+  });
 }
 
 export function getAiPromptTemplates() {
