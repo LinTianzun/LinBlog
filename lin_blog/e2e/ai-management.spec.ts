@@ -188,3 +188,29 @@ test('连通性测试后模型健康信息立即刷新', async ({ page }) => {
   const healthBreak = page.locator('.ai-stats-break').nth(2)
   await expect(healthBreak).toContainText(localText('2026-11-09T13:14:00.000Z'))
 })
+
+test('AI 管理页可生成运营周报并展示统计与文字小节', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiManage')
+  await expect(page.locator('.ai-model-card')).toHaveCount(1, { timeout: 30_000 })
+
+  await page.getByRole('button', { name: '生成周报' }).click()
+
+  const report = page.locator('.ai-report')
+  await expect(report).toBeVisible()
+  // 真实统计口径先摆在前面
+  await expect(report.locator('.ai-report-facts')).toContainText('120 次')
+  await expect(report.locator('.ai-report-facts')).toContainText('45 人')
+  // 再是模型组织的文字小节
+  await expect(report.locator('.ai-report-section')).toHaveCount(2)
+  await expect(report).toContainText('本周概况')
+  await expect(report).toContainText('下周建议')
+})

@@ -30,6 +30,14 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiController.suggestMessageReply
     )
+    // AI 运营周报：先聚合一周统计，再由模型组织成文字报告
+    app.post(
+        '/api/ai/report/operations',
+        authMiddleware,
+        aiQuota('report'),
+        aiSuggestLimit,
+        aiController.generateOperationsReport
+    )
     // AI 写作辅助：结果只作为候选文本展示，作者确认后才写入编辑器
     app.post(
         '/api/ai/writing',

@@ -1321,6 +1321,31 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // AI 运营周报：真实统计 + 模型组织的文字小节
+    if (method === 'POST' && path === '/api/ai/report/operations') {
+      await fulfill({
+        days: 7,
+        sections: [
+          { title: '本周概况', content: '本周访问 120 次，独立访客 45 人。' },
+          { title: '下周建议', content: '可以多更新一篇技术长文。' },
+        ],
+        summary: {
+          days: 7,
+          visits: 120,
+          visitors: 45,
+          mobileVisits: 60,
+          comments: 8,
+          messages: 3,
+          publishedArticles: 2,
+          publishedGalleries: 1,
+          topPaths: [{ path: '/portal', visits: 30 }],
+        },
+        degraded: false,
+        modelName: '',
+      }, { message: '运营周报已生成' })
+      return
+    }
+
     if (method === 'PATCH' && path === '/api/message/read') {
       const messageIds = Array.isArray(body?.messageIds) ? body.messageIds : []
       state.messages = state.messages.map(item =>

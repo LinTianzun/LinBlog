@@ -222,6 +222,58 @@
                 </div>
             </section>
 
+            <!-- 运营周报 -->
+            <section class="ai-panel">
+                <header class="ai-panel-header">
+                    <div class="ai-panel-heading">
+                        <yk-title :level="4" style="margin: 0;">运营周报</yk-title>
+                        <yk-text type="secondary">按最近 {{ reportDays }} 天的真实统计生成文字总结</yk-text>
+                    </div>
+                    <yk-space align="center" size="s">
+                        <yk-button size="s" type="secondary" @click="reportDays = reportDays === 7 ? 30 : 7">
+                            {{ reportDays === 7 ? '近 7 天' : '近 30 天' }}
+                        </yk-button>
+                        <yk-button size="s" type="primary" :loading="reportBusy" @click="requestReport">
+                            生成周报
+                        </yk-button>
+                    </yk-space>
+                </header>
+
+                <p v-if="reportError" class="ai-report-error">{{ reportError }}</p>
+
+                <div v-if="report" class="ai-report">
+                    <p v-if="report.degraded" class="ai-report-degraded">
+                        默认模型暂时不可用，本次由「{{ report.modelName }}」生成
+                    </p>
+                    <dl class="ai-report-facts">
+                        <div>
+                            <dt>页面访问</dt>
+                            <dd>{{ report.summary.visits }} 次</dd>
+                        </div>
+                        <div>
+                            <dt>独立访客</dt>
+                            <dd>{{ report.summary.visitors }} 人</dd>
+                        </div>
+                        <div>
+                            <dt>新增发布</dt>
+                            <dd>{{ report.summary.publishedArticles }} 篇 / {{ report.summary.publishedGalleries }} 组</dd>
+                        </div>
+                        <div>
+                            <dt>互动</dt>
+                            <dd>{{ report.summary.comments }} 评论 / {{ report.summary.messages }} 私信</dd>
+                        </div>
+                    </dl>
+                    <div class="ai-report-sections">
+                        <section v-for="section in report.sections" :key="section.title" class="ai-report-section">
+                            <h4>{{ section.title }}</h4>
+                            <p>{{ section.content }}</p>
+                        </section>
+                    </div>
+                </div>
+
+                <yk-empty v-else-if="!reportError" description="点击「生成周报」查看本周运营总结" />
+            </section>
+
             <div class="ai-columns">
                 <!-- 用量策略 -->
                 <section class="ai-panel">
@@ -448,6 +500,7 @@
     import {
         createAiModel,
         deleteAiModel,
+        generateOperationsReport,
         getAiModels,
         getAiSettings,
         getAiUsage,
@@ -461,6 +514,7 @@
         type AiSettings,
         type AiUsageRecord,
         type AiUsageStats,
+        type AiOperationsReport,
     } from '../api/ai'
 
     const models = ref<AiModelItem[]>([])
@@ -501,6 +555,12 @@
     const togglingId = ref<number | null>(null)
     const importing = ref(false)
     const showSecret = ref(false)
+
+    // 运营周报：按周期聚合真实统计后交给模型组织文字
+    const reportDays = ref(7)
+    const reportBusy = ref(false)
+    const reportError = ref('')
+    const report = ref<AiOperationsReport | null>(null)
 
     const modelForm = reactive({
         name: '',
@@ -805,6 +865,24 @@
             notify('error', errorMessage.value)
         } finally {
             testingId.value = null
+        }
+    }
+
+    const requestReport = async (): Promise<void> => {
+        if (reportBusy.value) return
+        reportBusy.value = true
+        reportError.value = ''
+        try {
+            const result = await generateOperationsReport({ days: reportDays.value })
+            if (result.code === 200 && result.data) {
+                report.value = result.data
+            } else {
+                reportError.value = result.message || '运营周报生成失败，请稍后重试'
+            }
+        } catch (error) {
+            reportError.value = getRequestErrorMessage(error, '运营周报生成失败，请稍后重试')
+        } finally {
+            reportBusy.value = false
         }
     }
 
@@ -1182,6 +1260,76 @@
                 &:hover {
                     background: var(--admin-surface-soft, var(--bgColor2));
                 }
+            }
+        }
+
+        // 运营周报
+        .ai-report {
+            display: flex;
+            flex-direction: column;
+            gap: @space-l;
+        }
+
+        .ai-report-error {
+            margin: 0 0 @space-m;
+            color: @ecolor;
+            font-size: 12px;
+        }
+
+        .ai-report-degraded {
+            margin: 0;
+            padding: 4px 8px;
+            border-radius: 6px;
+            align-self: flex-start;
+            background: color-mix(in srgb, #d98716 12%, transparent);
+            color: #a86a10;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .ai-report-facts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: @space-m;
+            margin: 0;
+
+            dt {
+                margin-bottom: 4px;
+                font-size: 12px;
+                color: var(--gray7);
+            }
+
+            dd {
+                margin: 0;
+                font-size: 15px;
+                font-weight: 600;
+                color: var(--gray);
+            }
+        }
+
+        .ai-report-sections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: @space-l;
+        }
+
+        .ai-report-section {
+            padding: @space-l;
+            border-radius: 12px;
+            background: var(--admin-surface-soft, var(--bgColor2));
+
+            h4 {
+                margin: 0 0 6px;
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--gray);
+            }
+
+            p {
+                margin: 0;
+                font-size: 13px;
+                line-height: 1.8;
+                color: var(--gray7);
             }
         }
 

@@ -91,6 +91,31 @@ export interface AiSettings {
   superAdminUnlimited: boolean;
 }
 
+// AI 运营周报：真实统计 + 模型组织的文字小节
+export interface AiOperationsSummary {
+  days: number;
+  visits: number;
+  visitors: number;
+  mobileVisits: number;
+  comments: number;
+  messages: number;
+  publishedArticles: number;
+  publishedGalleries: number;
+  topPaths: { path: string; visits: number }[];
+}
+
+export interface AiOperationsReport {
+  days: number;
+  sections: { title: string; content: string }[];
+  summary: AiOperationsSummary;
+  degraded?: boolean;
+  modelName?: string;
+}
+
+export function generateOperationsReport(params: { days?: number }) {
+  return request.post<ApiResult<AiOperationsReport>>("/ai/report/operations", params);
+}
+
 export interface AiUsageRecord {
   id: number;
   userId: number;

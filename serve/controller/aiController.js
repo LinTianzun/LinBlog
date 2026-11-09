@@ -5,6 +5,7 @@ const { recordAiCall } = require('../utils/aiUsageLogger')
 const aiModel = require('../model/dbModel/ai/index')
 const articleModel = require('../model/dbModel/article/index')
 const messageModel = require('../model/dbModel/message/index')
+const recordModel = require('../model/dbModel/record/index')
 const { hasPermission } = require('../utils/accessControl')
 
 /**
@@ -244,6 +245,81 @@ async function suggestMessageReply(req, res, options = {}) {
     }
 }
 
+/**
+ * AI 运营周报：先从数据库取一周统计，再让模型组织成文字报告。
+ * 报告只是给作者参考的建议，不会自动发布或修改任何内容。
+ */
+async function generateOperationsReport(req, res, options = {}) {
+    if (!req.aiModel) {
+        return res.status(503).json({
+            code: 503,
+            message: 'AI 功能未配置，请先在 AI 管理中启用接入模型'
+        })
+    }
+    if (!hasPermission(req.user, 'overview.viewAll')) {
+        return res.status(403).json({ code: 403, message: '当前账号没有查看全站运营数据的权限' })
+    }
+
+    const days = Math.min(Math.max(Number(req.body?.days) || 7, 1), 30)
+
+    try {
+        const startedAt = Date.now()
+        const [summary, usage] = await Promise.all([
+            recordModel.getOperationsSummary(days),
+            aiModel.getUsageSummary()
+        ])
+
+        // getUsageSummary 返回固定三个时间窗口，按周报周期挑最接近的一个
+        const usageWindow = days <= 7
+            ? usage.last7Days
+            : (days <= 30 ? usage.last30Days : usage.all)
+
+        const report = await aiClient.generateOperationsReport({
+            summary,
+            aiUsage: {
+                total: usageWindow?.total || 0,
+                successRate: usageWindow?.successRate || 0,
+                avgDurationMs: usageWindow?.avgDurationMs || 0
+            },
+            aiConfig: req.aiModel
+        })
+
+        await recordAiCall({
+            req,
+            feature: 'report',
+            modelName: report.modelUsed?.model || req.aiModel.model,
+            modelId: report.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: report.modelUsed?.degraded
+                ? `生成运营周报（默认模型不可用，已降级到「${report.modelUsed.name}」）`
+                : '生成运营周报',
+            durationMs: Date.now() - startedAt,
+            usage: report.usage,
+            outputChars: report.sections.reduce((total, item) => total + item.content.length, 0)
+        })
+
+        return res.json({
+            code: 200,
+            message: '运营周报已生成',
+            data: {
+                days,
+                sections: report.sections,
+                summary,
+                degraded: Boolean(report.modelUsed?.degraded),
+                modelName: report.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_PARSE_ERROR') {
+            return res.status(503).json({ code: 503, message: 'AI 没有返回可用的周报，请稍后重试' })
+        }
+        console.error('[AI] 生成运营周报失败：', err?.message || err)
+        return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
+    }
+}
 /**
  * AI 写作建议：按需生成简介与标签，返回给前端作为建议展示，
  * 作者确认后才填充进表单字段，再走正常的保存流程。
@@ -548,5 +624,6 @@ module.exports = {
     confirmCover,
     answerPublicQuestion,
     searchPublicContent,
-    suggestMessageReply
+    suggestMessageReply,
+    generateOperationsReport
 }

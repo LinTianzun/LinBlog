@@ -96,6 +96,76 @@ async function countExpiredRecords(days = RETENTION_DAYS) {
     return Number(rows[0]?.total || 0)
 }
 
+/**
+ * 运营周报数据：近 N 天的访问、互动与内容产出概览。
+ * 只做统计口径的聚合，具体结论交给模型来写。
+ */
+async function getOperationsSummary(days = 7) {
+    const safeDays = Number.isSafeInteger(days) && days > 0 ? Math.min(days, 90) : 7
+
+    const [visitRows, commentRows, messageRows, publishRows, topPathRows] = await Promise.all([
+        query(
+            `SELECT COUNT(*) AS total,
+                    COUNT(DISTINCT ip) AS visitors,
+                    SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END) AS mobile
+             FROM record
+             WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)`,
+            [safeDays]
+        ),
+        query(
+            `SELECT COUNT(*) AS total
+             FROM comment
+             WHERE status = 1 AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)`,
+            [safeDays]
+        ),
+        query(
+            `SELECT COUNT(*) AS total
+             FROM message
+             WHERE type = 'private' AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)`,
+            [safeDays]
+        ),
+        query(
+            `SELECT classify, COUNT(*) AS total
+             FROM article
+             WHERE state = 'published'
+               AND published_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)
+             GROUP BY classify`,
+            [safeDays]
+        ),
+        query(
+            `SELECT path, COUNT(*) AS visits
+             FROM record
+             WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)
+             GROUP BY path
+             ORDER BY visits DESC
+             LIMIT 5`,
+            [safeDays]
+        )
+    ])
+
+    const visit = visitRows?.[0] || {}
+    const published = { article: 0, image: 0 }
+    for (const row of publishRows || []) {
+        const key = row.classify === 'image' ? 'image' : 'article'
+        published[key] = Number(row.total || 0)
+    }
+
+    return {
+        days: safeDays,
+        visits: Number(visit.total || 0),
+        visitors: Number(visit.visitors || 0),
+        mobileVisits: Number(visit.mobile || 0),
+        comments: Number(commentRows?.[0]?.total || 0),
+        messages: Number(messageRows?.[0]?.total || 0),
+        publishedArticles: published.article,
+        publishedGalleries: published.image,
+        topPaths: (topPathRows || []).map(row => ({
+            path: String(row.path || ''),
+            visits: Number(row.visits || 0)
+        }))
+    }
+}
+
 module.exports = {
     createRecord,
     countRecordsByDay,
@@ -103,5 +173,6 @@ module.exports = {
     countTopPaths,
     pruneRecords,
     countExpiredRecords,
+    getOperationsSummary,
     RETENTION_DAYS,
 }

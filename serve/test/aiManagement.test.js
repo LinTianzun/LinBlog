@@ -796,6 +796,58 @@ test('私信拟回复在首选模型故障时自动切换到备用模型', async
     }
 })
 
+test('运营周报按「标题：正文」切分小节', () => {
+    const parsed = aiClient.parseOperationsReportPayload(
+        '本周概况：访问 120 次，发布 2 篇文章。\n内容表现：图库有 1 组新增。\n下周建议：多更新一篇技术长文。'
+    )
+    assert.equal(parsed.sections.length, 3)
+    assert.equal(parsed.sections[0].title, '本周概况')
+    assert.equal(parsed.sections[0].content, '访问 120 次，发布 2 篇文章。')
+    assert.equal(parsed.sections[2].title, '下周建议')
+})
+
+test('运营周报在首选模型故障时自动切换到备用模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 500 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '本周概况：备用模型写的周报。' } }]
+        }), { status: 200 })
+    }
+    try {
+        const result = await aiClient.generateOperationsReport({
+            summary: {
+                days: 7,
+                visits: 10,
+                visitors: 5,
+                mobileVisits: 3,
+                comments: 1,
+                messages: 1,
+                publishedArticles: 1,
+                publishedGalleries: 0,
+                topPaths: []
+            },
+            aiUsage: { total: 1, successRate: 100, avgDurationMs: 100 },
+            aiConfig: { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+            chainFn: async () => ([
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k', timeoutMs: 5000 }
+            ])
+        })
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.equal(result.sections[0].content, '备用模型写的周报。')
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
 test('连通性测试失败时记录连续失败与错误原因', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth

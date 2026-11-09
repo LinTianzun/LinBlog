@@ -18,6 +18,7 @@ const MAX_SEARCH_TERMS = 6
 const MAX_SEARCH_TERM_CHARS = 20
 const MAX_REPLY_CHARS = 300
 const MAX_REPLY_CANDIDATES = 2
+const MAX_REPORT_SECTIONS = 4
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -314,6 +315,60 @@ function parseMessageReplyPayload(raw) {
     }
 
     return { replies }
+}
+
+/**
+ * 运营周报提示词：模型只根据给定的统计数字写报告，不允许编造未提供的数据。
+ */
+function buildOperationsReportPrompt({ summary, aiUsage }) {
+    const topPaths = (summary.topPaths || [])
+        .map(item => `${item.path}（${item.visits} 次）`)
+        .join('、') || '无'
+    return [
+        '你是一名中文博客运营助理。请根据下面这一周的站点统计数据写一份简短的运营周报。',
+        '要求：',
+        '1. 只使用给出的数字，不要编造任何未提供的数据或对比结论；',
+        '2. 输出 3-4 个小节标题（如「本周概况」「内容表现」「互动情况」「下周建议」），每节 1-3 句话；',
+        '3. 语气客观平实，数字变化只做陈述，不要夸大；',
+        '4. 不要输出 Markdown 标记（#、*、-），用纯文本小标题与句子；',
+        '5. 只输出周报正文，不要额外解释。',
+        '',
+        `统计周期：最近 ${summary.days} 天`,
+        `页面访问：${summary.visits} 次，独立访客 ${summary.visitors} 人，移动端访问 ${summary.mobileVisits} 次`,
+        `新增发布：文章 ${summary.publishedArticles} 篇，图库 ${summary.publishedGalleries} 组`,
+        `新增评论：${summary.comments} 条，新增私信：${summary.messages} 条`,
+        `热门路径：${topPaths}`,
+        `AI 调用：共 ${aiUsage.total} 次，成功率 ${aiUsage.successRate}%，平均耗时 ${aiUsage.avgDurationMs} 毫秒`
+    ].join('\n')
+}
+
+function parseOperationsReportPayload(raw) {
+    const text = normalizeWritingText(raw)
+    if (!text) {
+        throw Object.assign(new Error('模型没有返回可用的周报'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    const sections = []
+    for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        // 以「本周概况：」这种「短句 + 冒号」的形式识别小节标题
+        const matched = trimmed.match(/^([^：:]{2,12})[：:]\s*(.+)$/)
+        if (matched) {
+            sections.push({ title: matched[1].trim(), content: matched[2].trim() })
+        } else if (sections.length > 0) {
+            sections[sections.length - 1].content += ` ${trimmed}`
+        } else {
+            sections.push({ title: '本周概况', content: trimmed })
+        }
+        if (sections.length >= MAX_REPORT_SECTIONS) break
+    }
+
+    if (sections.length === 0) {
+        throw Object.assign(new Error('模型没有返回可用的周报'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { sections }
 }
 
 function parseGalleryCurationPayload(raw) {
@@ -625,6 +680,22 @@ async function suggestMessageReplies({ peerName = '', history = [], tone = '', a
 }
 
 /**
+ * 生成运营周报。统计数字由调用方从数据库取好，模型只负责组织语言。
+ */
+async function generateOperationsReport({ summary, aiUsage, aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+    if (!summary) throw Object.assign(new Error('缺少周报统计数据'), { code: 'AI_EMPTY_CONTEXT' })
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildOperationsReportPrompt({ summary, aiUsage })
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, maxTokens: 900 })
+        const parsed = parseOperationsReportPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+}
+
+/**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
 async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
@@ -767,6 +838,7 @@ module.exports = {
     suggestGalleryCuration,
     expandSearchQuery,
     suggestMessageReplies,
+    generateOperationsReport,
     rewriteText,
     generateCoverImage,
     answerFromPublishedContent,
@@ -781,6 +853,8 @@ module.exports = {
     parseSearchExpansionPayload,
     buildMessageReplyPrompt,
     parseMessageReplyPayload,
+    buildOperationsReportPrompt,
+    parseOperationsReportPayload,
     buildSuggestionPrompt,
     buildWritingPrompt,
     normalizeWritingText,

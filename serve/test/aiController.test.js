@@ -12,6 +12,7 @@ const uploadController = require(path.resolve(__dirname, '../controller/uploadCo
 const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
 const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/index.js'))
 const messageModel = require(path.resolve(__dirname, '../model/dbModel/message/index.js'))
+const recordModel = require(path.resolve(__dirname, '../model/dbModel/record/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -281,6 +282,66 @@ test('私信拟回复在没有私信权限时拒绝', async () => {
     const res = createRes()
     await aiController.suggestMessageReply(
         { body: { targetUserId: 2 }, user: { userId: 1, permissions: [] }, aiModel: TEST_AI_MODEL },
+        res
+    )
+    assert.equal(res.statusCode, 403)
+})
+
+test('运营周报按真实统计生成文字小节', async () => {
+    const originalReport = aiClient.generateOperationsReport
+    const originalSummary = recordModel.getOperationsSummary
+    const originalUsage = aiModel.getUsageSummary
+    let received = null
+
+    aiClient.generateOperationsReport = async (payload) => {
+        received = payload
+        return {
+            sections: [
+                { title: '本周概况', content: '访问 120 次，发布 2 篇文章。' },
+                { title: '下周建议', content: '可以多更新一篇技术长文。' }
+            ],
+            modelUsed: { id: 1, name: '智谱', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    recordModel.getOperationsSummary = async () => ({
+        days: 7,
+        visits: 120,
+        visitors: 45,
+        mobileVisits: 60,
+        comments: 8,
+        messages: 3,
+        publishedArticles: 2,
+        publishedGalleries: 1,
+        topPaths: [{ path: '/portal', visits: 30 }]
+    })
+    aiModel.getUsageSummary = async () => ({
+        all: { total: 30, successRate: 100, avgDurationMs: 200 },
+        last7Days: { total: 12, successRate: 100, avgDurationMs: 180 },
+        last30Days: { total: 30, successRate: 100, avgDurationMs: 200 }
+    })
+
+    try {
+        const res = createRes()
+        await aiController.generateOperationsReport(
+            { body: { days: 7 }, user: { userId: 1, permissions: ['overview.viewAll'] }, aiModel: TEST_AI_MODEL },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.sections.length, 2)
+        assert.equal(res.body.data.summary.visits, 120)
+        assert.equal(received.summary.visitors, 45)
+        assert.equal(received.aiUsage.total, 12)
+    } finally {
+        aiClient.generateOperationsReport = originalReport
+        recordModel.getOperationsSummary = originalSummary
+        aiModel.getUsageSummary = originalUsage
+    }
+})
+
+test('运营周报在没有全站统计权限时拒绝', async () => {
+    const res = createRes()
+    await aiController.generateOperationsReport(
+        { body: { days: 7 }, user: { userId: 1, permissions: [] }, aiModel: TEST_AI_MODEL },
         res
     )
     assert.equal(res.statusCode, 403)
