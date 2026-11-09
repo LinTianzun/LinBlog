@@ -14,6 +14,8 @@ const MAX_COVER_IMAGE_BYTES = 8 * 1024 * 1024
 const COVER_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const MAX_GALLERY_TITLE_CHARS = 100
 const MAX_GALLERY_INTRO_CHARS = 300
+const MAX_SEARCH_TERMS = 6
+const MAX_SEARCH_TERM_CHARS = 20
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -231,6 +233,43 @@ function buildGalleryCurationPrompt({ title, introduce, theme, photoCount }) {
         `作者补充主题：${theme || '未填写'}`,
         `照片数量：${photoCount}`
     ].join('\n')
+}
+
+/**
+ * 语义搜索的查询扩展提示词：让模型把自然语言查询拆成若干可直接检索的关键词。
+ * 只做扩，不生成答案，最终排序仍由数据库命中情况决定。
+ */
+function buildSearchExpansionPrompt({ query }) {
+    return [
+        '你是一名中文站内搜索助手。请把用户的自然语言查询扩展成 2-5 个可以直接用于站内全文检索的关键词。',
+        '要求：',
+        '1. 关键词要用中文短语，覆盖同义词、近义词与常见别名；',
+        '2. 不要输出原查询里已有的完整词组；',
+        '3. 每个关键词不超过 8 个字，彼此不重复；',
+        '4. 只输出一个 JSON 对象，格式为 {"terms":["..."]}，不要输出解释或 Markdown 代码块。',
+        '',
+        `用户查询：${query}`
+    ].join('\n')
+}
+
+function parseSearchExpansionPayload(raw) {
+    const parsed = extractJsonBlock(String(raw || ''))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw Object.assign(new Error('模型输出不是合法的 JSON 扩展结果'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    const terms = []
+    for (const item of Array.isArray(parsed.terms) ? parsed.terms : []) {
+        if (typeof item !== 'string') continue
+        const term = item.trim().slice(0, MAX_SEARCH_TERM_CHARS)
+        if (term && !terms.includes(term)) terms.push(term)
+        if (terms.length >= MAX_SEARCH_TERMS) break
+    }
+    if (terms.length === 0) {
+        throw Object.assign(new Error('模型没有返回可用的搜索关键词'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { terms }
 }
 
 function parseGalleryCurationPayload(raw) {
@@ -489,6 +528,27 @@ async function suggestGalleryCuration({ title = '', introduce = '', theme = '', 
 }
 
 /**
+ * 语义搜索的查询扩展：把自然语言查询转成一组可检索关键词。
+ * 只扩关键词，不生成答案，最终命中与排序仍由数据库决定。
+ */
+async function expandSearchQuery({ query, aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+
+    const plainQuery = String(query || '').trim()
+    if (!plainQuery) {
+        throw Object.assign(new Error('搜索关键词不能为空'), { code: 'AI_EMPTY_QUERY' })
+    }
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildSearchExpansionPrompt({ query: plainQuery.slice(0, 100) })
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true })
+        const parsed = parseSearchExpansionPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+}
+
+/**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
 async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
@@ -629,6 +689,7 @@ module.exports = {
     isRetryableModelError,
     suggestArticleMeta,
     suggestGalleryCuration,
+    expandSearchQuery,
     rewriteText,
     generateCoverImage,
     answerFromPublishedContent,
@@ -639,6 +700,8 @@ module.exports = {
     parseSuggestionPayload,
     buildGalleryCurationPrompt,
     parseGalleryCurationPayload,
+    buildSearchExpansionPrompt,
+    parseSearchExpansionPayload,
     buildSuggestionPrompt,
     buildWritingPrompt,
     normalizeWritingText,

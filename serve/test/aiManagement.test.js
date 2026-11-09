@@ -714,6 +714,56 @@ test('图库策展建议在首选模型故障时自动切换到备用模型', as
     }
 })
 
+test('语义搜索扩展在首选模型故障时自动切换到备用模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 500 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '{"terms":["备用词"]}' } }]
+        }), { status: 200 })
+    }
+    try {
+        const result = await aiClient.expandSearchQuery({
+            query: '看海',
+            aiConfig: { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+            chainFn: async () => ([
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k', timeoutMs: 5000 }
+            ])
+        })
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.deepEqual(result.terms, ['备用词'])
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
+test('语义搜索扩展解析失败时抛出可识别错误', async () => {
+    const originalFetch = global.fetch
+    global.fetch = async () => new Response(JSON.stringify({
+        choices: [{ message: { content: 'not-json' } }]
+    }), { status: 200 })
+    try {
+        await assert.rejects(
+            () => aiClient.expandSearchQuery({
+                query: '看海',
+                aiConfig: { id: 1, name: '模型', model: 'm', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+                chainFn: async () => []
+            }),
+            (err) => err.code === 'AI_PARSE_ERROR'
+        )
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
 test('连通性测试失败时记录连续失败与错误原因', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth

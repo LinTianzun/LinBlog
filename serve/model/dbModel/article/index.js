@@ -333,6 +333,65 @@ async function searchPublishedContentForAsk(keyword, limit = 6) {
 }
 
 /**
+ * 语义搜索：按一组关键词在已发布内容里做加权匹配。
+ * 标题命中最重，其次简介、标签，正文命中权重最低；
+ * 综合得分越高排得越靠前，同分时按发布时间倒序。
+ */
+async function searchPublishedContentByTerms(terms, limit = 20) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50)
+    const list = (Array.isArray(terms) ? terms : [])
+        .map(term => String(term || '').trim())
+        .filter(Boolean)
+        .slice(0, 6)
+    if (list.length === 0) return []
+
+    const scoreParts = []
+    const scoreParams = []
+    for (const term of list) {
+        scoreParts.push(
+            '(CASE WHEN a.title LIKE ? THEN 8 ELSE 0 END)',
+            '(CASE WHEN a.introduce LIKE ? THEN 4 ELSE 0 END)',
+            '(CASE WHEN a.label LIKE ? THEN 3 ELSE 0 END)',
+            '(CASE WHEN a.content LIKE ? THEN 1 ELSE 0 END)'
+        )
+        scoreParams.push(term, term, term, term)
+    }
+
+    const whereClause = list
+        .map(() => '(a.title LIKE ? OR a.introduce LIKE ? OR a.label LIKE ? OR a.content LIKE ?)')
+        .join(' OR ')
+    const whereParams = list.flatMap(term => [term, term, term, term])
+
+    const rows = await query(
+        `SELECT id, title, introduce, label, cover, classify, subset_id AS subsetId,
+                views, likes, comments,
+                published_at AS publishedAt, created_at AS createdAt,
+                ${scoreParts.join(' + ')} AS score
+         FROM article a
+         WHERE a.state = 'published' AND (${whereClause})
+         ORDER BY score DESC, COALESCE(a.published_at, a.created_at) DESC, a.id DESC
+         LIMIT ?`,
+        [...scoreParams, ...whereParams, safeLimit]
+    )
+
+    return (rows || []).map(row => ({
+        id: Number(row.id),
+        title: String(row.title || ''),
+        introduce: String(row.introduce || ''),
+        label: String(row.label || ''),
+        cover: String(row.cover || ''),
+        classify: String(row.classify || 'article'),
+        subsetId: row.subsetId ? Number(row.subsetId) : null,
+        views: Number(row.views) || 0,
+        likes: Number(row.likes) || 0,
+        comments: Number(row.comments) || 0,
+        publishedAt: row.publishedAt,
+        createdAt: row.createdAt,
+        score: Number(row.score) || 0
+    }))
+}
+
+/**
  * 更新前判断文章是否存在及当前用户是否有修改权限。
  * 避免把“字段值未变化”产生的 0 影响行数误判为无权限。
  */
@@ -552,6 +611,7 @@ module.exports = {
     findAtricleById,
     listPublishedContentForFeed,
     searchPublishedContentForAsk,
+    searchPublishedContentByTerms,
     findArticleMutationAccess,
     updateArticle,
     deleteArticle,

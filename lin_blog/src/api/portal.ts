@@ -67,6 +67,37 @@ export function askPortalQuestion(question: string) {
   return request.post<ApiResult<PortalAskResult>>("/public/ai/ask", { question });
 }
 
+// 门户语义搜索：AI 扩展关键词后加权检索已发布内容
+export interface PortalSemanticSearchItem {
+  id: number;
+  title: string;
+  introduce: string;
+  label: string;
+  cover: string;
+  classify: string;
+  subsetId: number | null;
+  views: number;
+  likes: number;
+  comments: number;
+  publishedAt: string | null;
+  createdAt: string;
+  score: number;
+}
+
+export interface PortalSemanticSearchResult {
+  query: string;
+  terms: string[];
+  list: PortalSemanticSearchItem[];
+  total: number;
+  semantic: boolean;
+  degraded: boolean;
+  modelName: string;
+}
+
+export function semanticSearchPortal(query: string) {
+  return request.post<ApiResult<PortalSemanticSearchResult>>("/public/ai/search", { query });
+}
+
 // 门户公开接口：无需登录，后端只返回已发布内容
 export function getPublicArticles(params: ArticleListParams = {}) {
   return request.get<ApiResult<ArticlePageData>>("/public/article", {

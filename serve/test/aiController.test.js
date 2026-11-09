@@ -10,6 +10,7 @@ const aiController = require(path.resolve(__dirname, '../controller/aiController
 const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
 const uploadController = require(path.resolve(__dirname, '../controller/uploadController.js'))
 const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
+const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -148,6 +149,78 @@ test('ai gallery curation returns only confirmed suggestions', async () => {
     } finally {
         aiClient.suggestGalleryCuration = originalSuggest
     }
+})
+
+test('语义搜索扩展关键词并在已发布内容里检索', async () => {
+    const originalExpand = aiClient.expandSearchQuery
+    const originalSearch = articleModel.searchPublishedContentByTerms
+    let receivedTerms = null
+
+    aiClient.expandSearchQuery = async () => ({
+        terms: ['海岸', '潮汐'],
+        modelUsed: { id: 1, name: '智谱', model: 'glm-4-flash', degraded: false }
+    })
+    articleModel.searchPublishedContentByTerms = async (terms) => {
+        receivedTerms = terms
+        return [{ id: 9, title: '海边晨光', score: 13 }]
+    }
+
+    try {
+        const res = createRes()
+        await aiController.searchPublicContent(
+            { body: { query: '看海' }, user: { userId: 3 } },
+            res,
+            { aiConfig: TEST_AI_MODEL }
+        )
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(receivedTerms, ['看海', '海岸', '潮汐'])
+        assert.deepEqual(res.body.data.terms, ['海岸', '潮汐'])
+        assert.equal(res.body.data.total, 1)
+        assert.equal(res.body.data.semantic, true)
+    } finally {
+        aiClient.expandSearchQuery = originalExpand
+        articleModel.searchPublishedContentByTerms = originalSearch
+    }
+})
+
+test('语义搜索在模型不可用时退化为普通关键词检索', async () => {
+    const originalExpand = aiClient.expandSearchQuery
+    const originalSearch = articleModel.searchPublishedContentByTerms
+    let receivedTerms = null
+
+    aiClient.expandSearchQuery = async () => {
+        throw Object.assign(new Error('boom'), { code: 'AI_PROVIDER_ERROR' })
+    }
+    articleModel.searchPublishedContentByTerms = async (terms) => {
+        receivedTerms = terms
+        return []
+    }
+
+    try {
+        const res = createRes()
+        await aiController.searchPublicContent(
+            { body: { query: '看海' } },
+            res,
+            { aiConfig: TEST_AI_MODEL }
+        )
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(receivedTerms, ['看海'])
+        assert.deepEqual(res.body.data.terms, [])
+        assert.equal(res.body.data.total, 0)
+    } finally {
+        aiClient.expandSearchQuery = originalExpand
+        articleModel.searchPublishedContentByTerms = originalSearch
+    }
+})
+
+test('语义搜索拒绝空查询与超长查询', async () => {
+    const res1 = createRes()
+    await aiController.searchPublicContent({ body: { query: '  ' } }, res1)
+    assert.equal(res1.statusCode, 400)
+
+    const res2 = createRes()
+    await aiController.searchPublicContent({ body: { query: 'a'.repeat(101) } }, res2)
+    assert.equal(res2.statusCode, 400)
 })
 
 test('ai writing rejects unknown actions and empty text before calling the provider', async () => {

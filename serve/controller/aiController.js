@@ -94,6 +94,80 @@ async function answerPublicQuestion(req, res, options = {}) {
 }
 
 /**
+ * 门户语义搜索：先用 AI 把自然语言查询扩展成关键词，再在已发布内容里加权检索。
+ * 与门户问答一样对匿名访客开放，不占用后台账号的 AI 次数配额，
+ * 只走独立的频率限制；模型不可用时退化为普通关键词检索。
+ */
+async function searchPublicContent(req, res, options = {}) {
+    const queryText = typeof req.body?.query === 'string' ? req.body.query.trim() : ''
+    if (!queryText) {
+        return res.status(400).json({ code: 400, message: '请先输入要搜索的内容' })
+    }
+    if (queryText.length > 100) {
+        return res.status(400).json({ code: 400, message: '搜索内容不能超过 100 字' })
+    }
+
+    let aiConfig = null
+    try {
+        aiConfig = options.aiConfig || await aiClient.getActiveAiConfig()
+    } catch (err) {
+        console.warn('[AI] 读取语义搜索模型配置失败：', err?.message || err)
+    }
+
+    const startedAt = Date.now()
+    const terms = [queryText]
+    let degraded = false
+    let modelName = ''
+
+    if (aiConfig) {
+        try {
+            const expansion = await aiClient.expandSearchQuery({ query: queryText, aiConfig })
+            for (const term of expansion.terms || []) {
+                if (!terms.includes(term)) terms.push(term)
+            }
+            degraded = Boolean(expansion.modelUsed?.degraded)
+            modelName = expansion.modelUsed?.name || ''
+            await recordAiCall({
+                req,
+                feature: 'search',
+                modelName: expansion.modelUsed?.model || aiConfig.model,
+                modelId: expansion.modelUsed?.id ?? aiConfig.id,
+                status: 'success',
+                detail: degraded
+                    ? `语义搜索关键词扩展（默认模型不可用，已降级到「${expansion.modelUsed.name}」）`
+                    : '语义搜索关键词扩展',
+                durationMs: Date.now() - startedAt,
+                usage: expansion.usage,
+                outputChars: (expansion.terms || []).join('').length
+            })
+        } catch (err) {
+            // 扩展失败不阻塞搜索：直接按原关键词检索即可
+            console.warn('[AI] 语义搜索关键词扩展失败：', err?.message || err)
+        }
+    }
+
+    try {
+        const list = await articleModel.searchPublishedContentByTerms(terms, 20)
+        return res.json({
+            code: 200,
+            message: list.length > 0 ? '查询成功' : '没有找到相关内容',
+            data: {
+                query: queryText,
+                terms: terms.slice(1),
+                list,
+                total: list.length,
+                semantic: aiConfig !== null,
+                degraded,
+                modelName
+            }
+        })
+    } catch (err) {
+        console.error('[AI] 语义搜索失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '语义搜索失败，请稍后重试' })
+    }
+}
+
+/**
  * AI 写作建议：按需生成简介与标签，返回给前端作为建议展示，
  * 作者确认后才填充进表单字段，再走正常的保存流程。
  */
@@ -395,5 +469,6 @@ module.exports = {
     rewriteArticleText,
     generateCover,
     confirmCover,
-    answerPublicQuestion
+    answerPublicQuestion,
+    searchPublicContent
 }

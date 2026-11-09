@@ -550,6 +550,41 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 门户语义搜索：AI 扩展关键词后加权检索已发布内容
+    if (method === 'POST' && path === '/api/public/ai/search') {
+      const query = String(body?.query || '').trim()
+      if (!query) {
+        await fulfill(null, { code: 400, message: '请先输入要搜索的内容', status: 400 })
+        return
+      }
+      await fulfill({
+        query,
+        terms: ['海岸', '潮汐'],
+        list: [
+          {
+            id: article.id,
+            title: '语义搜索命中的文章',
+            introduce: '这是语义搜索返回的简介。',
+            label: '海岸,摄影',
+            cover: '',
+            classify: 'article',
+            subsetId: 3,
+            views: 97,
+            likes: 12,
+            comments: 1,
+            publishedAt: article.publishedAt,
+            createdAt: article.createdAt,
+            score: 13,
+          },
+        ],
+        total: 1,
+        semantic: true,
+        degraded: false,
+        modelName: '',
+      }, { message: '查询成功' })
+      return
+    }
+
     if (method === 'POST' && path === '/api/user/login') {
       await fulfill({
         token: 'mock-token',

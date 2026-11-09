@@ -43,6 +43,8 @@ module.exports = (app) => {
 
     // 门户 AI 问答：访客可匿名提问，只走独立限流，不占用后台账号配额
     app.post('/api/public/ai/ask', aiAskLimit, aiController.answerPublicQuestion)
+    // 门户语义搜索：AI 扩展关键词后加权检索，匿名可用，走独立限流
+    app.post('/api/public/ai/search', aiAskLimit, aiController.searchPublicContent)
 
     // ─── AI 管理（需要 ai.manage 权限）─────────────────────────────
     app.get('/api/ai/models', authMiddleware, requirePermission('ai.manage'), aiManageController.getModels)

@@ -15,6 +15,11 @@
                             </yk-button>
                         </template>
                     </yk-input>
+                    <button type="button" class="semantic-toggle" :class="{ active: semanticEnabled }"
+                        :aria-pressed="semanticEnabled"
+                        @click="toggleSemantic">
+                        语义搜索
+                    </button>
                 </div>
                 <div class="filter-pills">
                     <button type="button" class="pill" :class="{ active: filters.subsetId === null }"
@@ -62,6 +67,45 @@
 
             <div v-if="loading" class="list-state">
                 <yk-spinner size="m" />
+            </div>
+
+            <div v-else-if="semanticEnabled && semanticResult" class="post-list">
+                <div v-if="semanticResult.terms.length" class="semantic-note">
+                    <span class="semantic-note-label">AI 扩展关键词</span>
+                    <span v-for="term in semanticResult.terms" :key="term" class="semantic-term">{{ term }}</span>
+                    <span v-if="semanticResult.degraded" class="semantic-note-degraded">
+                        默认模型暂时不可用，本次由「{{ semanticResult.modelName }}」扩展
+                    </span>
+                </div>
+                <article v-for="(article, i) in semanticResult.list" :key="article.id" class="post-row"
+                    :style="{ '--stagger': `${Math.min(i, 8) * 40}ms` }">
+                    <button type="button" class="post-link" @click="openArticle(article.id)">
+                        <span class="post-cover portal-media-box" :class="{ 'is-empty': !article.cover }">
+                            <img v-if="article.cover"
+                                v-bind="responsiveImageAttrs(article.cover, {
+                                    widths: IMAGE_WIDTHS.card,
+                                    sizes: '(max-width: 720px) 100vw, 168px'
+                                })"
+                                :alt="article.title" />
+                            <span v-else class="post-cover-glyph">{{ (article.title || '文').trim().charAt(0) }}</span>
+                        </span>
+                        <span class="post-body">
+                            <time class="post-date">{{ formatDate(article.publishedAt || article.createdAt) }}</time>
+                            <h3 class="post-title">{{ article.title }}</h3>
+                            <p class="post-introduce">{{ article.introduce || '点击阅读全文' }}</p>
+                            <span class="post-meta">
+                                <span v-for="label in parseArticleLabels(article.label).slice(0, 3)" :key="label"
+                                    class="post-label">{{ label }}</span>
+                                <span><IconEyeOutline />{{ article.views }}</span>
+                                <span><IconLikeOutline />{{ article.likes }}</span>
+                                <span><IconCommentOutline />{{ article.comments }}</span>
+                            </span>
+                        </span>
+                    </button>
+                </article>
+                <div v-if="!semanticResult.list.length" class="list-state">
+                    <yk-empty description="没有找到相关内容" />
+                </div>
             </div>
 
             <div v-else-if="articles.length" class="post-list">
@@ -125,9 +169,11 @@ import {
     getPublicArticleById,
     getPublicSubsets,
     getPublicLabels,
+    semanticSearchPortal,
     type PortalSort,
     type PortalSubset,
-    type PortalLabel
+    type PortalLabel,
+    type PortalSemanticSearchResult
 } from '../api/portal'
 import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
@@ -164,6 +210,11 @@ const filters = reactive({
 
 // 输入框独立于已生效的筛选条件，回车/点按钮才提交
 const keywordInput = ref('')
+
+// 语义搜索：开启后由 AI 扩展关键词再加权检索，结果单独展示
+const semanticEnabled = ref(false)
+const semanticResult = ref<PortalSemanticSearchResult | null>(null)
+const semanticLoading = ref(false)
 
 const hasFilter = computed(() =>
     Boolean(filters.keyword || filters.label || filters.subsetId !== null)
@@ -242,6 +293,7 @@ const syncQuery = (openId: number | null = activeArticle.value?.id ?? null) => {
     if (filters.subsetId !== null) query.subset = String(filters.subsetId)
     if (filters.page > 1) query.page = String(filters.page)
     if (filters.sort !== 'latest') query.sort = filters.sort
+    if (semanticEnabled.value) query.semantic = '1'
     if (openId) query.open = String(openId)
     void router.replace({ path: '/portal/articles', query })
 }
@@ -252,6 +304,11 @@ const setSort = (sort: PortalSort) => {
     filters.sort = sort
     filters.page = 1
     syncQuery()
+    // 语义结果由服务端一次性给出，不参与排序与分页
+    if (semanticEnabled.value) {
+        semanticResult.value = null
+        return
+    }
     void loadArticles()
 }
 
@@ -261,6 +318,7 @@ const resetFilters = () => {
     filters.label = ''
     filters.subsetId = null
     filters.page = 1
+    semanticResult.value = null
     syncQuery()
     void loadArticles()
 }
@@ -269,6 +327,10 @@ const selectSubset = (id: number | null) => {
     filters.subsetId = id
     filters.page = 1
     syncQuery()
+    if (semanticEnabled.value) {
+        semanticResult.value = null
+        return
+    }
     void loadArticles()
 }
 
@@ -276,6 +338,10 @@ const selectLabel = (name: string) => {
     filters.label = filters.label === name ? '' : name
     filters.page = 1
     syncQuery()
+    if (semanticEnabled.value) {
+        semanticResult.value = null
+        return
+    }
     void loadArticles()
 }
 
@@ -283,13 +349,54 @@ const applySearch = () => {
     filters.keyword = keywordInput.value.trim()
     filters.page = 1
     syncQuery()
+    if (semanticEnabled.value) {
+        void runSemanticSearch()
+        return
+    }
     void loadArticles()
+}
+
+const toggleSemantic = () => {
+    semanticEnabled.value = !semanticEnabled.value
+    if (!semanticEnabled.value) {
+        semanticResult.value = null
+        void loadArticles()
+        return
+    }
+    if (filters.keyword) void runSemanticSearch()
+}
+
+const runSemanticSearch = async () => {
+    const query = filters.keyword.trim()
+    if (!query) {
+        semanticResult.value = null
+        return
+    }
+
+    semanticLoading.value = true
+    loading.value = true
+    try {
+        const result = await semanticSearchPortal(query)
+        if (result.code === 200 && result.data) {
+            semanticResult.value = result.data
+        } else {
+            semanticResult.value = null
+        }
+    } catch {
+        // 语义搜索失败时退回普通关键词检索，避免归档页空白
+        semanticResult.value = null
+        await loadArticles()
+    } finally {
+        semanticLoading.value = false
+        loading.value = false
+    }
 }
 
 const clearKeyword = () => {
     keywordInput.value = ''
     if (!filters.keyword) return
     filters.keyword = ''
+    semanticResult.value = null
     filters.page = 1
     syncQuery()
     void loadArticles()
@@ -353,6 +460,7 @@ onMounted(async () => {
     if (typeof query.label === 'string') filters.label = query.label
     if (typeof query.keyword === 'string') filters.keyword = query.keyword
     if (query.sort === 'hot') filters.sort = 'hot'
+    if (query.semantic === '1') semanticEnabled.value = true
     keywordInput.value = filters.keyword
     if (typeof query.page === 'string') filters.page = Number(query.page) || 1
 
@@ -395,6 +503,61 @@ watch(() => route.query.open, (value) => {
     flex: 1 1 260px;
     min-width: 220px;
     max-width: 340px;
+}
+
+.semantic-toggle {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    padding: 6px 14px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 12px;
+    color: @font-color-s;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.active {
+        border-color: @pcolor;
+        background: color-mix(in srgb, @pcolor 12%, transparent);
+        color: @pcolor;
+    }
+}
+
+.semantic-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--portal-radius-card);
+    border: 1px solid var(--portal-surface-border);
+    background: var(--portal-surface);
+    font-size: 12px;
+    color: @font-color-s;
+}
+
+.semantic-note-label {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
+.semantic-term {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, @pcolor 12%, transparent);
+    color: @pcolor;
+}
+
+.semantic-note-degraded {
+    color: #a86a10;
 }
 
 .filter-pills {
