@@ -19,7 +19,9 @@ async function recordAiCall({
     // 审计写入失败不应该影响 AI 结果返回：调用方只关心建议本身
     try {
         await aiModel.logUsage({
-            userId,
+            // 门户问答与语义搜索允许匿名访问，没有登录用户；
+            // 用 0 占位以满足 user_id 非空约束，统计时按「匿名」处理
+            userId: userId ?? 0,
             feature,
             modelName,
             modelId,
@@ -39,8 +41,10 @@ async function recordAiCall({
             userId,
             action: 'ai',
             module: 'ai',
+            // target_id 是整型外键，功能名（suggest/ask 等）只能放进详情，
+            // 否则 MySQL 会因类型不匹配直接拒写这条日志
             targetType: 'feature',
-            targetId: feature,
+            targetId: null,
             detail: logDetail.slice(0, 500),
             ip
         })

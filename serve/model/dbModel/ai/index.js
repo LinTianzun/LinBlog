@@ -12,6 +12,14 @@ const MODEL_FIELDS = `
     enabled, is_default, remark, created_at, updated_at
 `
 
+// 与 ai_model_health 做联表时必须限定表名：两张表都有 updated_at，
+// 不加前缀 MySQL 会报 "Column 'updated_at' in field list is ambiguous"。
+const MODEL_FIELDS_JOINED = `
+    m.id, m.name, m.provider, m.base_url, m.api_key, m.chat_model, m.image_model,
+    m.image_size, m.timeout_ms, m.daily_limit_per_user, m.monthly_limit_per_user,
+    m.enabled, m.is_default, m.remark, m.created_at, m.updated_at
+`
+
 const HEALTH_FIELDS = `
     last_test_at, last_success_at, last_latency_ms, avg_latency_ms,
     test_count, success_count, consecutive_failures, last_error
@@ -158,9 +166,9 @@ async function getActiveModelConfig() {
  * 默认模型优先，其后按「连续失败次数少、平均耗时长」的顺序排列，
  * 让调用方在首选模型故障时可以退到更稳的模型。
  */
-async function listFallbackModelConfigs(limit = 3) {
-    const rows = await query(
-        `SELECT ${MODEL_FIELDS},
+async function listFallbackModelConfigs(limit = 3, queryFn = query) {
+    const rows = await queryFn(
+        `SELECT ${MODEL_FIELDS_JOINED},
                 COALESCE(h.consecutive_failures, 0) AS consecutive_failures,
                 COALESCE(h.avg_latency_ms, 0) AS avg_latency_ms
          FROM ai_model m
@@ -743,7 +751,11 @@ async function listUsage(limit = 50) {
     return (rows || []).map(row => ({
         id: Number(row.id),
         userId: Number(row.user_id),
-        username: row.username ? String(row.username) : '',
+        // 门户问答与语义搜索允许匿名访问，用 0 占位；
+        // 列表里要显示成「匿名访客」而不是「已注销」
+        username: Number(row.user_id) === 0
+            ? '匿名访客'
+            : (row.username ? String(row.username) : '（已注销）'),
         feature: String(row.feature || ''),
         modelName: row.model_name ? String(row.model_name) : '',
         modelId: row.model_id ? Number(row.model_id) : null,

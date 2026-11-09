@@ -338,8 +338,47 @@ test('ai usage logger writes both the usage log and the system log', async () =>
         assert.equal(logCalls.length, 1)
         assert.equal(logCalls[0].action, 'ai')
         assert.equal(logCalls[0].module, 'ai')
-        assert.equal(logCalls[0].targetId, 'suggest')
+        // target_id 是整型外键，功能名只能写进详情，不能塞进 target_id
+        assert.equal(logCalls[0].targetId, null)
         assert.match(logCalls[0].detail, /生成简介建议/)
+    } finally {
+        aiModel.logUsage = originalLog
+        systemLogModel.insertLog = originalInsert
+    }
+})
+
+test('匿名 AI 调用也能写入用量记录与系统日志', async () => {
+    const originalLog = aiModel.logUsage
+    const originalInsert = systemLogModel.insertLog
+    const usageCalls = []
+    const logCalls = []
+
+    aiModel.logUsage = async (payload) => {
+        usageCalls.push(payload)
+    }
+    systemLogModel.insertLog = async (payload) => {
+        logCalls.push(payload)
+    }
+
+    try {
+        // 门户问答与语义搜索对匿名访客开放，请求里没有登录用户
+        await aiUsageLogger.recordAiCall({
+            req: { ip: '10.0.0.9' },
+            feature: 'ask',
+            modelName: 'glm-4-flash',
+            status: 'success',
+            detail: '门户 AI 问答'
+        })
+
+        // user_id 有 NOT NULL 约束，匿名调用用 0 占位
+        assert.equal(usageCalls.length, 1)
+        assert.equal(usageCalls[0].userId, 0)
+        assert.equal(usageCalls[0].feature, 'ask')
+
+        assert.equal(logCalls.length, 1)
+        assert.equal(logCalls[0].userId, null)
+        assert.equal(logCalls[0].targetId, null)
+        assert.match(logCalls[0].detail, /门户 AI 问答/)
     } finally {
         aiModel.logUsage = originalLog
         systemLogModel.insertLog = originalInsert
@@ -492,6 +531,23 @@ test('健康快照回传 ISO 时间，前端可按本地时区显示', async () 
     assert.match(snapshot.lastSuccessAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     assert.equal(snapshot.testCount, 3)
     assert.equal(snapshot.successCount, 3)
+})
+
+test('降级候选查询限定表名，避免 updated_at 歧义', async () => {
+    const captured = []
+    const queryFn = async (sql) => {
+        captured.push(sql)
+        return []
+    }
+
+    await aiModel.listFallbackModelConfigs(3, queryFn)
+
+    assert.equal(captured.length, 1)
+    const sql = captured[0]
+    // ai_model 与 ai_model_health 都有 updated_at，不限定表名会报歧义
+    assert.ok(sql.includes('m.updated_at'), '降级候选查询必须用 m. 限定 updated_at')
+    const unqualified = sql.replace(/m\.updated_at/g, '').match(/(^|[\s,(])updated_at/)
+    assert.equal(unqualified, null, '降级候选查询不能出现未限定表名的 updated_at')
 })
 
 test('首选模型可重试故障时自动降级到候选模型', async () => {
