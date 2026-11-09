@@ -31,7 +31,9 @@ const ALL_MIGRATIONS = [
     '20261030_article_workflow',
     '20261101_composite_indexes',
     '20261102_file_image_binding',
-    '20261103_content_image_subset'
+    '20261103_content_image_subset',
+    '20261109_ai_management',
+    '20261110_ai_env_import'
 ]
 
 // 除 exclude 外全部视为已应用

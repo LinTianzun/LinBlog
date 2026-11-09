@@ -77,6 +77,11 @@ const PERMISSION_GROUPS = [
         description: '查看、维护和分配用户角色'
     },
     {
+        key: 'ai',
+        label: 'AI 能力',
+        description: '控制 AI 写作、配图与模型接入管理'
+    },
+    {
         key: 'system',
         label: '系统与权限',
         description: '权限矩阵、系统日志等高风险能力'
@@ -302,6 +307,19 @@ const PERMISSIONS = [
         risk: 'critical'
     },
     {
+        key: 'ai.use',
+        group: 'ai',
+        label: '使用 AI 能力',
+        description: '使用 AI 写作建议、写作辅助和配图生成'
+    },
+    {
+        key: 'ai.manage',
+        group: 'ai',
+        label: '管理 AI 接入',
+        description: '维护接入模型、用量策略并查看 AI 调用记录',
+        risk: 'high'
+    },
+    {
         key: 'permission.view',
         group: 'system',
         label: '查看权限管理',
@@ -376,6 +394,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     editor: [
         'overview.viewAll',
         ...CONTENT_ALL,
+        'ai.use',
         'comment.create',
         'comment.manageOwn',
         'comment.moderate',
@@ -390,6 +409,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
         'gallery.manageOwn',
         'diary.create',
         'diary.manageOwn',
+        'ai.use',
         ...INTERACTION_DEFAULT,
         'message.private'
     ],

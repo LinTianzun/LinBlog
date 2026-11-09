@@ -150,6 +150,20 @@ const publicMessageLimit = createRateLimit({
     message: '留言过于频繁，请稍后再试',
 })
 
+const aiSuggestLimit = createRateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    keyGenerator: userOrIpKey,
+    message: 'AI 建议请求过于频繁，请稍后再试',
+})
+
+const aiCoverLimit = createRateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    keyGenerator: userOrIpKey,
+    message: 'AI 封面生成过于频繁，请稍后再试',
+})
+
 module.exports = {
     createRateLimit,
     ipKey,
@@ -168,4 +182,6 @@ module.exports = {
     uploadLimit,
     uploadTicketLimit,
     publicMessageLimit,
+    aiSuggestLimit,
+    aiCoverLimit,
 }

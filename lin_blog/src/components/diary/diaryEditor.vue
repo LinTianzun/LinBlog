@@ -39,10 +39,9 @@
                     @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                     @handle-delete="handleUploadDelete"></yk-upload>
 
-                <yk-button type="secondary" size="s" v-if="photos.length < maxPhotoCount"
-                    @click="mediaPickerOpen = true">
-                    从素材库选择
-                </yk-button>
+                <ImageSourceActions v-if="photos.length < maxPhotoCount" ai-label="AI 生成配图"
+                    :title="diaryForm.title || ''" :content="diaryForm.content || ''"
+                    @pick="mediaPickerOpen = true" @adopt="handleAiPhoto" />
             </div>
         </div>
 
@@ -67,6 +66,7 @@ import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diar
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
+import ImageSourceActions from '../common/ImageSourceActions.vue'
 
 type DiaryForm = {
     title?: string
@@ -212,6 +212,19 @@ const handleMediaSelect = (urls: string[]): void => {
     photos.value = [...photos.value, ...picked]
     diaryForm.value.picture = [...photos.value]
     proxy?.$message?.({ type: 'primary', message: `已从素材库添加 ${picked.length} 张图片` })
+}
+
+// AI 生成配图：作者确认后由服务端落库并回传地址，这里只追加到配图列表
+const handleAiPhoto = (url: string): void => {
+    if (!url) return
+    if (photos.value.length >= maxPhotoCount) {
+        proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请先删除部分图片` })
+        return
+    }
+
+    photos.value = [...photos.value, url]
+    diaryForm.value.picture = [...photos.value]
+    proxy?.$message?.({ type: 'primary', message: 'AI 配图已添加' })
 }
 
 // 图片数量上限（与后端校验一致）

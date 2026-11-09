@@ -74,6 +74,14 @@ const routes = [
                 }
             },
             {
+                path: 'aiManage',
+                component: () => import('../views/AiManageView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['ai.manage']
+                }
+            },
+            {
                 path: 'reportedComments',
                 component: () => import('../views/CommentReportView.vue'),
                 meta: {
@@ -214,6 +222,7 @@ router.afterEach((to) => {
         '/userManagement': '用户管理',
         '/permissionManagement': '权限管理',
         '/systemLog': '系统日志',
+        '/aiManage': 'AI 管理',
         '/reportedComments': '举报处理',
         '/messages': '回复私信',
         '/localfile': '本地文件',

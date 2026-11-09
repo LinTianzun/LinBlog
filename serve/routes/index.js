@@ -1,5 +1,7 @@
 
 module.exports = (app) => {
+    // AI 写作建议：依赖登录态，接口内部按 AI 配置决定是否可用
+    require('./ai')(app)
     //  引入用户相关路由
     require('./user')(app)
     //  引入权限管理路由

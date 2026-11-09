@@ -273,6 +273,124 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // AI 写作建议：服务端代理模型 API，这里返回稳定的建议内容
+    if (method === 'POST' && path === '/api/ai/suggest') {
+      await fulfill({
+        summary: 'AI 建议的简介内容',
+        labels: ['Vue', '前端工程化'],
+      }, { message: 'AI 建议已生成，请确认后再填充' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/writing') {
+      const action = body?.action === 'continue' ? 'continue' : 'polish'
+      await fulfill({
+        action,
+        text: action === 'continue'
+          ? 'AI 续写的候选内容。'
+          : 'AI 润色后的候选内容。',
+      }, { message: 'AI 写作辅助已生成，请确认后再写入' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/cover') {
+      await fulfill({
+        token: 'a'.repeat(48),
+        dataUri:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        prompt: '测试封面提示词',
+      }, { message: 'AI 封面已生成，请确认后再采用' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/cover/confirm') {
+      await fulfill({
+        url: '/api/uploads/ai-e2e-cover.png',
+      }, { message: 'AI 封面已保存' })
+      return
+    }
+
+    // ─── AI 管理（模型、用量策略、调用记录）─────────────────────
+    if (method === 'GET' && path === '/api/ai/models') {
+      await fulfill({
+        list: [
+          {
+            id: 1,
+            name: '智谱 GLM',
+            provider: 'openai',
+            baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+            apiKeyMasked: '********7890',
+            chatModel: 'glm-4-flash',
+            imageModel: 'cogview-3-flash',
+            imageSize: '1344x768',
+            timeoutMs: 20000,
+            enabled: true,
+            isDefault: true,
+            remark: '默认写作与配图模型',
+            createdAt: '2026-11-09 10:00:00',
+            updatedAt: '2026-11-09 10:00:00',
+          },
+        ],
+      })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/ai/settings') {
+      await fulfill({
+        quotaEnabled: true,
+        dailyLimitPerUser: 20,
+        monthlyLimitPerUser: 100,
+        superAdminUnlimited: true,
+      })
+      return
+    }
+
+    if (method === 'PUT' && path === '/api/ai/settings') {
+      await fulfill({
+        quotaEnabled: body?.quotaEnabled !== false,
+        dailyLimitPerUser: Number(body?.dailyLimitPerUser ?? 20),
+        monthlyLimitPerUser: Number(body?.monthlyLimitPerUser ?? 100),
+        superAdminUnlimited: body?.superAdminUnlimited !== false,
+      }, { message: 'AI 用量策略已保存' })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/ai/models/import-env') {
+      await fulfill({
+        id: 1,
+        name: '智谱 GLM',
+        provider: 'openai',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        apiKeyMasked: '********7890',
+        chatModel: 'glm-4-flash',
+        imageModel: 'cogview-3-flash',
+        imageSize: '1344x768',
+        timeoutMs: 20000,
+        enabled: true,
+        isDefault: true,
+        remark: '由环境变量 LINBLOG_AI_* 导入，可在后台继续维护',
+      }, { message: '环境变量配置已导入为默认模型' })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/ai/usage') {
+      await fulfill({
+        list: [
+          {
+            id: 11,
+            userId: 1,
+            username: '林知雨',
+            feature: 'suggest',
+            modelName: 'glm-4-flash',
+            status: 'success',
+            detail: '生成文章简介与标签建议',
+            createdAt: '2026-11-09 10:05:00',
+          },
+        ],
+      })
+      return
+    }
+
     if (method === 'POST' && path === '/api/user/login') {
       await fulfill({
         token: 'mock-token',

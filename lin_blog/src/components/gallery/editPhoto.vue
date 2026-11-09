@@ -8,9 +8,8 @@
                 @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
                 @handle-delete="handleUploadDelete">
             </yk-upload>
-            <yk-button type="secondary" size="s" class="edit_photo-library" @click="mediaPickerOpen = true">
-                从素材库选择
-            </yk-button>
+            <ImageSourceActions ai-label="AI 生成配图" :title="props.aiTitle" :introduce="props.aiIntroduce"
+                @pick="mediaPickerOpen = true" @adopt="handleAiPhoto" />
         </div>
 
         <yk-empty v-if="photos.length === 0" description="还没有上传图片" style="padding: 48px 0;" />
@@ -41,6 +40,7 @@ import { ref, watch, getCurrentInstance, type ComponentPublicInstance } from 'vu
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { optimizedImageUrl } from '../../utils/imageOptimization.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
+import ImageSourceActions from '../common/ImageSourceActions.vue'
 
 type UploadResponse = {
     data?: {
@@ -56,9 +56,14 @@ type MessageInstance = ComponentPublicInstance & {
 const props = withDefaults(defineProps<{
     initialPhotos?: string[]
     initialCover?: string
+    /** AI 配图提示词用的标题与简介（由图库编辑页传入） */
+    aiTitle?: string
+    aiIntroduce?: string
 }>(), {
     initialPhotos: () => [],
     initialCover: '',
+    aiTitle: '',
+    aiIntroduce: '',
 })
 
 const emits = defineEmits<{
@@ -103,6 +108,23 @@ const emitChange = (): void => {
         photos: [...photos.value],
         cover: cover.value,
     })
+}
+
+// AI 生成配图：确认后由服务端落库并回传地址，这里追加到瀑布流
+const handleAiPhoto = (url: string): void => {
+    if (!url) return
+    if (photos.value.length >= maxPhotoCount) {
+        uploadError.value = `图片最多${maxPhotoCount}张，请先删除部分图片`
+        return
+    }
+
+    photos.value = [...photos.value, url]
+    if (!cover.value) {
+        cover.value = url
+    }
+    uploadError.value = ''
+    emitChange()
+    proxy?.$message?.({ type: 'primary', message: 'AI 配图已添加' })
 }
 
 const handleUploadSuccess = (response: UploadResponse): void => {

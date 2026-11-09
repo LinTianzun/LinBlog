@@ -28,6 +28,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconStatisticsFill'
     },
     {
+        path: 'aiManage',
+        name: 'AI 管理',
+        icon: 'IconPaintBrushFill'
+    },
+    {
         path: 'reportedComments',
         name: '举报处理',
         icon: 'IconWarningOutline'

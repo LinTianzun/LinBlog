@@ -43,11 +43,10 @@ test('图库可以从素材库挑选本地图片', async ({ page }) => {
   await expect(page.locator('.waterfall-item')).toHaveCount(before + 1)
 
   // 素材库图片走 /api/file/:id/raw，工作稿内容里应保留这个地址
-  await expect(page.locator('.edit-gallery-save-state')).toContainText(/已自动保存|正在自动保存/, {
-    timeout: 15_000,
-  })
-  const content = state.workflows[GALLERY_ID]?.workingCopy.content || ''
-  expect(content).toContain('/api/file/501/raw')
+  // 自动保存是异步的：轮询工作稿内容，避免读到上一轮的保存结果
+  await expect
+    .poll(() => state.workflows[GALLERY_ID]?.workingCopy.content || '', { timeout: 15_000 })
+    .toContain('/api/file/501/raw')
 })
 
 test('文章封面从素材库选择后只展示一张图', async ({ page }) => {

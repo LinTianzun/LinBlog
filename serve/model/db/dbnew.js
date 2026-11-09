@@ -486,6 +486,49 @@ const tablesSql = {
     INDEX idx_system_log_action (action)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统操作日志表';`
 
+  ,ai_model: `CREATE TABLE IF NOT EXISTS ai_model(
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '模型ID',
+    name VARCHAR(64) NOT NULL COMMENT '显示名称',
+    provider VARCHAR(32) NOT NULL DEFAULT 'openai' COMMENT '协议类型（openai 兼容）',
+    base_url VARCHAR(255) NOT NULL COMMENT '接口地址',
+    api_key TEXT NOT NULL COMMENT '密钥（加密存储）',
+    chat_model VARCHAR(128) NOT NULL DEFAULT '' COMMENT '文本模型名',
+    image_model VARCHAR(128) NOT NULL DEFAULT '' COMMENT '图片模型名（可空）',
+    image_size VARCHAR(16) NOT NULL DEFAULT '1344x768' COMMENT '图片尺寸',
+    timeout_ms INT UNSIGNED NOT NULL DEFAULT 20000 COMMENT '单次请求超时',
+    enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+    is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认模型',
+    remark VARCHAR(255) COMMENT '备注',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_model_name (name),
+    INDEX idx_ai_model_default (is_default, enabled)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 接入模型';`
+
+  ,ai_setting: `CREATE TABLE IF NOT EXISTS ai_setting(
+    id TINYINT UNSIGNED NOT NULL,
+    quota_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用次数限制',
+    daily_limit_per_user INT UNSIGNED NOT NULL DEFAULT 20 COMMENT '每用户每日次数（0 不限）',
+    monthly_limit_per_user INT UNSIGNED NOT NULL DEFAULT 100 COMMENT '每用户每月次数（0 不限）',
+    super_admin_unlimited TINYINT(1) NOT NULL DEFAULT 1 COMMENT '超级管理员是否不限次数',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 用量策略';`
+
+  ,ai_usage_log: `CREATE TABLE IF NOT EXISTS ai_usage_log(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '调用用户',
+    feature VARCHAR(32) NOT NULL COMMENT '功能（suggest/writing/cover）',
+    model_name VARCHAR(128) COMMENT '使用的模型',
+    status VARCHAR(16) NOT NULL DEFAULT 'success' COMMENT 'success/failed/denied',
+    detail VARCHAR(255) COMMENT '备注',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_ai_usage_user_time (user_id, created_at),
+    INDEX idx_ai_usage_time (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 调用记录';`
+
   ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
     user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
@@ -597,6 +640,81 @@ async function ensureContentImageSubsetSchema(exec = query) {
        AND f.subset_id = s.id`,
     [subsetId]
   )
+}
+
+// AI 管理：建表 + 初始化单行用量策略（幂等，重复执行不会覆盖管理员改过的值）
+async function ensureAiManagementSchema(exec = query) {
+  // 存量库与新库都要保证三张表存在：建表语句放在迁移里，
+  // 避免新库初始化顺序未包含 AI 表时插入策略行直接失败
+  await exec(tablesSql.ai_model);
+  await exec(tablesSql.ai_setting);
+  await exec(tablesSql.ai_usage_log);
+
+  await exec(
+    `INSERT IGNORE INTO ai_setting
+       (id, quota_enabled, daily_limit_per_user, monthly_limit_per_user, super_admin_unlimited)
+     VALUES (1, 1, 20, 100, 1)`
+  );
+}
+
+// AI 环境变量迁移：把 .env 里的密钥转成后台可管理的模型记录。
+// 密钥此前只存在 .env 里，管理员在「AI 管理」页面既看不到也改不了；
+// 导入后可在页面里查看掩码、轮换密钥或切换模型（入库前用 AES-256-GCM 加密）。
+// 幂等：已有同地址同模型的记录时只更新，不重复插入。
+async function ensureAiEnvImportSchema(exec = query) {
+  if (!config.ai) return;
+
+  const { encryptSecret } = require('../../utils/secretBox');
+  const { guessProviderLabel } = require('../../utils/aiProvider');
+  const [existing] = await exec(
+    'SELECT id FROM ai_model WHERE base_url = ? AND chat_model = ? LIMIT 1',
+    [config.ai.baseUrl, config.ai.model]
+  );
+
+  const remark = '由环境变量 LINBLOG_AI_* 导入，可在后台继续维护';
+  if (existing?.id) {
+    await exec(
+      `UPDATE ai_model
+         SET name = '环境变量模型', provider = 'openai', api_key = ?, image_model = ?,
+             image_size = ?, timeout_ms = ?, enabled = 1, remark = ?
+       WHERE id = ?`,
+      [
+        encryptSecret(config.ai.apiKey),
+        config.ai.imageModel,
+        config.ai.imageSize,
+        config.ai.timeoutMs,
+        remark,
+        existing.id
+      ]
+    );
+    console.log('[DB] 已同步环境变量 AI 配置到现有模型');
+    return;
+  }
+
+  await exec(
+    `INSERT INTO ai_model
+       (name, provider, base_url, api_key, chat_model, image_model,
+        image_size, timeout_ms, enabled, is_default, remark)
+     VALUES (?, 'openai', ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [
+      '环境变量模型',
+      config.ai.baseUrl,
+      encryptSecret(config.ai.apiKey),
+      config.ai.model,
+      config.ai.imageModel,
+      config.ai.imageSize,
+      config.ai.timeoutMs,
+      await countModels(exec),
+      remark
+    ]
+  );
+  console.log('[DB] 已把环境变量 AI 配置导入为默认模型');
+}
+
+// 导入时若还没有任何默认模型，就把导入的这条设为默认
+async function countModels(exec = query) {
+  const [row] = await exec('SELECT COUNT(*) AS total FROM ai_model WHERE is_default = 1');
+  return Number(row?.total || 0) === 0 ? 1 : 0;
 }
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -1233,7 +1351,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2014,6 +2132,14 @@ const migrations = [
   {
     version: '20261103_content_image_subset',
     up: ensureContentImageSubsetSchema
+  },
+  {
+    version: '20261109_ai_management',
+    up: ensureAiManagementSchema
+  },
+  {
+    version: '20261110_ai_env_import',
+    up: ensureAiEnvImportSchema
   }
 ];
 

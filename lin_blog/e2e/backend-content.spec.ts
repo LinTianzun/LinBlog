@@ -45,14 +45,16 @@ test('文章列表可撤回发布并删除条目', async ({ page }) => {
   expect(payload.state).toBe('draft')
 
   // 删除走 yk-popconfirm，确认后发出 DELETE
-  const deleteRequest = page.waitForRequest(req =>
-    req.method() === 'DELETE' && /\/api\/article\/\d+$/.test(new URL(req.url()).pathname)
+  // 等响应而不是等请求：mock 里对 state 的修改发生在响应之前，
+  // 只等请求会在竞态下读到尚未删除的旧数据
+  const deleteResponse = page.waitForResponse(res =>
+    res.request().method() === 'DELETE' && /\/api\/article\/\d+$/.test(new URL(res.url()).pathname)
   )
   await item.locator('.article-item-datas-icons .icon-delete-outline').click()
   // yk-popconfirm 的面板渲染在 tooltip 里，必须限定在条目内的那个 popconfirm
   await item.locator('.yk-popconfirm').getByRole('button', { name: '确认' }).click()
 
-  const deleteCall = await deleteRequest
+  const deleteCall = (await deleteResponse).request()
   expect(new URL(deleteCall.url()).pathname).toBe(`/api/article/${article.id}`)
   expect(state.articles.some(item => item.id === article.id)).toBe(false)
 })

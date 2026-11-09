@@ -76,6 +76,26 @@ if (smtp.host && (!smtp.from || !Number.isInteger(smtp.port) || smtp.port < 1 ||
     configErrors.push('配置 SMTP 时 LINBLOG_SMTP_FROM 必填，LINBLOG_SMTP_PORT 必须是 1-65535 的整数')
 }
 
+// 可选的 AI 服务商（OpenAI 兼容 chat completions 接口）。
+// 三项配置齐全才启用 AI 功能；缺失时不报错，相关接口返回 503 并提示未配置。
+const aiBaseUrl = (process.env.LINBLOG_AI_BASE_URL || '').trim().replace(/\/+$/, '')
+const aiApiKey = (process.env.LINBLOG_AI_API_KEY || '').trim()
+const aiModel = (process.env.LINBLOG_AI_MODEL || '').trim()
+// 封面生成默认用智谱免费模型；尺寸非法时回退到 7:4 横版，适合博客封面
+const aiImageModel = (process.env.LINBLOG_AI_IMAGE_MODEL || 'cogview-3-flash').trim()
+const aiImageSizeValue = (process.env.LINBLOG_AI_IMAGE_SIZE || '1344x768').trim()
+const aiImageSize = /^\d{3,4}x\d{3,4}$/.test(aiImageSizeValue) ? aiImageSizeValue : '1344x768'
+const ai = aiBaseUrl && aiApiKey && aiModel
+    ? {
+        baseUrl: aiBaseUrl,
+        apiKey: aiApiKey,
+        model: aiModel,
+        imageModel: aiImageModel,
+        imageSize: aiImageSize,
+        timeoutMs: Math.min(Math.max(Number.parseInt(process.env.LINBLOG_AI_TIMEOUT_MS || '20000', 10) || 20000, 1000), 120000)
+    }
+    : null
+
 if (configErrors.length > 0) {
     throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
 }
@@ -113,6 +133,7 @@ const config = {
     trustProxy,
     publicUrl,
     smtp,
+    ai,
     jsonLimit: process.env.LINBLOG_JSON_LIMIT || '1mb',
     jwt: {
         secret: jwtSecret,

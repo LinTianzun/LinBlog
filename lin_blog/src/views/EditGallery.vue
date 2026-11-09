@@ -83,6 +83,7 @@
 
         <div v-else class="edit-gallery-body">
             <editphoto ref="photoRef" :initial-photos="initialPhotos" :initial-cover="initialCover"
+                :ai-title="form?.title || ''" :ai-introduce="form?.introduce || ''"
                 class="edit-gallery-body-photos" @change="handlePhotosChange" />
             <div class="edit-gallery-body-tag">
                 <forms :classify="1" :initial-data="initialForm" @formData="handleFormData" />

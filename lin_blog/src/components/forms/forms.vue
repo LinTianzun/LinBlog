@@ -24,8 +24,31 @@
                 </div>
 
                 <div class="forms-intro" :class="{ introduce: props.classify === 0 }">
+                    <div v-if="showAiEntry" class="forms-ai-bar">
+                        <yk-button type="secondary" size="s" :loading="aiBusy"
+                            @click="requestAiSuggestion">
+                            AI 建议
+                        </yk-button>
+                        <yk-text type="third">根据标题与正文生成简介和标签，确认后才会填充</yk-text>
+                    </div>
                     <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
                         :max-length="512"></yk-text-area>
+                    <p v-if="aiError" class="forms-ai-error">{{ aiError }}</p>
+                    <div v-if="aiSuggestion" class="forms-ai-suggestion">
+                        <p class="forms-ai-suggestion-title">
+                            AI 生成的简介与标签（采用后将覆盖当前简介，并补充标签）：
+                        </p>
+                        <p class="forms-ai-suggestion-summary">{{ aiSuggestion.summary }}</p>
+                        <yk-space wrap size="s">
+                            <yk-tag v-for="tag in aiSuggestion.labels" :key="tag" shape="round">
+                                {{ tag }}
+                            </yk-tag>
+                        </yk-space>
+                        <yk-space size="s" class="forms-ai-suggestion-actions">
+                            <yk-button size="s" @click="applyAiSuggestion">采用建议</yk-button>
+                            <yk-button type="secondary" size="s" @click="dismissAiSuggestion">忽略</yk-button>
+                        </yk-space>
+                    </div>
                 </div>
             </div>
 
@@ -35,9 +58,9 @@
                     accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
                     desc="上传封面" @handle-success="handleCoverSuccess"
                     @handle-error="handleCoverError" @handle-delete="handleCoverDelete" />
-                <yk-button type="secondary" size="s" class="forms-cover-library" @click="mediaPickerOpen = true">
-                    从素材库选择
-                </yk-button>
+                <ImageSourceActions ai-label="AI 生成封面"
+                    :title="formData.title" :introduce="formData.introduce" :content="props.aiContent || ''"
+                    @pick="mediaPickerOpen = true" @adopt="applyAiCover" />
                 <p v-if="coverUploadError" class="forms-cover-error">
                     {{ coverUploadError }}
                 </p>
@@ -71,9 +94,15 @@
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
 import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
+import { useSessionStore } from '../../store/session.ts'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
+import {
+    suggestArticleMeta,
+    getRequestErrorMessage as getAiRequestErrorMessage,
+} from '../../api/ai.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
+import ImageSourceActions from '../common/ImageSourceActions.vue'
 
 type FormData = {
     title: string
@@ -97,6 +126,11 @@ type LabelOption = {
     name: string
 }
 
+type AiSuggestion = {
+    summary: string
+    labels: string[]
+}
+
 type CoverFile = {
     name: string
     url: string
@@ -112,9 +146,12 @@ type UploadResponse = {
 const props = withDefaults(defineProps<{
     classify?: number
     initialData?: InitialFormData
+    /** 编辑器正文：AI 建议按需读取；图库编辑器不传则不显示 AI 入口 */
+    aiContent?: string
 }>(), {
     classify: 0,
     initialData: undefined,
+    aiContent: undefined,
 })
 
 const emits = defineEmits<{
@@ -173,6 +210,63 @@ const subsetList = ref<SubsetOption[]>([])
 const coverFileList = ref<CoverFile[]>([])
 const coverUploadError = ref('')
 const mediaPickerOpen = ref(false)
+
+// AI 建议：仅作为建议展示，作者点「采用建议」后才写入表单字段
+// 入口是否出现由 ai.use 权限决定，服务端同样按该权限校验
+const session = useSessionStore()
+const showAiEntry = computed(() => props.aiContent !== undefined && session.can('ai.use'))
+const aiBusy = ref(false)
+const aiError = ref('')
+const aiSuggestion = ref<AiSuggestion | null>(null)
+
+const requestAiSuggestion = async (): Promise<void> => {
+    if (aiBusy.value) return
+
+    const title = formData.value.title.trim()
+    const content = (props.aiContent || '').trim()
+    if (!title) {
+        aiError.value = '请先填写标题，再获取 AI 建议'
+        return
+    }
+    if (!content) {
+        aiError.value = '请先写一点正文，再获取 AI 建议'
+        return
+    }
+
+    aiBusy.value = true
+    aiError.value = ''
+    try {
+        const result = await suggestArticleMeta({ title, content })
+        if (result.code === 200 && result.data) {
+            aiSuggestion.value = result.data
+        } else {
+            aiError.value = result.message || 'AI 建议生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiError.value = getAiRequestErrorMessage(error, 'AI 建议生成失败，请稍后重试')
+    } finally {
+        aiBusy.value = false
+    }
+}
+
+const applyAiSuggestion = (): void => {
+    const suggestion = aiSuggestion.value
+    if (!suggestion) return
+
+    formData.value.introduce = suggestion.summary
+    for (const label of suggestion.labels) {
+        if (formData.value.label.length >= 3) break
+        if (!formData.value.label.includes(label)) {
+            formData.value.label.push(label)
+            labelArr.value = labelArr.value.filter(item => item !== label)
+        }
+    }
+    aiSuggestion.value = null
+}
+
+const dismissAiSuggestion = (): void => {
+    aiSuggestion.value = null
+}
 // 每次上传前换取一次性票据：URL 里流通的是 5 分钟失效的短期票据，
 // 不再是长期有效的登录 token（避免进入访问日志与浏览器历史）
 const uploadUrl = ref('')
@@ -238,6 +332,15 @@ const handleCoverDelete = (): void => {
 // 从素材库选择封面：素材库图片与本地文件同源，raw 地址可直接被内容引用
 const handleMediaSelect = (urls: string[]): void => {
     const url = urls[0]
+    if (!url) return
+
+    coverUploadError.value = ''
+    formData.value.cover = url
+    coverFileList.value = [{ name: '文章封面', url }]
+}
+
+// AI 封面采用后才写入封面字段（图片已由共享组件确认落库）
+const applyAiCover = (url: string): void => {
     if (!url) return
 
     coverUploadError.value = ''
@@ -525,6 +628,47 @@ onMounted(() => {
             height: calc(100vh * 0.7);
         } */
     }
+
+    .forms-ai-bar {
+        display: flex;
+        align-items: center;
+        gap: @space-l;
+        margin-bottom: @space-m;
+    }
+
+    .forms-ai-error {
+        margin-top: @space-s;
+        color: #d84a3a;
+        font-size: @size-s;
+        line-height: 1.5;
+    }
+
+    .forms-ai-suggestion {
+        margin-top: @space-m;
+        padding: @space-l;
+        border: 1px solid var(--admin-line, @line-color-s);
+        border-radius: 8px;
+        background: var(--admin-bg, @bg-color-l);
+
+        &-title {
+            margin: 0 0 @space-s;
+            color: @font-color-s;
+            font-size: @size-s;
+            line-height: 1.5;
+        }
+
+        &-summary {
+            margin: 0 0 @space-m;
+            color: @font-color-m;
+            font-size: @size-m;
+            line-height: 1.7;
+            word-break: break-word;
+        }
+
+        &-actions {
+            margin-top: @space-m;
+        }
+    }
 </style>
 <style lang="less">
     .forms {
@@ -553,10 +697,6 @@ onMounted(() => {
                 height: 120px;
             }
 
-            // 素材库按钮保持内容宽度，不被列布局拉伸
-            .forms-cover-library {
-                align-self: flex-start;
-            }
         }
 
         @media (max-width: 900px) {

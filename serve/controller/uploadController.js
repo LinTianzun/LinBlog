@@ -49,59 +49,76 @@ function createFilename(extension) {
     return `${Date.now()}-${crypto.randomUUID()}${extension}`
 }
 
-async function saveImage(req, res, file) {
-    const extension = mimeExtensions.get(file.mimetype)
+/**
+ * 把一段图片二进制落库（image 表 + 本地文件聚合行）。
+ * 上传与 AI 封面确认共用同一条持久化路径，保证素材库/引用统计口径一致。
+ */
+async function persistImageBuffer({ buffer, mimetype, userId }) {
+    const extension = mimeExtensions.get(mimetype)
+    if (!extension) {
+        throw Object.assign(new Error('仅支持 JPG、PNG、WebP 和 GIF 图片'), { status: 415 })
+    }
+
     const filename = createFilename(extension)
     const checksum = crypto
         .createHash('sha256')
-        .update(file.buffer)
+        .update(buffer)
         .digest('hex')
 
+    const { imageId } = await imageModel.createImage({
+        filename,
+        mimeType: mimetype,
+        size: buffer.length,
+        checksum,
+        data: buffer,
+        userId: userId ?? null
+    })
+
+    // 同步登记到「本地文件」：内容图片与磁盘文件在同一个列表里可见，
+    // file 行只存展示元数据，二进制本体仍在 image 表。
     try {
-        const { imageId } = await imageModel.createImage({
-            filename,
-            mimeType: file.mimetype,
-            size: file.size,
-            checksum,
-            data: file.buffer,
-            userId: req.user?.userId ?? null
-        })
-
-        // 同步登记到「本地文件」：内容图片与磁盘文件在同一个列表里可见，
-        // file 行只存展示元数据，二进制本体仍在 image 表。
+        let subsetId = null
         try {
-            let subsetId = null
-            try {
-                // 内容图片归入「内容图片」分组，与磁盘文件区分开
-                subsetId = await subsetModel.ensureResourceSubset('内容图片', 95)
-            } catch (subsetErr) {
-                // 找不到资源分组时先归入未分类，不影响图片本身。
-                console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)
-            }
-
-            await fileModel.insertImageBinding({
-                fileName: filename,
-                format: extension.replace(/^\./, ''),
-                size: file.size,
-                sourceImageId: imageId,
-                subsetId
-            })
-        } catch (bindErr) {
-            // 聚合登记失败不影响图片本身可用，只记录日志。
-            console.warn('[Upload] 登记到本地文件失败：', bindErr.message)
+            // 内容图片归入「内容图片」分组，与磁盘文件区分开
+            subsetId = await subsetModel.ensureResourceSubset('内容图片', 95)
+        } catch (subsetErr) {
+            // 找不到资源分组时先归入未分类，不影响图片本身。
+            console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)
         }
-    } catch (err) {
-        console.error('[Upload] 保存图片失败：', err)
-        return sendUploadError(res, 500, '图片保存失败，请稍后重试')
+
+        await fileModel.insertImageBinding({
+            fileName: filename,
+            format: extension.replace(/^\./, ''),
+            size: buffer.length,
+            sourceImageId: imageId,
+            subsetId
+        })
+    } catch (bindErr) {
+        // 聚合登记失败不影响图片本身可用，只记录日志。
+        console.warn('[Upload] 登记到本地文件失败：', bindErr.message)
     }
 
-    return res.status(200).json({
-        code: 200,
-        message: '上传成功',
-        data: {
-            url: `/api/uploads/${filename}`
-        }
-    })
+    return { filename, url: `/api/uploads/${filename}` }
+}
+
+async function saveImage(req, res, file) {
+    try {
+        const { url } = await persistImageBuffer({
+            buffer: file.buffer,
+            mimetype: file.mimetype,
+            userId: req.user?.userId
+        })
+        return res.status(200).json({
+            code: 200,
+            message: '上传成功',
+            data: { url }
+        })
+    } catch (err) {
+        console.error('[Upload] 保存图片失败：', err)
+        const status = err?.status || 500
+        const message = status === 415 ? err.message : '图片保存失败，请稍后重试'
+        return sendUploadError(res, status, message)
+    }
 }
 
 function uploadImage(req, res) {
@@ -192,4 +209,4 @@ async function getImage(req, res) {
     }
 }
 
-module.exports = { uploadImage, getImage }
+module.exports = { uploadImage, getImage, persistImageBuffer }

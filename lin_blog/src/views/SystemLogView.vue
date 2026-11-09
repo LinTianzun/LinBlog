@@ -92,6 +92,7 @@
         { value: 'subset', label: '分类' },
         { value: 'label', label: '标签' },
         { value: 'permission', label: '权限' },
+        { value: 'ai', label: 'AI' },
         { value: 'system', label: '系统' },
         { value: 'backup', label: '备份' },
     ]

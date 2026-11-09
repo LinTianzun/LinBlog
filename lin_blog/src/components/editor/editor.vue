@@ -9,22 +9,58 @@
             <!-- <forms :classify="0" @formData="formData" /> -->
             <Editor v-model="valueHtml" :defaultConfig="editorConfig" :mode="mode" @onChange="onChange"
                 @onCreated="handleCreated" />
+            <div v-if="editorRef && canUseAi" class="editor-ai-bar">
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('polish')">
+                    AI 润色
+                </yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('shorten')">
+                    AI 精简
+                </yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('expand')">
+                    AI 扩写
+                </yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('continue')">
+                    AI 续写
+                </yk-button>
+                <yk-text type="third">选中正文可润色、精简或扩写；续写基于全文尾部</yk-text>
+            </div>
+            <div v-if="aiWriting" class="editor-ai-result">
+                <p class="editor-ai-result-title">
+                    AI 生成的{{ getWritingActionLabel(aiWriting.action) }}内容（采用后才会写入编辑器）：
+                </p>
+                <p class="editor-ai-result-text">{{ aiWriting.text }}</p>
+                <yk-space size="s" class="editor-ai-result-actions">
+                    <yk-button size="s" @click="applyAiWriting">采用</yk-button>
+                    <yk-button type="secondary" size="s" @click="dismissAiWriting">忽略</yk-button>
+                </yk-space>
+            </div>
+            <p v-if="aiError" class="editor-ai-error">{{ aiError }}</p>
         </div>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import type { IToolbarConfig, IDomEditor } from '@wangeditor/editor'
 import './style.less'
 import { colors } from './colors.js'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import { Transforms, type BaseSelection } from 'slate'
 import { CODE_HIGHLIGHT_LANGS } from './slimCodeHighlightCore'
+import { useSessionStore } from '../../store/session.ts'
+import {
+    rewriteArticleText,
+    getRequestErrorMessage as getAiRequestErrorMessage,
+    type AiWritingAction,
+    type AiWritingSuggestion,
+} from '../../api/ai'
 
 const props = withDefaults(defineProps<{
     modelValue?: string
+    aiTitle?: string
 }>(), {
     modelValue: '',
+    aiTitle: '',
 })
 
 const mode = 'default'
@@ -89,6 +125,87 @@ const handleCreated = (editor: IDomEditor): void => {
     editorRef.value = editor
 }
 
+// AI 写作辅助：候选结果始终先展示，作者点「采用」后才修改编辑器
+const session = useSessionStore()
+// AI 写作辅助入口按 ai.use 权限收敛，服务端同样按该权限校验
+const canUseAi = computed(() => session.can('ai.use'))
+const aiBusy = ref(false)
+const aiError = ref('')
+const aiWriting = ref<AiWritingSuggestion | null>(null)
+const originalSelection = ref<BaseSelection | null>(null)
+
+const getWritingActionLabel = (action: AiWritingAction): string => ({
+    polish: '润色',
+    shorten: '精简',
+    expand: '扩写',
+    continue: '续写',
+}[action])
+
+const requestAiWriting = async (action: AiWritingAction): Promise<void> => {
+    if (aiBusy.value || !editorRef.value) return
+
+    const editor = editorRef.value
+    const selectionText = editor.getSelectionText().trim()
+    const fullText = editor.getText().trim()
+    originalSelection.value = editor.selection
+    const text = action === 'continue'
+        ? fullText.slice(-2000)
+        : selectionText.slice(0, 2000)
+
+    if (!text) {
+        aiError.value = action === 'continue'
+            ? '请先写一点正文，再使用 AI 续写'
+            : '请先选中一段正文，再使用 AI 润色、精简或扩写'
+        return
+    }
+
+    aiBusy.value = true
+    aiError.value = ''
+    try {
+        const result = await rewriteArticleText({
+            action,
+            text,
+            title: props.aiTitle.trim(),
+        })
+        if (result.code === 200 && result.data) {
+            aiWriting.value = result.data
+        } else {
+            aiError.value = result.message || 'AI 写作辅助生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiError.value = getAiRequestErrorMessage(error, 'AI 写作辅助生成失败，请稍后重试')
+    } finally {
+        aiBusy.value = false
+    }
+}
+
+const applyAiWriting = (): void => {
+    const editor = editorRef.value
+    const suggestion = aiWriting.value
+    if (!editor || !suggestion) return
+
+    if (suggestion.action === 'continue') {
+        editor.focus(true)
+        editor.insertText(suggestion.text)
+    } else {
+        editor.focus()
+        if (originalSelection.value) {
+            editor.select(originalSelection.value)
+            Transforms.delete(editor, { at: originalSelection.value })
+            editor.insertText(suggestion.text)
+        } else {
+            editor.insertText(suggestion.text)
+        }
+        aiWriting.value = null
+        return
+    }
+    aiWriting.value = null
+}
+
+const dismissAiWriting = (): void => {
+    aiWriting.value = null
+}
+
 // 组件销毁时销毁编辑器
 onBeforeUnmount(() => {
     const editor = editorRef.value
@@ -137,6 +254,44 @@ onBeforeUnmount(() => {
         width: 100%;
         box-shadow: @shadow-m ;
         /* border: 1px solid @line-color-m; */
+    }
+
+    .editor-ai-bar {
+        display: flex;
+        align-items: center;
+        gap: @space-l;
+        margin-top: @space-m;
+    }
+
+    .editor-ai-result {
+        margin-top: @space-m;
+        padding: @space-l;
+        border: 1px solid var(--admin-line, @line-color-s);
+        border-radius: 8px;
+        background: var(--admin-bg, @bg-color-l);
+
+        &-title {
+            margin: 0 0 @space-s;
+            color: @font-color-s;
+            font-size: @size-s;
+            line-height: 1.5;
+        }
+
+        &-text {
+            margin: 0 0 @space-m;
+            color: @font-color-m;
+            font-size: @size-m;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+    }
+
+    .editor-ai-error {
+        margin-top: @space-s;
+        color: #d84a3a;
+        font-size: @size-s;
+        line-height: 1.5;
     }
 </style>
 <style lang="less">

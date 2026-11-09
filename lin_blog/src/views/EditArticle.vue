@@ -88,8 +88,8 @@
         </div>
 
         <yk-space v-else class="edit-article-body">
-            <editor v-model="content">
-                <forms :classify="0" :initial-data="initialForm" @formData="handleFormData" />
+            <editor v-model="content" :ai-title="form?.title || ''">
+                <forms :classify="0" :initial-data="initialForm" :ai-content="content" @formData="handleFormData" />
             </editor>
         </yk-space>
 
