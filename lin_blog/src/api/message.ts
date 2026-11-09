@@ -129,3 +129,17 @@ export function sendMessage(data: {
     data
   );
 }
+
+// AI 私信拟回复：返回候选话术，作者确认后才会写进输入框
+export interface AiMessageReplyResult {
+  replies: string[];
+  degraded?: boolean;
+  modelName?: string;
+}
+
+export function suggestMessageReply(data: {
+  targetUserId: number;
+  tone?: string;
+}) {
+  return request.post<ApiResult<AiMessageReplyResult>>("/ai/message/reply", data);
+}

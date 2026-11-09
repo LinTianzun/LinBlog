@@ -11,6 +11,7 @@ const aiClient = require(path.resolve(__dirname, '../utils/aiClient.js'))
 const uploadController = require(path.resolve(__dirname, '../controller/uploadController.js'))
 const aiModel = require(path.resolve(__dirname, '../model/dbModel/ai/index.js'))
 const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/index.js'))
+const messageModel = require(path.resolve(__dirname, '../model/dbModel/message/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -221,6 +222,68 @@ test('语义搜索拒绝空查询与超长查询', async () => {
     const res2 = createRes()
     await aiController.searchPublicContent({ body: { query: 'a'.repeat(101) } }, res2)
     assert.equal(res2.statusCode, 400)
+})
+
+test('私信拟回复只给出候选话术，不代替发送', async () => {
+    const originalSuggest = aiClient.suggestMessageReplies
+    const originalHistory = messageModel.getRecentPrivateMessages
+    let received = null
+
+    aiClient.suggestMessageReplies = async (payload) => {
+        received = payload
+        return {
+            replies: ['谢谢你的留言，我看到了。', '收到，我会在周末整理一篇。'],
+            modelUsed: { id: 1, name: '智谱', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    messageModel.getRecentPrivateMessages = async () => ([
+        { id: 1, senderId: 2, senderName: '读者乙', content: '想和你聊聊摄影', createdAt: '2026-10-30T09:15:00.000Z' }
+    ])
+
+    try {
+        const res = createRes()
+        await aiController.suggestMessageReply(
+            { body: { targetUserId: 2 }, user: { userId: 1, permissions: ['message.private', 'ai.use'] }, aiModel: TEST_AI_MODEL },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(res.body.data.replies, ['谢谢你的留言，我看到了。', '收到，我会在周末整理一篇。'])
+        assert.equal(received.peerName, '读者乙')
+        assert.equal(received.history.length, 1)
+    } finally {
+        aiClient.suggestMessageReplies = originalSuggest
+        messageModel.getRecentPrivateMessages = originalHistory
+    }
+})
+
+test('私信拟回复拒绝无效会话与无消息会话', async () => {
+    const originalHistory = messageModel.getRecentPrivateMessages
+    const res1 = createRes()
+    await aiController.suggestMessageReply(
+        { body: { targetUserId: 0 }, user: { userId: 1, permissions: ['message.private'] }, aiModel: TEST_AI_MODEL },
+        res1
+    )
+    assert.equal(res1.statusCode, 400)
+
+    messageModel.getRecentPrivateMessages = async () => []
+    const res2 = createRes()
+    await aiController.suggestMessageReply(
+        { body: { targetUserId: 2 }, user: { userId: 1, permissions: ['message.private'] }, aiModel: TEST_AI_MODEL },
+        res2
+    )
+    assert.equal(res2.statusCode, 400)
+    assert.match(res2.body.message, /还没有消息/)
+
+    messageModel.getRecentPrivateMessages = originalHistory
+})
+
+test('私信拟回复在没有私信权限时拒绝', async () => {
+    const res = createRes()
+    await aiController.suggestMessageReply(
+        { body: { targetUserId: 2 }, user: { userId: 1, permissions: [] }, aiModel: TEST_AI_MODEL },
+        res
+    )
+    assert.equal(res.statusCode, 403)
 })
 
 test('ai writing rejects unknown actions and empty text before calling the provider', async () => {

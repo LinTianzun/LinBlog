@@ -4,6 +4,8 @@ const uploadController = require('./uploadController')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 const aiModel = require('../model/dbModel/ai/index')
 const articleModel = require('../model/dbModel/article/index')
+const messageModel = require('../model/dbModel/message/index')
+const { hasPermission } = require('../utils/accessControl')
 
 /**
  * 门户 AI 问答：访客提问，先检索站内已发布文章，再让模型基于片段作答。
@@ -164,6 +166,81 @@ async function searchPublicContent(req, res, options = {}) {
     } catch (err) {
         console.error('[AI] 语义搜索失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '语义搜索失败，请稍后重试' })
+    }
+}
+
+/**
+ * AI 私信拟回复：读取当前账号与对方的最近对话，生成候选回复话术。
+ * 只作建议：作者点「采用」后才会写进输入框，发送动作仍由作者自己完成。
+ */
+async function suggestMessageReply(req, res, options = {}) {
+    if (!req.aiModel) {
+        return res.status(503).json({
+            code: 503,
+            message: 'AI 功能未配置，请先在 AI 管理中启用接入模型'
+        })
+    }
+    if (!hasPermission(req.user, 'message.private')) {
+        return res.status(403).json({ code: 403, message: '当前账号没有回复私信的权限' })
+    }
+
+    const targetUserId = Number(req.body?.targetUserId)
+    if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+        return res.status(400).json({ code: 400, message: '请先选择要回复的会话' })
+    }
+    const tone = typeof req.body?.tone === 'string' ? req.body.tone.trim() : ''
+    const currentUserId = Number(req.user?.userId)
+
+    try {
+        const history = await messageModel.getRecentPrivateMessages(currentUserId, targetUserId, 10)
+        if (!history.length) {
+            return res.status(400).json({ code: 400, message: '这个会话还没有消息，无法生成回复建议' })
+        }
+
+        const peer = history.find(item => Number(item.senderId) !== currentUserId)
+        const startedAt = Date.now()
+        const suggestion = await aiClient.suggestMessageReplies({
+            peerName: peer?.senderName || '',
+            history,
+            tone,
+            aiConfig: req.aiModel
+        })
+
+        await recordAiCall({
+            req,
+            feature: 'message',
+            modelName: suggestion.modelUsed?.model || req.aiModel.model,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: suggestion.modelUsed?.degraded
+                ? `生成私信回复建议（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : '生成私信回复建议',
+            durationMs: Date.now() - startedAt,
+            usage: suggestion.usage,
+            outputChars: suggestion.replies.join('').length
+        })
+
+        return res.json({
+            code: 200,
+            message: '回复建议已生成，请确认后再使用',
+            data: {
+                replies: suggestion.replies,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_EMPTY_CONTEXT') {
+            return res.status(400).json({ code: 400, message: '这个会话还没有消息，无法生成回复建议' })
+        }
+        if (err?.code === 'AI_PARSE_ERROR') {
+            return res.status(503).json({ code: 503, message: 'AI 没有返回可用的回复建议，请稍后重试' })
+        }
+        console.error('[AI] 生成私信回复建议失败：', err?.message || err)
+        return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
 
@@ -470,5 +547,6 @@ module.exports = {
     generateCover,
     confirmCover,
     answerPublicQuestion,
-    searchPublicContent
+    searchPublicContent,
+    suggestMessageReply
 }

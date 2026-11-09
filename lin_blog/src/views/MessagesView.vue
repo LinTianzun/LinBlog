@@ -96,6 +96,27 @@
                     </div>
 
                     <footer class="chat-composer">
+                        <div v-if="canUseAi" class="chat-ai-bar">
+                            <yk-button type="secondary" size="s" :loading="aiReplyBusy"
+                                @click="requestAiReply">
+                                AI 拟回复
+                            </yk-button>
+                            <yk-text type="third">根据最近的对话生成候选话术，确认后才会写入输入框</yk-text>
+                        </div>
+                        <div v-if="aiReplySuggestion" class="chat-ai-suggestion">
+                            <p class="chat-ai-suggestion-title">AI 生成的回复建议（采用后只写入输入框，仍需你自己发送）：</p>
+                            <p v-if="aiReplySuggestion.degraded" class="chat-ai-suggestion-degraded">
+                                默认模型暂时不可用，本次由「{{ aiReplySuggestion.modelName }}」生成
+                            </p>
+                            <div v-for="reply in aiReplySuggestion.replies" :key="reply" class="chat-ai-reply">
+                                <p class="chat-ai-reply-text">{{ reply }}</p>
+                                <yk-button size="s" type="secondary" @click="applyAiReply(reply)">采用</yk-button>
+                            </div>
+                            <yk-space size="s" class="chat-ai-suggestion-actions">
+                                <yk-button type="secondary" size="s" @click="aiReplySuggestion = null">忽略</yk-button>
+                            </yk-space>
+                        </div>
+                        <p v-if="aiReplyError" class="chat-error">{{ aiReplyError }}</p>
                         <yk-text-area v-model="draft" :max-length="512" show-word-limit
                             :auto-size="{ minRows: 2, maxRows: 5 }" :disabled="sending"
                             placeholder="输入回复内容，Ctrl + Enter 发送" @keydown="handleComposerKeydown" />
@@ -136,12 +157,14 @@ import {
     getConversations,
     getConversation,
     sendMessage,
+    suggestMessageReply,
     markMessagesRead,
     getRequestErrorMessage,
     type ConversationSummary,
     type ConversationUser,
     type MessageItem,
 } from '../api/message'
+import { useSessionStore } from '../store/session.ts'
 import {
     MESSAGE_POLL_INTERVAL,
     MESSAGE_STATE_EVENT,
@@ -176,6 +199,13 @@ const loadingMessages = ref(false)
 const sending = ref(false)
 const pageError = ref('')
 const sendError = ref('')
+
+// AI 拟回复：候选话术只写入输入框，发送仍由作者自己触发
+const session = useSessionStore()
+const canUseAi = computed(() => session.can('ai.use'))
+const aiReplyBusy = ref(false)
+const aiReplyError = ref('')
+const aiReplySuggestion = ref<{ replies: string[]; degraded?: boolean; modelName?: string } | null>(null)
 const threadRef = ref<HTMLElement | null>(null)
 const pendingNewCount = ref(0)
 let conversationTimer: number | undefined
@@ -454,6 +484,9 @@ const selectConversation = async (userId: number): Promise<void> => {
     messages.value = []
     pendingNewCount.value = 0
     draft.value = ''
+    // 换会话时清掉上一段对话的 AI 建议，避免用错上下文
+    aiReplySuggestion.value = null
+    aiReplyError.value = ''
     await router.replace({ path: '/messages', query: { userId: String(userId) } })
     await loadMessages(true)
 }
@@ -594,6 +627,34 @@ const handleComposerKeydown = (event: KeyboardEvent): void => {
         event.preventDefault()
         void sendReply()
     }
+}
+
+const requestAiReply = async (): Promise<void> => {
+    const targetUserId = activeUserId.value
+    if (aiReplyBusy.value || !targetUserId) return
+
+    aiReplyBusy.value = true
+    aiReplyError.value = ''
+    try {
+        const result = await suggestMessageReply({ targetUserId })
+        if (result.code === 200 && result.data) {
+            aiReplySuggestion.value = result.data
+        } else {
+            aiReplyError.value = result.message || 'AI 回复建议生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiReplyError.value = getRequestErrorMessage(error, 'AI 回复建议生成失败，请稍后重试')
+    } finally {
+        aiReplyBusy.value = false
+    }
+}
+
+const applyAiReply = (reply: string): void => {
+    if (!reply) return
+    // 只填进输入框：发送仍是作者自己的动作
+    draft.value = draft.value.trim() ? `${draft.value.trim()}\n${reply}` : reply
+    aiReplySuggestion.value = null
+    proxy?.$message?.({ type: 'primary', message: '已写入输入框，确认后再发送' })
 }
 
 onMounted(() => {
@@ -918,6 +979,59 @@ onUnmounted(() => {
         padding: 12px 16px 14px;
         border-top: 1px solid var(--admin-line, var(--gray1));
         background: var(--admin-surface, var(--bgColor1));
+    }
+
+    .chat-ai-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .chat-ai-suggestion {
+        margin-bottom: 10px;
+        padding: 12px 14px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 8px;
+        background: var(--admin-bg, transparent);
+
+        &-title {
+            margin: 0 0 6px;
+            color: var(--gray6);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        &-degraded {
+            margin: 0 0 8px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: color-mix(in srgb, #d98716 12%, transparent);
+            color: #a86a10;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        &-actions {
+            margin-top: 10px;
+        }
+    }
+
+    .chat-ai-reply {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-top: 1px solid var(--admin-line, var(--gray1));
+
+        &-text {
+            margin: 0;
+            color: var(--gray9, inherit);
+            font-size: 13px;
+            line-height: 1.7;
+            word-break: break-word;
+        }
     }
 
     .chat-composer-actions {

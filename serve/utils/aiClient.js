@@ -16,6 +16,8 @@ const MAX_GALLERY_TITLE_CHARS = 100
 const MAX_GALLERY_INTRO_CHARS = 300
 const MAX_SEARCH_TERMS = 6
 const MAX_SEARCH_TERM_CHARS = 20
+const MAX_REPLY_CHARS = 300
+const MAX_REPLY_CANDIDATES = 2
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -270,6 +272,48 @@ function parseSearchExpansionPayload(raw) {
     }
 
     return { terms }
+}
+
+/**
+ * 私信拟回复的提示词：只生成候选话术，发送与否完全由作者决定。
+ */
+function buildMessageReplyPrompt({ peerName, history, tone = '' }) {
+    const dialogue = history
+        .map(item => `${item.senderName || (item.senderId === 0 ? '我' : '对方')}：${item.content}`)
+        .join('\n')
+    return [
+        '你是一名中文博客博主，正在回复读者的私信。请根据对话上下文给出候选回复。',
+        '要求：',
+        '1. 给出 2 条候选回复，语气不同：一条热情友好，一条简洁克制；',
+        '2. 每条不超过 120 字，口语化、直接，不要客套长文；',
+        '3. 不要编造事实、不要承诺做不到的事，也不要替作者做决定；',
+        '4. 只输出一个 JSON 对象，格式为 {"replies":["...","..."]}，不要输出解释或 Markdown 代码块。',
+        tone ? `5. 作者希望的语气：${tone}` : '5. 语气自然友好即可。',
+        '',
+        `对话对方：${peerName || '读者'}`,
+        '最近对话：',
+        dialogue
+    ].join('\n')
+}
+
+function parseMessageReplyPayload(raw) {
+    const parsed = extractJsonBlock(String(raw || ''))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw Object.assign(new Error('模型输出不是合法的 JSON 回复'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    const replies = []
+    for (const item of Array.isArray(parsed.replies) ? parsed.replies : []) {
+        if (typeof item !== 'string') continue
+        const text = item.trim().slice(0, MAX_REPLY_CHARS)
+        if (text && !replies.includes(text)) replies.push(text)
+        if (replies.length >= MAX_REPLY_CANDIDATES) break
+    }
+    if (replies.length === 0) {
+        throw Object.assign(new Error('模型没有返回可用的回复建议'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { replies }
 }
 
 function parseGalleryCurationPayload(raw) {
@@ -549,6 +593,38 @@ async function expandSearchQuery({ query, aiConfig, chainFn = null }) {
 }
 
 /**
+ * 私信拟回复：根据最近的对话生成候选话术。
+ * 只产出候选，绝不代替作者发送。
+ */
+async function suggestMessageReplies({ peerName = '', history = [], tone = '', aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+
+    const safeHistory = (Array.isArray(history) ? history : [])
+        .filter(item => item && typeof item.content === 'string' && item.content.trim())
+        .slice(-10)
+        .map(item => ({
+            senderId: Number(item.senderId) || 0,
+            senderName: String(item.senderName || '').slice(0, 30),
+            content: String(item.content).trim().slice(0, 300)
+        }))
+    if (safeHistory.length === 0) {
+        throw Object.assign(new Error('没有可参考的对话内容'), { code: 'AI_EMPTY_CONTEXT' })
+    }
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildMessageReplyPrompt({
+        peerName: String(peerName || '').slice(0, 30),
+        history: safeHistory,
+        tone: String(tone || '').trim().slice(0, 50)
+    })
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true })
+        const parsed = parseMessageReplyPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+}
+
+/**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
 async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
@@ -690,6 +766,7 @@ module.exports = {
     suggestArticleMeta,
     suggestGalleryCuration,
     expandSearchQuery,
+    suggestMessageReplies,
     rewriteText,
     generateCoverImage,
     answerFromPublishedContent,
@@ -702,6 +779,8 @@ module.exports = {
     parseGalleryCurationPayload,
     buildSearchExpansionPrompt,
     parseSearchExpansionPayload,
+    buildMessageReplyPrompt,
+    parseMessageReplyPayload,
     buildSuggestionPrompt,
     buildWritingPrompt,
     normalizeWritingText,

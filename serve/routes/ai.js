@@ -22,6 +22,14 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiController.suggestGalleryCuration
     )
+    // AI 私信拟回复：只生成候选话术，作者确认后才会写进输入框
+    app.post(
+        '/api/ai/message/reply',
+        authMiddleware,
+        aiQuota('message'),
+        aiSuggestLimit,
+        aiController.suggestMessageReply
+    )
     // AI 写作辅助：结果只作为候选文本展示，作者确认后才写入编辑器
     app.post(
         '/api/ai/writing',

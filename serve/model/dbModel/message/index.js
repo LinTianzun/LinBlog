@@ -461,6 +461,38 @@ async function findActiveUser(userId) {
         : null
 }
 
+/**
+ * 取某个对话方最近的若干条私信，用于 AI 拟回复的上下文。
+ * 只取这对双方之间的会话，其它人的私信不会进入提示词。
+ */
+async function getRecentPrivateMessages(currentUserId, targetUserId, limit = 10) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 20)
+    const rows = await query(
+        `SELECT
+            m.id,
+            m.sender_id AS senderId,
+            s.username AS senderName,
+            m.content,
+            m.created_at AS createdAt
+         FROM message m
+         LEFT JOIN users s ON m.sender_id = s.id
+         WHERE m.type = 'private'
+           AND ((m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?))
+         ORDER BY m.created_at DESC, m.id DESC
+         LIMIT ?`,
+        [currentUserId, targetUserId, targetUserId, currentUserId, safeLimit]
+    )
+
+    // 与气泡列表保持一致：按时间正序返回
+    return [...(rows || [])].reverse().map(row => ({
+        id: Number(row.id),
+        senderId: Number(row.senderId),
+        senderName: String(row.senderName || ''),
+        content: String(row.content || ''),
+        createdAt: row.createdAt
+    }))
+}
+
 module.exports = {
     insertMessage,
     getInBoxMessages,
@@ -473,5 +505,6 @@ module.exports = {
     insertWallMessage,
     getConversations,
     getConversationMessages,
+    getRecentPrivateMessages,
     findActiveUser,
 }

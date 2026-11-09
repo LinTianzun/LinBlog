@@ -1308,6 +1308,19 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // AI 私信拟回复：返回候选话术，不代替作者发送
+    if (method === 'POST' && path === '/api/ai/message/reply') {
+      await fulfill({
+        replies: [
+          '谢谢你的留言，我看到了。',
+          '收到，我会在周末整理一篇。',
+        ],
+        degraded: false,
+        modelName: '',
+      }, { message: '回复建议已生成，请确认后再使用' })
+      return
+    }
+
     if (method === 'PATCH' && path === '/api/message/read') {
       const messageIds = Array.isArray(body?.messageIds) ? body.messageIds : []
       state.messages = state.messages.map(item =>
