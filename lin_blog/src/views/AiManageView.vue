@@ -2,11 +2,11 @@
     <yk-space dir="vertical" size="l" class="admin-page ai-manage">
         <top-title name="AI 管理" description="统一管理接入模型、用量策略与调用记录" :is-search="false">
             <template #custom>
-                <yk-space size="s">
-                    <yk-button size="s" type="secondary" :loading="importing" @click="handleImportEnv">
+                <yk-space align="center">
+                    <yk-button type="secondary" :loading="importing" @click="handleImportEnv">
                         导入环境变量配置
                     </yk-button>
-                    <yk-button size="s" type="primary" @click="openCreateModel">+ 接入模型</yk-button>
+                    <yk-button type="primary" @click="openCreateModel">+ 接入模型</yk-button>
                 </yk-space>
             </template>
         </top-title>
@@ -423,10 +423,12 @@
             </form>
 
             <template #footer>
-                <yk-button size="s" :disabled="savingModel" @click="closeModelModal">取消</yk-button>
-                <yk-button size="s" type="primary" :loading="savingModel" @click="submitModel">
-                    {{ savingModel ? '保存中...' : '确认保存' }}
-                </yk-button>
+                <yk-space size="s">
+                    <yk-button :disabled="savingModel" @click="closeModelModal">取消</yk-button>
+                    <yk-button type="primary" :loading="savingModel" @click="submitModel">
+                        {{ savingModel ? '保存中...' : '确认保存' }}
+                    </yk-button>
+                </yk-space>
             </template>
         </yk-modal>
     </yk-space>
