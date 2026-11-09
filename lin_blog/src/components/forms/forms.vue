@@ -31,9 +31,18 @@
                         </yk-button>
                         <yk-text type="third">根据标题与正文生成简介和标签，确认后才会填充</yk-text>
                     </div>
+                    <div v-if="showGalleryAiEntry" class="forms-ai-bar">
+                        <yk-button type="secondary" size="s" :loading="galleryAiBusy"
+                            @click="requestGalleryCuration">
+                            AI 策展建议
+                        </yk-button>
+                        <yk-input v-model="galleryAiTheme" class="forms-ai-theme" size="s" :limit="300"
+                            placeholder="补充主题，如：春日海岸、城市黄昏" clearable />
+                    </div>
                     <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
                         :max-length="512"></yk-text-area>
                     <p v-if="aiError" class="forms-ai-error">{{ aiError }}</p>
+                    <p v-if="galleryAiError" class="forms-ai-error">{{ galleryAiError }}</p>
                     <div v-if="aiSuggestion" class="forms-ai-suggestion">
                         <p class="forms-ai-suggestion-title">
                             AI 生成的简介与标签（采用后将覆盖当前简介，并补充标签）：
@@ -47,6 +56,36 @@
                         <yk-space size="s" class="forms-ai-suggestion-actions">
                             <yk-button size="s" @click="applyAiSuggestion">采用建议</yk-button>
                             <yk-button type="secondary" size="s" @click="dismissAiSuggestion">忽略</yk-button>
+                        </yk-space>
+                    </div>
+                    <div v-if="galleryAiSuggestion" class="forms-ai-suggestion">
+                        <p class="forms-ai-suggestion-title">
+                            AI 生成的图库策展建议（逐项采用，不会自动覆盖当前内容）：
+                        </p>
+                        <p v-if="galleryAiSuggestion.degraded" class="forms-ai-degraded">
+                            默认模型暂时不可用，本次由「{{ galleryAiSuggestion.modelName }}」生成
+                        </p>
+                        <div class="forms-gallery-curation">
+                            <div v-for="title in galleryAiSuggestion.titles" :key="title" class="forms-gallery-curation-item">
+                                <p class="forms-gallery-curation-text">{{ title }}</p>
+                                <yk-button size="s" type="secondary" @click="applyGalleryTitle(title)">采用标题</yk-button>
+                            </div>
+                            <div class="forms-gallery-curation-item is-column">
+                                <p class="forms-gallery-curation-text">{{ galleryAiSuggestion.summary }}</p>
+                                <yk-button size="s" type="secondary" @click="applyGallerySummary">采用简介</yk-button>
+                            </div>
+                            <div class="forms-gallery-curation-item is-column">
+                                <yk-space wrap size="s">
+                                    <yk-tag v-for="label in galleryAiSuggestion.labels" :key="label" shape="round">
+                                        {{ label }}
+                                    </yk-tag>
+                                </yk-space>
+                                <yk-button size="s" type="secondary" :disabled="formData.label.length >= 3"
+                                    @click="applyGalleryLabels">补充标签</yk-button>
+                            </div>
+                        </div>
+                        <yk-space size="s" class="forms-ai-suggestion-actions">
+                            <yk-button type="secondary" size="s" @click="dismissGalleryCuration">忽略</yk-button>
                         </yk-space>
                     </div>
                 </div>
@@ -99,6 +138,7 @@ import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
 import {
     suggestArticleMeta,
+    suggestGalleryCuration,
     getRequestErrorMessage as getAiRequestErrorMessage,
 } from '../../api/ai.ts'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
@@ -131,6 +171,14 @@ type AiSuggestion = {
     labels: string[]
 }
 
+type AiGalleryCurationSuggestion = {
+    titles: string[]
+    summary: string
+    labels: string[]
+    degraded?: boolean
+    modelName?: string
+}
+
 type CoverFile = {
     name: string
     url: string
@@ -148,10 +196,13 @@ const props = withDefaults(defineProps<{
     initialData?: InitialFormData
     /** 编辑器正文：AI 建议按需读取；图库编辑器不传则不显示 AI 入口 */
     aiContent?: string
+    /** 当前图库照片数量，用于让策展建议了解图库规模 */
+    photoCount?: number
 }>(), {
     classify: 0,
     initialData: undefined,
     aiContent: undefined,
+    photoCount: 0,
 })
 
 const emits = defineEmits<{
@@ -215,6 +266,8 @@ const mediaPickerOpen = ref(false)
 // 入口是否出现由 ai.use 权限决定，服务端同样按该权限校验
 const session = useSessionStore()
 const showAiEntry = computed(() => props.aiContent !== undefined && session.can('ai.use'))
+// 图库没有正文，策展建议走独立入口，只受 ai.use 权限约束
+const showGalleryAiEntry = computed(() => props.classify === 1 && session.can('ai.use'))
 const aiBusy = ref(false)
 const aiError = ref('')
 const aiSuggestion = ref<AiSuggestion | null>(null)
@@ -266,6 +319,84 @@ const applyAiSuggestion = (): void => {
 
 const dismissAiSuggestion = (): void => {
     aiSuggestion.value = null
+}
+
+const galleryAiBusy = ref(false)
+const galleryAiError = ref('')
+const galleryAiTheme = ref('')
+const galleryAiSuggestion = ref<AiGalleryCurationSuggestion | null>(null)
+
+const requestGalleryCuration = async (): Promise<void> => {
+    if (galleryAiBusy.value) return
+
+    const title = formData.value.title.trim()
+    const introduce = formData.value.introduce.trim()
+    const theme = galleryAiTheme.value.trim()
+    if (!title && !introduce && !theme) {
+        galleryAiError.value = '请先填写标题、简介或补充主题，再获取 AI 策展建议'
+        return
+    }
+
+    galleryAiBusy.value = true
+    galleryAiError.value = ''
+    try {
+        const result = await suggestGalleryCuration({
+            title,
+            introduce,
+            theme,
+            photoCount: props.photoCount || 0,
+        })
+        if (result.code === 200 && result.data) {
+            galleryAiSuggestion.value = result.data
+        } else {
+            galleryAiError.value = result.message || 'AI 策展建议生成失败，请稍后重试'
+        }
+    } catch (error) {
+        galleryAiError.value = getAiRequestErrorMessage(error, 'AI 策展建议生成失败，请稍后重试')
+    } finally {
+        galleryAiBusy.value = false
+    }
+}
+
+const applyGalleryTitle = (title: string): void => {
+    formData.value.title = title
+    if (galleryAiSuggestion.value?.titles.length) {
+        galleryAiSuggestion.value.titles = galleryAiSuggestion.value.titles.filter(item => item !== title)
+    }
+    if (!galleryAiSuggestion.value?.titles.length) {
+        galleryAiSuggestion.value = null
+    }
+}
+
+const applyGallerySummary = (): void => {
+    const suggestion = galleryAiSuggestion.value
+    if (!suggestion?.summary) return
+    formData.value.introduce = suggestion.summary
+    suggestion.summary = ''
+}
+
+const applyGalleryLabels = (): void => {
+    const suggestion = galleryAiSuggestion.value
+    if (!suggestion) return
+    const remaining: string[] = []
+    for (const label of suggestion.labels) {
+        if (formData.value.label.length >= 3) {
+            remaining.push(label)
+        } else if (!formData.value.label.includes(label)) {
+            formData.value.label.push(label)
+            labelArr.value = labelArr.value.filter(item => item !== label)
+        } else if (!remaining.includes(label)) {
+            remaining.push(label)
+        }
+    }
+    suggestion.labels = remaining
+    if (!suggestion.summary && !suggestion.labels.length && !suggestion.titles.length) {
+        galleryAiSuggestion.value = null
+    }
+}
+
+const dismissGalleryCuration = (): void => {
+    galleryAiSuggestion.value = null
 }
 // 每次上传前换取一次性票据：URL 里流通的是 5 分钟失效的短期票据，
 // 不再是长期有效的登录 token（避免进入访问日志与浏览器历史）
@@ -636,6 +767,10 @@ onMounted(() => {
         margin-bottom: @space-m;
     }
 
+    .forms-ai-theme {
+        width: min(360px, 100%);
+    }
+
     .forms-ai-error {
         margin-top: @space-s;
         color: #d84a3a;
@@ -668,6 +803,46 @@ onMounted(() => {
         &-actions {
             margin-top: @space-m;
         }
+    }
+
+    .forms-ai-degraded {
+        margin: 0 0 @space-s;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: color-mix(in srgb, #d98716 12%, transparent);
+        color: #a86a10;
+        font-size: @size-s;
+        line-height: 1.5;
+    }
+
+    .forms-gallery-curation {
+        display: flex;
+        flex-direction: column;
+        gap: @space-s;
+    }
+
+    .forms-gallery-curation-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: @space-m;
+        padding: @space-s;
+        border: 1px solid var(--admin-line, @line-color-s);
+        border-radius: 6px;
+        background: var(--admin-card, transparent);
+
+        &.is-column {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+    }
+
+    .forms-gallery-curation-text {
+        margin: 0;
+        color: @font-color-m;
+        font-size: @size-m;
+        line-height: 1.6;
+        word-break: break-word;
     }
 </style>
 <style lang="less">

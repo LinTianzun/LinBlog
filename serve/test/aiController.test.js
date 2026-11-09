@@ -109,6 +109,47 @@ test('ai suggest degrades to 503 when the provider fails', async () => {
     }
 })
 
+test('ai gallery curation requires a source before calling the provider', async () => {
+    const res = createRes()
+    await aiController.suggestGalleryCuration(
+        { body: { title: '', introduce: ' ', theme: '' }, user: { userId: 1 }, aiModel: TEST_AI_MODEL },
+        res
+    )
+    assert.equal(res.statusCode, 400)
+    assert.match(res.body.message, /标题、简介或补充主题/)
+})
+
+test('ai gallery curation returns only confirmed suggestions', async () => {
+    const originalSuggest = aiClient.suggestGalleryCuration
+    let received = null
+    aiClient.suggestGalleryCuration = async (payload) => {
+        received = payload
+        return {
+            titles: ['海边晨光', '潮汐留下的路', '风把云吹慢了'],
+            summary: '一组清晨海岸线照片，适合在安静的早晨浏览。',
+            labels: ['海岸', '晨光'],
+            modelUsed: { id: 1, name: '智谱', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    try {
+        const res = createRes()
+        await aiController.suggestGalleryCuration(
+            {
+                body: { title: '海边', introduce: '海边照片', theme: '清晨', photoCount: 6 },
+                user: { userId: 7 },
+                aiModel: TEST_AI_MODEL
+            },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(res.body.data.titles, ['海边晨光', '潮汐留下的路', '风把云吹慢了'])
+        assert.equal(received.photoCount, 6)
+        assert.equal(received.aiConfig.model, 'glm-4-flash')
+    } finally {
+        aiClient.suggestGalleryCuration = originalSuggest
+    }
+})
+
 test('ai writing rejects unknown actions and empty text before calling the provider', async () => {
     const res1 = createRes()
     await aiController.rewriteArticleText(

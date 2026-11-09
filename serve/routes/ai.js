@@ -14,6 +14,14 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiController.suggestArticleMeta
     )
+    // AI 图库策展：候选标题、简介与标签只做建议，作者逐项确认后才写入
+    app.post(
+        '/api/ai/gallery/curation',
+        authMiddleware,
+        aiQuota('gallery'),
+        aiSuggestLimit,
+        aiController.suggestGalleryCuration
+    )
     // AI 写作辅助：结果只作为候选文本展示，作者确认后才写入编辑器
     app.post(
         '/api/ai/writing',

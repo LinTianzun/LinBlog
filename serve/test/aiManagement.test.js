@@ -675,6 +675,45 @@ test('写作建议在首选模型故障时自动切换到备用模型', async ()
     }
 })
 
+test('图库策展建议在首选模型故障时自动切换到备用模型', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'primary-model') {
+            return new Response('{}', { status: 500 })
+        }
+        return new Response(JSON.stringify({
+            choices: [{
+                message: {
+                    content: '{"titles":["备用标题"],"summary":"备用简介","labels":["备用"]}'
+                }
+            }]
+        }), { status: 200 })
+    }
+    try {
+        const result = await aiClient.suggestGalleryCuration({
+            title: '图库',
+            introduce: '简介',
+            theme: '黄昏',
+            photoCount: 5,
+            aiConfig: { id: 1, name: '首选模型', model: 'primary-model', baseUrl: 'https://a.test/v1', apiKey: 'k' },
+            chainFn: async () => ([
+                { id: 2, name: '备用模型', model: 'backup-model', baseUrl: 'https://b.test/v1', apiKey: 'k', timeoutMs: 5000 }
+            ])
+        })
+
+        assert.deepEqual(attempted, ['primary-model', 'backup-model'])
+        assert.deepEqual(result.titles, ['备用标题'])
+        assert.equal(result.summary, '备用简介')
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
+})
+
 test('连通性测试失败时记录连续失败与错误原因', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth

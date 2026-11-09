@@ -152,6 +152,77 @@ async function suggestArticleMeta(req, res) {
 }
 
 /**
+ * AI 图库策展：基于当前标题、简介、照片数量与作者补充主题生成候选信息。
+ * 返回的标题、简介与标签都只作为建议，作者逐项采用后走正常保存流程。
+ */
+async function suggestGalleryCuration(req, res) {
+    if (!req.aiModel) {
+        return res.status(503).json({
+            code: 503,
+            message: 'AI 功能未配置，请先在 AI 管理中启用接入模型'
+        })
+    }
+
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : ''
+    const introduce = typeof req.body?.introduce === 'string' ? req.body.introduce.trim() : ''
+    const theme = typeof req.body?.theme === 'string' ? req.body.theme.trim() : ''
+    const photoCount = Number(req.body?.photoCount)
+    const validPhotoCount = Number.isInteger(photoCount) && photoCount >= 0 && photoCount <= 20 ? photoCount : 0
+    if (!title && !introduce && !theme) {
+        return res.status(400).json({
+            code: 400,
+            message: '请先填写标题、简介或补充主题，再获取 AI 策展建议'
+        })
+    }
+
+    try {
+        const startedAt = Date.now()
+        const suggestion = await aiClient.suggestGalleryCuration({
+            title,
+            introduce,
+            theme,
+            photoCount: validPhotoCount,
+            aiConfig: req.aiModel
+        })
+        await recordAiCall({
+            req,
+            feature: 'gallery',
+            modelName: suggestion.modelUsed?.model || req.aiModel.model,
+            modelId: suggestion.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: suggestion.modelUsed?.degraded
+                ? `生成图库策展建议（默认模型不可用，已降级到「${suggestion.modelUsed.name}」）`
+                : '生成图库策展建议',
+            durationMs: Date.now() - startedAt,
+            usage: suggestion.usage,
+            outputChars: suggestion.titles.join('').length
+                + suggestion.summary.length
+                + suggestion.labels.join('').length
+        })
+        return res.json({
+            code: 200,
+            message: 'AI 策展建议已生成，请确认后再填充',
+            data: {
+                titles: suggestion.titles,
+                summary: suggestion.summary,
+                labels: suggestion.labels,
+                degraded: Boolean(suggestion.modelUsed?.degraded),
+                modelName: suggestion.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_PARSE_ERROR') {
+            return res.status(503).json({ code: 503, message: 'AI 没有返回可用的策展建议，请稍后重试' })
+        }
+        console.error('[AI] 生成图库策展建议失败：', err?.message || err)
+        return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
+    }
+}
+
+/**
  * AI 写作辅助：按需生成润色/精简/扩写/续写文本，返回给前端确认后再写入编辑器。
  */
 async function rewriteArticleText(req, res) {
@@ -320,6 +391,7 @@ async function confirmCover(req, res) {
 
 module.exports = {
     suggestArticleMeta,
+    suggestGalleryCuration,
     rewriteArticleText,
     generateCover,
     confirmCover,

@@ -216,6 +216,48 @@ test('图库 AI 配图在作者确认后加入瀑布流', async ({ page }) => {
     .toHaveAttribute('src', /\/api\/uploads\/ai-e2e-cover\.png/)
 })
 
+test('图库 AI 策展只展示建议，作者逐项确认后填充', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['gallery.create', 'gallery.manageAll', 'gallery.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/editgallery')
+  await expect(page.locator('.edit_photo-uploader')).toBeVisible({ timeout: 30_000 })
+  await page.locator('.forms-title').fill('海边照片')
+  await page.locator('.forms-intro textarea').fill('一组海边照片')
+  await page.locator('.forms-ai-theme input').fill('清晨海岸')
+
+  await page.getByRole('button', { name: 'AI 策展建议' }).click()
+  const suggestion = page.locator('.forms-ai-suggestion')
+  await expect(suggestion).toBeVisible()
+  await expect(suggestion).toContainText('AI 策展的图库简介内容。')
+  await expect(page.locator('.forms-title')).toHaveValue('海边照片')
+  await expect(page.locator('.forms-intro textarea')).toHaveValue('一组海边照片')
+  await expect(page.locator('.forms-tags .tag')).toHaveCount(0)
+
+  await suggestion.getByRole('button', { name: '采用标题' }).first().click()
+  await expect(page.locator('.forms-title')).toHaveValue('海岸清晨的慢光')
+  await expect(suggestion).toBeVisible()
+  // 未采用的候选标题继续保留，作者还能改选
+  await expect(suggestion.getByRole('button', { name: '采用标题' })).toHaveCount(2)
+
+  await suggestion.getByRole('button', { name: '采用简介' }).click()
+  await expect(page.locator('.forms-intro textarea')).toHaveValue('AI 策展的图库简介内容。')
+
+  await suggestion.getByRole('button', { name: '补充标签' }).click()
+  await expect(page.locator('.forms-tags .tag')).toHaveCount(2)
+  await expect(page.locator('.forms-tags')).toContainText('海岸')
+
+  await suggestion.getByRole('button', { name: '忽略' }).click()
+  await expect(page.locator('.forms-ai-suggestion')).toHaveCount(0)
+  await expect(page.locator('.forms-title')).toHaveValue('海岸清晨的慢光')
+})
+
 test('没有 ai.use 权限时编辑器不出现 AI 入口', async ({ page }) => {
   await seedSession(page, {
     id: 5,

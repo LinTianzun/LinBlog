@@ -9,6 +9,14 @@ export interface AiSuggestion {
   modelName?: string;
 }
 
+export interface AiGalleryCurationSuggestion {
+  titles: string[];
+  summary: string;
+  labels: string[];
+  degraded?: boolean;
+  modelName?: string;
+}
+
 export type AiWritingAction = "polish" | "shorten" | "expand" | "continue";
 
 export interface AiWritingSuggestion {
@@ -167,6 +175,16 @@ export function suggestArticleMeta(params: {
   content: string;
 }) {
   return request.post<ApiResult<AiSuggestion>>("/ai/suggest", params);
+}
+
+// AI 图库策展：返回候选标题、简介与标签，作者确认后才会填充图库表单
+export function suggestGalleryCuration(params: {
+  title?: string;
+  introduce?: string;
+  theme?: string;
+  photoCount?: number;
+}) {
+  return request.post<ApiResult<AiGalleryCurationSuggestion>>("/ai/gallery/curation", params);
 }
 
 export function rewriteArticleText(params: {

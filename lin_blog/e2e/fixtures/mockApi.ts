@@ -304,6 +304,15 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'POST' && path === '/api/ai/gallery/curation') {
+      await fulfill({
+        titles: ['海岸清晨的慢光', '潮水留给沙滩的痕迹', '风把晨雾吹开'],
+        summary: 'AI 策展的图库简介内容。',
+        labels: ['海岸', '清晨'],
+      }, { message: 'AI 策展建议已生成，请确认后再填充' })
+      return
+    }
+
     if (method === 'POST' && path === '/api/ai/writing') {
       const action = body?.action === 'continue' ? 'continue' : 'polish'
       await fulfill({

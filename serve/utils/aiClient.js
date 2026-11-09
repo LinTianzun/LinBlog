@@ -12,6 +12,8 @@ const MAX_LABELS = 5
 const WRITING_ACTIONS = new Set(['polish', 'shorten', 'expand', 'continue'])
 const MAX_COVER_IMAGE_BYTES = 8 * 1024 * 1024
 const COVER_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const MAX_GALLERY_TITLE_CHARS = 100
+const MAX_GALLERY_INTRO_CHARS = 300
 
 async function getActiveAiConfig() {
     const dbModel = await aiModel.getActiveModelConfig()
@@ -213,6 +215,40 @@ function parseSuggestionPayload(raw) {
         summary: summary.slice(0, MAX_SUMMARY_CHARS),
         labels
     }
+}
+
+function buildGalleryCurationPrompt({ title, introduce, theme, photoCount }) {
+    return [
+        '你是一名中文摄影图库策展编辑。请根据当前图库信息和作者补充主题，给出候选元信息。',
+        '要求：',
+        '1. 给出 3 个候选标题，每个不超过 24 字，风格一致但表达角度不同；',
+        '2. 给出一段不超过 160 字的策展简介，说明画面氛围、主题与适合的浏览情境；',
+        '3. 给出 2-4 个简短标签，不要编造照片中无法判断的事实；',
+        '4. 只输出一个 JSON 对象，格式为 {"titles":["..."],"summary":"...","labels":["..."]}，不要输出解释或 Markdown 代码块。',
+        '',
+        `当前标题：${title || '未填写'}`,
+        `当前简介：${introduce || '未填写'}`,
+        `作者补充主题：${theme || '未填写'}`,
+        `照片数量：${photoCount}`
+    ].join('\n')
+}
+
+function parseGalleryCurationPayload(raw) {
+    const parsed = extractJsonBlock(String(raw || ''))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw Object.assign(new Error('模型输出不是合法的 JSON 建议'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    const titles = normalizeLabels(parsed.titles)
+        .slice(0, 3)
+        .map(label => label.slice(0, MAX_GALLERY_TITLE_CHARS))
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, MAX_GALLERY_INTRO_CHARS) : ''
+    const labels = normalizeLabels(parsed.labels)
+    if (titles.length === 0 || !summary || labels.length === 0) {
+        throw Object.assign(new Error('模型建议缺少标题、简介或标签'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { titles, summary, labels }
 }
 
 async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 } = {}) {
@@ -433,6 +469,26 @@ async function suggestArticleMeta({ title, content, aiConfig, chainFn = null }) 
 }
 
 /**
+ * 生成摄影图库的策展建议。标题、简介与标签都只是候选，作者逐项确认后才写入。
+ */
+async function suggestGalleryCuration({ title = '', introduce = '', theme = '', photoCount = 0, aiConfig, chainFn = null }) {
+    if (!aiConfig) throw notConfiguredError()
+
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const prompt = buildGalleryCurationPrompt({
+        title: htmlToText(title).slice(0, 100),
+        introduce: htmlToText(introduce).slice(0, 300),
+        theme: textToPlainText(theme).slice(0, 300),
+        photoCount
+    })
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true })
+        const parsed = parseGalleryCurationPayload(raw.text)
+        return { ...parsed, usage: raw.usage }
+    })
+}
+
+/**
  * 生成润色/精简/扩写/续写结果。只返回建议文本，替换仍由作者确认。
  */
 async function rewriteText({ action, text, title = '', aiConfig, chainFn = null }) {
@@ -572,6 +628,7 @@ module.exports = {
     runWithFallback,
     isRetryableModelError,
     suggestArticleMeta,
+    suggestGalleryCuration,
     rewriteText,
     generateCoverImage,
     answerFromPublishedContent,
@@ -580,6 +637,8 @@ module.exports = {
     isValidCoverToken,
     buildCoverPrompt,
     parseSuggestionPayload,
+    buildGalleryCurationPrompt,
+    parseGalleryCurationPayload,
     buildSuggestionPrompt,
     buildWritingPrompt,
     normalizeWritingText,
