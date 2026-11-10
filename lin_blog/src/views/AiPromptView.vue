@@ -100,6 +100,28 @@
 
                             <div class="ai-prompt-preview-field">
                                 <span class="ai-prompt-label">
+                                    AI 辅助
+                                    <em class="ai-prompt-label-tip">先生成候选，确认后才会应用</em>
+                                </span>
+                                <div class="ai-prompt-assist-row">
+                                    <input v-model.trim="assistRequirement" type="text"
+                                        class="ai-prompt-assist-input" :disabled="previewing || assisting"
+                                        placeholder="例如：更简洁、强调 JSON 输出；新建时可填写主题"
+                                        @keydown.enter.prevent="assistTemplate(draft.content.trim() ? 'optimize' : 'create')" />
+                                    <yk-button type="secondary" :loading="assisting && assistAction === 'optimize'"
+                                        :disabled="previewing || !draft.content.trim()" @click="assistTemplate('optimize')">
+                                        AI 优化
+                                    </yk-button>
+                                    <yk-button type="primary" :loading="assisting && assistAction === 'create'"
+                                        :disabled="previewing" @click="assistTemplate('create')">
+                                        AI 帮我写
+                                    </yk-button>
+                                </div>
+                                <span class="ai-prompt-tip">{{ assistTip }}</span>
+                            </div>
+
+                            <div class="ai-prompt-preview-field">
+                                <span class="ai-prompt-label">
                                     示例变量
                                     <em class="ai-prompt-label-tip">可用变量：{{ draftVariables }}</em>
                                 </span>
@@ -109,7 +131,9 @@
 
                             <!-- 操作按钮固定在输入区底部，始终可见 -->
                             <div class="ai-prompt-preview-actions">
-                                <yk-button type="primary" :loading="previewing" @click="startPreview">开始试跑</yk-button>
+                                <yk-button type="primary" :loading="previewing" @click="startPreview">
+                                    {{ previewing ? '试跑中...' : '开始试跑' }}
+                                </yk-button>
                                 <yk-button type="secondary" :disabled="previewing" @click="resetDraft">重置示例</yk-button>
                                 <yk-button v-if="draft.key && draftTemplate" type="primary"
                                     :disabled="previewing || isActiveKey(draft.key)"
@@ -120,7 +144,7 @@
                         </div>
 
                         <!-- 右侧结果：整块留给模型输出，试跑前后位置与高度都不变 -->
-                        <section class="ai-prompt-result-panel" aria-label="试跑结果">
+                        <section class="ai-prompt-result-panel" aria-label="试跑结果" :aria-busy="previewing">
                             <header class="ai-prompt-result-head">
                                 <span class="ai-prompt-label">试跑结果</span>
                                 <div v-if="previewResult" class="ai-prompt-result-meta">
@@ -133,7 +157,46 @@
                             <div v-if="previewError" class="ai-banner is-error">{{ previewError }}</div>
                             <div v-else-if="previewNotice" class="ai-banner is-success">{{ previewNotice }}</div>
 
-                            <div v-if="previewResult?.kind === 'image'" class="ai-prompt-result">
+                            <div v-if="previewing" class="ai-prompt-result is-loading" aria-live="polite">
+                                <div class="ai-prompt-progress">
+                                    <span class="ai-prompt-progress-bar" />
+                                </div>
+                                <strong>{{ draft.mode === 'image' ? '正在生成图片' : '正在生成文字' }}</strong>
+                                <p>{{ draft.mode === 'image' ? '通常需要 10–60 秒，可以先继续编辑，完成后结果会显示在这里。' : '正在调用模型，完成后结果会显示在这里。' }}</p>
+                                <span class="ai-prompt-progress-time">已等待 {{ previewElapsed }} 秒</span>
+                            </div>
+
+                            <div v-if="assisting" class="ai-prompt-result is-loading" aria-live="polite">
+                                <div class="ai-prompt-progress">
+                                    <span class="ai-prompt-progress-bar" />
+                                </div>
+                                <strong>正在生成候选提示词</strong>
+                                <p>AI 会基于所选功能和当前内容生成候选，已等待 {{ assistElapsed }} 秒。</p>
+                            </div>
+
+                            <div v-else-if="assistCandidate" class="ai-prompt-result is-candidate">
+                                <header class="ai-prompt-candidate-head">
+                                    <div class="ai-prompt-candidate-title">
+                                        <strong>候选提示词</strong>
+                                        <span>{{ assistCandidate.summary || '请检查变量和输出约束' }}</span>
+                                    </div>
+                                    <div class="ai-prompt-candidate-actions">
+                                        <yk-button size="s" type="primary" :disabled="previewing" @click="applyAssistantCandidate">
+                                            应用到输入框
+                                        </yk-button>
+                                        <yk-button size="s" type="secondary" @click="clearAssistantCandidate">
+                                            忽略
+                                        </yk-button>
+                                    </div>
+                                </header>
+                                <pre class="ai-prompt-candidate-content">{{ assistCandidate.content }}</pre>
+                                <p class="ai-prompt-candidate-meta">
+                                    {{ assistCandidate.modelName || '当前模型' }}
+                                    <span v-if="assistCandidate.degraded"> · 已自动降级</span>
+                                </p>
+                            </div>
+
+                            <div v-if="!assisting && !assistCandidate && previewResult?.kind === 'image'" class="ai-prompt-result">
                                 <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
                                 <div class="ai-prompt-result-toolbar">
                                     <yk-button type="secondary" :disabled="savingPreview || !previewResult.token"
@@ -142,8 +205,8 @@
                                     </yk-button>
                                 </div>
                             </div>
-                            <pre v-else-if="previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
-                            <div v-else class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
+                            <pre v-else-if="!assisting && !assistCandidate && previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
+                            <div v-else-if="!assisting && !assistCandidate" class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
                         </section>
                     </div>
                 </aside>
@@ -196,7 +259,7 @@
 </template>
 
 <script lang="ts" setup>
-    import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
+    import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
     import TopTitle from '../components/bar/TopTitle.vue'
     import SelectField from '../components/common/SelectField.vue'
     import {
@@ -208,6 +271,7 @@
         selectAiPromptTemplate,
         updateAiPromptTemplate,
         previewAiPromptTemplate,
+        assistAiPromptTemplate,
         saveAiPreviewImage,
         type AiPromptPreviewResult,
         type AiPromptTemplate,
@@ -243,10 +307,32 @@
     const templates = ref<AiPromptTemplate[]>([])
     const bindings = ref<Record<string, string>>({})
     const previewing = ref(false)
+    const previewElapsed = ref(0)
     const savingPreview = ref(false)
     const previewError = ref('')
     const previewNotice = ref('')
     const previewResult = ref<AiPromptPreviewResult | null>(null)
+    const assisting = ref(false)
+    const assistAction = ref<'optimize' | 'create' | ''>('')
+    const assistElapsed = ref(0)
+    const assistRequirement = ref('')
+    const assistCandidate = ref<AiPromptAssistantResult | null>(null)
+    let previewTimer: ReturnType<typeof setInterval> | null = null
+    let assistTimer: ReturnType<typeof setInterval> | null = null
+
+    const stopPreviewTimer = (): void => {
+        if (previewTimer) {
+            clearInterval(previewTimer)
+            previewTimer = null
+        }
+    }
+
+    const stopAssistTimer = (): void => {
+        if (assistTimer) {
+            clearInterval(assistTimer)
+            assistTimer = null
+        }
+    }
 
     const modalVisible = ref(false)
     const editingKey = ref('')
@@ -323,6 +409,9 @@
     const previewModeTip = computed(() => draft.mode === 'image'
         ? '用图片模型生成一张示例图，适合验证配图类提示词'
         : '用对话模型生成一段文字，适合验证写作类提示词')
+
+    const assistTip = computed(() =>
+        'AI 优化会保留所属功能可用变量；AI 帮我写会按需求新建候选，均不会自动覆盖当前内容')
 
     const draftTemplate = computed(() => templates.value.find(item => item.key === draft.key) || null)
 
@@ -428,6 +517,11 @@
         previewError.value = ''
         previewNotice.value = ''
         previewResult.value = null
+        previewElapsed.value = 0
+        stopPreviewTimer()
+        previewTimer = setInterval(() => {
+            previewElapsed.value += 1
+        }, 1000)
         try {
             const result = await previewAiPromptTemplate({
                 featureKey: draft.featureKey,
@@ -442,7 +536,59 @@
             previewError.value = getRequestErrorMessage(error, '提示词试跑失败，请稍后重试')
         } finally {
             previewing.value = false
+            stopPreviewTimer()
         }
+    }
+
+    const assistTemplate = async (task: 'optimize' | 'create'): Promise<void> => {
+        if (assisting.value || previewing.value) return
+        if (task === 'optimize' && !draft.content.trim()) {
+            previewError.value = '请先填写要优化的提示词内容'
+            return
+        }
+
+        assisting.value = true
+        assistAction.value = task
+        previewError.value = ''
+        previewNotice.value = ''
+        assistCandidate.value = null
+        assistElapsed.value = 0
+        stopAssistTimer()
+        assistTimer = setInterval(() => {
+            assistElapsed.value += 1
+        }, 1000)
+
+        try {
+            const result = await assistAiPromptTemplate({
+                task,
+                featureKey: draft.featureKey,
+                content: draft.content,
+                requirement: assistRequirement.value,
+                variables: parseVariablesText(draft.variablesText),
+            })
+            if (result.code !== 200) throw new Error(result.message || '提示词候选生成失败')
+            assistCandidate.value = result.data || null
+            if (!result.data) throw new Error('模型没有返回候选提示词')
+        } catch (error) {
+            previewError.value = getRequestErrorMessage(error, '提示词候选生成失败，请稍后重试')
+        } finally {
+            assisting.value = false
+            assistAction.value = ''
+            stopAssistTimer()
+        }
+    }
+
+    const applyAssistantCandidate = (): void => {
+        if (!assistCandidate.value?.content) return
+        draft.content = assistCandidate.value.content
+        draft.variablesText = buildVariablesText(assistCandidate.value.content)
+        previewResult.value = null
+        previewNotice.value = '候选提示词已应用，建议先试跑确认效果'
+    }
+
+    const clearAssistantCandidate = (): void => {
+        assistCandidate.value = null
+        previewNotice.value = ''
     }
 
     const savePreviewImage = async (): Promise<void> => {
@@ -474,6 +620,8 @@
         previewError.value = ''
         previewNotice.value = ''
         previewResult.value = null
+        assistCandidate.value = null
+        assistRequirement.value = ''
     }
 
     const resetDraft = (): void => {
@@ -486,6 +634,7 @@
         previewError.value = ''
         previewNotice.value = ''
         previewResult.value = null
+        assistCandidate.value = null
     }
 
     const openEdit = (item: AiPromptTemplate): void => {
@@ -615,6 +764,11 @@
 
     onMounted(() => {
         resetDraft()
+    })
+
+    onUnmounted(() => {
+        stopPreviewTimer()
+        stopAssistTimer()
     })
 </script>
 
@@ -920,6 +1074,41 @@
         flex: none;
     }
 
+    .ai-prompt-assist-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .ai-prompt-assist-input {
+        height: 40px;
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 0 12px;
+        border: 1px solid var(--admin-line-strong, var(--gray1));
+        border-radius: 8px;
+        background: var(--admin-surface, var(--bgColor1));
+        color: var(--gray);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease;
+
+        &::placeholder {
+            color: var(--admin-muted, var(--gray6));
+        }
+
+        &:focus {
+            border-color: var(--pcolor);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 14%, transparent);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+        }
+    }
+
     .ai-prompt-label-tip {
         margin-left: 8px;
         font-style: normal;
@@ -961,6 +1150,132 @@
             width: 100%;
             height: auto;
             border-radius: 8px;
+        }
+    }
+
+    .ai-prompt-result.is-loading {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 10px;
+        text-align: center;
+        border: 1px dashed color-mix(in srgb, var(--pcolor) 32%, transparent);
+        background: color-mix(in srgb, var(--pcolor) 5%, var(--admin-surface-soft, var(--bgColor2)));
+
+        strong {
+            color: var(--gray);
+            font-size: 15px;
+        }
+
+        p,
+        .ai-prompt-progress-time {
+            margin: 0;
+            color: var(--admin-muted, var(--gray6));
+            font-size: 12px;
+        }
+    }
+
+    .ai-prompt-result.is-candidate {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px dashed color-mix(in srgb, var(--pcolor) 30%, transparent);
+    }
+
+    .ai-prompt-candidate-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .ai-prompt-candidate-title {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+
+        strong {
+            color: var(--gray);
+            font-size: 14px;
+        }
+
+        span {
+            color: var(--admin-muted, var(--gray6));
+            font-size: 12px;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+    }
+
+    .ai-prompt-candidate-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: none;
+    }
+
+    .ai-prompt-candidate-content {
+        flex: 1;
+        min-height: 0;
+        margin: 0;
+        padding: 12px;
+        overflow: auto;
+        border-radius: 8px;
+        background: var(--admin-surface-soft, var(--bgColor2));
+        color: var(--gray);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.7;
+    }
+
+    .ai-prompt-candidate-meta {
+        margin: 0;
+        color: var(--admin-muted, var(--gray6));
+        font-size: 12px;
+    }
+
+    .ai-prompt-progress {
+        align-self: center;
+        width: min(360px, 78%);
+        height: 6px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--pcolor) 12%, transparent);
+    }
+
+    .ai-prompt-progress-bar {
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--pcolor);
+        animation: ai-prompt-progress-slide 1.4s ease-in-out infinite;
+    }
+
+    .ai-prompt-progress-time {
+        font-variant-numeric: tabular-nums;
+    }
+
+    @keyframes ai-prompt-progress-slide {
+        from {
+            transform: translateX(-110%);
+        }
+
+        to {
+            transform: translateX(260%);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .ai-prompt-progress-bar {
+            animation: none;
+            width: 100%;
+            opacity: 0.45;
         }
     }
 

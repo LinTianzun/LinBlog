@@ -11,6 +11,7 @@ const PROVIDER_HINTS = [
     { keyword: 'dashscope', label: '阿里云百炼' },
     { keyword: 'aliyun', label: '阿里云百炼' },
     { keyword: 'siliconflow', label: '硅基流动' },
+    { keyword: 'modelscope', label: '魔搭 ModelScope' },
     { keyword: 'volcengine', label: '火山方舟' },
     { keyword: 'ark.cn', label: '火山方舟' },
     { keyword: 'qianfan', label: '百度千帆' },

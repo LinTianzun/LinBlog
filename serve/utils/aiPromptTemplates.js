@@ -186,6 +186,43 @@ const DEFAULT_TEMPLATES = [
             '',
             `创作输入：{{input}}`
         ].join('\n')
+    },
+    {
+        key: 'prompt-assistant',
+        name: 'AI 提示词助手',
+        description: '根据现有模板与需求生成可直接保存的候选提示词',
+        variables: [
+            '{{task}} optimize=优化现有模板 / create=新建模板',
+            '{{featureName}} 所属功能中文名',
+            '{{featureKey}} 所属功能标识',
+            '{{variableList}} 可用变量清单',
+            '{{requirement}} 作者补充需求',
+            '{{currentContent}} 现有模板正文'
+        ].join('\n'),
+        content: [
+            '你是一名中文博客系统的 AI 提示词工程师，负责维护能被后端模板引擎渲染的提示词模板。',
+            '目标功能：{{featureName}}（{{featureKey}}）',
+            '任务：{{taskLabel}}',
+            '',
+            '必须遵守：',
+            '1. 只返回一个 JSON 对象，不要 Markdown 代码块或解释；',
+            '2. 返回字段固定为 {"content":"...","summary":"..."}；',
+            '3. content 是可直接保存的模板正文，控制在 20000 字符以内；',
+            '4. 只能使用「可用变量」中列出的变量名，占位符写成 {{variable}}，不要发明新变量；',
+            '5. 保留必要的输出格式约束，例如只输出 JSON、只输出正文、不要水印；',
+            '6. summary 用一句不超过 80 字的中文说明模板用途和改进点。',
+            '',
+            '可用变量：',
+            '{{variableList}}',
+            '',
+            '{{requirementTitle}}',
+            '{{requirement}}',
+            '',
+            '现有模板：',
+            '{{currentContent}}',
+            '',
+            '{{closingInstruction}}'
+        ].join('\n')
     }
 ]
 

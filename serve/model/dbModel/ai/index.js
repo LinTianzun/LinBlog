@@ -275,7 +275,10 @@ async function getModelConfigById(id) {
         chatModel: String(row.chat_model || ''),
         imageModel: String(row.image_model || ''),
         imageSize: String(row.image_size || '1344x768'),
-        timeoutMs: Number(row.timeout_ms) || 20000
+        timeoutMs: Number(row.timeout_ms) || 20000,
+        dailyLimitPerUser: Number(row.daily_limit_per_user) || 0,
+        monthlyLimitPerUser: Number(row.monthly_limit_per_user) || 0,
+        enabled: Number(row.enabled) === 1
     }
 }
 
@@ -768,7 +771,9 @@ async function getSettings() {
             monthlyLimitPerUser: 100,
             superAdminUnlimited: true,
             removeWatermark: true,
-            watermarkMode: 'crop'
+            watermarkMode: 'crop',
+            chatModelId: null,
+            imageModelId: null
         }
     }
 
@@ -778,7 +783,9 @@ async function getSettings() {
         monthlyLimitPerUser: Number(row.monthly_limit_per_user),
         superAdminUnlimited: Number(row.super_admin_unlimited) === 1,
         removeWatermark: Number(row.remove_watermark) === 1,
-        watermarkMode: String(row.watermark_mode || 'crop')
+        watermarkMode: String(row.watermark_mode || 'crop'),
+        chatModelId: row.chat_model_id == null ? null : Number(row.chat_model_id),
+        imageModelId: row.image_model_id == null ? null : Number(row.image_model_id)
     }
 }
 
@@ -786,22 +793,26 @@ async function updateSettings(payload) {
     await query(
         `INSERT INTO ai_setting
             (id, quota_enabled, daily_limit_per_user, monthly_limit_per_user, super_admin_unlimited,
-             remove_watermark, watermark_mode)
-         VALUES (1, ?, ?, ?, ?, ?, ?)
+             remove_watermark, watermark_mode, chat_model_id, image_model_id)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
             quota_enabled = VALUES(quota_enabled),
             daily_limit_per_user = VALUES(daily_limit_per_user),
             monthly_limit_per_user = VALUES(monthly_limit_per_user),
             super_admin_unlimited = VALUES(super_admin_unlimited),
             remove_watermark = VALUES(remove_watermark),
-            watermark_mode = VALUES(watermark_mode)`,
+            watermark_mode = VALUES(watermark_mode),
+            chat_model_id = VALUES(chat_model_id),
+            image_model_id = VALUES(image_model_id)`,
         [
             payload.quotaEnabled ? 1 : 0,
             payload.dailyLimitPerUser,
             payload.monthlyLimitPerUser,
             payload.superAdminUnlimited ? 1 : 0,
             payload.removeWatermark ? 1 : 0,
-            payload.watermarkMode
+            payload.watermarkMode,
+            payload.chatModelId || null,
+            payload.imageModelId || null
         ]
     )
     return getSettings()

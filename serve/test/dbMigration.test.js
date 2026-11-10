@@ -42,7 +42,9 @@ const ALL_MIGRATIONS = [
     '20261116_ai_prompt_template',
     '20261117_ai_prompt_custom',
     '20261118_ai_prompt_seed',
-    '20261119_ai_image_process'
+    '20261119_ai_image_process',
+    '20261120_ai_task_routing',
+    '20261121_ai_prompt_assistant_seed'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -743,6 +745,30 @@ test('ai prompt seed migration backfills newly added built-in templates', async 
     ))
 })
 
+test('ai prompt assistant migration seeds its built-in template', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261121_ai_prompt_assistant_seed')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    const inserts = calls.filter(call => call.sql.includes('INSERT INTO ai_prompt_template'))
+    assert.equal(inserts.length, 1)
+    assert.equal(inserts[0].values[0], 'prompt-assistant')
+    assert.ok(inserts[0].sql.includes('ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)'))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261121_ai_prompt_assistant_seed'
+    ))
+})
+
 test('ai image process migration adds the watermark policy columns', async () => {
     const calls = []
     const exec = async (sql, values = []) => {
@@ -773,5 +799,26 @@ test('ai image process migration adds the watermark policy columns', async () =>
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261119_ai_image_process'
+    ))
+})
+
+test('ai task routing migration adds text and image model columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261120_ai_task_routing')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call => call.sql.includes('ADD COLUMN chat_model_id')))
+    assert.ok(calls.some(call => call.sql.includes('ADD COLUMN image_model_id')))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261120_ai_task_routing'
     ))
 })

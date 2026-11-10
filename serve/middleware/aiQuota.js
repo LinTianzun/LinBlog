@@ -17,7 +17,13 @@ function aiQuota(feature) {
         }
 
         try {
-            const activeModel = await aiClient.getActiveAiConfig()
+            // 配图类任务走「配图模型」，其余走「文本模型」；
+            // 提示词试跑由请求体显式决定出文字还是出图片。
+            const purpose = (feature === 'cover'
+                || (feature === 'prompt-preview' && req.body?.mode === 'image'))
+                ? 'image'
+                : 'chat'
+            const activeModel = await aiClient.getActiveAiConfig({ purpose })
             if (!activeModel) {
                 return res.status(503).json({
                     code: 503,

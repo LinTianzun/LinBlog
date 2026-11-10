@@ -100,6 +100,15 @@ module.exports = (app) => {
         aiSuggestLimit,
         aiManageController.previewPromptTemplate
     )
+    // AI 提示词助手：生成候选模板，不自动保存；调用计入 AI 次数与系统日志
+    app.post(
+        '/api/ai/prompts/assist',
+        authMiddleware,
+        requirePermission('ai.manage'),
+        aiQuota('prompt-assistant'),
+        aiSuggestLimit,
+        aiManageController.assistPromptTemplate
+    )
     // 试跑满意后保存候选图：只落素材库，不再调用模型，因此不计 AI 次数
     app.post(
         '/api/ai/prompts/preview/save',

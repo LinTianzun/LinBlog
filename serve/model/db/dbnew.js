@@ -522,6 +522,8 @@ const tablesSql = {
     super_admin_unlimited TINYINT(1) NOT NULL DEFAULT 1 COMMENT '超级管理员是否不限次数',
     remove_watermark TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否去除服务商成图右下角的 AI 生成标识',
     watermark_mode VARCHAR(16) NOT NULL DEFAULT 'crop' COMMENT '去除方式：crop 裁掉角落 / crop-resize 裁剪后缩放回原尺寸',
+    chat_model_id INT UNSIGNED NULL COMMENT '文本任务指定模型（空时跟随默认模型）',
+    image_model_id INT UNSIGNED NULL COMMENT '配图任务指定模型（空时跟随默认模型）',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 策略';`
@@ -740,6 +742,20 @@ async function ensureAiImageProcessSchema(exec = query) {
   });
 }
 
+// AI 文图分工：文本功能与配图功能可以各自指向不同模型。
+// 字段为空时回退到默认模型，保证存量配置行为不变。
+async function ensureAiTaskRoutingSchema(exec = query) {
+  await exec(tablesSql.ai_setting);
+  await ensureColumn(exec, 'ai_setting', 'chat_model_id', {
+    definition: 'INT UNSIGNED NULL',
+    comment: '文本任务指定模型（空时跟随默认模型）'
+  });
+  await ensureColumn(exec, 'ai_setting', 'image_model_id', {
+    definition: 'INT UNSIGNED NULL',
+    comment: '配图任务指定模型（空时跟随默认模型）'
+  });
+}
+
 // AI 环境变量迁移：把 .env 里的密钥转成后台可管理的模型记录。
 // 密钥此前只存在 .env 里，管理员在「AI 管理」页面既看不到也改不了；
 // 导入后可在页面里查看掩码、轮换密钥或切换模型（入库前用 AES-256-GCM 加密）。
@@ -941,6 +957,28 @@ async function ensureAiPromptSeedSchema(exec = query) {
       [item.key, item.key, item.name, item.description, item.content, item.variables]
     );
   }
+}
+
+// AI 提示词助手模板：新增内置提示词后给存量库补齐，不覆盖作者改过的内容。
+async function ensureAiPromptAssistantSeedSchema(exec = query) {
+  await exec(tablesSql.ai_prompt_template);
+  await ensureColumn(exec, 'ai_prompt_template', 'feature_key', {
+    definition: "VARCHAR(64) NOT NULL DEFAULT ''",
+    comment: '所属功能标识（内置模板与 template_key 相同）'
+  });
+  await exec(tablesSql.ai_prompt_binding);
+
+  const { getDefaultTemplate } = require('../../utils/aiPromptTemplates');
+  const item = getDefaultTemplate('prompt-assistant');
+  if (!item) return;
+
+  await exec(
+    `INSERT INTO ai_prompt_template
+       (template_key, feature_key, name, description, content, variables, enabled, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+     ON DUPLICATE KEY UPDATE template_key = VALUES(template_key)`,
+    [item.key, item.key, item.name, item.description, item.content, item.variables]
+  );
 }
 
 // -------------------------- 显式、事务化演示数据 --------------------------
@@ -2402,6 +2440,14 @@ const migrations = [
   {
     version: '20261119_ai_image_process',
     up: ensureAiImageProcessSchema
+  },
+  {
+    version: '20261120_ai_task_routing',
+    up: ensureAiTaskRoutingSchema
+  },
+  {
+    version: '20261121_ai_prompt_assistant_seed',
+    up: ensureAiPromptAssistantSeedSchema
   }
 ];
 

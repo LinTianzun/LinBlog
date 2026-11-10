@@ -10,6 +10,13 @@ function toInt(value, fallback = 0) {
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
+function toOptionalId(value, fallback = null) {
+    if (value === undefined) return fallback ?? null
+    if (value === null || value === '') return null
+    const parsed = Number.parseInt(String(value), 10)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 function normalizeModelPayload(body = {}) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : ''
@@ -441,6 +448,95 @@ async function savePreviewImage(req, res) {
 }
 
 /**
+ * 提示词助手：AI 优化当前模板或根据需求生成候选模板。
+ * 这是真实模型调用，走同一套配额；结果只作为候选展示，作者确认后才会写入。
+ */
+async function assistPromptTemplate(req, res) {
+    const startedAt = Date.now()
+    const task = typeof req.body?.task === 'string' ? req.body.task.trim() : 'optimize'
+    const featureKey = typeof req.body?.featureKey === 'string' ? req.body.featureKey.trim() : ''
+    const content = typeof req.body?.content === 'string' ? req.body.content : ''
+    const requirement = typeof req.body?.requirement === 'string' ? req.body.requirement.trim() : ''
+
+    if (!['create', 'optimize'].includes(task)) {
+        return res.status(400).json({ code: 400, message: '不支持的提示词助手任务' })
+    }
+    if (!featureKey) {
+        return res.status(400).json({ code: 400, message: '请选择提示词所属功能' })
+    }
+    if (task === 'optimize' && !content.trim()) {
+        return res.status(400).json({ code: 400, message: '请先填写要优化的提示词内容' })
+    }
+    if (content.length > 20000) {
+        return res.status(400).json({ code: 400, message: '提示词内容过长' })
+    }
+    if (requirement.length > 4000) {
+        return res.status(400).json({ code: 400, message: '需求说明过长' })
+    }
+
+    const safeVariables = {}
+    if (req.body?.variables && typeof req.body.variables === 'object' && !Array.isArray(req.body.variables)) {
+        for (const [name, value] of Object.entries(req.body.variables)) {
+            if (/^\w+$/.test(name)) safeVariables[name] = String(value ?? '').slice(0, 4000)
+        }
+    }
+
+    try {
+        const result = await aiClient.assistPromptTemplate({
+            task,
+            featureKey,
+            content,
+            requirement,
+            variables: safeVariables,
+            aiConfig: req.aiModel,
+            userId: req.user?.userId ?? null
+        })
+        await recordAiCall({
+            req,
+            feature: 'prompt-assistant',
+            modelName: result.modelUsed?.model || req.aiModel.model,
+            modelId: result.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: result.modelUsed?.degraded
+                ? `AI 提示词助手（默认模型不可用，已降级到「${result.modelUsed.name}」）`
+                : (task === 'create' ? 'AI 新建提示词候选' : 'AI 优化提示词候选'),
+            durationMs: Date.now() - startedAt,
+            usage: result.usage,
+            outputChars: result.outputChars
+        })
+
+        return res.json({
+            code: 200,
+            message: '提示词候选已生成',
+            data: {
+                content: result.content,
+                summary: result.summary,
+                degraded: Boolean(result.modelUsed?.degraded),
+                modelName: result.modelUsed?.name || ''
+            }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_INVALID_PROMPT_FEATURE') {
+            return res.status(400).json({ code: 400, message: '提示词所属功能不存在' })
+        }
+        console.error('[AI] 提示词助手失败：', err?.message || err)
+        await recordAiCall({
+            req,
+            feature: 'prompt-assistant',
+            modelName: req.aiModel?.model || null,
+            modelId: req.aiModel?.id ?? null,
+            status: 'failed',
+            detail: `AI 提示词助手失败：${err?.message || '未知错误'}`,
+            durationMs: Date.now() - startedAt
+        })
+        return res.status(503).json({ code: 503, message: err?.message || '提示词助手失败，请稍后重试' })
+    }
+}
+
+/**
  * 保存提示词模板：内置与自定义模板都走这里；
  * 变量清单跟随所属功能，自定义模板不许改变所属功能。
  */
@@ -572,19 +668,53 @@ async function updateSettings(req, res) {
     const superAdminUnlimited = req.body?.superAdminUnlimited !== false
     const removeWatermark = req.body?.removeWatermark !== false
     const watermarkMode = req.body?.watermarkMode === 'crop-resize' ? 'crop-resize' : 'crop'
+    let chatModelId = null
+    let imageModelId = null
 
     if (dailyLimitPerUser > 1000 || monthlyLimitPerUser > 10000) {
         return res.status(400).json({ code: 400, message: '次数上限超出允许范围' })
     }
 
     try {
+        let current = { chatModelId: null, imageModelId: null }
+        try {
+            current = await aiModel.getSettings()
+        } catch (err) {
+            // 读取旧策略失败不应阻塞本次保存；缺省按未指定路由处理
+            console.warn('[AI] 读取现有策略失败，按未指定模型路由保存：', err?.message || err)
+        }
+        chatModelId = toOptionalId(req.body?.chatModelId, current.chatModelId)
+        imageModelId = toOptionalId(req.body?.imageModelId, current.imageModelId)
+
+        // 指定的模型必须存在、启用，并且具备对应能力，否则调用时才发现会很晚
+        if (chatModelId) {
+            const chatModel = await aiModel.findModelById(chatModelId)
+            if (!chatModel || !chatModel.enabled) {
+                return res.status(400).json({ code: 400, message: '指定的文本模型不存在或已停用' })
+            }
+            if (!chatModel.chatModel) {
+                return res.status(400).json({ code: 400, message: '指定的文本模型没有配置文本模型名' })
+            }
+        }
+        if (imageModelId) {
+            const imageModel = await aiModel.findModelById(imageModelId)
+            if (!imageModel || !imageModel.enabled) {
+                return res.status(400).json({ code: 400, message: '指定的配图模型不存在或已停用' })
+            }
+            if (!imageModel.imageModel) {
+                return res.status(400).json({ code: 400, message: '指定的配图模型没有配置配图模型名' })
+            }
+        }
+
         const settings = await aiModel.updateSettings({
             quotaEnabled,
             dailyLimitPerUser,
             monthlyLimitPerUser,
             superAdminUnlimited,
             removeWatermark,
-            watermarkMode
+            watermarkMode,
+            chatModelId,
+            imageModelId
         })
         return res.json({ code: 200, message: 'AI 策略已保存', data: settings })
     } catch (err) {
@@ -685,6 +815,7 @@ module.exports = {
     createPromptTemplate,
     previewPromptTemplate,
     savePreviewImage,
+    assistPromptTemplate,
     updatePromptTemplate,
     selectPromptTemplate,
     deletePromptTemplate,

@@ -32,7 +32,7 @@
                 <header class="ai-panel-header">
                     <div class="ai-panel-heading">
                         <yk-title :level="4" style="margin: 0;">接入模型</yk-title>
-                        <yk-text type="secondary">默认模型优先被调用，停用的模型不参与请求</yk-text>
+                        <yk-text type="secondary">默认模型作为兜底，文本与配图可在右侧 AI 策略中分别指定</yk-text>
                     </div>
                     <yk-space align="center" size="s">
                         <yk-text type="secondary" class="ai-health-checked">
@@ -57,6 +57,8 @@
                                 <strong :title="item.name">{{ item.name }}</strong>
                                 <div class="ai-model-tags">
                                     <yk-tag v-if="item.isDefault" size="s" type="primary">默认</yk-tag>
+                                    <yk-tag v-if="settings.chatModelId === item.id" size="s" type="success">文本</yk-tag>
+                                    <yk-tag v-if="settings.imageModelId === item.id" size="s" type="warning">配图</yk-tag>
                                     <yk-tag v-if="!item.enabled" size="s" type="warning">已停用</yk-tag>
                                     <yk-tag v-else size="s" type="success">运行中</yk-tag>
                                 </div>
@@ -293,6 +295,41 @@
                         </div>
                         <yk-button size="s" type="primary" :loading="savingSettings" @click="saveSettings">保存策略</yk-button>
                     </header>
+
+                    <div class="ai-policy-group">
+                        <span class="ai-policy-group-title">模型分工</span>
+                        <div class="ai-policy">
+                            <div class="ai-policy-row">
+                                <div class="ai-policy-copy">
+                                    <strong>文本模型</strong>
+                                    <span>问答、写作建议、摘要标签等文字功能使用该模型</span>
+                                </div>
+                                <select v-model="settings.chatModelId" class="ai-policy-select" aria-label="文本模型">
+                                    <option :value="null">跟随默认模型</option>
+                                    <option v-for="item in enabledModels" :key="item.id" :value="item.id">
+                                        {{ item.name }} · {{ item.chatModel }}
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div class="ai-policy-row">
+                                <div class="ai-policy-copy">
+                                    <strong>配图模型</strong>
+                                    <span>AI 封面、配图与图片试跑等出图功能使用该模型</span>
+                                </div>
+                                <select v-model="settings.imageModelId" class="ai-policy-select" aria-label="配图模型">
+                                    <option :value="null">跟随默认模型</option>
+                                    <option v-for="item in imageCapableModels" :key="item.id" :value="item.id">
+                                        {{ item.name }} · {{ item.imageModel }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <p class="ai-policy-tip is-routing">
+                            文本与配图可以来自不同服务商。留空时跟随默认模型，所选模型停用后也会自动回退。
+                        </p>
+                    </div>
 
                     <div class="ai-policy-group">
                         <span class="ai-policy-group-title">用量限制</span>
@@ -597,6 +634,8 @@
         superAdminUnlimited: true,
         removeWatermark: true,
         watermarkMode: 'crop',
+        chatModelId: null,
+        imageModelId: null,
     })
     const savingSettings = ref(false)
 
@@ -633,6 +672,8 @@
     })
 
     const enabledCount = computed(() => models.value.filter(item => item.enabled).length)
+    const enabledModels = computed(() => models.value.filter(item => item.enabled))
+    const imageCapableModels = computed(() => enabledModels.value.filter(item => item.imageModel))
 
     const defaultModelName = computed(() => {
         const target = models.value.find(item => item.isDefault) || models.value.find(item => item.enabled)
@@ -674,6 +715,14 @@
             suggest: '写作建议',
             writing: '写作辅助',
             cover: 'AI 配图',
+            gallery: '图库策展',
+            message: '私信拟回复',
+            report: '运营周报',
+            'report-review': '举报辅助',
+            search: '语义搜索',
+            ask: '门户问答',
+            'prompt-preview': '提示词试跑',
+            'prompt-assistant': '提示词助手',
         }
         return labels[value] || value
     }
@@ -1608,6 +1657,32 @@
             }
         }
 
+        // 模型分工：原生下拉足以承载长模型名，样式与策略区其他控件保持一致
+        .ai-policy-select {
+            flex: none;
+            max-width: 320px;
+            padding: 8px 34px 8px 12px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: @radius-s;
+            background-color: var(--bgColor1);
+            color: var(--gray);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            text-overflow: ellipsis;
+            transition: border-color @animatb, box-shadow @animatb;
+
+            &:focus {
+                border-color: var(--pcolor);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+            }
+        }
+
         .ai-policy-tip {
             margin: 14px 0 0;
             padding: 10px 12px;
@@ -1774,6 +1849,11 @@
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 10px;
+            }
+
+            .ai-policy-select {
+                width: 100%;
+                max-width: none;
             }
         }
     }

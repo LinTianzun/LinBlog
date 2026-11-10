@@ -24,16 +24,43 @@ const MAX_REPORT_SECTIONS = 4
 const REPORT_REASON_VALUES = ['spam', 'abuse', 'porn', 'illegal', 'misinformation', 'other']
 const REPORT_ACTIONS = ['process', 'dismiss', 'warn']
 const MAX_REPORT_NOTE_CHARS = 200
+const MAX_PROMPT_TEMPLATE_CHARS = 20000
 
-async function getActiveAiConfig() {
-    const dbModel = await aiModel.getActiveModelConfig()
-    if (dbModel && dbModel.chatModel) {
+/**
+ * 读取管理员在「AI 策略」里指定的任务模型。
+ * 未指定、模型被停用或不具备对应能力时返回 null，由调用方回退到默认模型。
+ */
+async function getRoutedModelConfig(purpose) {
+    const settings = await aiModel.getSettings()
+    const modelId = purpose === 'image' ? settings.imageModelId : settings.chatModelId
+    if (!modelId) return null
+
+    const routed = await aiModel.getModelConfigById(modelId)
+    if (!routed?.enabled) return null
+    if (purpose === 'image' ? !routed.imageModel : !routed.chatModel) return null
+    return routed
+}
+
+async function getActiveAiConfig({ purpose = 'chat' } = {}) {
+    let dbModel = null
+    try {
+        dbModel = await getRoutedModelConfig(purpose)
+    } catch (err) {
+        // 路由配置读取失败时继续使用默认模型，不能让 AI 功能整体不可用
+        console.warn('[AI] 读取任务模型路由失败，回退默认模型：', err?.message || err)
+    }
+    if (!dbModel) {
+        dbModel = await aiModel.getActiveModelConfig()
+    }
+
+    const usableModel = purpose === 'image' ? dbModel?.imageModel : dbModel?.chatModel
+    if (dbModel && usableModel) {
         return {
             id: dbModel.id,
             name: dbModel.name,
             baseUrl: dbModel.baseUrl,
             apiKey: dbModel.apiKey,
-            model: dbModel.chatModel,
+            model: purpose === 'image' ? (dbModel.imageModel || dbModel.chatModel) : dbModel.chatModel,
             imageModel: dbModel.imageModel || dbModel.chatModel,
             imageSize: dbModel.imageSize,
             timeoutMs: dbModel.timeoutMs
@@ -579,35 +606,113 @@ async function getImageProcessOptions() {
     }
 }
 
+// 魔搭等异步出图服务需要提交任务后轮询结果；给图片生成留足等待时间，
+// 但提交请求本身仍然保持较短超时，避免网络问题拖住页面。
+const IMAGE_GENERATION_MIN_TIMEOUT_MS = 120000
+const IMAGE_POLL_INTERVAL_MS = 2000
+const IMAGE_POLL_REQUEST_TIMEOUT_MS = 15000
+
+function isModelScopeProvider(baseUrl) {
+    return /modelscope\.(?:cn|ai)/i.test(String(baseUrl || ''))
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)))
+}
+
+function providerError(status) {
+    return Object.assign(
+        new Error(`AI 服务商响应异常：HTTP ${status}`),
+        { code: 'AI_PROVIDER_ERROR', status }
+    )
+}
+
+async function logProviderFailure(response, scene) {
+    try {
+        const text = await response.text()
+        if (text) console.warn(`[AI] ${scene}返回 HTTP ${response.status}：`, text.slice(0, 300))
+    } catch {
+        // 读取错误详情失败不影响主流程
+    }
+}
+
+/**
+ * 魔搭图片接口是异步任务：先提交拿 task_id，再轮询任务的 output_images。
+ * 立即查询一次，之后每隔 2 秒查询，直到成功、失败或超过总等待时间。
+ */
+async function waitForModelScopeImageTask(taskId, aiConfig, deadline) {
+    const taskUrl = `${aiConfig.baseUrl}/tasks/${encodeURIComponent(taskId)}`
+    let lastStatus = ''
+
+    while (Date.now() < deadline) {
+        const remaining = deadline - Date.now()
+        const response = await fetch(taskUrl, {
+            headers: {
+                Authorization: `Bearer ${aiConfig.apiKey}`,
+                'X-ModelScope-Task-Type': 'image_generation'
+            },
+            signal: AbortSignal.timeout(Math.min(remaining, IMAGE_POLL_REQUEST_TIMEOUT_MS))
+        })
+        if (!response.ok) {
+            await logProviderFailure(response, '配图任务查询')
+            throw providerError(response.status)
+        }
+
+        const payload = await response.json()
+        const status = String(payload?.task_status || '')
+        if (status === 'SUCCEED') {
+            const imageUrl = Array.isArray(payload?.output_images) ? payload.output_images[0] : ''
+            if (typeof imageUrl === 'string' && /^https:\/\//.test(imageUrl)) return imageUrl
+            throw imageError('模型没有返回可用的封面图片')
+        }
+        if (status === 'FAILED') {
+            const reason = payload?.message || payload?.error || payload?.task_status
+            throw imageError(`配图生成失败：${String(reason || '任务失败').slice(0, 200)}`)
+        }
+
+        lastStatus = status
+        await sleep(Math.min(IMAGE_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
+    }
+
+    throw imageError(`配图生成超时（最后状态：${lastStatus || '排队中'}）`)
+}
+
 async function fetchCoverImage(prompt, aiConfig) {
-    const timeoutMs = Number(aiConfig.timeoutMs) || 20000
+    const configuredTimeoutMs = Number(aiConfig.timeoutMs) || 20000
+    const timeoutMs = Math.max(configuredTimeoutMs, IMAGE_GENERATION_MIN_TIMEOUT_MS)
     const imageOptions = await getImageProcessOptions()
-    const response = await fetch(`${aiConfig.baseUrl}/images/generations`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${aiConfig.apiKey}`
-        },
-        body: JSON.stringify({
+    const modelScope = isModelScopeProvider(aiConfig.baseUrl)
+    const deadline = Date.now() + timeoutMs
+    const requestBody = modelScope
+        ? { model: aiConfig.imageModel, prompt }
+        : {
             model: aiConfig.imageModel,
             prompt,
             size: aiConfig.imageSize,
             // 账号签署过服务商的「去水印免责声明」时由服务商直接去标；
             // 关闭去除标识后不再请求，避免与作者的选择相悖
             watermark_enabled: imageOptions.enabled ? false : undefined
-        }),
-        signal: AbortSignal.timeout(timeoutMs)
+        }
+    const response = await fetch(`${aiConfig.baseUrl}/images/generations`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${aiConfig.apiKey}`,
+            ...(modelScope ? { 'X-ModelScope-Async-Mode': 'true' } : {})
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(Math.min(timeoutMs, Math.max(configuredTimeoutMs, 30000)))
     })
 
     if (!response.ok) {
-        throw Object.assign(
-            new Error(`AI 服务商响应异常：HTTP ${response.status}`),
-            { code: 'AI_PROVIDER_ERROR' }
-        )
+        await logProviderFailure(response, '配图提交')
+        throw providerError(response.status)
     }
 
     const payload = await response.json()
-    const imageUrl = payload?.data?.[0]?.url
+    const imageUrl = payload?.task_id && modelScope
+        ? await waitForModelScopeImageTask(payload.task_id, aiConfig, deadline)
+        : payload?.data?.[0]?.url
     if (typeof imageUrl !== 'string' || !/^https:\/\//.test(imageUrl)) {
         throw imageError('模型没有返回可用的封面图片')
     }
@@ -875,6 +980,91 @@ async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto
     })
 }
 
+function buildPromptAssistantPrompt({ task, featureKey, featureName, variables, currentContent, requirement }) {
+    const names = Array.isArray(variables) ? variables : Object.keys(variables || {})
+    const variableList = names.length > 0
+        ? names.map(name => `- ${name}`).join('\n')
+        : '暂无'
+    const safeRequirement = String(requirement || '').slice(0, 4000)
+
+    return renderTemplate('prompt-assistant', {
+        task,
+        taskLabel: task === 'create' ? '新建一套提示词模板' : '优化现有提示词模板',
+        featureName: featureName || featureKey,
+        featureKey,
+        variableList,
+        requirementTitle: task === 'create' ? '用户新建需求：' : '用户新增或调整的要求：',
+        requirement: safeRequirement || '无',
+        currentContent: String(currentContent || '无').slice(0, MAX_PROMPT_TEMPLATE_CHARS),
+        closingInstruction: task === 'create'
+            ? '如果用户新建需求为空，请基于目标功能的默认用途创建一套清晰可用的模板。'
+            : '请修复模糊、重复、冲突的指令，并增强变量使用与输出格式约束。'
+    })
+}
+
+function parsePromptAssistantPayload(raw) {
+    const parsed = extractJsonBlock(String(raw || ''))
+    const content = typeof parsed?.content === 'string' ? parsed.content.trim() : ''
+    const summary = typeof parsed?.summary === 'string' ? parsed.summary.trim() : ''
+    if (!content) {
+        throw Object.assign(new Error('模型没有返回可用提示词'), { code: 'AI_PARSE_ERROR' })
+    }
+    if (content.length > MAX_PROMPT_TEMPLATE_CHARS) {
+        throw Object.assign(new Error('模型生成的提示词过长'), { code: 'AI_PARSE_ERROR' })
+    }
+
+    return { content, summary: summary.slice(0, 160) }
+}
+
+/**
+ * 提示词助手：优化现有模板或按需求新建模板。
+ * 只生成候选内容，不自动保存，也不改变模板所属功能。
+ */
+async function assistPromptTemplate({
+    task = 'optimize',
+    featureKey,
+    content = '',
+    requirement = '',
+    variables = {},
+    aiConfig,
+    chainFn = null
+}) {
+    if (!aiConfig) throw notConfiguredError()
+    const normalizedTask = ['create', 'optimize'].includes(task) ? task : 'optimize'
+    const feature = getDefaultTemplate(featureKey)
+    if (!feature) {
+        throw Object.assign(new Error('提示词所属功能不存在'), { code: 'AI_INVALID_PROMPT_FEATURE' })
+    }
+
+    const currentContent = normalizedTask === 'optimize'
+        ? String(content || '').trim() || feature.content
+        : ''
+    if (currentContent.length > MAX_PROMPT_TEMPLATE_CHARS) {
+        throw Object.assign(new Error('提示词内容过长'), { code: 'AI_PROMPT_TOO_LONG' })
+    }
+
+    const variableNames = Array.from(new Set([
+        ...Object.keys(variables || {}),
+        ...Array.from(String(feature.variables || '').matchAll(/\{\{\s*(\w+)\s*\}\}/g), match => match[1]),
+        ...Array.from(String(content || '').matchAll(/\{\{\s*(\w+)\s*\}\}/g), match => match[1])
+    ]))
+    const prompt = await buildPromptAssistantPrompt({
+        task: normalizedTask,
+        featureKey,
+        featureName: feature.name,
+        variables: variableNames,
+        currentContent,
+        requirement
+    })
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+
+    return await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true, maxTokens: 2200 })
+        const parsed = parsePromptAssistantPayload(raw.text)
+        return { ...parsed, usage: raw.usage, outputChars: parsed.content.length }
+    })
+}
+
 function isValidCoverToken(token) {
     return typeof token === 'string' && /^[0-9a-f]{48}$/.test(token)
 }
@@ -957,6 +1147,7 @@ module.exports = {
     rewriteText,
     generateCoverImage,
     previewPrompt,
+    assistPromptTemplate,
     answerFromPublishedContent,
     buildAskPrompt,
     pickRelevantSnippet,
@@ -974,6 +1165,7 @@ module.exports = {
     buildReportReviewPrompt,
     parseReportReviewPayload,
     buildSuggestionPrompt,
+    parsePromptAssistantPayload,
     buildWritingPrompt,
     normalizeWritingText,
     validateWritingAction,

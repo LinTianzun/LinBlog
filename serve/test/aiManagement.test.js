@@ -73,6 +73,43 @@ test('ai quota rejects accounts without the ai.use permission', async () => {
     assert.match(res.body.message, /没有使用 AI 能力的权限/)
 })
 
+test('配图与图片试跑按配图模型检查配额', async () => {
+    const originalActive = aiClient.getActiveAiConfig
+    const originalSettings = aiModel.getSettings
+    const purposes = []
+
+    aiClient.getActiveAiConfig = async ({ purpose = 'chat' } = {}) => {
+        purposes.push(purpose)
+        return {
+            id: purpose === 'image' ? 3 : 2,
+            name: purpose === 'image' ? '配图模型' : '文本模型',
+            baseUrl: 'https://ai.example.test/v1',
+            apiKey: 'key',
+            model: purpose === 'image' ? 'image-model' : 'chat-model',
+            imageModel: 'image-model',
+            imageSize: '1344x768',
+            timeoutMs: 20000
+        }
+    }
+    aiModel.getSettings = async () => ({
+        quotaEnabled: false,
+        dailyLimitPerUser: 20,
+        monthlyLimitPerUser: 100,
+        superAdminUnlimited: true
+    })
+
+    try {
+        const user = { userId: 5, userType: 'normal', permissions: ['ai.use'], isSuperAdmin: false }
+        await aiQuota('cover')({ user, body: { title: '标题' } }, createRes(), () => {})
+        await aiQuota('prompt-preview')({ user, body: { mode: 'image' } }, createRes(), () => {})
+        await aiQuota('prompt-preview')({ user, body: { mode: 'text' } }, createRes(), () => {})
+        assert.deepEqual(purposes, ['image', 'image', 'chat'])
+    } finally {
+        aiClient.getActiveAiConfig = originalActive
+        aiModel.getSettings = originalSettings
+    }
+})
+
 test('ai quota returns 429 when the daily limit is exhausted', async () => {
     const originalSettings = aiModel.getSettings
     const originalUsage = aiModel.getUserUsage
@@ -1071,6 +1108,162 @@ test('ai manage controller validates model payloads and settings', async () => {
     }
 })
 
+test('文本与配图任务可以分别路由到不同模型', async () => {
+    const originalDefault = aiModel.getActiveModelConfig
+    const originalSettings = aiModel.getSettings
+    const originalById = aiModel.getModelConfigById
+
+    aiModel.getActiveModelConfig = async () => ({
+        id: 1,
+        name: '默认模型',
+        baseUrl: 'https://default.test/v1',
+        apiKey: 'default-key',
+        chatModel: 'default-chat',
+        imageModel: 'default-image',
+        imageSize: '1344x768',
+        timeoutMs: 20000
+    })
+    aiModel.getSettings = async () => ({ chatModelId: 2, imageModelId: 3 })
+    aiModel.getModelConfigById = async (id) => {
+        if (id === 2) {
+            return {
+                id: 2,
+                name: '文本专用',
+                baseUrl: 'https://chat.test/v1',
+                apiKey: 'chat-key',
+                chatModel: 'chat-only',
+                imageModel: '',
+                imageSize: '1344x768',
+                timeoutMs: 20000,
+                enabled: true
+            }
+        }
+        if (id === 3) {
+            return {
+                id: 3,
+                name: '配图专用',
+                baseUrl: 'https://image.test/v1',
+                apiKey: 'image-key',
+                chatModel: 'unused-chat',
+                imageModel: 'image-only',
+                imageSize: '1024x1024',
+                timeoutMs: 30000,
+                enabled: true
+            }
+        }
+        return null
+    }
+
+    try {
+        const chat = await aiClient.getActiveAiConfig({ purpose: 'chat' })
+        assert.equal(chat.id, 2)
+        assert.equal(chat.model, 'chat-only')
+        assert.equal(chat.baseUrl, 'https://chat.test/v1')
+
+        const image = await aiClient.getActiveAiConfig({ purpose: 'image' })
+        assert.equal(image.id, 3)
+        assert.equal(image.model, 'image-only')
+        assert.equal(image.imageModel, 'image-only')
+        assert.equal(image.baseUrl, 'https://image.test/v1')
+    } finally {
+        aiModel.getActiveModelConfig = originalDefault
+        aiModel.getSettings = originalSettings
+        aiModel.getModelConfigById = originalById
+    }
+})
+
+test('指定的任务模型停用时回退到默认模型', async () => {
+    const originalDefault = aiModel.getActiveModelConfig
+    const originalSettings = aiModel.getSettings
+    const originalById = aiModel.getModelConfigById
+
+    aiModel.getActiveModelConfig = async () => ({
+        id: 1,
+        name: '默认模型',
+        baseUrl: 'https://default.test/v1',
+        apiKey: 'default-key',
+        chatModel: 'default-chat',
+        imageModel: 'default-image',
+        imageSize: '1344x768',
+        timeoutMs: 20000
+    })
+    aiModel.getSettings = async () => ({ chatModelId: 9, imageModelId: null })
+    aiModel.getModelConfigById = async () => ({
+        id: 9,
+        name: '已停用模型',
+        chatModel: 'disabled-chat',
+        imageModel: '',
+        enabled: false
+    })
+
+    try {
+        const chat = await aiClient.getActiveAiConfig({ purpose: 'chat' })
+        assert.equal(chat.id, 1)
+        assert.equal(chat.model, 'default-chat')
+    } finally {
+        aiModel.getActiveModelConfig = originalDefault
+        aiModel.getSettings = originalSettings
+        aiModel.getModelConfigById = originalById
+    }
+})
+
+test('AI 策略保存文本与配图模型路由并校验配图能力', async () => {
+    const originalGetSettings = aiModel.getSettings
+    const originalUpdateSettings = aiModel.updateSettings
+    const originalFindModel = aiModel.findModelById
+    let saved = null
+
+    aiModel.getSettings = async () => ({
+        quotaEnabled: true,
+        dailyLimitPerUser: 20,
+        monthlyLimitPerUser: 100,
+        superAdminUnlimited: true,
+        removeWatermark: true,
+        watermarkMode: 'crop',
+        chatModelId: null,
+        imageModelId: null
+    })
+    aiModel.updateSettings = async (payload) => {
+        saved = payload
+        return payload
+    }
+    aiModel.findModelById = async (id) => ({
+        id,
+        name: `模型${id}`,
+        chatModel: id === 2 ? 'chat-b' : 'chat-c',
+        imageModel: id === 3 ? 'image-c' : '',
+        enabled: true
+    })
+
+    try {
+        const ok = createRes()
+        await aiManageController.updateSettings({
+            body: {
+                quotaEnabled: true,
+                dailyLimitPerUser: 20,
+                monthlyLimitPerUser: 100,
+                superAdminUnlimited: true,
+                chatModelId: 2,
+                imageModelId: 3
+            }
+        }, ok)
+        assert.equal(ok.body.code, 200)
+        assert.equal(saved.chatModelId, 2)
+        assert.equal(saved.imageModelId, 3)
+
+        const invalid = createRes()
+        await aiManageController.updateSettings({
+            body: { chatModelId: 2, imageModelId: 2 }
+        }, invalid)
+        assert.equal(invalid.statusCode, 400)
+        assert.match(invalid.body.message, /没有配置配图模型名/)
+    } finally {
+        aiModel.getSettings = originalGetSettings
+        aiModel.updateSettings = originalUpdateSettings
+        aiModel.findModelById = originalFindModel
+    }
+})
+
 test('模型级限额不能高于全局上限', async () => {
     const originalGetSettings = aiModel.getSettings
     aiModel.getSettings = async () => ({
@@ -1673,6 +1866,96 @@ test('提示词试跑可指定生成文字或生成图片', async () => {
         aiClient.previewPrompt = originalPreview
     }
 })
+
+test('提示词助手返回的 JSON 能解析为候选模板', () => {
+    const parsed = aiClient.parsePromptAssistantPayload(
+        '```json\n{"content":"只输出 JSON 的模板 {{title}}","summary":"补充格式约束"}\n```'
+    )
+    assert.equal(parsed.content, '只输出 JSON 的模板 {{title}}')
+    assert.equal(parsed.summary, '补充格式约束')
+
+    assert.throws(() => aiClient.parsePromptAssistantPayload('不是 JSON'), /模型没有返回可用提示词/)
+})
+
+test('提示词助手生成候选并写入 AI 调用日志', async () => {
+    const originalAssist = aiClient.assistPromptTemplate
+    const originalLog = aiModel.logUsage
+    const originalInsertLog = systemLogModel.insertLog
+    let assistPayload = null
+    let logged = null
+
+    aiClient.assistPromptTemplate = async (payload) => {
+        assistPayload = payload
+        return {
+            content: '你是一名编辑助手。请输出 JSON。',
+            summary: '增强输出格式约束',
+            usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 },
+            outputChars: 18,
+            modelUsed: { id: 4, name: 'GLM', model: 'glm-4-flash', degraded: false }
+        }
+    }
+    aiModel.logUsage = async (payload) => {
+        logged = payload
+    }
+    systemLogModel.insertLog = async () => {}
+
+    try {
+        const res = createRes()
+        await aiManageController.assistPromptTemplate({
+            user: { userId: 1 },
+            aiModel: { id: 4, model: 'glm-4-flash' },
+            body: {
+                task: 'optimize',
+                featureKey: 'suggest',
+                content: '旧提示词 {{title}}',
+                requirement: '强调只输出 JSON',
+                variables: { title: '示例标题', 'bad-name': '忽略' }
+            }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.summary, '增强输出格式约束')
+        assert.equal(assistPayload.variables.title, '示例标题')
+        assert.deepEqual(Object.keys(assistPayload.variables), ['title'])
+        assert.equal(logged.feature, 'prompt-assistant')
+        assert.equal(logged.status, 'success')
+        assert.equal(logged.modelId, 4)
+        assert.equal(logged.outputChars, 18)
+    } finally {
+        aiClient.assistPromptTemplate = originalAssist
+        aiModel.logUsage = originalLog
+        systemLogModel.insertLog = originalInsertLog
+    }
+})
+
+test('提示词助手校验任务、功能与内容长度', async () => {
+    const badTask = createRes()
+    await aiManageController.assistPromptTemplate({
+        body: { task: 'rewrite', featureKey: 'suggest', content: 'x' }
+    }, badTask)
+    assert.equal(badTask.statusCode, 400)
+
+    const missingFeature = createRes()
+    await aiManageController.assistPromptTemplate({
+        body: { task: 'optimize', featureKey: '', content: 'x' }
+    }, missingFeature)
+    assert.equal(missingFeature.statusCode, 400)
+
+    const missingContent = createRes()
+    await aiManageController.assistPromptTemplate({
+        body: { task: 'optimize', featureKey: 'suggest', content: ' ' }
+    }, missingContent)
+    assert.equal(missingContent.statusCode, 400)
+
+    const unknownFeature = createRes()
+    await aiManageController.assistPromptTemplate({
+        user: { userId: 1 },
+        aiModel: { id: 1, model: 'glm-4-flash' },
+        body: { task: 'create', featureKey: 'no-such' }
+    }, unknownFeature)
+    assert.equal(unknownFeature.statusCode, 400)
+})
+
 test('保存提示词模板：未知模板 404，内置与自定义都可编辑', async () => {
     const originalSave = aiModel.savePromptTemplate
     const originalList = aiModel.listPromptTemplates
@@ -1943,6 +2226,70 @@ test('AI 图片去水印：裁剪后缩放模式会还原原始尺寸', async ()
     assert.equal(resizedMeta.height, height)
     // 缩放回原尺寸后徽标仍不应被检出
     assert.equal(await detectBadge(resized.buffer), null)
+})
+
+test('魔搭异步出图会轮询任务并下载结果', async () => {
+    const originalFetch = global.fetch
+    const originalSettings = aiModel.getSettings
+    const calls = []
+    const pngBytes = Buffer.from('89504e470d0a1a0a', 'hex')
+
+    aiModel.getSettings = async () => ({
+        removeWatermark: false,
+        watermarkMode: 'crop'
+    })
+    global.fetch = async (url, init = {}) => {
+        const target = String(url)
+        if (target.endsWith('/images/generations')) {
+            calls.push({ type: 'submit', body: JSON.parse(init.body), headers: init.headers })
+            return new Response(JSON.stringify({ task_id: 'task-1' }), { status: 200 })
+        }
+        if (target.endsWith('/tasks/task-1')) {
+            calls.push({ type: 'poll', headers: init.headers })
+            return new Response(JSON.stringify({
+                task_status: 'SUCCEED',
+                output_images: ['https://cdn.example.test/modelscope-image.png']
+            }), { status: 200 })
+        }
+        if (target === 'https://cdn.example.test/modelscope-image.png') {
+            return new Response(pngBytes, {
+                status: 200,
+                headers: { 'content-type': 'image/png' }
+            })
+        }
+        throw new Error(`unexpected fetch: ${target}`)
+    }
+
+    try {
+        const result = await aiClient.generateCoverImage({
+            title: '深夜书房',
+            aiConfig: {
+                id: 3,
+                name: '魔搭',
+                baseUrl: 'https://api-inference.modelscope.cn/v1',
+                apiKey: 'ms-key',
+                model: 'Qwen/Qwen3.5-27B',
+                imageModel: 'Qwen/Qwen-Image-2.1',
+                imageSize: '1344x768',
+                timeoutMs: 20000
+            },
+            chainFn: async () => []
+        })
+
+        assert.match(result.dataUri, /^data:image\/png;base64,/)
+        const submit = calls.find(call => call.type === 'submit')
+        assert.equal(submit.body.model, 'Qwen/Qwen-Image-2.1')
+        // 魔搭只接收 model 与 prompt，不能带智谱的尺寸与去标识字段
+        assert.equal(submit.body.size, undefined)
+        assert.equal(submit.body.watermark_enabled, undefined)
+        assert.equal(submit.headers['X-ModelScope-Async-Mode'], 'true')
+
+        const poll = calls.find(call => call.type === 'poll')
+        assert.equal(poll.headers['X-ModelScope-Task-Type'], 'image_generation')
+    } finally {
+        global.fetch = originalFetch
+        aiModel.getSettings = originalSettings
+    }
 })
 
 test('AI 策略可保存图片处理开关与去除方式', async () => {

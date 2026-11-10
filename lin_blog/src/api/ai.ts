@@ -93,6 +93,9 @@ export interface AiSettings {
   removeWatermark: boolean;
   // crop 裁掉角落（尺寸变小）/ crop-resize 裁剪后缩放回原尺寸
   watermarkMode: "crop" | "crop-resize";
+  // 文本与配图任务各自指定的模型；为空时跟随默认模型
+  chatModelId: number | null;
+  imageModelId: number | null;
 }
 
 // AI 运营周报：真实统计 + 模型组织的文字小节
@@ -247,7 +250,7 @@ export function generateCoverImage(params: {
   content?: string;
 }) {
   return request.post<ApiResult<AiCoverSuggestion>>("/ai/cover", params, {
-    timeout: 60000
+    timeout: 120000
   });
 }
 
@@ -374,7 +377,26 @@ export function previewAiPromptTemplate(payload: {
   mode?: "text" | "image";
 }) {
   return request.post<ApiResult<AiPromptPreviewResult>>("/ai/prompts/preview", payload, {
-    timeout: 60000
+    timeout: 120000
+  });
+}
+
+export interface AiPromptAssistantResult {
+  content: string;
+  summary: string;
+  degraded: boolean;
+  modelName: string;
+}
+
+export function assistAiPromptTemplate(payload: {
+  task: "optimize" | "create";
+  featureKey: string;
+  content?: string;
+  requirement?: string;
+  variables?: Record<string, string>;
+}) {
+  return request.post<ApiResult<AiPromptAssistantResult>>("/ai/prompts/assist", payload, {
+    timeout: 120000
   });
 }
 
