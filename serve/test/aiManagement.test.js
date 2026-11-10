@@ -1898,6 +1898,89 @@ test('AI 图片去水印：没有徽标的图片保持原样', async () => {
     assert.equal(result.buffer, buffer)
 })
 
+test('AI 图片去水印：关闭去除标识后图片保持服务商原样', async () => {
+    const sharp = require(path.resolve(__dirname, '../node_modules/sharp'))
+    const { removeWatermark } = require(path.resolve(__dirname, '../utils/aiWatermark.js'))
+
+    const buffer = await sharp({
+        create: { width: 640, height: 480, channels: 3, background: { r: 40, g: 60, b: 90 } }
+    }).png().toBuffer()
+
+    const result = await removeWatermark(buffer, 'image/png', { enabled: false, mode: 'crop' })
+    assert.equal(result.removed, false)
+    assert.equal(result.buffer, buffer)
+})
+
+test('AI 图片去水印：裁剪后缩放模式会还原原始尺寸', async () => {
+    const sharp = require(path.resolve(__dirname, '../node_modules/sharp'))
+    const { removeWatermark, detectBadge } = require(path.resolve(__dirname, '../utils/aiWatermark.js'))
+
+    const width = 800
+    const height = 600
+    const textHeight = Math.round(height * 0.0365)
+    const textWidth = Math.round(textHeight * 3.14)
+    const plateLeft = width - Math.round(height * 0.043) - textWidth - Math.round(textHeight * 0.68)
+    const plateTop = height - Math.round(height * 0.03) - textHeight - Math.round(textHeight * 0.39)
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <rect width="${width}" height="${height}" fill="#42525f"/>
+        <rect x="${plateLeft}" y="${plateTop}" width="${textWidth + Math.round(textHeight * 1.7)}"
+            height="${textHeight + Math.round(textHeight * 1.46)}" rx="${textHeight * 0.3}" fill="#0d1319"/>
+        <rect x="${width - Math.round(height * 0.043) - textWidth}" y="${height - Math.round(height * 0.03) - textHeight}"
+            width="${textWidth}" height="${textHeight}" fill="#f4f6f7"/>
+    </svg>`
+
+    const buffer = await sharp(Buffer.from(svg)).png().toBuffer()
+
+    const cropped = await removeWatermark(buffer, 'image/png', { enabled: true, mode: 'crop' })
+    const croppedMeta = await sharp(cropped.buffer).metadata()
+    assert.ok(croppedMeta.width < width)
+
+    const resized = await removeWatermark(buffer, 'image/png', { enabled: true, mode: 'crop-resize' })
+    assert.equal(resized.removed, true)
+    const resizedMeta = await sharp(resized.buffer).metadata()
+    assert.equal(resizedMeta.width, width)
+    assert.equal(resizedMeta.height, height)
+    // 缩放回原尺寸后徽标仍不应被检出
+    assert.equal(await detectBadge(resized.buffer), null)
+})
+
+test('AI 策略可保存图片处理开关与去除方式', async () => {
+    const originalUpdateSettings = aiModel.updateSettings
+    let saved = null
+    aiModel.updateSettings = async (payload) => {
+        saved = payload
+        return payload
+    }
+
+    try {
+        const res = createRes()
+        await aiManageController.updateSettings({
+            body: {
+                quotaEnabled: true,
+                dailyLimitPerUser: 20,
+                monthlyLimitPerUser: 100,
+                superAdminUnlimited: true,
+                removeWatermark: false,
+                watermarkMode: 'crop-resize'
+            }
+        }, res)
+
+        assert.equal(res.body.code, 200)
+        assert.equal(saved.removeWatermark, false)
+        assert.equal(saved.watermarkMode, 'crop-resize')
+
+        // 非法去除方式收敛到默认的裁掉角落
+        const fallback = createRes()
+        await aiManageController.updateSettings({
+            body: { removeWatermark: true, watermarkMode: 'unknown-mode' }
+        }, fallback)
+        assert.equal(fallback.body.code, 200)
+        assert.equal(saved.watermarkMode, 'crop')
+    } finally {
+        aiModel.updateSettings = originalUpdateSettings
+    }
+})
 test('提示词试跑图片可保存到本地文件素材库', async () => {
     const originalTake = aiModel.takePendingImage
     const originalPersist = uploadController.persistImageBuffer

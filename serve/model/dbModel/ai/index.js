@@ -766,7 +766,9 @@ async function getSettings() {
             quotaEnabled: true,
             dailyLimitPerUser: 20,
             monthlyLimitPerUser: 100,
-            superAdminUnlimited: true
+            superAdminUnlimited: true,
+            removeWatermark: true,
+            watermarkMode: 'crop'
         }
     }
 
@@ -774,25 +776,32 @@ async function getSettings() {
         quotaEnabled: Number(row.quota_enabled) === 1,
         dailyLimitPerUser: Number(row.daily_limit_per_user),
         monthlyLimitPerUser: Number(row.monthly_limit_per_user),
-        superAdminUnlimited: Number(row.super_admin_unlimited) === 1
+        superAdminUnlimited: Number(row.super_admin_unlimited) === 1,
+        removeWatermark: Number(row.remove_watermark) === 1,
+        watermarkMode: String(row.watermark_mode || 'crop')
     }
 }
 
 async function updateSettings(payload) {
     await query(
         `INSERT INTO ai_setting
-            (id, quota_enabled, daily_limit_per_user, monthly_limit_per_user, super_admin_unlimited)
-         VALUES (1, ?, ?, ?, ?)
+            (id, quota_enabled, daily_limit_per_user, monthly_limit_per_user, super_admin_unlimited,
+             remove_watermark, watermark_mode)
+         VALUES (1, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
             quota_enabled = VALUES(quota_enabled),
             daily_limit_per_user = VALUES(daily_limit_per_user),
             monthly_limit_per_user = VALUES(monthly_limit_per_user),
-            super_admin_unlimited = VALUES(super_admin_unlimited)`,
+            super_admin_unlimited = VALUES(super_admin_unlimited),
+            remove_watermark = VALUES(remove_watermark),
+            watermark_mode = VALUES(watermark_mode)`,
         [
             payload.quotaEnabled ? 1 : 0,
             payload.dailyLimitPerUser,
             payload.monthlyLimitPerUser,
-            payload.superAdminUnlimited ? 1 : 0
+            payload.superAdminUnlimited ? 1 : 0,
+            payload.removeWatermark ? 1 : 0,
+            payload.watermarkMode
         ]
     )
     return getSettings()

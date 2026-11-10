@@ -561,8 +561,27 @@ function detectCoverMimeType(buffer, headerType) {
     return COVER_MIME_TYPES.has(headerType) ? headerType : null
 }
 
+/**
+ * 图片后处理策略：是否去除服务商成图右下角的标识，以及用哪种方式去除。
+ * 策略存在 ai_setting 单行配置里，管理员在「AI 管理」页可随时调整。
+ * 读取失败时按默认（开启、裁掉角落）处理，不影响出图。
+ */
+async function getImageProcessOptions() {
+    try {
+        const settings = await aiModel.getSettings()
+        return {
+            enabled: settings.removeWatermark !== false,
+            mode: settings.watermarkMode === 'crop-resize' ? 'crop-resize' : 'crop'
+        }
+    } catch (err) {
+        console.warn('[AI] 读取图片处理策略失败，按默认去除标识：', err?.message || err)
+        return { enabled: true, mode: 'crop' }
+    }
+}
+
 async function fetchCoverImage(prompt, aiConfig) {
     const timeoutMs = Number(aiConfig.timeoutMs) || 20000
+    const imageOptions = await getImageProcessOptions()
     const response = await fetch(`${aiConfig.baseUrl}/images/generations`, {
         method: 'POST',
         headers: {
@@ -573,7 +592,9 @@ async function fetchCoverImage(prompt, aiConfig) {
             model: aiConfig.imageModel,
             prompt,
             size: aiConfig.imageSize,
-            watermark_enabled: false
+            // 账号签署过服务商的「去水印免责声明」时由服务商直接去标；
+            // 关闭去除标识后不再请求，避免与作者的选择相悖
+            watermark_enabled: imageOptions.enabled ? false : undefined
         }),
         signal: AbortSignal.timeout(timeoutMs)
     })
@@ -609,7 +630,7 @@ async function fetchCoverImage(prompt, aiConfig) {
         throw imageError('模型返回的封面格式不受支持')
     }
 
-    const cleaned = await removeWatermark(buffer, mimeType)
+    const cleaned = await removeWatermark(buffer, mimeType, imageOptions)
     return { buffer: cleaned.buffer, mimeType: cleaned.mimeType }
 }
 

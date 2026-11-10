@@ -168,11 +168,21 @@ async function detectBadge(buffer) {
 /**
  * 去掉右下角的水印徽标。
  * 没检测到徽标时原样返回，保证正常图片（以及账号已签免责声明后的无水印图）不被裁剪。
+ *
+ * options.enabled 关闭后整段处理跳过，图片保持服务商原样。
+ * options.mode 支持两种去除方式：
+ * - crop（默认）：只裁掉右下角，成图尺寸随之变小
+ * - crop-resize：裁掉后再缩放回原始尺寸，画幅比例保持不变（画面有轻微拉伸）
  */
-async function removeWatermark(buffer, mimeType) {
-    if (!isSupportedFormat(mimeType)) return { buffer, mimeType, removed: false }
+async function removeWatermark(buffer, mimeType, options = {}) {
+    const enabled = options.enabled !== false
+    const mode = options.mode === 'crop-resize' ? 'crop-resize' : 'crop'
+    if (!enabled || !isSupportedFormat(mimeType)) return { buffer, mimeType, removed: false }
 
     try {
+        const meta = await sharp(buffer).metadata()
+        const originalWidth = meta.width || 0
+        const originalHeight = meta.height || 0
         const textBox = await detectBadge(buffer)
         if (!textBox) return { buffer, mimeType, removed: false }
 
@@ -182,10 +192,18 @@ async function removeWatermark(buffer, mimeType) {
         if (keepWidth < 64 || keepHeight < 64) return { buffer, mimeType, removed: false }
 
         const format = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpeg'
-        const cleaned = await sharp(buffer)
+        let pipeline = sharp(buffer)
             .extract({ left: 0, top: 0, width: keepWidth, height: keepHeight })
-            .toFormat(format)
-            .toBuffer()
+        // 裁剪后缩放回原始尺寸：作者要求成图尺寸不变时用，画幅会有轻微拉伸
+        if (mode === 'crop-resize' && originalWidth > 0 && originalHeight > 0) {
+            pipeline = pipeline.resize({
+                width: originalWidth,
+                height: originalHeight,
+                fit: 'fill',
+                kernel: 'lanczos3'
+            })
+        }
+        const cleaned = await pipeline.toFormat(format).toBuffer()
 
         return { buffer: cleaned, mimeType, removed: true }
     } catch (err) {

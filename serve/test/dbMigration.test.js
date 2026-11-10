@@ -41,7 +41,8 @@ const ALL_MIGRATIONS = [
     '20261115_ai_content_marker',
     '20261116_ai_prompt_template',
     '20261117_ai_prompt_custom',
-    '20261118_ai_prompt_seed'
+    '20261118_ai_prompt_seed',
+    '20261119_ai_image_process'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -739,5 +740,38 @@ test('ai prompt seed migration backfills newly added built-in templates', async 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261118_ai_prompt_seed'
+    ))
+})
+
+test('ai image process migration adds the watermark policy columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261119_ai_image_process')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    // 存量库要补上「是否去标识」与「去除方式」两列
+    assert.ok(calls.some(call => call.sql.includes('ADD COLUMN remove_watermark')))
+    assert.ok(calls.some(call => call.sql.includes('ADD COLUMN watermark_mode')))
+
+    // 默认值：开启去标识、裁掉角落
+    assert.ok(calls.some(call =>
+        call.sql.includes('remove_watermark')
+        && call.sql.includes('DEFAULT 1')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('watermark_mode')
+        && call.sql.includes("DEFAULT 'crop'")
+    ))
+
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261119_ai_image_process'
     ))
 })

@@ -284,16 +284,18 @@
             </section>
 
             <div class="ai-columns">
-                <!-- 用量策略 -->
+                <!-- AI 策略：用量限制 + 图片处理 -->
                 <section class="ai-panel">
                     <header class="ai-panel-header">
                         <div class="ai-panel-heading">
-                            <yk-title :level="4" style="margin: 0;">用量策略</yk-title>
-                            <yk-text type="secondary">限制普通用户调用 AI 的次数</yk-text>
+                            <yk-title :level="4" style="margin: 0;">AI 策略</yk-title>
+                            <yk-text type="secondary">限制调用次数，并控制成图是否去除平台标识</yk-text>
                         </div>
                         <yk-button size="s" type="primary" :loading="savingSettings" @click="saveSettings">保存策略</yk-button>
                     </header>
 
+                    <div class="ai-policy-group">
+                        <span class="ai-policy-group-title">用量限制</span>
                     <div class="ai-policy">
                         <div class="ai-policy-row">
                             <div class="ai-policy-copy">
@@ -336,10 +338,45 @@
                         </div>
                     </div>
 
-                    <p class="ai-policy-tip">
+                    <p class="ai-policy-tip is-quota">
                         当前策略下，普通用户每日可用 <strong>{{ dailyLimitText }}</strong> 次、每月可用
                         <strong>{{ monthlyLimitText }}</strong> 次。
                     </p>
+                    </div>
+
+                    <div class="ai-policy-group">
+                        <span class="ai-policy-group-title">图片处理</span>
+                        <div class="ai-policy">
+                            <div class="ai-policy-row">
+                                <div class="ai-policy-copy">
+                                    <strong>去除「AI生成」标识</strong>
+                                    <span>服务商会在成图右下角叠加平台标识，开启后由服务端自动处理</span>
+                                </div>
+                                <yk-switch v-model="settings.removeWatermark" :checked-value="true" :unchecked-value="false"
+                                    checked-color="#1fb4a2" unchecked-color="#fa5247" />
+                            </div>
+
+                            <div class="ai-policy-row">
+                                <div class="ai-policy-copy">
+                                    <strong>去除方式</strong>
+                                    <span>{{ watermarkModeTip }}</span>
+                                </div>
+                                <div class="ai-policy-modes" role="radiogroup" aria-label="去除方式">
+                                    <button v-for="item in watermarkModes" :key="item.value" type="button"
+                                        class="ai-policy-mode-item" :class="{ 'is-active': settings.watermarkMode === item.value }"
+                                        role="radio" :aria-checked="settings.watermarkMode === item.value"
+                                        :disabled="!settings.removeWatermark" @click="settings.watermarkMode = item.value">
+                                        {{ item.label }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="ai-policy-tip">
+                            「裁掉角落」成图尺寸会略微变小；「裁剪后缩放回原尺寸」保持原有画幅，但画面有轻微拉伸。
+                            仅在账号已签署服务商「去水印免责声明」时，才会由服务商直接输出无标识原图。
+                        </p>
+                    </div>
                 </section>
 
                 <!-- 调用记录 -->
@@ -558,6 +595,8 @@
         dailyLimitPerUser: 20,
         monthlyLimitPerUser: 100,
         superAdminUnlimited: true,
+        removeWatermark: true,
+        watermarkMode: 'crop',
     })
     const savingSettings = ref(false)
 
@@ -612,6 +651,18 @@
 
     const monthlyLimitText = computed(() => (
         settings.quotaEnabled && settings.monthlyLimitPerUser > 0 ? String(settings.monthlyLimitPerUser) : '不限'
+    ))
+
+    // 去除标识的方式：裁掉角落（尺寸变小）或裁剪后缩放回原尺寸（画幅不变）
+    const watermarkModes: { label: string; value: AiSettings['watermarkMode'] }[] = [
+        { label: '裁掉角落', value: 'crop' },
+        { label: '裁剪后缩放回原尺寸', value: 'crop-resize' },
+    ]
+
+    const watermarkModeTip = computed(() => (
+        settings.watermarkMode === 'crop-resize'
+            ? '裁掉标识后缩放回原始尺寸，画幅保持不变，画面有轻微拉伸'
+            : '只裁掉右下角的标识区域，成图尺寸会略微变小'
     ))
 
     const trendChartData = computed(() => (
@@ -1429,6 +1480,70 @@
             display: flex;
             flex-direction: column;
             gap: 2px;
+        }
+
+        // 策略分组：用量限制与图片处理各自成块，避免所有开关挤在一列
+        .ai-policy-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+
+            & + .ai-policy-group {
+                margin-top: 22px;
+                padding-top: 18px;
+                border-top: 1px solid var(--admin-line, var(--gray1));
+            }
+        }
+
+        .ai-policy-group-title {
+            color: var(--admin-muted, var(--gray6));
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        // 去除方式：分段切换，和提示词页的输出类型切换保持同一套交互
+        .ai-policy-modes {
+            display: inline-flex;
+            flex: none;
+            padding: 3px;
+            gap: 3px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: 10px;
+            background: var(--admin-surface-soft, var(--bgColor2));
+        }
+
+        .ai-policy-mode-item {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--gray7);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+            transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+
+            &:hover:not(:disabled):not(.is-active) {
+                color: var(--gray);
+            }
+
+            &:focus-visible {
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--pcolor) 30%, transparent);
+            }
+
+            &.is-active {
+                background: var(--admin-surface, var(--bgColor1));
+                color: var(--pcolor);
+                font-weight: 600;
+                box-shadow: var(--admin-shadow-sm);
+            }
+
+            &:disabled {
+                cursor: not-allowed;
+                opacity: 0.5;
+            }
         }
 
         .ai-policy-row {

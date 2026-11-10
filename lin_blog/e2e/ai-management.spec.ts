@@ -49,9 +49,42 @@ test('AI 管理页展示接入模型并可保存用量策略', async ({ page }) 
   await dailyRow.locator('input').fill('5')
   await page.getByRole('button', { name: '保存策略' }).click()
   await expect(dailyRow.locator('input')).toHaveValue('5')
-  await expect(page.locator('.ai-policy-tip')).toContainText('5')
+  await expect(page.locator('.ai-policy-tip.is-quota')).toContainText('5')
 })
 
+test('AI 管理页可开关去除标识并切换去除方式', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiManage')
+  await expect(page.locator('.ai-model-card')).toHaveCount(1, { timeout: 30_000 })
+
+  // 图片处理分组：开关与两种去除方式
+  const group = page.locator('.ai-policy-group').filter({ hasText: '图片处理' })
+  await expect(group).toBeVisible()
+  await expect(group).toContainText('去除「AI生成」标识')
+
+  const modes = group.locator('.ai-policy-modes')
+  await expect(modes.getByRole('radio', { name: '裁掉角落' })).toHaveAttribute('aria-checked', 'true')
+  await expect(modes.getByRole('radio', { name: '裁剪后缩放回原尺寸' })).toHaveAttribute('aria-checked', 'false')
+
+  // 切换到「裁剪后缩放回原尺寸」并保存
+  await modes.getByRole('radio', { name: '裁剪后缩放回原尺寸' }).click()
+  await expect(modes.getByRole('radio', { name: '裁剪后缩放回原尺寸' })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: '保存策略' }).click()
+  await expect(modes.getByRole('radio', { name: '裁剪后缩放回原尺寸' })).toHaveAttribute('aria-checked', 'true')
+
+  // 关闭开关后去除方式不可再改
+  const switchControl = group.locator('.yk-switch').first()
+  await switchControl.click()
+  await expect(modes.getByRole('radio', { name: '裁剪后缩放回原尺寸' })).toBeDisabled()
+})
 test('接入模型弹窗按分组展示字段且可填写密钥', async ({ page }) => {
   await seedSession(page, {
     id: 1,

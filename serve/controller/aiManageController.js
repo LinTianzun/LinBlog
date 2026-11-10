@@ -570,6 +570,8 @@ async function updateSettings(req, res) {
     const dailyLimitPerUser = toInt(req.body?.dailyLimitPerUser, 20)
     const monthlyLimitPerUser = toInt(req.body?.monthlyLimitPerUser, 100)
     const superAdminUnlimited = req.body?.superAdminUnlimited !== false
+    const removeWatermark = req.body?.removeWatermark !== false
+    const watermarkMode = req.body?.watermarkMode === 'crop-resize' ? 'crop-resize' : 'crop'
 
     if (dailyLimitPerUser > 1000 || monthlyLimitPerUser > 10000) {
         return res.status(400).json({ code: 400, message: '次数上限超出允许范围' })
@@ -580,12 +582,14 @@ async function updateSettings(req, res) {
             quotaEnabled,
             dailyLimitPerUser,
             monthlyLimitPerUser,
-            superAdminUnlimited
+            superAdminUnlimited,
+            removeWatermark,
+            watermarkMode
         })
-        return res.json({ code: 200, message: 'AI 用量策略已保存', data: settings })
+        return res.json({ code: 200, message: 'AI 策略已保存', data: settings })
     } catch (err) {
-        console.error('[AI] 保存用量策略失败：', err?.message || err)
-        return res.status(500).json({ code: 500, message: '保存 AI 用量策略失败' })
+        console.error('[AI] 保存 AI 策略失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '保存 AI 策略失败' })
     }
 }
 

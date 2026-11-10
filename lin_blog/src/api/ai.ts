@@ -89,6 +89,10 @@ export interface AiSettings {
   dailyLimitPerUser: number;
   monthlyLimitPerUser: number;
   superAdminUnlimited: boolean;
+  // 是否去除服务商成图右下角的「AI生成」标识
+  removeWatermark: boolean;
+  // crop 裁掉角落（尺寸变小）/ crop-resize 裁剪后缩放回原尺寸
+  watermarkMode: "crop" | "crop-resize";
 }
 
 // AI 运营周报：真实统计 + 模型组织的文字小节

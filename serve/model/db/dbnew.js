@@ -520,9 +520,11 @@ const tablesSql = {
     daily_limit_per_user INT UNSIGNED NOT NULL DEFAULT 20 COMMENT '每用户每日次数（0 不限）',
     monthly_limit_per_user INT UNSIGNED NOT NULL DEFAULT 100 COMMENT '每用户每月次数（0 不限）',
     super_admin_unlimited TINYINT(1) NOT NULL DEFAULT 1 COMMENT '超级管理员是否不限次数',
+    remove_watermark TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否去除服务商成图右下角的 AI 生成标识',
+    watermark_mode VARCHAR(16) NOT NULL DEFAULT 'crop' COMMENT '去除方式：crop 裁掉角落 / crop-resize 裁剪后缩放回原尺寸',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 用量策略';`
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 策略';`
 
   ,ai_usage_log: `CREATE TABLE IF NOT EXISTS ai_usage_log(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -722,6 +724,20 @@ async function ensureAiManagementSchema(exec = query) {
        (id, quota_enabled, daily_limit_per_user, monthly_limit_per_user, super_admin_unlimited)
      VALUES (1, 1, 20, 100, 1)`
   );
+}
+
+// AI 图片处理策略：把「是否去除成图右下角的 AI 生成标识」与「去除方式」落到策略表，
+// 让管理员在后台就能开关，不必改代码。存量库用 ADD COLUMN 幂等补齐，新库由建表语句直接带上。
+async function ensureAiImageProcessSchema(exec = query) {
+  await exec(tablesSql.ai_setting);
+  await ensureColumn(exec, 'ai_setting', 'remove_watermark', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '是否去除服务商成图右下角的 AI 生成标识'
+  });
+  await ensureColumn(exec, 'ai_setting', 'watermark_mode', {
+    definition: "VARCHAR(16) NOT NULL DEFAULT 'crop'",
+    comment: '去除方式：crop 裁掉角落 / crop-resize 裁剪后缩放回原尺寸'
+  });
 }
 
 // AI 环境变量迁移：把 .env 里的密钥转成后台可管理的模型记录。
@@ -2382,6 +2398,10 @@ const migrations = [
   {
     version: '20261118_ai_prompt_seed',
     up: ensureAiPromptSeedSchema
+  },
+  {
+    version: '20261119_ai_image_process',
+    up: ensureAiImageProcessSchema
   }
 ];
 

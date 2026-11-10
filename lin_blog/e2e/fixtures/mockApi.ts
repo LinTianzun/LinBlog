@@ -433,6 +433,8 @@ export async function installApiMock(page: Page): Promise<MockState> {
         dailyLimitPerUser: 20,
         monthlyLimitPerUser: 100,
         superAdminUnlimited: true,
+        removeWatermark: true,
+        watermarkMode: 'crop',
       })
       return
     }
@@ -443,7 +445,9 @@ export async function installApiMock(page: Page): Promise<MockState> {
         dailyLimitPerUser: Number(body?.dailyLimitPerUser ?? 20),
         monthlyLimitPerUser: Number(body?.monthlyLimitPerUser ?? 100),
         superAdminUnlimited: body?.superAdminUnlimited !== false,
-      }, { message: 'AI 用量策略已保存' })
+        removeWatermark: body?.removeWatermark !== false,
+        watermarkMode: body?.watermarkMode === 'crop-resize' ? 'crop-resize' : 'crop',
+      }, { message: 'AI 策略已保存' })
       return
     }
 
