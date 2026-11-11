@@ -54,3 +54,15 @@ export function getSystemLogs(
 ) {
   return request.get<ApiResult<SystemLogPageData>>("/systemLog", { params });
 }
+
+export function exportSystemLogs(params: {
+  keyword?: string;
+  module?: string;
+  action?: string;
+  sortOrder?: SystemLogSortOrder;
+} = {}) {
+  return request.get<Blob>("/systemLog/export", {
+    params,
+    responseType: "blob",
+  });
+}

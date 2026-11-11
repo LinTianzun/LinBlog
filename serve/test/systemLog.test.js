@@ -196,3 +196,58 @@ test('getLogsByPage orders by created_at with the requested direction', async ()
         else delete require.cache[dbPath]
     }
 })
+
+test('exportLogs returns BOM CSV and forwards filters', async () => {
+    const originalExport = systemLogModel.getLogsForExport
+    let captured = null
+    systemLogModel.getLogsForExport = async (filters) => {
+        captured = filters
+        return { rows: [], csv: 'id,action\r\n1,ai' }
+    }
+    const headers = {}
+    const res = {
+        setHeader(name, value) { headers[name] = value },
+        send(body) { this.body = body },
+    }
+
+    try {
+        await systemLogController.exportLogs({
+            query: { module: 'ai', action: 'ai', sortOrder: 'asc', keyword: '模型' },
+            user: { userId: 1, user_type: 'admin' }
+        }, res)
+        assert.equal(captured.module, 'ai')
+        assert.equal(captured.action, 'ai')
+        assert.equal(captured.sortOrder, 'asc')
+        assert.equal(captured.keyword, '模型')
+        assert.match(headers['Content-Type'], /text\/csv/)
+        assert.match(headers['Content-Disposition'], /system-log-/)
+        assert.equal(res.body.startsWith('\ufeff'), true)
+    } finally {
+        systemLogModel.getLogsForExport = originalExport
+    }
+})
+
+test('pruneLogs requires backup.manage and reports deleted count', async () => {
+    const originalPrune = systemLogModel.pruneLogs
+    systemLogModel.pruneLogs = async () => ({ deleted: 8, retentionDays: 90 })
+
+    try {
+        const denied = createRes()
+        await systemLogController.pruneLogs({
+            body: { days: 90 },
+            user: { userId: 2, user_type: 'normal' }
+        }, denied)
+        assert.equal(denied.statusCode, 403)
+
+        const res = createRes()
+        await systemLogController.pruneLogs({
+            body: { days: 90 },
+            user: { userId: 1, user_type: 'admin', is_super_admin: 1 },
+            ip: '127.0.0.1'
+        }, res)
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.deleted, 8)
+    } finally {
+        systemLogModel.pruneLogs = originalPrune
+    }
+})

@@ -1,6 +1,12 @@
 <template>
     <yk-space dir="vertical" size="l" class="admin-page system-log">
-        <top-title name="系统日志" description="追踪关键操作与系统活动" :is-search="true" @search="handleSearch" />
+        <top-title name="系统日志" description="追踪关键操作与系统活动" :is-search="true" @search="handleSearch">
+            <template #custom>
+                <yk-button type="secondary" :disabled="loading" @click="exportLogs">
+                    导出当前筛选
+                </yk-button>
+            </template>
+        </top-title>
 
         <yk-text v-if="loading" type="secondary">正在加载日志...</yk-text>
         <yk-text v-else-if="errorMessage" type="danger">{{ errorMessage }}</yk-text>
@@ -74,6 +80,7 @@
     import AdminPager from '../components/common/AdminPager.vue'
     import {
         getSystemLogs,
+        exportSystemLogs,
         getRequestErrorMessage,
         type SystemLogItem,
         type SystemLogSortOrder,
@@ -117,12 +124,15 @@
 
     const actionOptions = [
         { value: 'login', label: '登录' },
+        { value: 'logout', label: '登出' },
         { value: 'create', label: '创建' },
         { value: 'update', label: '更新' },
         { value: 'delete', label: '删除' },
         { value: 'publish', label: '发布' },
         { value: 'revoke', label: '撤回' },
         { value: 'status', label: '状态' },
+        { value: 'system', label: '系统' },
+        { value: 'ai', label: 'AI' },
     ]
 
     const actionLabel = (value: string): string =>
@@ -188,6 +198,25 @@
         sortOrder.value = nextOrder
         page.value = 1
         void fetchLogs()
+    }
+
+    const exportLogs = async (): Promise<void> => {
+        try {
+            const blob = await exportSystemLogs({
+                keyword: keyword.value.trim() || undefined,
+                module: moduleFilter.value || undefined,
+                action: actionFilter.value || undefined,
+                sortOrder: sortOrder.value,
+            })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `system-log-${new Date().toISOString().slice(0, 10)}.csv`
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (error) {
+            errorMessage.value = getRequestErrorMessage(error, '系统日志导出失败')
+        }
     }
 
     onMounted(() => {
@@ -360,6 +389,16 @@
             &.is-login {
                 color: @font-color-m;
                 background: @bg-color-m;
+            }
+
+            &.is-ai {
+                color: @pcolor;
+                background: color-mix(in srgb, @pcolor 12%, transparent);
+            }
+
+            &.is-system {
+                color: var(--gray7);
+                background: var(--admin-surface-soft, var(--bgColor2));
             }
         }
 

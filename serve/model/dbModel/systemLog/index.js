@@ -3,6 +3,7 @@ const { query } = require('../../db/dbnew')
 const ACTIONS = ['login', 'logout', 'create', 'update', 'delete', 'publish', 'revoke', 'status', 'system', 'ai']
 // permission 模块：角色权限矩阵变更属于高风险操作，必须可审计
 const MODULES = ['user', 'article', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'ai', 'permission', 'system', 'backup']
+const EXPORT_MAX_ROWS = 100000
 
 /**
  * 写入一条系统日志；字段已由调用方归一化，失败由调用方兜底
@@ -66,9 +67,80 @@ async function getLogsByPage({
     return { list, total: Number(totalRows[0]?.total || 0) }
 }
 
+function buildLogFilters({ keyword = '', module = '', action = '' } = {}) {
+    const where = []
+    const params = []
+
+    if (keyword) {
+        where.push('(l.detail LIKE ? OR l.target_type LIKE ? OR CAST(l.target_id AS CHAR) LIKE ? OR u.username LIKE ?)')
+        const term = `%${keyword}%`
+        params.push(term, term, term, term)
+    }
+    if (module && MODULES.includes(module)) {
+        where.push('l.module = ?')
+        params.push(module)
+    }
+    if (action && ACTIONS.includes(action)) {
+        where.push('l.action = ?')
+        params.push(action)
+    }
+    return { whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '', params }
+}
+
+function escapeCsvCell(value) {
+    const text = value == null ? '' : String(value)
+    return `"${text.replace(/"/g, '""').replace(/\r?\n/g, '\r\n')}"`
+}
+
+function toCsv(rows) {
+    const headers = ['id', 'user_id', 'username', 'action', 'module', 'target_type', 'target_id', 'detail', 'ip', 'created_at']
+    return [
+        headers.join(','),
+        ...rows.map(row => headers.map(header => escapeCsvCell(row[header])).join(','))
+    ].join('\r\n')
+}
+
+async function getLogsForExport({ keyword = '', module = '', action = '', sortOrder = 'desc', limit = EXPORT_MAX_ROWS } = {}) {
+    const { whereSql, params } = buildLogFilters({ keyword, module, action })
+    const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
+    const rows = await query(
+        `SELECT l.id, l.user_id, u.username, l.action, l.module,
+                l.target_type, l.target_id, l.detail, l.ip, l.created_at
+         FROM system_log l
+         LEFT JOIN users u ON l.user_id = u.id
+         ${whereSql}
+         ORDER BY l.created_at ${orderDirection}, l.id ${orderDirection}
+         LIMIT ?`,
+        [...params, Math.min(Math.max(Number(limit) || EXPORT_MAX_ROWS, 1), EXPORT_MAX_ROWS)]
+    )
+    return { rows: rows || [], csv: toCsv(rows || []) }
+}
+
+async function pruneLogs(days = 365, limit = 1000) {
+    const retentionDays = Math.max(Number.parseInt(days, 10) || 365, 30)
+    const batchSize = Math.max(Math.min(Number.parseInt(limit, 10) || 1000, 10000), 100)
+    let deleted = 0
+
+    while (deleted < 100000) {
+        const result = await query(
+            `DELETE FROM system_log
+             WHERE created_at < (NOW() - INTERVAL ? DAY)
+             LIMIT ?`,
+            [retentionDays, batchSize]
+        )
+        const affected = Number(result?.affectedRows || 0)
+        deleted += affected
+        if (affected < batchSize) break
+    }
+
+    return { deleted, retentionDays }
+}
+
 module.exports = {
     ACTIONS,
     MODULES,
     insertLog,
     getLogsByPage,
+    getLogsForExport,
+    pruneLogs,
 }

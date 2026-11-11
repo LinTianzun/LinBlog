@@ -21,6 +21,7 @@ const { writeMethodLimit } = require('./middleware/rateLimit')
 const { notFoundHandler, createErrorHandler } = require('./middleware/errorHandler')
 const healthController = require('./controller/healthController')
 const { startRecordRetention } = require('./utils/recordRetention')
+const { startSystemLogRetention } = require('./utils/systemLogRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
 const { startArticleScheduler } = require('./utils/articleScheduler')
@@ -136,6 +137,7 @@ db.initDatabase()
             console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);
             // 访问记录按保留期滚动清理，避免 record 表无限增长
             const recordRetention = startRecordRetention();
+            const systemLogRetention = startSystemLogRetention();
             // 文件备份按保留期清理，并回收数据库已无引用的磁盘孤儿文件
             const fileLifecycle = startFileLifecycle();
             // 数据库定时备份：图片以 BLOB 存在库里，必须单独备份数据库本体
@@ -148,6 +150,7 @@ db.initDatabase()
                 server,
                 cleanupTasks: [
                     () => recordRetention.stop(),
+                    () => systemLogRetention.stop(),
                     () => fileLifecycle.stop(),
                     () => databaseBackup.stop(),
                     () => articleScheduler.stop(),

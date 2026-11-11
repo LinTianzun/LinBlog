@@ -44,7 +44,8 @@ const ALL_MIGRATIONS = [
     '20261118_ai_prompt_seed',
     '20261119_ai_image_process',
     '20261120_ai_task_routing',
-    '20261121_ai_prompt_assistant_seed'
+    '20261121_ai_prompt_assistant_seed',
+    '20261111_ai_prompt_history'
 ]
 
 // 除 exclude 外全部视为已应用
@@ -820,5 +821,27 @@ test('ai task routing migration adds text and image model columns', async () => 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261120_ai_task_routing'
+    ))
+})
+
+test('ai prompt history migration creates the history table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept('20261111_ai_prompt_history')
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS ai_prompt_history')
+        && call.sql.includes('operator_id')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === '20261111_ai_prompt_history'
     ))
 })

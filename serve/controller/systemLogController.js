@@ -1,15 +1,26 @@
 const systemLogModel = require('../model/dbModel/systemLog/index')
+const { writeSystemLog } = require('../utils/logHelper')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { hasPermission } = require('../utils/accessControl')
 
-/**
- * 分页查询系统日志（仅管理员）；支持关键词、模块、动作过滤
- */
+function getLogFilters(query = {}) {
+    return {
+        keyword: typeof query.keyword === 'string' ? query.keyword.trim() : '',
+        module: systemLogModel.MODULES.includes(query.module) ? query.module : '',
+        action: systemLogModel.ACTIONS.includes(query.action) ? query.action : '',
+        sortOrder: query.sortOrder === 'asc' ? 'asc' : 'desc'
+    }
+}
+
+function requireLogView(req, res) {
+    if (hasPermission(req.user, 'systemLog.view')) return true
+    res.status(403).json({ code: 403, message: '当前账号没有查看系统日志的权限' })
+    return false
+}
+
 async function getLogs(req, res) {
     try {
-        if (!hasPermission(req.user, 'systemLog.view')) {
-            return res.status(403).json({ code: 403, message: '当前账号没有查看系统日志的权限' })
-        }
+        if (!requireLogView(req, res)) return
 
         const params = formatPaginationParams(req.query, {
             defaultPageSize: 20,
@@ -20,18 +31,11 @@ async function getLogs(req, res) {
         }
 
         const { page, pageSize, offset } = params.data
-        const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
-        const module = systemLogModel.MODULES.includes(req.query.module) ? req.query.module : ''
-        const action = systemLogModel.ACTIONS.includes(req.query.action) ? req.query.action : ''
-        const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc'
-
+        const filters = getLogFilters(req.query)
         const { list, total } = await systemLogModel.getLogsByPage({
-            keyword,
-            module,
-            action,
+            ...filters,
             pageSize,
-            offset,
-            sortOrder
+            offset
         })
 
         res.json({
@@ -62,4 +66,44 @@ async function getLogs(req, res) {
     }
 }
 
-module.exports = { getLogs }
+async function exportLogs(req, res) {
+    try {
+        if (!requireLogView(req, res)) return
+        const filters = getLogFilters(req.query)
+        const { csv } = await systemLogModel.getLogsForExport(filters)
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+        res.setHeader('Content-Disposition', `attachment; filename="system-log-${stamp}.csv"`)
+        res.send(`\ufeff${csv}`)
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '导出系统日志失败：' + err.message })
+    }
+}
+
+async function pruneLogs(req, res) {
+    try {
+        if (!hasPermission(req.user, 'backup.manage')) {
+            return res.status(403).json({ code: 403, message: '只有超级管理员可以清理系统日志' })
+        }
+
+        const days = Number.parseInt(req.body?.days, 10)
+        const result = await systemLogModel.pruneLogs(Number.isFinite(days) ? days : undefined)
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'delete',
+            module: 'system',
+            targetType: 'system_log',
+            detail: `清理超过 ${result.retentionDays} 天的系统日志，删除 ${result.deleted} 条`,
+            ip: req.ip || null
+        })
+        res.json({
+            code: 200,
+            message: `已清理 ${result.deleted} 条系统日志`,
+            data: result
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '清理系统日志失败：' + err.message })
+    }
+}
+
+module.exports = { getLogs, exportLogs, pruneLogs }
