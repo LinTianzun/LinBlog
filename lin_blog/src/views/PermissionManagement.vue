@@ -57,6 +57,9 @@
                         <yk-text v-else type="third">已与服务端一致</yk-text>
                         <yk-button v-if="pendingCount > 0" type="secondary" :disabled="saving"
                             @click="resetDraft">撤销</yk-button>
+                        <yk-button v-if="canEdit" type="secondary" @click="openRoleTemplateModal">
+                            角色模板
+                        </yk-button>
                     </yk-space>
                 </div>
 
@@ -153,11 +156,69 @@
                         <yk-button v-if="canEdit" type="secondary" :disabled="saving || pendingCount === 0"
                             @click="resetDraft">撤销</yk-button>
                         <yk-button v-if="canEdit" :disabled="saving || pendingCount === 0"
-                            :loading="saving" @click="saveMatrix">
-                            {{ saving ? '正在保存…' : `保存 ${pendingCount || ''} 项变更` }}
+                            @click="openSaveConfirm">
+                            保存 {{ pendingCount || '' }} 项变更
                         </yk-button>
                     </yk-space>
                 </div>
+
+                <div v-if="showSaveConfirm" class="permission-confirm">
+                    <div class="permission-confirm-body">
+                        <strong class="permission-confirm-title">确认保存 {{ pendingCount }} 项变更？</strong>
+                        <yk-text type="secondary">保存后立即生效，已登录用户下次请求按新权限执行。</yk-text>
+                        <ul class="permission-confirm-list">
+                            <li v-for="summary in saveSummary" :key="summary.roleKey" class="permission-confirm-item">
+                                <span>{{ summary.roleLabel }}</span>
+                                <span class="permission-confirm-count">
+                                    <em v-if="summary.granted" class="is-grant">授予 {{ summary.granted }}</em>
+                                    <em v-if="summary.revoked" class="is-revoke">收回 {{ summary.revoked }}</em>
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+                    <yk-space align="center" size="s">
+                        <yk-button type="secondary" :disabled="saving" @click="showSaveConfirm = false">
+                            再检查一下
+                        </yk-button>
+                        <yk-button :loading="saving" @click="saveMatrix">确认保存</yk-button>
+                    </yk-space>
+                </div>
+
+                <Teleport to="body">
+                    <div v-if="roleTemplateModalVisible" class="role-template-mask" @click.self="closeRoleTemplateModal">
+                        <div class="role-template-modal" role="dialog" aria-label="应用角色模板">
+                            <header class="role-template-header">
+                                <div>
+                                    <h3>应用角色模板</h3>
+                                    <p>先选择目标角色，再选择模板覆盖该角色草稿；确认后仍可在矩阵中微调。</p>
+                                </div>
+                                <button type="button" class="role-template-close" @click="closeRoleTemplateModal">
+                                    ×
+                                </button>
+                            </header>
+
+                            <div class="role-template-body">
+                                <div class="role-template-field">
+                                    <span>目标角色</span>
+                                    <select-field v-model="roleTemplateTarget" :options="targetRoleOptions"
+                                        :disabled="applyingRoleTemplate" placeholder="请选择角色" />
+                                </div>
+
+                                <div class="role-template-list">
+                                    <button v-for="template in roleTemplates" :key="template.key" type="button"
+                                        class="role-template-card" :disabled="applyingRoleTemplate"
+                                        @click="applyRoleTemplate(template)">
+                                        <span class="role-template-card-head">
+                                            <strong>{{ template.label }}</strong>
+                                            <small>{{ template.permissions.length }} 项权限</small>
+                                        </span>
+                                        <span class="role-template-card-desc">{{ template.description }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Teleport>
             </div>
 
             <!-- 权限变更审计：与系统日志同一数据源，入口带 module=permission 直达 -->
@@ -194,6 +255,7 @@
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import TopTitle from '../components/bar/TopTitle.vue'
+import SelectField from '../components/common/SelectField.vue'
 import {
     getPermissionCatalog,
     updatePermissionMatrix,
@@ -229,7 +291,51 @@ const keyword = ref('')
 const focusRole = ref('')
 const loading = ref(false)
 const saving = ref(false)
+const showSaveConfirm = ref(false)
+const roleTemplateModalVisible = ref(false)
+const roleTemplateTarget = ref('')
+const applyingRoleTemplate = ref(false)
 const errorMessage = ref('')
+
+interface RoleTemplate {
+    key: 'contentEditor' | 'contentReviewer' | 'visitorInteraction'
+    label: string
+    description: string
+    permissions: string[]
+}
+
+const roleTemplates: RoleTemplate[] = [
+    {
+        key: 'contentEditor',
+        label: '内容编辑',
+        description: '文章 / 图库 / 随笔的创作与管理，保留 AI 写作与配图能力',
+        permissions: [
+            'overview.viewAll', 'article.viewAll', 'article.create', 'article.manageOwn',
+            'article.manageAll', 'article.publish', 'gallery.viewAll', 'gallery.create',
+            'gallery.manageOwn', 'gallery.manageAll', 'gallery.publish', 'diary.viewAll',
+            'diary.create', 'diary.manageOwn', 'category.manage', 'label.manage',
+            'ai.use', 'file.view', 'file.upload'
+        ]
+    },
+    {
+        key: 'contentReviewer',
+        label: '内容审核',
+        description: '查看全站内容并处理发布状态，可管理评论举报',
+        permissions: [
+            'overview.viewAll', 'article.viewAll', 'article.publish', 'gallery.viewAll',
+            'gallery.publish', 'diary.viewAll', 'comment.moderate', 'ai.use', 'systemLog.view'
+        ]
+    },
+    {
+        key: 'visitorInteraction',
+        label: '访客互动',
+        description: '浏览公开内容、参与互动，并保留基础账号沟通能力',
+        permissions: [
+            'article.viewAll', 'gallery.viewAll', 'diary.viewAll', 'comment.create',
+            'comment.manageOwn', 'comment.like', 'comment.report', 'message.private'
+        ]
+    }
+]
 
 const canEdit = computed(() => session.isSuperAdmin)
 // 审计列表复用系统日志接口，需要 systemLog.view；没有该权限就不渲染该区块
@@ -324,6 +430,18 @@ const pendingChanges = computed<PermissionChange[]>(() => {
 
 const pendingCount = computed(() => pendingChanges.value.length)
 
+const saveSummary = computed(() => {
+    return roles.value.map(role => {
+        const changes = pendingChanges.value.filter(change => change.roleKey === role.key)
+        return {
+            roleKey: role.key,
+            roleLabel: role.label,
+            granted: changes.filter(change => change.allowed).length,
+            revoked: changes.filter(change => !change.allowed).length,
+        }
+    }).filter(summary => summary.granted > 0 || summary.revoked > 0)
+})
+
 const rolePermissionCount = (role: PermissionRole): number => {
     let count = 0
     for (const group of groups.value) {
@@ -364,10 +482,61 @@ const toggleWholeRole = (role: PermissionRole): void => {
 
 const resetDraft = (): void => {
     draft.value = {}
+    showSaveConfirm.value = false
 }
 
 const toggleFocusRole = (roleKey: string): void => {
     focusRole.value = focusRole.value === roleKey ? '' : roleKey
+}
+
+const targetRoleOptions = computed(() => roles.value
+    .filter(role => isRoleEditable(role))
+    .map(role => ({ label: role.label, value: role.key })))
+
+const openRoleTemplateModal = (): void => {
+    if (!canEdit.value) return
+    roleTemplateModalVisible.value = true
+    if (!targetRoleOptions.value.some(option => option.value === roleTemplateTarget.value)) {
+        roleTemplateTarget.value = targetRoleOptions.value[0]?.value || ''
+    }
+}
+
+const closeRoleTemplateModal = (): void => {
+    if (applyingRoleTemplate.value) return
+    roleTemplateModalVisible.value = false
+}
+
+const applyRoleTemplate = async (template: RoleTemplate): Promise<void> => {
+    if (applyingRoleTemplate.value) return
+    const role = roles.value.find(item => item.key === roleTemplateTarget.value)
+    if (!role || !isRoleEditable(role)) {
+        showMessage('warning', '请先选择可编辑的目标角色')
+        return
+    }
+
+    applyingRoleTemplate.value = true
+    await new Promise(resolve => setTimeout(resolve, 16))
+
+    try {
+        const next = { ...draft.value }
+        for (const group of groups.value) {
+            for (const permission of group.permissions) {
+                if (permission.protected) continue
+                next[cellKey(role.key, permission.key)] = template.permissions.includes(permission.key)
+            }
+        }
+        draft.value = next
+        focusRole.value = role.key
+        roleTemplateModalVisible.value = false
+        const granted = template.permissions.filter(key =>
+            groups.value.some(group => group.permissions.some(permission =>
+                permission.key === key && !permission.protected
+            ))
+        ).length
+        showMessage('primary', `已按「${template.label}」为${role.label}生成 ${granted} 项草稿权限`)
+    } finally {
+        applyingRoleTemplate.value = false
+    }
 }
 
 const applyCatalog = (payload: {
@@ -379,6 +548,7 @@ const applyCatalog = (payload: {
     groups.value = payload.groups
     editableRoles.value = payload.editableRoles
     draft.value = {}
+    showSaveConfirm.value = false
 }
 
 const loadCatalog = async (): Promise<void> => {
@@ -401,6 +571,7 @@ const loadCatalog = async (): Promise<void> => {
 const saveMatrix = async (): Promise<void> => {
     if (saving.value || pendingCount.value === 0) return
 
+    const changeCount = pendingChanges.value.length
     saving.value = true
 
     try {
@@ -411,13 +582,19 @@ const saveMatrix = async (): Promise<void> => {
         applyCatalog(result.data)
         // 自己的权限可能同时变化（比如管理员被收回权限），同步刷新会话
         await session.refresh()
-        showMessage('success', `已保存 ${pendingChanges.value.length} 项权限变更`)
+        showMessage('success', `已保存 ${changeCount} 项权限变更`)
+        showSaveConfirm.value = false
         void loadAudits()
     } catch (error) {
         showMessage('error', describeError(error, '权限矩阵保存失败'))
     } finally {
         saving.value = false
     }
+}
+
+const openSaveConfirm = (): void => {
+    if (pendingCount.value === 0) return
+    showSaveConfirm.value = true
 }
 
 onMounted(() => {
@@ -540,6 +717,137 @@ onMounted(() => {
 
 .permission-pending {
     font-weight: 600;
+}
+
+.role-template-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgb(0 0 0 / 40%);
+}
+
+.role-template-modal {
+    width: min(540px, 100%);
+    max-height: min(86vh, 680px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 18px;
+    background: var(--bgColor1);
+    box-shadow: 0 18px 50px rgb(0 0 0 / 18%);
+}
+
+.role-template-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 20px 22px 14px;
+    border-bottom: 1px solid var(--admin-line, var(--gray1));
+
+    h3 {
+        margin: 0 0 5px;
+        color: var(--gray);
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    p {
+        margin: 0;
+        color: var(--gray6);
+        font-size: 12.5px;
+        line-height: 1.6;
+    }
+}
+
+.role-template-close {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--gray6);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.role-template-body {
+    padding: 18px 22px 22px;
+    overflow-y: auto;
+}
+
+.role-template-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    > span {
+        color: var(--gray);
+        font-size: 13px;
+        font-weight: 650;
+    }
+}
+
+.role-template-list {
+    display: grid;
+    gap: 10px;
+}
+
+.role-template-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 13px 14px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bgColor2) 58%, transparent);
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+
+    &:hover:not(:disabled) {
+        border-color: var(--pcolor3);
+        background: color-mix(in srgb, var(--pcolor1) 58%, transparent);
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+}
+
+.role-template-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    strong {
+        color: var(--gray);
+        font-size: 14px;
+    }
+
+    small {
+        color: var(--gray6);
+        font-size: 11.5px;
+    }
+}
+
+.role-template-card-desc {
+    color: var(--gray6);
+    font-size: 12px;
+    line-height: 1.6;
 }
 
 .permission-matrix {
@@ -721,6 +1029,62 @@ onMounted(() => {
     border-top: 1px solid var(--admin-line, var(--gray1));
 }
 
+.permission-confirm {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 0 clamp(14px, 1.6vw, 22px) 18px;
+    padding: 16px 18px;
+    border: 1px solid var(--pcolor3);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--pcolor1) 72%, transparent);
+
+    &-title {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--gray);
+        font-size: 14px;
+    }
+
+    &-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        max-height: 140px;
+        margin: 10px 0 0;
+        padding: 0;
+        overflow-y: auto;
+        list-style: none;
+    }
+
+    &-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--gray7);
+        font-size: 12.5px;
+    }
+
+    &-count {
+        display: flex;
+        gap: 10px;
+
+        em {
+            font-style: normal;
+        }
+
+        .is-grant {
+            color: var(--pcolor);
+        }
+
+        .is-revoke {
+            color: var(--ecolor);
+        }
+    }
+}
+
 .permission-audit {
     width: 100%;
     box-sizing: border-box;
@@ -809,6 +1173,14 @@ onMounted(() => {
     .permission-audit-item {
         grid-template-columns: 1fr;
         gap: 4px;
+    }
+
+    .role-template-header {
+        padding: 18px 18px 12px;
+    }
+
+    .role-template-body {
+        padding: 16px 18px 18px;
     }
 }
 </style>

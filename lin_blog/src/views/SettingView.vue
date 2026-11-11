@@ -505,6 +505,8 @@ const PERMISSION_LABELS: Record<string, string> = {
     'user.disable': '启用与禁用用户',
     'user.delete': '删除用户',
     'user.assignAdmin': '授予管理员角色',
+    'ai.use': '使用 AI 能力',
+    'ai.manage': '管理 AI 接入',
     'permission.view': '查看权限管理',
     'permission.edit': '修改权限矩阵',
     'systemLog.view': '查看系统日志',
@@ -518,6 +520,7 @@ const PERMISSION_GROUPS: { key: string; label: string; prefixes: string[] }[] = 
     { key: 'file', label: '本地文件', prefixes: ['file'] },
     { key: 'message', label: '消息通知', prefixes: ['message'] },
     { key: 'user', label: '用户管理', prefixes: ['user'] },
+    { key: 'ai', label: 'AI 能力', prefixes: ['ai'] },
     { key: 'system', label: '系统与权限', prefixes: ['permission', 'systemLog'] },
 ]
 
