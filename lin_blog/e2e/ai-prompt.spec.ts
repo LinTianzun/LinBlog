@@ -101,7 +101,7 @@ test('提示词模板页可新建自定义提示词', async ({ page }) => {
   await expect(page.locator('.ai-prompt-group').first()).toBeVisible({ timeout: 30_000 })
 
   await page.getByRole('button', { name: '+ 新建提示词' }).click()
-  const modal = page.locator('.yk-modal__main')
+  const modal = page.locator('.yk-modal__main:visible').last()
   await expect(modal).toBeVisible()
 
   // 所属功能必须用中文下拉，不再直接暴露 featureKey
@@ -118,6 +118,8 @@ test('提示词模板页可新建自定义提示词', async ({ page }) => {
   await expect(featureMenu).not.toContainText('freeform')
   await featureMenu.getByText('自由创作').click()
   await expect(featureSelect).toContainText('自由创作')
+  // 选完选项后下拉必须立即收起
+  await expect(featureMenu).toBeHidden()
 
   await modal.locator('input[type="text"]').first().fill('我的写作风格')
   await modal.locator('textarea').fill('请用更口语化的语气写简介：{{title}}')
@@ -417,8 +419,14 @@ test('所属功能下拉展示中文名并可切换', async ({ page }) => {
   await expect(menu).toContainText('封面配图')
   await expect(menu).not.toContainText('freeform')
 
+  // 点击外部也应收起
+  await page.locator('.ai-prompt-preview-head').click()
+  await expect(menu).toBeHidden()
+  await trigger.click()
+
   await menu.getByText('封面配图').click()
   await expect(trigger).toContainText('封面配图')
+  await expect(menu).toBeHidden()
 })
 test('没有 ai.manage 权限时不显示提示词模板入口', async ({ page }) => {
   await seedSession(page, {

@@ -1,5 +1,5 @@
 <template>
-    <div class="select-field" :class="{ 'is-open': open, 'is-disabled': disabled }">
+    <div ref="root" class="select-field" :class="{ 'is-open': open, 'is-disabled': disabled }">
         <button type="button" class="select-field-trigger" :disabled="disabled"
             :aria-expanded="open" aria-haspopup="listbox" @click="toggle">
             <span class="select-field-value" :class="{ 'is-placeholder': !selectedLabel }">
@@ -15,7 +15,8 @@
             <ul v-if="open" class="select-field-menu" role="listbox">
                 <li v-for="option in options" :key="String(option.value)" class="select-field-option"
                     :class="{ 'is-selected': option.value === modelValue }" role="option"
-                    :aria-selected="option.value === modelValue" @click="select(option.value)">
+                    :aria-selected="option.value === modelValue"
+                    @click.stop.prevent="select(option.value)">
                     <span class="select-field-option-text">{{ option.label }}</span>
                     <svg v-if="option.value === modelValue" class="select-field-check" viewBox="0 0 14 14" aria-hidden="true">
                         <path d="M3 7.2 5.8 10 11 4.4" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -88,12 +89,13 @@
     }
 
     onMounted(() => {
-        document.addEventListener('click', handleDocumentClick)
+        // 捕获阶段监听，避免页面内其它 click.stop 让下拉收不起来
+        document.addEventListener('click', handleDocumentClick, true)
         document.addEventListener('keydown', handleKeydown)
     })
 
     onBeforeUnmount(() => {
-        document.removeEventListener('click', handleDocumentClick)
+        document.removeEventListener('click', handleDocumentClick, true)
         document.removeEventListener('keydown', handleKeydown)
     })
 

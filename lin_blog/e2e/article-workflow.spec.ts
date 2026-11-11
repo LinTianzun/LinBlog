@@ -74,7 +74,10 @@ test('定时发布可安排并取消', async ({ page }) => {
   await expect(page.locator('.w-e-text-container')).toBeVisible({ timeout: 30_000 })
 
   await page.getByRole('button', { name: '定时发布' }).click()
-  await page.getByText('安排发布时间').click()
+  const publishMenu = page.locator('.yk-tooltip__content:visible').last()
+  await expect(publishMenu.getByText('安排发布时间')).toBeVisible()
+  await publishMenu.getByText('安排发布时间').click()
+  await expect(publishMenu).toBeHidden()
   const dialog = page.locator('.yk-modal__main:visible').last()
   await dialog.locator('input[type="datetime-local"]').fill('2030-01-02T09:00')
   await dialog.getByRole('button', { name: '确认安排' }).click()
