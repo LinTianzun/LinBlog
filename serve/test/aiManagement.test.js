@@ -582,6 +582,163 @@ test('连通性测试会记录耗时并更新模型健康状态', async () => {
     }
 })
 
+test('AI 管理配置操作会写入系统审计日志', async () => {
+    const originalCreate = aiModel.createModel
+    const originalUpdate = aiModel.updateModel
+    const originalDelete = aiModel.deleteModel
+    const originalSavePrompt = aiModel.savePromptTemplate
+    const originalSelectPrompt = aiModel.selectPromptTemplate
+    const originalPromptList = aiModel.listPromptTemplates
+    const originalPromptBindings = aiModel.listPromptBindings
+    const originalSettings = aiModel.getSettings
+    const originalUpdateSettings = aiModel.updateSettings
+    const originalFind = aiModel.findModelById
+    const originalInsert = systemLogModel.insertLog
+    const logs = []
+
+    systemLogModel.insertLog = async (payload) => {
+        logs.push(payload)
+        return { insertId: logs.length }
+    }
+    aiModel.createModel = async () => ({ id: 8, name: '魔搭' })
+    aiModel.updateModel = async () => ({ id: 8, name: '魔搭更新' })
+    aiModel.deleteModel = async () => true
+    aiModel.savePromptTemplate = async () => []
+    aiModel.selectPromptTemplate = async () => true
+    aiModel.listPromptTemplates = async () => []
+    aiModel.listPromptBindings = async () => []
+    aiModel.getSettings = async () => ({
+        quotaEnabled: true,
+        dailyLimitPerUser: 20,
+        monthlyLimitPerUser: 100,
+        chatModelId: 2,
+        imageModelId: 3
+    })
+    aiModel.findModelById = async (id) => ({
+        id,
+        name: id === 2 ? '文本模型' : '配图模型',
+        enabled: 1,
+        chatModel: id === 2 ? 'text-model' : '',
+        imageModel: id === 3 ? 'image-model' : ''
+    })
+    aiModel.updateSettings = async payload => ({ ...payload })
+
+    try {
+        const user = { userId: 1, ip: '127.0.0.1' }
+        const responses = []
+        responses.push(await aiManageController.createModel({
+            user,
+            ip: '127.0.0.1',
+            body: { name: '魔搭', baseUrl: 'https://ai.test/v1', chatModel: 'text', apiKey: 'k' }
+        }, createRes()))
+        responses.push(await aiManageController.updateModel({
+            user,
+            ip: '127.0.0.1',
+            params: { id: '8' },
+            body: {
+                name: '魔搭更新',
+                baseUrl: 'https://ai.test/v1',
+                chatModel: 'text',
+                enabled: false
+            }
+        }, createRes()))
+        responses.push(await aiManageController.deleteModel({
+            user,
+            ip: '127.0.0.1',
+            params: { id: '8' }
+        }, createRes()))
+        responses.push(await aiManageController.selectPromptTemplate({
+            user,
+            ip: '127.0.0.1',
+            params: { key: 'custom_test' }
+        }, createRes()))
+        responses.push(await aiManageController.updateSettings({
+            user,
+            ip: '127.0.0.1',
+            body: { quotaEnabled: true, dailyLimitPerUser: 30, monthlyLimitPerUser: 200 }
+        }, createRes()))
+
+        assert.deepEqual(responses.map(item => item.body.code), [201, 200, 200, 200, 200])
+        assert.equal(logs.length, 5)
+        assert.deepEqual(logs.map(item => item.action), [
+            'create', 'update', 'delete', 'update', 'update'
+        ])
+        assert.ok(logs.every(item => item.module === 'ai'))
+        assert.ok(logs.every(item => item.userId === 1))
+        assert.match(logs[0].detail, /密钥已更新/)
+        assert.match(logs[1].detail, /密钥未变更/)
+        assert.match(logs[3].detail, /选用提示词模板/)
+        assert.match(logs[4].detail, /每日：30 次/)
+    } finally {
+        aiModel.createModel = originalCreate
+        aiModel.updateModel = originalUpdate
+        aiModel.deleteModel = originalDelete
+        aiModel.savePromptTemplate = originalSavePrompt
+        aiModel.selectPromptTemplate = originalSelectPrompt
+        aiModel.getSettings = originalSettings
+        aiModel.updateSettings = originalUpdateSettings
+        aiModel.findModelById = originalFind
+        systemLogModel.insertLog = originalInsert
+    }
+})
+
+test('提示词保存会记录历史并支持回滚', async () => {
+    const queries = []
+    const originalBindings = aiModel.listPromptBindings
+
+    const queryFn = async (sql, values = []) => {
+        queries.push({ sql, values })
+        if (sql.startsWith('SELECT id, template_key, feature_key')) {
+            return [{
+                id: 1,
+                template_key: 'writing',
+                feature_key: 'writing',
+                name: '旧名称',
+                description: '旧说明',
+                content: '旧内容',
+                variables: 'input',
+                enabled: 1
+            }]
+        }
+        if (sql.startsWith('SELECT id, template_key, name, description, content, variables, enabled FROM ai_prompt_history')) {
+            return [{
+                id: 5,
+                template_key: 'writing',
+                name: '旧名称',
+                description: '旧说明',
+                content: '旧内容',
+                variables: 'input',
+                enabled: 1
+            }]
+        }
+        return []
+    }
+    aiModel.listPromptBindings = async () => ({})
+
+    try {
+        const list = await aiModel.savePromptTemplate('writing', {
+            name: '新名称',
+            description: '新说明',
+            content: '新内容',
+            variables: 'input',
+            enabled: true
+        }, 9, queryFn)
+
+        const historyInsert = queries.find(item => item.sql.includes('INSERT INTO ai_prompt_history'))
+        assert.ok(historyInsert)
+        assert.equal(historyInsert.values[1], '旧名称')
+        assert.equal(historyInsert.values[6], 9)
+        assert.ok(Array.isArray(list) && list.length > 0)
+
+        const restored = await aiModel.restorePromptHistory('writing', 5, 9, queryFn)
+        assert.equal(restored, true)
+        const rollbackInsert = queries.filter(item => item.sql.includes('INSERT INTO ai_prompt_history')).at(-1)
+        assert.equal(rollbackInsert.values[6], 9)
+    } finally {
+        aiModel.listPromptBindings = originalBindings
+    }
+})
+
 test('健康快照回传 ISO 时间，前端可按本地时区显示', async () => {
     const queryFn = async (sql) => {
         if (sql.includes('SELECT test_count')) {

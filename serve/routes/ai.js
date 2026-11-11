@@ -129,6 +129,8 @@ module.exports = (app) => {
     app.post('/api/ai/prompts/:key/select', authMiddleware, requirePermission('ai.manage'), aiManageController.selectPromptTemplate)
     app.delete('/api/ai/prompts/:key', authMiddleware, requirePermission('ai.manage'), aiManageController.deletePromptTemplate)
     app.post('/api/ai/prompts/:key/reset', authMiddleware, requirePermission('ai.manage'), aiManageController.resetPromptTemplate)
+    app.get('/api/ai/prompts/:key/history', authMiddleware, requirePermission('ai.manage'), aiManageController.getPromptHistory)
+    app.post('/api/ai/prompts/:key/history/:historyId/restore', authMiddleware, requirePermission('ai.manage'), aiManageController.restorePromptHistory)
     // 当前登录用户自己的用量：拥有 ai.use 权限即可查看
     app.get('/api/ai/usage/me', authMiddleware, requirePermission('ai.use'), aiManageController.getMyUsage)
 }

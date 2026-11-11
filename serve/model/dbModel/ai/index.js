@@ -318,9 +318,9 @@ async function listEnabledModelConfigs() {
  * 读取全部提示词模板（按模板标识排序）。
  * 未在数据库中配置的模板会以内置默认内容补齐，保证后台看到的是完整列表。
  */
-async function listPromptTemplates() {
+async function listPromptTemplates(queryFn = query) {
     const { listDefaultTemplates } = require('../../../utils/aiPromptTemplates')
-    const rows = await query(
+    const rows = await queryFn(
         'SELECT id, template_key, feature_key, name, description, content, variables, enabled, is_default, updated_at FROM ai_prompt_template ORDER BY id ASC'
     )
 
@@ -519,53 +519,126 @@ async function getEnabledPromptTemplate(key, queryFn = query) {
 /**
  * 保存提示词模板：存在则更新，不存在则插入。
  */
-async function savePromptTemplate(key, { name, description, content, variables, enabled }) {
-    const existing = await query(
-        'SELECT id FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+async function savePromptTemplate(key, { name, description, content, variables, enabled }, operatorId = null, queryFn = query) {
+    const existing = await queryFn(
+        'SELECT id, template_key, feature_key, name, description, content, variables, enabled FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
         [key]
     )
 
-    if (existing?.[0]?.id) {
-        await query(
+    const row = existing?.[0]
+    if (row?.id) {
+        await queryFn(
+            `INSERT INTO ai_prompt_history
+                (template_key, name, description, content, variables, enabled, operator_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                String(row.template_key),
+                String(row.name || ''),
+                row.description ? String(row.description) : null,
+                String(row.content || ''),
+                row.variables ? String(row.variables) : null,
+                Number(row.enabled) === 1,
+                operatorId ?? null
+            ]
+        )
+        await queryFn(
             'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = ? WHERE id = ?',
-            [name, description || null, content, variables || null, enabled ? 1 : 0, Number(existing[0].id)]
+            [name, description || null, content, variables || null, enabled ? 1 : 0, Number(row.id)]
         )
     } else {
-        await query(
+        await queryFn(
             'INSERT INTO ai_prompt_template (template_key, feature_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
             [key, key, name, description || null, content, variables || null, enabled ? 1 : 0]
         )
     }
 
-    return listPromptTemplates()
+    return listPromptTemplates(queryFn)
+}
+
+async function listPromptHistory(key, limit = 20, queryFn = query) {
+    const pageSize = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100)
+    const rows = await queryFn(
+        `SELECT h.id, h.template_key, h.name, h.description, h.content, h.variables,
+                h.enabled, h.operator_id, u.username, h.created_at
+         FROM ai_prompt_history h
+         LEFT JOIN users u ON u.id = h.operator_id
+         WHERE h.template_key = ?
+         ORDER BY h.created_at DESC, h.id DESC
+         LIMIT ?`,
+        [key, pageSize]
+    )
+    return (rows || []).map(row => ({
+        id: Number(row.id),
+        key: String(row.template_key),
+        name: String(row.name || ''),
+        description: row.description ? String(row.description) : '',
+        content: String(row.content || ''),
+        variables: row.variables ? String(row.variables) : '',
+        enabled: Number(row.enabled) === 1,
+        operatorName: row.username ? String(row.username) : '系统',
+        createdAt: row.created_at
+    }))
+}
+
+async function restorePromptHistory(key, historyId, operatorId = null, queryFn = query) {
+    const historyRows = await queryFn(
+        'SELECT id, template_key, name, description, content, variables, enabled FROM ai_prompt_history WHERE id = ? AND template_key = ? LIMIT 1',
+        [historyId, key]
+    )
+    const history = historyRows?.[0]
+    if (!history) return false
+
+    await savePromptTemplate(key, {
+        name: String(history.name || ''),
+        description: history.description ? String(history.description) : '',
+        content: String(history.content || ''),
+        variables: history.variables ? String(history.variables) : null,
+        enabled: Number(history.enabled) === 1
+    }, operatorId, queryFn)
+    return true
 }
 
 /**
  * 把模板恢复成内置默认内容。
  */
-async function resetPromptTemplate(key) {
+async function resetPromptTemplate(key, operatorId = null, queryFn = query) {
     const { getDefaultTemplate } = require('../../../utils/aiPromptTemplates')
     const fallback = getDefaultTemplate(key)
     if (!fallback) return null
 
-    const existing = await query(
-        'SELECT id FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
+    const existing = await queryFn(
+        'SELECT id, template_key, name, description, content, variables, enabled FROM ai_prompt_template WHERE template_key = ? LIMIT 1',
         [key]
     )
 
     if (existing?.[0]?.id) {
-        await query(
+        const row = existing[0]
+        await queryFn(
+            `INSERT INTO ai_prompt_history
+                (template_key, name, description, content, variables, enabled, operator_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                String(row.template_key),
+                String(row.name || ''),
+                row.description ? String(row.description) : null,
+                String(row.content || ''),
+                row.variables ? String(row.variables) : null,
+                Number(row.enabled) === 1,
+                operatorId ?? null
+            ]
+        )
+        await queryFn(
             'UPDATE ai_prompt_template SET name = ?, description = ?, content = ?, variables = ?, enabled = 1, is_default = 1, feature_key = ? WHERE id = ?',
             [fallback.name, fallback.description, fallback.content, fallback.variables, fallback.key, Number(existing[0].id)]
         )
     } else {
-        await query(
+        await queryFn(
             'INSERT INTO ai_prompt_template (template_key, feature_key, name, description, content, variables, enabled, is_default) VALUES (?, ?, ?, ?, ?, ?, 1, 1)',
             [fallback.key, fallback.key, fallback.name, fallback.description, fallback.content, fallback.variables]
         )
     }
 
-    return listPromptTemplates()
+    return listPromptTemplates(queryFn)
 }
 
 async function createModel(payload) {
@@ -1205,6 +1278,8 @@ module.exports = {
     getEnabledPromptTemplate,
     savePromptTemplate,
     resetPromptTemplate,
+    listPromptHistory,
+    restorePromptHistory,
     importEnvModel,
     createModel,
     updateModel,

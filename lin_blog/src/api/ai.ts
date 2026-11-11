@@ -472,6 +472,28 @@ export function resetAiPromptTemplate(key: string) {
   return request.post<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(`/ai/prompts/${key}/reset`);
 }
 
+export interface AiPromptHistoryItem {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  content: string;
+  variables: string;
+  enabled: boolean;
+  operatorName: string;
+  createdAt: string;
+}
+
+export function getAiPromptHistory(key: string) {
+  return request.get<ApiResult<{ list: AiPromptHistoryItem[] }>>(`/ai/prompts/${key}/history`);
+}
+
+export function restoreAiPromptHistory(key: string, historyId: number) {
+  return request.post<ApiResult<{ list: AiPromptTemplate[]; bindings: AiPromptBindings }>>(
+    `/ai/prompts/${key}/history/${historyId}/restore`
+  );
+}
+
 export function getMyAiUsage() {
   return request.get<ApiResult<AiMyUsage>>("/ai/usage/me");
 }

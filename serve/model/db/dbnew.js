@@ -600,6 +600,20 @@ const tablesSql = {
     PRIMARY KEY (feature_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 功能选用的提示词模板';`
 
+  ,ai_prompt_history: `CREATE TABLE IF NOT EXISTS ai_prompt_history(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    template_key VARCHAR(64) NOT NULL COMMENT '模板标识',
+    name VARCHAR(64) NOT NULL,
+    description VARCHAR(255) NULL,
+    content LONGTEXT NOT NULL,
+    variables VARCHAR(500) NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    operator_id BIGINT UNSIGNED NULL COMMENT '修改人',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_ai_prompt_history_key (template_key, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 提示词历史';`
+
   ,password_reset_token: `CREATE TABLE IF NOT EXISTS password_reset_token(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '重置令牌ID',
     user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
@@ -1615,7 +1629,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2448,6 +2462,12 @@ const migrations = [
   {
     version: '20261121_ai_prompt_assistant_seed',
     up: ensureAiPromptAssistantSeedSchema
+  },
+  {
+    version: '20261111_ai_prompt_history',
+    up: async (exec = query) => {
+      await exec(tablesSql.ai_prompt_history);
+    }
   }
 ];
 

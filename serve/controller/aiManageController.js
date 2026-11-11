@@ -49,6 +49,34 @@ function normalizeModelPayload(body = {}) {
     return { data: payload }
 }
 
+function logAiManageAction(req, {
+    action,
+    targetId = null,
+    detail
+}) {
+    writeSystemLog({
+        userId: req.user?.userId ?? null,
+        action,
+        module: 'ai',
+        targetType: 'model',
+        targetId,
+        detail,
+        ip: req.ip || null
+    })
+}
+
+function describeModelPayload(payload, { hasApiKey = false } = {}) {
+    return [
+        `名称：${payload.name || '未设置'}`,
+        `地址：${payload.baseUrl || '未设置'}`,
+        `文本模型：${payload.chatModel || '未设置'}`,
+        payload.imageModel ? `配图模型：${payload.imageModel}` : '',
+        `启用：${payload.enabled ? '是' : '否'}`,
+        payload.isDefault ? '设为默认模型' : '',
+        `密钥${hasApiKey ? '已更新' : '未变更'}`
+    ].filter(Boolean).join('；')
+}
+
 /**
  * 校验模型级限额：不能高于全局策略，否则这个字段没有意义。
  * 全局为 0（不限）时，模型级也按不限处理，不再额外约束。
@@ -92,6 +120,11 @@ async function createModel(req, res) {
 
     try {
         const model = await aiModel.createModel(normalized.data)
+        logAiManageAction(req, {
+            action: 'create',
+            targetId: model?.id,
+            detail: `创建 AI 模型；${describeModelPayload(normalized.data, { hasApiKey: true })}`
+        })
         return res.status(201).json({ code: 201, message: 'AI 模型已创建', data: model })
     } catch (err) {
         console.error('[AI] 创建模型失败：', err?.message || err)
@@ -125,6 +158,13 @@ async function updateModel(req, res) {
 
     try {
         const model = await aiModel.updateModel(modelId, normalized.data)
+        logAiManageAction(req, {
+            action: 'update',
+            targetId: modelId,
+            detail: `更新 AI 模型「${existing.name}」；${describeModelPayload(normalized.data, {
+                hasApiKey: Boolean(normalized.data.apiKey)
+            })}`
+        })
         return res.json({ code: 200, message: 'AI 模型已更新', data: model })
     } catch (err) {
         console.error('[AI] 更新模型失败：', err?.message || err)
@@ -146,6 +186,11 @@ async function deleteModel(req, res) {
         if (!removed) {
             return res.status(404).json({ code: 404, message: 'AI 模型不存在' })
         }
+        logAiManageAction(req, {
+            action: 'delete',
+            targetId: modelId,
+            detail: '删除 AI 模型'
+        })
         return res.json({ code: 200, message: 'AI 模型已删除' })
     } catch (err) {
         console.error('[AI] 删除模型失败：', err?.message || err)
@@ -173,6 +218,11 @@ async function testModel(req, res) {
         const result = await probeModel(target)
 
         if (!result.ok) {
+            logAiManageAction(req, {
+                action: 'ai',
+                targetId: modelId,
+                detail: `手动连通性测试失败：「${target.name}」${result.error || '未知原因'}`
+            })
             return res.status(200).json({
                 code: 200,
                 message: `连通性测试失败：${result.error}`,
@@ -185,6 +235,11 @@ async function testModel(req, res) {
             })
         }
 
+        logAiManageAction(req, {
+            action: 'ai',
+            targetId: modelId,
+            detail: `手动连通性测试通过：「${target.name}」耗时 ${result.latencyMs} 毫秒`
+        })
         return res.json({
             code: 200,
             message: `连通性测试通过（耗时 ${result.latencyMs} 毫秒）`,
@@ -203,6 +258,11 @@ async function testModel(req, res) {
         } catch (recordError) {
             console.warn('[AI] 记录模型健康状态失败：', recordError?.message || recordError)
         }
+        logAiManageAction(req, {
+            action: 'ai',
+            targetId: modelId,
+            detail: `手动连通性测试失败：${reason}`
+        })
         return res.status(200).json({
             code: 200,
             message: `连通性测试失败：${reason}`,
@@ -310,6 +370,15 @@ async function createPromptTemplate(req, res) {
         if (!created) {
             return res.status(404).json({ code: 404, message: '提示词所属功能不存在' })
         }
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'create',
+            module: 'ai',
+            targetType: 'prompt',
+            targetId: created?.id ?? null,
+            detail: `创建提示词「${created.name}」（${created.featureKey}）`,
+            ip: req.ip || null
+        })
         const [list, bindings] = await Promise.all([
             aiModel.listPromptTemplates(),
             aiModel.listPromptBindings()
@@ -577,6 +646,14 @@ async function updatePromptTemplate(req, res) {
             content,
             variables: feature.variables,
             enabled
+        }, req.user?.userId ?? null)
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'prompt',
+            detail: `保存提示词「${existing.name}」；启用：${enabled ? '是' : '否'}`,
+            ip: req.ip || null
         })
         const bindings = await aiModel.listPromptBindings()
         return res.json({ code: 200, message: '提示词模板已保存', data: { list, bindings } })
@@ -596,6 +673,14 @@ async function selectPromptTemplate(req, res) {
         if (!ok) {
             return res.status(404).json({ code: 404, message: '提示词模板不存在' })
         }
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'prompt-binding',
+            detail: `选用提示词模板 ${key}`,
+            ip: req.ip || null
+        })
         const [list, bindings] = await Promise.all([
             aiModel.listPromptTemplates(),
             aiModel.listPromptBindings()
@@ -620,6 +705,14 @@ async function deletePromptTemplate(req, res) {
         if (deleted === false) {
             return res.status(404).json({ code: 404, message: '提示词模板不存在' })
         }
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'delete',
+            module: 'ai',
+            targetType: 'prompt',
+            detail: `删除自定义提示词 ${key}`,
+            ip: req.ip || null
+        })
         const [list, bindings] = await Promise.all([
             aiModel.listPromptTemplates(),
             aiModel.listPromptBindings()
@@ -642,12 +735,63 @@ async function resetPromptTemplate(req, res) {
     }
 
     try {
-        const list = await aiModel.resetPromptTemplate(key)
+        const list = await aiModel.resetPromptTemplate(key, req.user?.userId ?? null)
         const bindings = await aiModel.listPromptBindings()
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'prompt',
+            detail: `恢复默认提示词 ${key}`,
+            ip: req.ip || null
+        })
         return res.json({ code: 200, message: '已恢复默认提示词', data: { list, bindings } })
     } catch (err) {
         console.error('[AI] 恢复默认提示词失败：', err?.message || err)
         return res.status(500).json({ code: 500, message: '恢复默认提示词失败' })
+    }
+}
+
+async function getPromptHistory(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    try {
+        const list = await aiModel.listPromptHistory(key)
+        return res.json({ code: 200, message: '获取提示词历史成功', data: { list } })
+    } catch (err) {
+        console.error('[AI] 获取提示词历史失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '获取提示词历史失败' })
+    }
+}
+
+async function restorePromptHistory(req, res) {
+    const key = typeof req.params.key === 'string' ? req.params.key.trim() : ''
+    const historyId = Number(req.params.historyId)
+    if (!Number.isInteger(historyId) || historyId <= 0) {
+        return res.status(400).json({ code: 400, message: '无效的历史记录 ID' })
+    }
+
+    try {
+        const restored = await aiModel.restorePromptHistory(key, historyId, req.user?.userId ?? null)
+        if (!restored) {
+            return res.status(404).json({ code: 404, message: '提示词历史不存在' })
+        }
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'prompt-history',
+            targetId: historyId,
+            detail: `回滚提示词 ${key} 到历史版本 #${historyId}`,
+            ip: req.ip || null
+        })
+        const [list, bindings] = await Promise.all([
+            aiModel.listPromptTemplates(),
+            aiModel.listPromptBindings()
+        ])
+        return res.json({ code: 200, message: '提示词已回滚到历史版本', data: { list, bindings } })
+    } catch (err) {
+        console.error('[AI] 回滚提示词历史失败：', err?.message || err)
+        return res.status(500).json({ code: 500, message: '回滚提示词历史失败' })
     }
 }
 
@@ -716,6 +860,22 @@ async function updateSettings(req, res) {
             chatModelId,
             imageModelId
         })
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'ai-setting',
+            detail: [
+                `配额：${quotaEnabled ? '启用' : '停用'}`,
+                `每日：${dailyLimitPerUser === 0 ? '不限' : `${dailyLimitPerUser} 次`}`,
+                `每月：${monthlyLimitPerUser === 0 ? '不限' : `${monthlyLimitPerUser} 次`}`,
+                `超管不限：${superAdminUnlimited ? '是' : '否'}`,
+                `去除标识：${removeWatermark ? '启用' : '停用'}`,
+                `文本模型 ID：${chatModelId || '自动'}`,
+                `配图模型 ID：${imageModelId || '自动'}`
+            ].join('；'),
+            ip: req.ip || null
+        })
         return res.json({ code: 200, message: 'AI 策略已保存', data: settings })
     } catch (err) {
         console.error('[AI] 保存 AI 策略失败：', err?.message || err)
@@ -770,6 +930,17 @@ async function importFromEnv(req, res) {
             return res.status(400).json({ code: 400, message: result.reason || '环境变量未配置 AI' })
         }
 
+        writeSystemLog({
+            userId: req.user?.userId ?? null,
+            action: 'update',
+            module: 'ai',
+            targetType: 'model',
+            targetId: result.model?.id ?? null,
+            detail: result.created
+                ? `从环境变量导入 AI 模型「${result.model?.name || ''}」`
+                : `从环境变量同步 AI 模型「${result.model?.name || ''}」的连接信息`,
+            ip: req.ip || null
+        })
         return res.json({
             code: 200,
             message: result.created
@@ -820,6 +991,8 @@ module.exports = {
     selectPromptTemplate,
     deletePromptTemplate,
     resetPromptTemplate,
+    getPromptHistory,
+    restorePromptHistory,
     getSettings,
     updateSettings,
     getUsage,

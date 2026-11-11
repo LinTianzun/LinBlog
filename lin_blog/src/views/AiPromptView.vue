@@ -51,6 +51,7 @@
                                         选用
                                     </yk-button>
                                     <yk-button size="s" type="secondary" @click="openEdit(item)">编辑</yk-button>
+                                    <yk-button size="s" type="secondary" @click="openHistory(item)">历史</yk-button>
                                     <yk-button size="s" type="secondary" @click="openDuplicate(item)">复制</yk-button>
                                     <yk-button size="s" type="secondary" @click="openPreview(item)">试跑</yk-button>
                                     <yk-button v-if="item.isDefault" size="s" type="secondary" @click="handleReset(item)">
@@ -217,11 +218,11 @@
         <yk-modal :model-value="modalVisible" :title="editingKey ? '编辑提示词' : '新建提示词'" size="s"
             :closeable="!saving" @update:model-value="closeModal">
             <form class="ai-prompt-form" @submit.prevent="submitForm">
-                <label class="ai-prompt-field">
+                <div class="ai-prompt-field">
                     <span class="ai-prompt-label">所属功能<i>*</i></span>
                     <select-field v-model="form.featureKey" :options="featureOptions" :disabled="Boolean(editingKey)" />
                     <span class="ai-prompt-tip">提示词只会用于所选功能，切换功能不影响其它入口</span>
-                </label>
+                </div>
 
                 <label class="ai-prompt-field">
                     <span class="ai-prompt-label">名称<i>*</i></span>
@@ -255,6 +256,31 @@
                 </yk-space>
             </template>
         </yk-modal>
+
+        <yk-modal :model-value="historyVisible" title="提示词历史" size="m" :closeable="!historyLoading"
+            @update:model-value="historyVisible = $event">
+            <div class="ai-prompt-history">
+                <yk-text type="secondary">
+                    {{ historyTemplateName }} · 每次保存前的内容都会留存，可选择任意版本回滚
+                </yk-text>
+                <yk-text v-if="historyLoading" type="secondary">正在加载历史…</yk-text>
+                <yk-empty v-else-if="historyItems.length === 0" description="暂无历史版本" />
+                <div v-else class="ai-prompt-history-list">
+                    <article v-for="item in historyItems" :key="item.id" class="ai-prompt-history-item">
+                        <div class="ai-prompt-history-meta">
+                            <strong>{{ formatTime(item.createdAt) }}</strong>
+                            <span>{{ item.operatorName }} · {{ item.enabled ? '启用' : '停用' }}</span>
+                        </div>
+                        <p class="ai-prompt-history-desc">{{ item.description || '暂无说明' }}</p>
+                        <pre class="ai-prompt-history-content">{{ item.content }}</pre>
+                        <yk-button size="s" type="secondary" :loading="restoringHistoryId === item.id"
+                            :disabled="Boolean(restoringHistoryId)" @click="handleRestoreHistory(item)">
+                            回滚到此版本
+                        </yk-button>
+                    </article>
+                </div>
+            </div>
+        </yk-modal>
     </yk-space>
 </template>
 
@@ -273,7 +299,10 @@
         previewAiPromptTemplate,
         assistAiPromptTemplate,
         saveAiPreviewImage,
+        getAiPromptHistory,
+        restoreAiPromptHistory,
         type AiPromptPreviewResult,
+        type AiPromptHistoryItem,
         type AiPromptTemplate,
     } from '../api/ai'
 
@@ -317,6 +346,12 @@
     const assistElapsed = ref(0)
     const assistRequirement = ref('')
     const assistCandidate = ref<AiPromptAssistantResult | null>(null)
+    const historyVisible = ref(false)
+    const historyLoading = ref(false)
+    const historyItems = ref<AiPromptHistoryItem[]>([])
+    const historyTemplateKey = ref('')
+    const historyTemplateName = ref('')
+    const restoringHistoryId = ref(0)
     let previewTimer: ReturnType<typeof setInterval> | null = null
     let assistTimer: ReturnType<typeof setInterval> | null = null
 
@@ -645,6 +680,42 @@
         form.content = item.content
         form.enabled = item.enabled
         modalVisible.value = true
+    }
+
+    const openHistory = async (item: AiPromptTemplate): Promise<void> => {
+        historyTemplateKey.value = item.key
+        historyTemplateName.value = item.name
+        historyVisible.value = true
+        historyLoading.value = true
+        historyItems.value = []
+        try {
+            const result = await getAiPromptHistory(item.key)
+            if (result.code !== 200) throw new Error(result.message || '历史加载失败')
+            historyItems.value = result.data?.list || []
+        } catch (error) {
+            notify('error', getRequestErrorMessage(error, '提示词历史加载失败'))
+            historyVisible.value = false
+        } finally {
+            historyLoading.value = false
+        }
+    }
+
+    const handleRestoreHistory = async (item: AiPromptHistoryItem): Promise<void> => {
+        if (restoringHistoryId.value) return
+        restoringHistoryId.value = item.id
+        try {
+            const result = await restoreAiPromptHistory(historyTemplateKey.value, item.id)
+            if (result.code !== 200) throw new Error(result.message || '回滚失败')
+            applyData(result.data)
+            historyVisible.value = false
+            noticeMessage.value = `已回滚到 ${formatTime(item.createdAt)} 的版本`
+            notify('primary', noticeMessage.value)
+            void load()
+        } catch (error) {
+            notify('error', getRequestErrorMessage(error, '提示词回滚失败'))
+        } finally {
+            restoringHistoryId.value = 0
+        }
     }
 
     // 复制：拿现有模板当草稿改，改完就是一条自定义提示词
@@ -1351,6 +1422,65 @@
         gap: 8px;
         font-size: 13px;
         color: var(--gray);
+    }
+
+    .ai-prompt-history {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .ai-prompt-history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 56vh;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .ai-prompt-history-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 10px;
+        background: var(--admin-surface-soft, var(--bgColor2));
+    }
+
+    .ai-prompt-history-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--gray);
+        font-size: 12.5px;
+
+        span {
+            color: var(--gray6);
+        }
+    }
+
+    .ai-prompt-history-desc {
+        margin: 0;
+        color: var(--gray7);
+        font-size: 12px;
+    }
+
+    .ai-prompt-history-content {
+        max-height: 120px;
+        margin: 0;
+        padding: 9px 11px;
+        overflow: auto;
+        border-radius: 8px;
+        background: var(--admin-surface, var(--bgColor1));
+        color: var(--gray7);
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
 
     @media (max-width: 900px) {
