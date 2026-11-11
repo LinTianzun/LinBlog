@@ -41,8 +41,12 @@ test('AI 管理页展示接入模型并可保存用量策略', async ({ page }) 
   await expect(card).toContainText('每日 10 次')
 
   // 调用记录：功能名与状态
-  await expect(page.locator('.ai-usage-item')).toContainText('写作建议')
-  await expect(page.locator('.ai-usage-item')).toContainText('成功')
+  const usage = page.locator('.ai-usage-item')
+  await expect(usage).toHaveCount(2)
+  const latestUsage = usage.first()
+  await expect(latestUsage).toContainText('写作建议')
+  await expect(latestUsage).toContainText('成功')
+  await expect(usage.nth(1)).toContainText('图片描述')
 
   // 用量策略：改成每日 5 次并保存
   const dailyRow = page.locator('.ai-policy-row').filter({ hasText: '每用户每日上限' })
@@ -175,6 +179,10 @@ test('AI 管理页展示用量统计面板', async ({ page }) => {
   await expect(windows.nth(0)).toContainText('近 7 天')
   await expect(windows.nth(0)).toContainText('12')
   await expect(windows.nth(0)).toContainText('100%')
+  await expect(windows.nth(0)).toContainText('P50 耗时')
+  await expect(windows.nth(0)).toContainText('900 毫秒')
+  await expect(windows.nth(0)).toContainText('P95 耗时')
+  await expect(windows.nth(0)).toContainText('2.4 秒')
   await expect(windows.nth(1)).toContainText('近 30 天')
   await expect(windows.nth(2)).toContainText('累计')
   await expect(windows.nth(2)).toContainText('42')

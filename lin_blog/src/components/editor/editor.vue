@@ -22,7 +22,10 @@
                 <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('continue')">
                     AI 续写
                 </yk-button>
-                <yk-text type="third">选中正文可润色、精简或扩写；续写基于全文尾部</yk-text>
+                <yk-button type="secondary" size="s" :loading="aiImageBusy" @click="requestAiImageDescriptions">
+                    AI 补全图片描述
+                </yk-button>
+                <yk-text type="third">选中正文可润色；续写基于全文尾部；图片描述只处理未填写 alt 的图片</yk-text>
             </div>
             <div v-if="aiWriting" class="editor-ai-result">
                 <p class="editor-ai-result-title">
@@ -37,6 +40,28 @@
                     <yk-button type="secondary" size="s" @click="dismissAiWriting">忽略</yk-button>
                 </yk-space>
             </div>
+            <div v-if="aiImageDescriptions.length" class="editor-ai-result">
+                <p class="editor-ai-result-title">
+                    AI 生成的图片描述（逐张采用后才会写入正文的 alt）：
+                </p>
+                <p v-if="aiImageDescriptionDegraded" class="editor-ai-result-degraded">
+                    默认模型暂时不可用，本次由「{{ aiImageDescriptionModelName }}」生成
+                </p>
+                <div class="editor-ai-image-list">
+                    <div v-for="item in aiImageDescriptions" :key="item.url" class="editor-ai-image-item">
+                        <img :src="item.url" alt="" loading="lazy">
+                        <div class="editor-ai-image-content">
+                            <p class="editor-ai-result-text">{{ item.alt }}</p>
+                            <yk-button size="s" type="secondary" @click="applyAiImageDescription(item)">
+                                采用描述
+                            </yk-button>
+                        </div>
+                    </div>
+                </div>
+                <yk-space size="s" class="editor-ai-result-actions">
+                    <yk-button type="secondary" size="s" @click="dismissAiImageDescriptions">忽略</yk-button>
+                </yk-space>
+            </div>
             <p v-if="aiError" class="editor-ai-error">{{ aiError }}</p>
         </div>
     </div>
@@ -48,12 +73,14 @@ import type { IToolbarConfig, IDomEditor } from '@wangeditor/editor'
 import './style.less'
 import { colors } from './colors.js'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
-import { Transforms, type BaseSelection } from 'slate'
+import { Node as SlateNode, Transforms, type BaseSelection } from 'slate'
 import { CODE_HIGHLIGHT_LANGS } from './slimCodeHighlightCore'
 import { useSessionStore } from '../../store/session.ts'
 import {
+    describeAiImages,
     rewriteArticleText,
     getRequestErrorMessage as getAiRequestErrorMessage,
+    type AiImageAltResult,
     type AiWritingAction,
     type AiWritingSuggestion,
 } from '../../api/ai'
@@ -213,6 +240,86 @@ const dismissAiWriting = (): void => {
     aiWriting.value = null
 }
 
+type AiImageDescriptionItem = AiImageAltResult['items'][number]
+
+const aiImageBusy = ref(false)
+const aiImageDescriptions = ref<AiImageDescriptionItem[]>([])
+const aiImageDescriptionDegraded = ref(false)
+const aiImageDescriptionModelName = ref('')
+
+const collectImagesWithoutAlt = (): string[] => {
+    const editor = editorRef.value
+    if (!editor) return []
+
+    const urls: string[] = []
+    const seen = new Set<string>()
+    for (const element of editor.getElemsByType('image')) {
+        const image = element as { src?: string; alt?: string }
+        const src = String(image.src || '').trim()
+        if (!src || String(image.alt || '').trim() || seen.has(src)) continue
+        seen.add(src)
+        urls.push(src)
+        if (urls.length >= 4) break
+    }
+    return urls
+}
+
+const requestAiImageDescriptions = async (): Promise<void> => {
+    if (aiImageBusy.value || !editorRef.value) return
+
+    const imageUrls = collectImagesWithoutAlt()
+    if (imageUrls.length === 0) {
+        aiError.value = '正文里没有待补全描述的图片，或图片都已填写 alt'
+        return
+    }
+
+    aiImageBusy.value = true
+    aiError.value = ''
+    try {
+        const result = await describeAiImages({
+            mode: 'alt',
+            imageUrls,
+            title: props.aiTitle.trim(),
+            context: editorRef.value.getText().slice(0, 6000),
+        })
+        if (result.code === 200 && result.data?.mode === 'alt') {
+            aiImageDescriptions.value = result.data.items
+            aiImageDescriptionDegraded.value = Boolean(result.data.degraded)
+            aiImageDescriptionModelName.value = result.data.modelName || ''
+        } else {
+            aiError.value = result.message || 'AI 图片描述生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiError.value = getAiRequestErrorMessage(error, 'AI 图片描述生成失败，请稍后重试')
+    } finally {
+        aiImageBusy.value = false
+    }
+}
+
+const applyAiImageDescription = (item: AiImageDescriptionItem): void => {
+    const editor = editorRef.value
+    if (!editor || !item.alt) return
+
+    let applied = 0
+    for (const [node, path] of SlateNode.nodes(editor)) {
+        const image = node as { type?: string; src?: string }
+        if (image.type !== 'image' || image.src !== item.url) continue
+        Transforms.setNodes(editor, { alt: item.alt }, { at: path })
+        applied += 1
+    }
+
+    if (applied === 0) {
+        aiError.value = '这张图片已从正文移除，请重新生成描述'
+    } else {
+        markAiFeature('image-alt')
+    }
+    aiImageDescriptions.value = aiImageDescriptions.value.filter(candidate => candidate.url !== item.url)
+}
+
+const dismissAiImageDescriptions = (): void => {
+    aiImageDescriptions.value = []
+}
+
 // 组件销毁时销毁编辑器
 onBeforeUnmount(() => {
     const editor = editorRef.value
@@ -302,6 +409,39 @@ onBeforeUnmount(() => {
             color: #a86a10;
             font-size: @size-s;
             line-height: 1.5;
+        }
+    }
+
+    .editor-ai-image-list {
+        display: flex;
+        flex-direction: column;
+        gap: @space-s;
+    }
+
+    .editor-ai-image-item {
+        display: flex;
+        align-items: flex-start;
+        gap: @space-m;
+        padding: @space-s;
+        border: 1px solid var(--admin-line, @line-color-s);
+        border-radius: 6px;
+
+        img {
+            width: 88px;
+            height: 66px;
+            flex: 0 0 auto;
+            border-radius: 4px;
+            object-fit: cover;
+            background: @bg-color-m;
+        }
+    }
+
+    .editor-ai-image-content {
+        min-width: 0;
+        flex: 1;
+
+        .editor-ai-result-text {
+            margin-bottom: @space-s;
         }
     }
 

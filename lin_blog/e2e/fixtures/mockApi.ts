@@ -371,6 +371,31 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'POST' && path === '/api/ai/images/describe') {
+      const imageUrls = Array.isArray(body?.imageUrls)
+        ? body.imageUrls.filter((url): url is string => typeof url === 'string')
+        : []
+      if (body?.mode === 'gallery') {
+        await fulfill({
+          mode: 'gallery',
+          text: 'AI 批量描述的海岸清晨画面，潮水与晨雾构成安静的开场。',
+          degraded: false,
+          modelName: '智谱',
+        }, { message: '图库描述已生成，请确认后采用' })
+      } else {
+        await fulfill({
+          mode: 'alt',
+          items: imageUrls.slice(0, 4).map((url, index) => ({
+            url,
+            alt: `AI 生成的图片描述 ${index + 1}`,
+          })),
+          degraded: false,
+          modelName: '智谱',
+        }, { message: '图片描述已生成，请确认后写入' })
+      }
+      return
+    }
+
     if (method === 'POST' && path === '/api/ai/writing') {
       const action = body?.action === 'continue' ? 'continue' : 'polish'
       await fulfill({
@@ -543,6 +568,21 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // AI 提示词助手：只生成候选，作者确认后才会应用到输入框
+    if (method === 'POST' && path === '/api/ai/prompts/assist') {
+      await fulfill({
+        content: body?.task === 'create'
+          ? '请用友好口吻回答：{{input}}'
+          : '请用更简洁的方式输出：{{title}}',
+        summary: body?.task === 'create'
+          ? '为自由创作生成候选模板'
+          : '已增强输出约束',
+        degraded: false,
+        modelName: 'Mock GLM',
+      }, { message: '提示词候选已生成' })
+      return
+    }
+
     if (method === 'POST' && path === '/api/ai/prompts') {
       const created = {
         id: 30,
@@ -645,6 +685,20 @@ export async function installApiMock(page: Page): Promise<MockState> {
             outputChars: 96,
             createdAt: '2026-11-09 10:05:00',
           },
+          {
+            id: 12,
+            userId: 1,
+            username: '林知雨',
+            feature: 'image-alt',
+            modelName: 'glm-4v-flash',
+            status: 'success',
+            detail: '正文图片 alt：2 张',
+            durationMs: 1100,
+            promptTokens: 640,
+            completionTokens: 120,
+            outputChars: 58,
+            createdAt: '2026-11-09 10:12:00',
+          },
         ],
       })
       return
@@ -660,6 +714,8 @@ export async function installApiMock(page: Page): Promise<MockState> {
             denied: 0,
             successRate: 95.2,
             avgDurationMs: 1380,
+            p50DurationMs: 1100,
+            p95DurationMs: 3100,
             promptTokens: 6400,
             completionTokens: 3200,
             totalTokens: 9600,
@@ -672,6 +728,8 @@ export async function installApiMock(page: Page): Promise<MockState> {
             denied: 0,
             successRate: 100,
             avgDurationMs: 1120,
+            p50DurationMs: 900,
+            p95DurationMs: 2400,
             promptTokens: 1800,
             completionTokens: 900,
             totalTokens: 2700,
@@ -684,6 +742,8 @@ export async function installApiMock(page: Page): Promise<MockState> {
             denied: 0,
             successRate: 96.7,
             avgDurationMs: 1250,
+            p50DurationMs: 980,
+            p95DurationMs: 2800,
             promptTokens: 4800,
             completionTokens: 2400,
             totalTokens: 7200,

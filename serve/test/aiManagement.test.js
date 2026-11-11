@@ -511,6 +511,32 @@ test('用量统计接口返回总览、分组与趋势', async () => {
         aiModel.listModelHealth = originalHealthList
     }
 })
+
+test('用量总览计算成功调用的 P50 与 P95 耗时', async () => {
+    const durations = [120, 180, 300, 420, 1000]
+    const queryFn = async (sql) => {
+        if (sql.includes('SELECT duration_ms')) {
+            return durations.map(duration => ({ duration_ms: duration }))
+        }
+        return [{
+            total: durations.length,
+            success: durations.length,
+            failed: 0,
+            denied: 0,
+            avg_duration: 404,
+            prompt_tokens: 50,
+            completion_tokens: 30,
+            output_chars: 80
+        }]
+    }
+
+    const summary = await aiModel.getUsageSummary(queryFn)
+    for (const key of ['all', 'last7Days', 'last30Days']) {
+        assert.equal(summary[key].p50DurationMs, 300)
+        assert.equal(summary[key].p95DurationMs, 1000)
+    }
+})
+
 test('连通性测试会记录耗时并更新模型健康状态', async () => {
     const originalConfig = aiModel.getModelConfigById
     const originalHealth = aiModel.recordModelHealth

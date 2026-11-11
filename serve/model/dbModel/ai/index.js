@@ -1005,7 +1005,35 @@ async function getPendingImageStats() {
  * 用量总览：调用次数、成功率、平均耗时、token 与输出规模。
  * 按「所有时间 / 近 7 天 / 近 30 天」三个窗口给出对比。
  */
-async function getUsageSummary() {
+function calculateDurationPercentile(sortedDurations, percentile) {
+    if (!Array.isArray(sortedDurations) || sortedDurations.length === 0) return 0
+    const rank = Math.ceil((percentile / 100) * sortedDurations.length) - 1
+    return Math.round(sortedDurations[Math.max(0, Math.min(rank, sortedDurations.length - 1))])
+}
+
+async function getUsageDurationPercentiles(days = 0, queryFn = query) {
+    const since = days > 0
+        ? new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+        : null
+    const rows = await queryFn(
+        `SELECT duration_ms
+         FROM ai_usage_log
+         WHERE status = 'success' AND duration_ms > 0
+         ${since ? 'AND created_at >= ?' : ''}`,
+        since ? [since] : []
+    )
+    const durations = (rows || [])
+        .map(row => Number(row.duration_ms) || 0)
+        .filter(value => value > 0)
+        .sort((left, right) => left - right)
+
+    return {
+        p50DurationMs: calculateDurationPercentile(durations, 50),
+        p95DurationMs: calculateDurationPercentile(durations, 95)
+    }
+}
+
+async function getUsageSummary(queryFn = query) {
     const windows = [
         { key: 'all', days: 0 },
         { key: 'last7Days', days: 7 },
@@ -1019,19 +1047,22 @@ async function getUsageSummary() {
             : null
         const sinceClause = since ? 'AND created_at >= ?' : ''
 
-        const rows = await query(
-            `SELECT COUNT(*) AS total,
-                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
-                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
-                    SUM(CASE WHEN status = 'denied' THEN 1 ELSE 0 END) AS denied,
-                    COALESCE(AVG(NULLIF(duration_ms, 0)), 0) AS avg_duration,
-                    COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
-                    COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
-                    COALESCE(SUM(output_chars), 0) AS output_chars
-             FROM ai_usage_log
-             WHERE 1 = 1 ${sinceClause}`,
-            since ? [since] : []
-        )
+        const [rows, percentiles] = await Promise.all([
+            queryFn(
+                `SELECT COUNT(*) AS total,
+                        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                        SUM(CASE WHEN status = 'denied' THEN 1 ELSE 0 END) AS denied,
+                        COALESCE(AVG(NULLIF(duration_ms, 0)), 0) AS avg_duration,
+                        COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+                        COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+                        COALESCE(SUM(output_chars), 0) AS output_chars
+                 FROM ai_usage_log
+                 WHERE 1 = 1 ${sinceClause}`,
+                since ? [since] : []
+            ),
+            getUsageDurationPercentiles(window.days, queryFn)
+        ])
 
         const row = rows?.[0] || {}
         const total = Number(row.total || 0)
@@ -1045,6 +1076,8 @@ async function getUsageSummary() {
             denied: Number(row.denied || 0),
             successRate: total > 0 ? Math.round((success / total) * 1000) / 10 : 0,
             avgDurationMs: Math.round(Number(row.avg_duration) || 0),
+            p50DurationMs: percentiles.p50DurationMs,
+            p95DurationMs: percentiles.p95DurationMs,
             promptTokens,
             completionTokens,
             totalTokens: promptTokens + completionTokens,

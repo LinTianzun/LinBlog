@@ -64,6 +64,14 @@ module.exports = (app) => {
     )
     // 确认采用只做落库，不再调用模型，因此不计入次数
     app.post('/api/ai/cover/confirm', authMiddleware, aiSuggestLimit, aiController.confirmCover)
+    // AI 图片理解：正文 alt 与图库批量描述，调用计入次数与系统日志
+    app.post(
+        '/api/ai/images/describe',
+        authMiddleware,
+        aiQuota('image-alt'),
+        aiSuggestLimit,
+        aiController.describeImageSet
+    )
 
     // 门户 AI 问答：访客可匿名提问，只走独立限流，不占用后台账号配额
     app.post('/api/public/ai/ask', aiAskLimit, aiController.answerPublicQuestion)

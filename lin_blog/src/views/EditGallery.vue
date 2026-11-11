@@ -87,7 +87,7 @@
                 class="edit-gallery-body-photos" @change="handlePhotosChange" />
             <div class="edit-gallery-body-tag">
                 <forms :classify="1" :initial-data="initialForm" :photo-count="photos.length"
-                    @formData="handleFormData" />
+                    :photo-urls="photos" @formData="handleFormData" />
             </div>
         </div>
 

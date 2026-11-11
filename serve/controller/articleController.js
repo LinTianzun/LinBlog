@@ -6,7 +6,7 @@ const { hasPermission, getArticleScope } = require('../utils/accessControl')
 const { cleanupCover, extractUploadsFilename } = require('../utils/coverCleanup')
 
 // AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
-const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery'])
+const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery', 'image-alt'])
 
 /**
  * 归一化前端传来的 AI 辅助环节列表。

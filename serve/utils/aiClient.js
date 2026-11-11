@@ -219,6 +219,24 @@ async function buildCoverPrompt({ title, introduce, content }) {
     })
 }
 
+function buildImageContextVariables({ title = '', context = '', count = 0 }) {
+    const plainTitle = htmlToText(title).slice(0, 150)
+    const plainContext = htmlToText(context).slice(0, MAX_CONTENT_CHARS)
+    return {
+        title: plainTitle || '未命名内容',
+        context: plainContext || '无',
+        count: Math.max(0, Number(count) || 0)
+    }
+}
+
+async function buildImageAltPrompt({ title, context, count }) {
+    return resolvePromptTemplate('image-alt', buildImageContextVariables({ title, context, count }))
+}
+
+async function buildGalleryDescriptionPrompt({ title, context, count }) {
+    return resolvePromptTemplate('gallery-description', buildImageContextVariables({ title, context, count }))
+}
+
 /**
  * 从模型输出中稳健地取出 JSON：兼容 ```json 围栏和前后缀说明文字。
  */
@@ -443,8 +461,17 @@ function parseGalleryCurationPayload(raw) {
     return { titles, summary, labels }
 }
 
-async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 } = {}) {
+async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500, images = [] } = {}) {
     const timeoutMs = Number(aiConfig.timeoutMs) || 20000
+    const userContent = Array.isArray(images) && images.length > 0
+        ? [
+            { type: 'text', text: prompt },
+            ...images.map(image => ({
+                type: 'image_url',
+                image_url: { url: image.dataUri }
+            }))
+        ]
+        : prompt
     const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -460,7 +487,7 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 
                         ? '你是一名严谨的中文博客编辑助手，只输出符合要求的 JSON。'
                         : '你是一名严谨的中文博客编辑助手，只输出正文片段。'
                 },
-                { role: 'user', content: prompt }
+                { role: 'user', content: userContent }
             ],
             temperature: 0.6,
             max_tokens: maxTokens
@@ -469,10 +496,14 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500 
     })
 
     if (!response.ok) {
-        throw Object.assign(
+        const error = Object.assign(
             new Error(`AI 服务商响应异常：HTTP ${response.status}`),
             { code: 'AI_PROVIDER_ERROR', status: response.status }
         )
+        if (images.length > 0 && [400, 404, 415, 422].includes(response.status)) {
+            error.code = 'AI_VISION_UNSUPPORTED'
+        }
+        throw error
     }
 
     const payload = await response.json()
@@ -894,6 +925,86 @@ async function rewriteText({ action, text, title = '', aiConfig, chainFn = null 
     return result
 }
 
+function normalizeAltText(value) {
+    return String(value || '')
+        .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160)
+}
+
+/**
+ * 图片理解：把站内图片转成 data URI 交给多模态文本模型。
+ * 只返回候选描述，alt 写入富文本或简介仍由作者确认。
+ */
+async function describeImages({
+    mode = 'alt',
+    images = [],
+    title = '',
+    context = '',
+    aiConfig,
+    chainFn = null
+}) {
+    if (!aiConfig) throw notConfiguredError()
+    if (!Array.isArray(images) || images.length === 0) {
+        throw Object.assign(new Error('没有可识别的图片'), { code: 'AI_EMPTY_IMAGE' })
+    }
+
+    const normalizedMode = mode === 'gallery' ? 'gallery' : 'alt'
+    const validImages = images
+        .filter(image => image?.dataUri && image?.mimeType)
+        .slice(0, 4)
+    if (validImages.length === 0) {
+        throw Object.assign(new Error('没有可识别的图片'), { code: 'AI_EMPTY_IMAGE' })
+    }
+
+    const prompt = normalizedMode === 'gallery'
+        ? await buildGalleryDescriptionPrompt({ title, context, count: validImages.length })
+        : await buildImageAltPrompt({ title, context, count: validImages.length })
+    const chain = await getAiConfigChain(aiConfig, chainFn)
+    const result = await runWithFallback(chain, async (candidate) => {
+        const raw = await chatCompletion(prompt, {
+            aiConfig: candidate,
+            images: validImages,
+            json: normalizedMode === 'alt',
+            maxTokens: normalizedMode === 'alt' ? 900 : 700
+        })
+
+        if (normalizedMode === 'gallery') {
+            const text = normalizeWritingText(raw.text).slice(0, 600)
+            if (!text) {
+                throw Object.assign(new Error('模型没有返回可用描述'), { code: 'AI_PARSE_ERROR' })
+            }
+            return {
+                mode: 'gallery',
+                text,
+                usage: raw.usage,
+                outputChars: text.length
+            }
+        }
+
+        const parsed = extractJsonBlock(String(raw.text || ''))
+        const source = Array.isArray(parsed?.alts)
+            ? parsed.alts
+            : (Array.isArray(parsed?.descriptions) ? parsed.descriptions : [])
+        const alts = source.map(normalizeAltText).filter(Boolean)
+        if (alts.length === 0) {
+            throw Object.assign(new Error('模型没有返回可用的图片描述'), { code: 'AI_PARSE_ERROR' })
+        }
+        return {
+            mode: 'alt',
+            alts: alts.slice(0, validImages.length),
+            usage: raw.usage,
+            outputChars: alts.join('').length
+        }
+    })
+
+    return {
+        ...result,
+        imageCount: validImages.length
+    }
+}
+
 /**
  * 生成封面插画建议。图片内容与预览由调用方负责暂存，
  * 作者确认前不会写入 image 表。
@@ -1145,6 +1256,7 @@ module.exports = {
     generateOperationsReport,
     reviewReportedComment,
     rewriteText,
+    describeImages,
     generateCoverImage,
     previewPrompt,
     assistPromptTemplate,

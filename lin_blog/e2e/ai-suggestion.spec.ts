@@ -112,6 +112,22 @@ test('忽略 AI 续写不会改动正文', async ({ page }) => {
   await expect(page.locator('.w-e-text-container')).not.toContainText('AI 续写的候选内容。')
 })
 
+test('正文没有待补全图片时提示作者先插入图片', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['article.create', 'article.manageAll', 'article.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/editarticle')
+  await expect(page.locator('.w-e-text-container')).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: 'AI 补全图片描述' }).click()
+  await expect(page.locator('.editor-ai-error')).toContainText('正文里没有待补全描述的图片')
+})
+
 test('AI 封面在作者确认后写入封面字段', async ({ page }) => {
   await seedSession(page, {
     id: 1,
@@ -191,6 +207,107 @@ test('随笔 AI 配图在作者确认后加入配图列表', async ({ page }) =>
     .toHaveAttribute('src', '/api/uploads/ai-e2e-cover.png')
 })
 
+test('随笔 AI 描述配图采用后追加到正文', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['diary.create', 'diary.manageAll', 'diary.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/diary')
+  await expect(page.locator('.diary-editor-top-title')).toBeVisible({ timeout: 30_000 })
+  await page.locator('.diary-editor-top-title').fill('深夜书房')
+
+  await page.getByRole('button', { name: 'AI 生成配图' }).click()
+  const preview = page.locator('.image-source-preview')
+  await expect(preview).toBeVisible()
+  await preview.getByRole('button', { name: '采用' }).click()
+  await expect(page.locator('.diary-editor-top-existing img')).toHaveCount(1)
+
+  const describeButton = page.getByRole('button', { name: 'AI 描述配图' })
+  await expect(describeButton).toBeEnabled()
+  await describeButton.click()
+
+  const suggestion = page.locator('.diary-editor-ai-result')
+  await expect(suggestion).toContainText('AI 批量描述的海岸清晨画面')
+  await expect(page.locator('.diary-editor-top-content textarea').first()).toHaveValue('')
+
+  await suggestion.getByRole('button', { name: '采用描述' }).click()
+  await expect(page.locator('.diary-editor-top-content textarea').first())
+    .toHaveValue('AI 批量描述的海岸清晨画面，潮水与晨雾构成安静的开场。')
+  await expect(page.locator('.diary-editor-ai-result')).toHaveCount(0)
+})
+
+test('随笔 AI 润色在作者确认后写入编辑器', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['diary.create', 'diary.manageAll', 'diary.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/diary')
+  await expect(page.locator('.diary-editor-top-title')).toBeVisible({ timeout: 30_000 })
+  await page.locator('.diary-editor-top-title').fill('随笔润色测试')
+  await page.locator('.diary-editor-top-content textarea').first()
+    .fill('需要润色的随笔正文')
+
+  await page.getByRole('button', { name: 'AI 润色' }).click()
+  const writing = page.locator('.diary-editor-ai-result')
+  await expect(writing).toBeVisible()
+  await expect(writing).toContainText('AI 润色后的候选内容。')
+  await expect(page.locator('.diary-editor-top-content textarea').first())
+    .toHaveValue('需要润色的随笔正文')
+
+  await writing.getByRole('button', { name: '采用' }).click()
+  await expect(page.locator('.diary-editor-ai-result')).toHaveCount(0)
+  await expect(page.locator('.diary-editor-top-content textarea').first())
+    .toHaveValue('AI 润色后的候选内容。')
+
+  // 保存随笔时要把「AI 写作」环节带进白名单字段
+  const saveRequest = page.waitForRequest(req =>
+    req.method() === 'POST' && new URL(req.url()).pathname === '/api/diary'
+  )
+  await page.getByRole('button', { name: '新建笔记' }).click()
+  const payload = (await saveRequest).postDataJSON() as {
+    content?: string
+    aiFeatures?: string[]
+  }
+  expect(payload.content).toBe('AI 润色后的候选内容。')
+  expect(payload.aiFeatures).toEqual(['writing'])
+})
+
+test('忽略随笔 AI 续写不会改动正文', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['diary.create', 'diary.manageAll', 'diary.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/diary')
+  await expect(page.locator('.diary-editor-top-title')).toBeVisible({ timeout: 30_000 })
+  await page.locator('.diary-editor-top-content textarea').first()
+    .fill('已有的随笔正文')
+
+  await page.getByRole('button', { name: 'AI 续写' }).click()
+  const writing = page.locator('.diary-editor-ai-result')
+  await expect(writing).toBeVisible()
+  await expect(writing).toContainText('AI 续写的候选内容。')
+
+  await writing.getByRole('button', { name: '忽略' }).click()
+  await expect(page.locator('.diary-editor-ai-result')).toHaveCount(0)
+  await expect(page.locator('.diary-editor-top-content textarea').first())
+    .toHaveValue('已有的随笔正文')
+})
+
 test('图库 AI 配图在作者确认后加入瀑布流', async ({ page }) => {
   await seedSession(page, {
     id: 1,
@@ -214,6 +331,40 @@ test('图库 AI 配图在作者确认后加入瀑布流', async ({ page }) => {
   await expect(page.locator('.waterfall-item img')).toHaveCount(1)
   await expect(page.locator('.waterfall-item img').first())
     .toHaveAttribute('src', /\/api\/uploads\/ai-e2e-cover\.png/)
+})
+
+test('图库 AI 批量描述只展示候选，作者确认后写入简介', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['gallery.create', 'gallery.manageAll', 'gallery.viewAll', 'ai.use'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/editgallery')
+  await expect(page.locator('.edit_photo-uploader')).toBeVisible({ timeout: 30_000 })
+  await page.locator('.forms-title').fill('海岸清晨')
+
+  await page.getByRole('button', { name: 'AI 生成配图' }).click()
+  const preview = page.locator('.image-source-preview')
+  await expect(preview).toBeVisible()
+  await preview.getByRole('button', { name: '采用' }).click()
+  await expect(page.locator('.waterfall-item img')).toHaveCount(1)
+
+  const describeButton = page.getByRole('button', { name: 'AI 批量描述' })
+  await expect(describeButton).toBeEnabled()
+  await describeButton.click()
+
+  const suggestion = page.locator('.forms-ai-suggestion')
+  await expect(suggestion).toContainText('AI 批量描述的海岸清晨画面')
+  await expect(page.locator('.forms-intro textarea')).toHaveValue('')
+
+  await suggestion.getByRole('button', { name: '采用描述' }).click()
+  await expect(page.locator('.forms-intro textarea'))
+    .toHaveValue('AI 批量描述的海岸清晨画面，潮水与晨雾构成安静的开场。')
+  await expect(page.locator('.forms-ai-suggestion')).toHaveCount(0)
 })
 
 test('图库 AI 策展只展示建议，作者逐项确认后填充', async ({ page }) => {

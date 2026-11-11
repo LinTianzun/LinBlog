@@ -196,7 +196,7 @@
                                 </p>
                             </div>
 
-                            <div v-if="!assisting && !assistCandidate && previewResult?.kind === 'image'" class="ai-prompt-result">
+                            <div v-if="!previewing && !assisting && !assistCandidate && previewResult?.kind === 'image'" class="ai-prompt-result">
                                 <img :src="previewResult.dataUri" alt="提示词生成的示例图片" />
                                 <div class="ai-prompt-result-toolbar">
                                     <yk-button type="secondary" :disabled="savingPreview || !previewResult.token"
@@ -205,8 +205,8 @@
                                     </yk-button>
                                 </div>
                             </div>
-                            <pre v-else-if="!assisting && !assistCandidate && previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
-                            <div v-else-if="!assisting && !assistCandidate" class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
+                            <pre v-else-if="!previewing && !assisting && !assistCandidate && previewResult?.kind === 'text'" class="ai-prompt-result is-text">{{ previewResult.text }}</pre>
+                            <div v-else-if="!previewing && !assisting && !assistCandidate" class="ai-prompt-result is-empty">还没有试跑结果。填好示例变量后点「开始试跑」，这里会显示模型的真实输出。</div>
                         </section>
                     </div>
                 </aside>

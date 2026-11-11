@@ -110,6 +110,40 @@ test('createDiary allows empty weather and stores null weatherId', async () => {
     }
 })
 
+test('createDiary records only whitelisted AI assist features', async () => {
+    const originalInsert = diaryModel.insertDiary
+    const originalMark = diaryModel.markAiAssisted
+    const ownerUser = { userId: 7, userType: 'normal', permissions: ['diary.create'] }
+    let marked = null
+
+    try {
+        diaryModel.insertDiary = async () => ({ diaryId: 88 })
+        diaryModel.markAiAssisted = async (diaryId, features) => {
+            marked = { diaryId, features }
+        }
+
+        const res = createRes()
+        await diaryController.createDiary({
+            body: {
+                title: 'AI 辅助随笔',
+                content: '内容',
+                // writing 是 AI 写作辅助，cover 是 AI 配图；未知值必须被丢弃
+                aiFeatures: ['writing', 'cover', 'writing', 'DROP TABLE']
+            },
+            user: ownerUser
+        }, res)
+
+        assert.equal(res.statusCode, 201)
+        assert.deepEqual(marked, {
+            diaryId: 88,
+            features: ['writing', 'cover']
+        })
+    } finally {
+        diaryModel.insertDiary = originalInsert
+        diaryModel.markAiAssisted = originalMark
+    }
+})
+
 // 权限矩阵：没有 diary.create 时，参数校验之前就该被拒绝
 test('createDiary rejects accounts without the diary create permission', async () => {
     const res = createRes()

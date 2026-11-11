@@ -14,6 +14,8 @@ const articleModel = require(path.resolve(__dirname, '../model/dbModel/article/i
 const messageModel = require(path.resolve(__dirname, '../model/dbModel/message/index.js'))
 const recordModel = require(path.resolve(__dirname, '../model/dbModel/record/index.js'))
 const commentInteractionModel = require(path.resolve(__dirname, '../model/dbModel/commentInteraction/index.js'))
+const fileModel = require(path.resolve(__dirname, '../model/dbModel/file/index.js'))
+const imageModel = require(path.resolve(__dirname, '../model/dbModel/image/index.js'))
 
 // 控制器从配额中间件拿到的运行时模型配置
 const TEST_AI_MODEL = {
@@ -490,6 +492,126 @@ test('ai writing strips provider wrappers and clamps long output', async () => {
         assert.ok(prompt.length < longText.length)
     } finally {
         global.fetch = originalFetch
+    }
+})
+
+test('ai image description requires at least one usable site image', async () => {
+    const res = createRes()
+    await aiController.describeImageSet(
+        { body: { mode: 'alt', imageUrls: [] }, user: { userId: 1 }, aiModel: TEST_AI_MODEL },
+        res
+    )
+    assert.equal(res.statusCode, 400)
+    assert.match(res.body.message, /没有可识别的站内图片/)
+})
+
+test('ai image description sends image bytes and returns URL-aligned alt candidates', async () => {
+    const originalDescribe = aiClient.describeImages
+    const originalFindImage = imageModel.findActiveImageByFilename
+    const originalFindFile = fileModel.findFileById
+    const originalFindImageById = imageModel.findImageById
+    const png = Buffer.from('89504e470d0a1a0a', 'hex')
+    const jpeg = Buffer.from('ffd8ffe000104a464946', 'hex')
+    let received = null
+
+    imageModel.findActiveImageByFilename = async (filename) => {
+        assert.equal(filename, 'inline.png')
+        return [{ id: 11, filename, mime_type: 'image/png', data: png }]
+    }
+    fileModel.findFileById = async (id) => {
+        assert.equal(id, 7)
+        return { id, status: 1, source_image_id: 12 }
+    }
+    imageModel.findImageById = async (id) => {
+        assert.equal(id, 12)
+        return { id, filename: 'gallery.jpg', mime_type: 'image/jpeg', data: jpeg, status: 1 }
+    }
+    aiClient.describeImages = async (payload) => {
+        received = payload
+        return {
+            mode: 'alt',
+            alts: ['书桌上的笔记本电脑与笔记', '窗边的晨光与花瓶'],
+            imageCount: payload.images.length,
+            outputChars: 24,
+            modelUsed: { id: 1, name: '智谱', model: 'glm-4v-flash', degraded: false }
+        }
+    }
+
+    try {
+        const res = createRes()
+        await aiController.describeImageSet(
+            {
+                body: {
+                    mode: 'alt',
+                    imageUrls: ['/api/uploads/inline.png', '/api/file/7/raw'],
+                    title: '书房',
+                    context: '深夜学习'
+                },
+                user: { userId: 7 },
+                aiModel: TEST_AI_MODEL
+            },
+            res
+        )
+        assert.equal(res.statusCode, 0)
+        assert.equal(res.body.code, 200)
+        assert.equal(received.images.length, 2)
+        assert.equal(received.images[0].dataUri, `data:image/png;base64,${png.toString('base64')}`)
+        assert.equal(received.images[1].dataUri, `data:image/jpeg;base64,${jpeg.toString('base64')}`)
+        assert.deepEqual(res.body.data.items, [
+            { url: '/api/uploads/inline.png', alt: '书桌上的笔记本电脑与笔记' },
+            { url: '/api/file/7/raw', alt: '窗边的晨光与花瓶' }
+        ])
+        assert.equal(received.title, '书房')
+        assert.equal(received.context, '深夜学习')
+    } finally {
+        aiClient.describeImages = originalDescribe
+        imageModel.findActiveImageByFilename = originalFindImage
+        fileModel.findFileById = originalFindFile
+        imageModel.findImageById = originalFindImageById
+    }
+})
+
+test('ai gallery description returns a single confirmed candidate', async () => {
+    const originalDescribe = aiClient.describeImages
+    const originalFindImage = imageModel.findActiveImageByFilename
+    const png = Buffer.from('89504e470d0a1a0a', 'hex')
+
+    imageModel.findActiveImageByFilename = async (filename) => (
+        [{ id: 21, filename, mime_type: 'image/png', data: png }]
+    )
+    aiClient.describeImages = async (payload) => ({
+        mode: 'gallery',
+        text: '海岸晨雾中的一组照片。',
+        imageCount: payload.images.length,
+        outputChars: 12,
+        modelUsed: { id: 2, name: '备用模型', model: 'glm-4v', degraded: true }
+    })
+
+    try {
+        const res = createRes()
+        await aiController.describeImageSet(
+            {
+                body: {
+                    mode: 'gallery',
+                    imageUrls: ['/api/uploads/coast.png'],
+                    title: '海岸',
+                    context: '清晨'
+                },
+                user: { userId: 7 },
+                aiModel: TEST_AI_MODEL
+            },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(res.body.data, {
+            mode: 'gallery',
+            text: '海岸晨雾中的一组照片。',
+            degraded: true,
+            modelName: '备用模型'
+        })
+    } finally {
+        aiClient.describeImages = originalDescribe
+        imageModel.findActiveImageByFilename = originalFindImage
     }
 })
 

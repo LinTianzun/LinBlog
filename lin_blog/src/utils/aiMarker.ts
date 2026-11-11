@@ -2,7 +2,7 @@ import { ref } from "vue";
 
 // 作者在编辑器里采用过的 AI 环节。
 // 只在「采用」动作发生时记录，作者忽略建议不会留下标记。
-export type AiFeature = "suggest" | "writing" | "cover" | "gallery";
+export type AiFeature = "suggest" | "writing" | "cover" | "gallery" | "image-alt";
 
 const usedFeatures = ref<AiFeature[]>([]);
 
@@ -35,9 +35,10 @@ export function resetAiFeatures(): void {
 export function aiFeatureLabel(feature: string): string {
   const labels: Record<string, string> = {
     suggest: "AI 建议",
-    writing: "AI 润色",
+    writing: "AI 写作",
     cover: "AI 封面",
     gallery: "AI 策展",
+    "image-alt": "AI 图片描述",
   };
   return labels[feature] || feature;
 }

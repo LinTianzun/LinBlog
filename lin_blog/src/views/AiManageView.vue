@@ -144,6 +144,8 @@
                         <ul class="ai-stats-window-facts">
                             <li><span>成功率</span><strong>{{ stats.summary.last7Days.successRate }}%</strong></li>
                             <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last7Days.avgDurationMs) }}</strong></li>
+                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.last7Days.p50DurationMs) }}</strong></li>
+                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.last7Days.p95DurationMs) }}</strong></li>
                             <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last7Days.totalTokens) }}</strong></li>
                         </ul>
                     </div>
@@ -153,6 +155,8 @@
                         <ul class="ai-stats-window-facts">
                             <li><span>成功率</span><strong>{{ stats.summary.last30Days.successRate }}%</strong></li>
                             <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last30Days.avgDurationMs) }}</strong></li>
+                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.last30Days.p50DurationMs) }}</strong></li>
+                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.last30Days.p95DurationMs) }}</strong></li>
                             <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last30Days.totalTokens) }}</strong></li>
                         </ul>
                     </div>
@@ -161,6 +165,8 @@
                         <p class="ai-stats-window-total">{{ stats.summary.all.total }}<span>次调用</span></p>
                         <ul class="ai-stats-window-facts">
                             <li><span>失败次数</span><strong>{{ stats.summary.all.failed }}</strong></li>
+                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.all.p50DurationMs) }}</strong></li>
+                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.all.p95DurationMs) }}</strong></li>
                             <li><span>待确认图片</span><strong>{{ stats.pending.total }} 张</strong></li>
                             <li><span>占用空间</span><strong>{{ formatBytes(stats.pending.bytes) }}</strong></li>
                         </ul>
@@ -437,6 +443,7 @@
                                 </div>
                                 <p class="ai-usage-meta">
                                     {{ item.modelName || '未知模型' }}
+                                    <span v-if="item.durationMs > 0">· {{ formatDuration(item.durationMs) }}</span>
                                     <span v-if="item.detail">· {{ item.detail }}</span>
                                 </p>
                             </div>
@@ -723,6 +730,8 @@
             ask: '门户问答',
             'prompt-preview': '提示词试跑',
             'prompt-assistant': '提示词助手',
+            'image-alt': '图片描述',
+            'gallery-description': '图库批量描述',
         }
         return labels[value] || value
     }

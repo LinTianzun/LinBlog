@@ -39,10 +39,18 @@
                         <yk-input v-model="galleryAiTheme" class="forms-ai-theme" size="s" :limit="300"
                             placeholder="补充主题，如：春日海岸、城市黄昏" clearable />
                     </div>
+                    <div v-if="showGalleryAiEntry" class="forms-ai-bar">
+                        <yk-button type="secondary" size="s" :loading="galleryDescriptionBusy"
+                            :disabled="!photoUrls.length" @click="requestGalleryDescription">
+                            AI 批量描述
+                        </yk-button>
+                        <yk-text type="third">读取前 4 张照片生成整组描述，确认后才会覆盖简介</yk-text>
+                    </div>
                     <yk-text-area v-model="formData.introduce" clearable placeholder="请输入简介" :auto-size="raws"
                         :max-length="512"></yk-text-area>
                     <p v-if="aiError" class="forms-ai-error">{{ aiError }}</p>
                     <p v-if="galleryAiError" class="forms-ai-error">{{ galleryAiError }}</p>
+                    <p v-if="galleryDescriptionError" class="forms-ai-error">{{ galleryDescriptionError }}</p>
                     <div v-if="aiSuggestion" class="forms-ai-suggestion">
                         <p class="forms-ai-suggestion-title">
                             AI 生成的简介与标签（采用后将覆盖当前简介，并补充标签）：
@@ -86,6 +94,19 @@
                         </div>
                         <yk-space size="s" class="forms-ai-suggestion-actions">
                             <yk-button type="secondary" size="s" @click="dismissGalleryCuration">忽略</yk-button>
+                        </yk-space>
+                    </div>
+                    <div v-if="galleryDescriptionSuggestion" class="forms-ai-suggestion">
+                        <p class="forms-ai-suggestion-title">
+                            AI 生成的整组画面描述（采用后将覆盖当前简介）：
+                        </p>
+                        <p v-if="galleryDescriptionSuggestion.degraded" class="forms-ai-degraded">
+                            默认模型暂时不可用，本次由「{{ galleryDescriptionSuggestion.modelName }}」生成
+                        </p>
+                        <p class="forms-ai-suggestion-summary">{{ galleryDescriptionSuggestion.text }}</p>
+                        <yk-space size="s" class="forms-ai-suggestion-actions">
+                            <yk-button size="s" @click="applyGalleryDescription">采用描述</yk-button>
+                            <yk-button type="secondary" size="s" @click="dismissGalleryDescription">忽略</yk-button>
                         </yk-space>
                     </div>
                 </div>
@@ -137,6 +158,7 @@ import { useSessionStore } from '../../store/session.ts'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
 import {
+    describeAiImages,
     suggestArticleMeta,
     suggestGalleryCuration,
     getRequestErrorMessage as getAiRequestErrorMessage,
@@ -180,6 +202,12 @@ type AiGalleryCurationSuggestion = {
     modelName?: string
 }
 
+type AiGalleryDescriptionSuggestion = {
+    text: string
+    degraded?: boolean
+    modelName?: string
+}
+
 type CoverFile = {
     name: string
     url: string
@@ -199,11 +227,14 @@ const props = withDefaults(defineProps<{
     aiContent?: string
     /** 当前图库照片数量，用于让策展建议了解图库规模 */
     photoCount?: number
+    /** 当前图库照片地址，供 AI 批量描述读取前 4 张 */
+    photoUrls?: string[]
 }>(), {
     classify: 0,
     initialData: undefined,
     aiContent: undefined,
     photoCount: 0,
+    photoUrls: () => [],
 })
 
 const emits = defineEmits<{
@@ -403,6 +434,52 @@ const applyGalleryLabels = (): void => {
 
 const dismissGalleryCuration = (): void => {
     galleryAiSuggestion.value = null
+}
+
+const galleryDescriptionBusy = ref(false)
+const galleryDescriptionError = ref('')
+const galleryDescriptionSuggestion = ref<AiGalleryDescriptionSuggestion | null>(null)
+
+const requestGalleryDescription = async (): Promise<void> => {
+    if (galleryDescriptionBusy.value) return
+
+    const imageUrls = props.photoUrls.slice(0, 4)
+    if (imageUrls.length === 0) {
+        galleryDescriptionError.value = '请先上传或选择至少一张照片'
+        return
+    }
+
+    galleryDescriptionBusy.value = true
+    galleryDescriptionError.value = ''
+    try {
+        const result = await describeAiImages({
+            mode: 'gallery',
+            imageUrls,
+            title: formData.value.title.trim(),
+            context: formData.value.introduce.trim(),
+        })
+        if (result.code === 200 && result.data?.mode === 'gallery') {
+            galleryDescriptionSuggestion.value = result.data
+        } else {
+            galleryDescriptionError.value = result.message || 'AI 批量描述生成失败，请稍后重试'
+        }
+    } catch (error) {
+        galleryDescriptionError.value = getAiRequestErrorMessage(error, 'AI 批量描述生成失败，请稍后重试')
+    } finally {
+        galleryDescriptionBusy.value = false
+    }
+}
+
+const applyGalleryDescription = (): void => {
+    const suggestion = galleryDescriptionSuggestion.value
+    if (!suggestion?.text) return
+    formData.value.introduce = suggestion.text
+    markAiFeature('gallery')
+    galleryDescriptionSuggestion.value = null
+}
+
+const dismissGalleryDescription = (): void => {
+    galleryDescriptionSuggestion.value = null
 }
 // 每次上传前换取一次性票据：URL 里流通的是 5 分钟失效的短期票据，
 // 不再是长期有效的登录 token（避免进入访问日志与浏览器历史）

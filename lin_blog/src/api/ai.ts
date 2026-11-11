@@ -162,6 +162,8 @@ export interface AiUsageWindow {
   denied: number;
   successRate: number;
   avgDurationMs: number;
+  p50DurationMs: number;
+  p95DurationMs: number;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -256,6 +258,37 @@ export function generateCoverImage(params: {
 
 export function confirmCoverImage(token: string) {
   return request.post<ApiResult<{ url: string }>>("/ai/cover/confirm", { token });
+}
+
+// AI 图片理解：alt 文本与图库批量描述，只返回候选，作者确认后才写入
+export interface AiImageAltResult {
+  mode: "alt";
+  items: {
+    url: string;
+    alt: string;
+  }[];
+  degraded: boolean;
+  modelName: string;
+}
+
+export interface AiGalleryDescriptionResult {
+  mode: "gallery";
+  text: string;
+  degraded: boolean;
+  modelName: string;
+}
+
+export type AiImageDescribeResult = AiImageAltResult | AiGalleryDescriptionResult;
+
+export function describeAiImages(params: {
+  mode: "alt" | "gallery";
+  imageUrls: string[];
+  title?: string;
+  context?: string;
+}) {
+  return request.post<ApiResult<AiImageDescribeResult>>("/ai/images/describe", params, {
+    timeout: 120000
+  });
 }
 
 // 通用别名：同一套接口同时服务文章封面、随笔配图与图库配图

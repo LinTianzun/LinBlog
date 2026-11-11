@@ -18,12 +18,52 @@
                 </yk-popover>
             </div>
 
+            <div class="diary-editor-ai-bar" v-if="canUseAi">
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('polish')">AI 润色</yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('shorten')">AI 精简</yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('expand')">AI 扩写</yk-button>
+                <yk-button type="secondary" size="s" :loading="aiBusy" @click="requestAiWriting('continue')">AI 续写</yk-button>
+                <yk-button type="secondary" size="s" :loading="aiImageBusy" @click="requestAiGalleryDescription">
+                    AI 描述配图
+                </yk-button>
+            </div>
+
             <yk-text-area class="diary-editor-top-content" v-model="diaryForm.content" placeholder="请输入..."
                 :max-length="1600" clearable :auto-size="{
                     minRows: 20,
                     maxRows: 20,
                   }">
             </yk-text-area>
+
+            <div v-if="aiWriting" class="diary-editor-ai-result">
+                <p class="diary-editor-ai-result-title">
+                    AI 生成的{{ getWritingActionLabel(aiWriting.action) }}内容（采用后才会写入编辑器）：
+                </p>
+                <p v-if="aiWriting.degraded" class="diary-editor-ai-result-degraded">
+                    默认模型暂时不可用，本次由「{{ aiWriting.modelName }}」生成
+                </p>
+                <p class="diary-editor-ai-result-text">{{ aiWriting.text }}</p>
+                <div class="diary-editor-ai-result-actions">
+                    <yk-button size="s" @click="applyAiWriting">采用</yk-button>
+                    <yk-button type="secondary" size="s" @click="dismissAiWriting">忽略</yk-button>
+                </div>
+            </div>
+            <p v-if="aiError" class="diary-editor-ai-error">{{ aiError }}</p>
+            <p v-if="aiImageError" class="diary-editor-ai-error">{{ aiImageError }}</p>
+
+            <div v-if="aiGalleryDescription" class="diary-editor-ai-result">
+                <p class="diary-editor-ai-result-title">
+                    AI 生成的配图描述（采用后会追加到正文）：
+                </p>
+                <p v-if="aiGalleryDescription.degraded" class="diary-editor-ai-result-degraded">
+                    默认模型暂时不可用，本次由「{{ aiGalleryDescription.modelName }}」生成
+                </p>
+                <p class="diary-editor-ai-result-text">{{ aiGalleryDescription.text }}</p>
+                <div class="diary-editor-ai-result-actions">
+                    <yk-button size="s" @click="applyAiGalleryDescription">采用描述</yk-button>
+                    <yk-button type="secondary" size="s" @click="dismissAiGalleryDescription">忽略</yk-button>
+                </div>
+            </div>
 
             <div class="diary-editor-top-picture">
                 <!-- 已有图片瀑布流（编辑模式可单张删除） -->
@@ -60,13 +100,22 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, nextTick, onMounted, getCurrentInstance } from 'vue'
+import { computed, ref, nextTick, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
 import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diary'
+import {
+    describeAiImages,
+    rewriteArticleText,
+    getRequestErrorMessage as getAiRequestErrorMessage,
+    type AiGalleryDescriptionResult,
+    type AiWritingAction,
+    type AiWritingSuggestion,
+} from '../../api/ai'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 import ImageSourceActions from '../common/ImageSourceActions.vue'
+import { useSessionStore } from '../../store/session.ts'
 import { getAiFeatures, markAiFeature, resetAiFeatures } from '../../utils/aiMarker.ts'
 
 type DiaryForm = {
@@ -110,6 +159,16 @@ const diaryForm = ref<DiaryForm>({
     weatherId: 0,
     picture: [],
 })
+
+// AI 写作辅助入口按 ai.use 权限收敛，服务端同样按该权限校验
+const session = useSessionStore()
+const canUseAi = computed(() => session.can('ai.use'))
+const aiBusy = ref(false)
+const aiError = ref('')
+const aiWriting = ref<AiWritingSuggestion | null>(null)
+const aiImageBusy = ref(false)
+const aiImageError = ref('')
+const aiGalleryDescription = ref<AiGalleryDescriptionResult | null>(null)
 
 // 当前天气
 const seWeather = ref<string>('')
@@ -230,6 +289,105 @@ const handleAiPhoto = (url: string): void => {
     proxy?.$message?.({ type: 'primary', message: 'AI 配图已添加' })
 }
 
+const getWritingActionLabel = (action: AiWritingAction): string => ({
+    polish: '润色',
+    shorten: '精简',
+    expand: '扩写',
+    continue: '续写',
+}[action])
+
+// 随笔是纯文本框，润色/精简/扩写作用于全文，续写基于全文尾部
+const requestAiWriting = async (action: AiWritingAction): Promise<void> => {
+    if (aiBusy.value) return
+
+    const content = diaryForm.value.content?.trim() || ''
+    if (!content) {
+        aiError.value = action === 'continue'
+            ? '请先写一点正文，再使用 AI 续写'
+            : '请先填写正文内容，再使用 AI 润色、精简或扩写'
+        return
+    }
+
+    aiBusy.value = true
+    aiError.value = ''
+    try {
+        const result = await rewriteArticleText({
+            action,
+            text: action === 'continue' ? content.slice(-2000) : content.slice(0, 2000),
+            title: diaryForm.value.title?.trim() || '',
+        })
+        if (result.code === 200 && result.data) {
+            aiWriting.value = result.data
+        } else {
+            aiError.value = result.message || 'AI 写作辅助生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiError.value = getAiRequestErrorMessage(error, 'AI 写作辅助生成失败，请稍后重试')
+    } finally {
+        aiBusy.value = false
+    }
+}
+
+const applyAiWriting = (): void => {
+    const suggestion = aiWriting.value
+    if (!suggestion) return
+
+    // 记录 AI 辅助标记：作者点了「采用」才写入编辑器
+    markAiFeature('writing')
+    diaryForm.value.content = suggestion.action === 'continue'
+        ? `${diaryForm.value.content || ''}${suggestion.text}`
+        : suggestion.text
+    aiWriting.value = null
+}
+
+const dismissAiWriting = (): void => {
+    aiWriting.value = null
+}
+
+const requestAiGalleryDescription = async (): Promise<void> => {
+    if (aiImageBusy.value) return
+
+    const imageUrls = photos.value.slice(0, 4)
+    if (imageUrls.length === 0) {
+        aiImageError.value = '请先上传、选择或生成随笔配图'
+        return
+    }
+
+    aiImageBusy.value = true
+    aiImageError.value = ''
+    try {
+        const result = await describeAiImages({
+            mode: 'gallery',
+            imageUrls,
+            title: diaryForm.value.title?.trim() || '',
+            context: diaryForm.value.content?.trim() || '',
+        })
+        if (result.code === 200 && result.data?.mode === 'gallery') {
+            aiGalleryDescription.value = result.data
+        } else {
+            aiImageError.value = result.message || 'AI 配图描述生成失败，请稍后重试'
+        }
+    } catch (error) {
+        aiImageError.value = getAiRequestErrorMessage(error, 'AI 配图描述生成失败，请稍后重试')
+    } finally {
+        aiImageBusy.value = false
+    }
+}
+
+const applyAiGalleryDescription = (): void => {
+    const suggestion = aiGalleryDescription.value
+    if (!suggestion?.text) return
+    diaryForm.value.content = [diaryForm.value.content?.trim(), suggestion.text]
+        .filter(Boolean)
+        .join('\n')
+    markAiFeature('image-alt')
+    aiGalleryDescription.value = null
+}
+
+const dismissAiGalleryDescription = (): void => {
+    aiGalleryDescription.value = null
+}
+
 // 图片数量上限（与后端校验一致）
 const maxPhotoCount = 6
 
@@ -306,6 +464,10 @@ const resetForm = (): void => {
     photos.value = []
     // 表单清空后重新统计 AI 环节，避免上一条随笔的标记串到下一条
     resetAiFeatures()
+    aiWriting.value = null
+    aiError.value = ''
+    aiGalleryDescription.value = null
+    aiImageError.value = ''
     uploaderVisible.value = false
     void nextTick(() => {
         uploaderVisible.value = true
@@ -331,6 +493,10 @@ const startEdit = (diary: DiaryData): void => {
     editingId.value = diary.id
     // 编辑已有随笔时重新统计：本次采用 AI 才会再次记标记
     resetAiFeatures()
+    aiWriting.value = null
+    aiError.value = ''
+    aiGalleryDescription.value = null
+    aiImageError.value = ''
     diaryForm.value = {
         title: diary.title,
         content: diary.content,
@@ -462,6 +628,60 @@ defineExpose({ startEdit, resetForm })
                 width: 20px;
                 margin-left: @space-s;
             }
+        }
+
+        &-ai-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: @space-s;
+            padding-top: @space-m;
+        }
+
+        &-ai-result {
+            margin-top: @space-m;
+            padding: @space-l;
+            border: 1px solid var(--admin-line, @line-color-s);
+            border-radius: 8px;
+            background: var(--admin-bg, @bg-color-l);
+
+            &-title {
+                margin: 0 0 @space-s;
+                color: @font-color-s;
+                font-size: @size-s;
+                line-height: 1.5;
+            }
+
+            &-text {
+                margin: 0 0 @space-m;
+                color: @font-color-m;
+                font-size: @size-m;
+                line-height: 1.7;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            &-actions {
+                display: flex;
+                gap: @space-s;
+            }
+
+            // 降级提示：首选模型故障时改用备用模型，明确告诉作者
+            &-degraded {
+                margin: 0 0 @space-s;
+                padding: 4px 8px;
+                border-radius: 6px;
+                background: color-mix(in srgb, #d98716 12%, transparent);
+                color: #a86a10;
+                font-size: @size-s;
+                line-height: 1.5;
+            }
+        }
+
+        &-ai-error {
+            margin-top: @space-s;
+            color: #d84a3a;
+            font-size: @size-s;
+            line-height: 1.5;
         }
 
         &-foot {

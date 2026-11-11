@@ -151,6 +151,143 @@ test('提示词模板页可在右侧试跑并选用模板', async ({ page }) => 
   await expect(page.locator('.ai-prompt-preview').getByRole('button', { name: '选用此套提示词' })).toBeVisible()
 })
 
+test('AI 优化只生成候选，作者确认后才应用到提示词输入框', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  const editor = page.locator('.ai-prompt-preview-form textarea.ai-prompt-editor').first()
+  const originalContent = await editor.inputValue()
+
+  await page.locator('.ai-prompt-assist-input').fill('更简洁，强调输出格式')
+  await page.getByRole('button', { name: 'AI 优化' }).click()
+
+  const candidate = page.locator('.ai-prompt-result.is-candidate')
+  await expect(candidate).toBeVisible()
+  await expect(candidate).toContainText('已增强输出约束')
+  await expect(candidate.locator('.ai-prompt-candidate-content'))
+    .toHaveText('请用更简洁的方式输出：{{title}}')
+  // 候选只展示，未确认前不能偷偷改掉输入框
+  await expect(editor).toHaveValue(originalContent)
+
+  await candidate.getByRole('button', { name: '应用到输入框' }).click()
+  await expect(editor).toHaveValue('请用更简洁的方式输出：{{title}}')
+  await expect(page.locator('.ai-banner.is-success')).toContainText('候选提示词已应用')
+})
+
+test('AI 帮我写可生成候选，忽略后不改动输入框', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  const editor = page.locator('.ai-prompt-preview-form textarea.ai-prompt-editor').first()
+  const originalContent = await editor.inputValue()
+
+  await page.locator('.ai-prompt-assist-input').fill('写一段适合自由创作的模板')
+  await page.getByRole('button', { name: 'AI 帮我写' }).click()
+
+  const candidate = page.locator('.ai-prompt-result.is-candidate')
+  await expect(candidate).toBeVisible()
+  await expect(candidate).toContainText('为自由创作生成候选模板')
+  await expect(candidate.locator('.ai-prompt-candidate-content'))
+    .toHaveText('请用友好口吻回答：{{input}}')
+
+  await candidate.getByRole('button', { name: '忽略' }).click()
+  await expect(page.locator('.ai-prompt-result.is-candidate')).toHaveCount(0)
+  await expect(editor).toHaveValue(originalContent)
+})
+
+test('AI 优化进行中显示进度，完成后展示候选', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+  // 后注册的路由优先，延迟响应以便观察加载态
+  await page.route(url => url.pathname === '/api/ai/prompts/assist', async (route) => {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: '提示词候选已生成',
+        data: {
+          content: '延迟返回的候选提示词',
+          summary: '用于验证进度展示',
+          degraded: false,
+          modelName: 'Mock GLM',
+        },
+      }),
+    })
+  })
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('button', { name: 'AI 优化' }).click()
+  const loading = page.locator('.ai-prompt-result.is-loading')
+  await expect(loading).toBeVisible()
+  await expect(loading).toContainText('正在生成候选提示词')
+  await expect(loading.locator('.ai-prompt-progress')).toBeVisible()
+
+  await expect(page.locator('.ai-prompt-result.is-candidate')).toBeVisible()
+  await expect(page.locator('.ai-prompt-result.is-candidate')).toContainText('延迟返回的候选提示词')
+  await expect(page.locator('.ai-prompt-result.is-loading')).toHaveCount(0)
+})
+
+test('提示词试跑失败时展示模型错误，不残留加载态', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: MANAGE_PERMISSIONS,
+  })
+  await installApiMock(page)
+  // 模拟模型连接失败：先进入加载态，再返回可读错误
+  await page.route(url => url.pathname === '/api/ai/prompts/preview', async (route) => {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 503,
+        message: '模型连接超时，请稍后重试',
+        data: null,
+      }),
+    })
+  })
+
+  await page.goto('/aiPrompt')
+  await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('button', { name: '开始试跑' }).click()
+  await expect(page.locator('.ai-prompt-result.is-loading')).toBeVisible()
+  await expect(page.locator('.ai-banner.is-error')).toContainText('模型连接超时，请稍后重试')
+  await expect(page.locator('.ai-prompt-result.is-loading')).toHaveCount(0)
+  await expect(page.locator('.ai-prompt-result.is-empty')).toBeVisible()
+})
+
 test('提示词模板页不触发浏览器滚动，试跑前后布局不跳动', async ({ page }) => {
   await seedSession(page, {
     id: 1,

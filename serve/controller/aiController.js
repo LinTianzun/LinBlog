@@ -4,6 +4,8 @@ const uploadController = require('./uploadController')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 const aiModel = require('../model/dbModel/ai/index')
 const articleModel = require('../model/dbModel/article/index')
+const fileModel = require('../model/dbModel/file/index')
+const imageModel = require('../model/dbModel/image/index')
 const messageModel = require('../model/dbModel/message/index')
 const recordModel = require('../model/dbModel/record/index')
 const commentInteractionModel = require('../model/dbModel/commentInteraction/index')
@@ -699,12 +701,164 @@ async function confirmCover(req, res) {
     }
 }
 
+const MAX_DESCRIBE_IMAGES = 4
+const MAX_DESCRIBE_IMAGE_BYTES = 8 * 1024 * 1024
+const MAX_DESCRIBE_TOTAL_BYTES = 12 * 1024 * 1024
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+
+/**
+ * 从图片地址解析站内图片二进制：
+ * 支持 /api/uploads/:filename 与 /api/file/:id/raw 两种素材库引用形态。
+ * 只读已启用的图片，失败或超限的地址直接忽略，不让单张坏图拖垮整次请求。
+ */
+async function loadImageBuffers(urls) {
+    const results = []
+    let totalBytes = 0
+
+    const appendImage = (image, url) => {
+        const mimeType = String(image?.mime_type || '')
+        const buffer = Buffer.isBuffer(image?.data) ? image.data : null
+        if (!buffer || buffer.length === 0 || !IMAGE_MIME_TYPES.has(mimeType)) return
+        if (buffer.length > MAX_DESCRIBE_IMAGE_BYTES) return
+        if (totalBytes + buffer.length > MAX_DESCRIBE_TOTAL_BYTES) return
+
+        totalBytes += buffer.length
+        results.push({
+            id: String(image.id),
+            url,
+            mimeType,
+            dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`
+        })
+    }
+
+    for (const rawUrl of Array.isArray(urls) ? urls : []) {
+        if (results.length >= MAX_DESCRIBE_IMAGES) break
+        const url = String(rawUrl || '').trim()
+        if (!url) continue
+
+        if (url.startsWith('/api/uploads/')) {
+            const filename = url.slice('/api/uploads/'.length).split(/[?#]/)[0]
+            if (!/^[A-Za-z0-9._-]+$/.test(filename)) continue
+            const rows = await imageModel.findActiveImageByFilename(filename)
+            appendImage(rows?.[0], url)
+            continue
+        }
+
+        const fileMatch = url.match(/^\/api\/file\/(\d+)\/raw(?:[?#]|$)/)
+        if (fileMatch) {
+            const binding = await fileModel.findFileById(Number(fileMatch[1]))
+            if (binding?.source_image_id && binding.status === 1) {
+                const image = await imageModel.findImageById(Number(binding.source_image_id))
+                appendImage(image, url)
+            }
+        }
+    }
+    return results
+}
+
+/**
+ * AI 图片理解：alt 文本走文章正文里的选中图片，
+ * 图库批量描述走图库照片组。都只返回候选，作者确认后才写入。
+ */
+async function describeImageSet(req, res) {
+    if (!req.aiModel) {
+        return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+    }
+
+    const mode = typeof req.body?.mode === 'string' ? req.body.mode.trim() : 'alt'
+    if (!['alt', 'gallery'].includes(mode)) {
+        return res.status(400).json({ code: 400, message: '不支持的图片理解模式' })
+    }
+    const urls = Array.isArray(req.body?.imageUrls)
+        ? req.body.imageUrls.filter(item => typeof item === 'string' && item.trim()).slice(0, MAX_DESCRIBE_IMAGES)
+        : []
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 150) : ''
+    const context = typeof req.body?.context === 'string' ? req.body.context.trim().slice(0, 6000) : ''
+    const startedAt = Date.now()
+
+    try {
+        const images = await loadImageBuffers(urls)
+        if (images.length === 0) {
+            return res.status(400).json({ code: 400, message: '没有可识别的站内图片' })
+        }
+
+        const result = await aiClient.describeImages({
+            mode,
+            images,
+            title,
+            context,
+            aiConfig: req.aiModel
+        })
+        await recordAiCall({
+            req,
+            feature: mode === 'gallery' ? 'gallery-description' : 'image-alt',
+            modelName: result.modelUsed?.model || req.aiModel.model,
+            modelId: result.modelUsed?.id ?? req.aiModel.id,
+            status: 'success',
+            detail: result.modelUsed?.degraded
+                ? `${mode === 'gallery' ? '图库批量描述' : '正文图片 alt'}（默认模型不可用，已降级到「${result.modelUsed.name}」）`
+                : `${mode === 'gallery' ? '图库批量描述' : '正文图片 alt'}：${result.imageCount} 张`,
+            durationMs: Date.now() - startedAt,
+            usage: result.usage,
+            outputChars: result.outputChars
+        })
+
+        return res.json({
+            code: 200,
+            message: mode === 'gallery' ? '图库描述已生成，请确认后采用' : '图片描述已生成，请确认后写入',
+            data: mode === 'gallery'
+                ? {
+                    mode: result.mode,
+                    text: result.text,
+                    degraded: Boolean(result.modelUsed?.degraded),
+                    modelName: result.modelUsed?.name || ''
+                }
+                : {
+                    mode: result.mode,
+                    items: images.slice(0, result.alts.length).map((image, index) => ({
+                        url: image.url,
+                        alt: result.alts[index]
+                    })),
+                    degraded: Boolean(result.modelUsed?.degraded),
+                    modelName: result.modelUsed?.name || ''
+                }
+        })
+    } catch (err) {
+        if (err?.code === 'AI_NOT_CONFIGURED') {
+            return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
+        }
+        if (err?.code === 'AI_EMPTY_IMAGE') {
+            return res.status(400).json({ code: 400, message: err.message })
+        }
+        if (err?.code === 'AI_VISION_UNSUPPORTED') {
+            return res.status(400).json({ code: 400, message: '当前文本模型不支持看图，请先在 AI 策略里切换多模态模型' })
+        }
+        console.error('[AI] 图片理解失败：', err?.message || err)
+        await recordAiCall({
+            req,
+            feature: mode === 'gallery' ? 'gallery-description' : 'image-alt',
+            modelName: req.aiModel?.model || null,
+            modelId: req.aiModel?.id ?? null,
+            status: 'failed',
+            detail: `${mode === 'gallery' ? '图库批量描述' : '正文图片 alt'}失败：${err?.message || '未知错误'}`,
+            durationMs: Date.now() - startedAt
+        })
+        return res.status(503).json({
+            code: 503,
+            message: err?.code === 'AI_PARSE_ERROR'
+                ? '模型没有返回可用的图片描述'
+                : 'AI 图片理解失败，请稍后重试'
+        })
+    }
+}
+
 module.exports = {
     suggestArticleMeta,
     suggestGalleryCuration,
     rewriteArticleText,
     generateCover,
     confirmCover,
+    describeImageSet,
     answerPublicQuestion,
     searchPublicContent,
     suggestMessageReply,
