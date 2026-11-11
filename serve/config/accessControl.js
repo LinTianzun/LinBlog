@@ -310,13 +310,13 @@ const PERMISSIONS = [
         key: 'ai.use',
         group: 'ai',
         label: '使用 AI 能力',
-        description: '使用 AI 写作建议、写作辅助和配图生成'
+        description: '使用 AI 写作、配图、图片理解、提示词试跑与助手能力'
     },
     {
         key: 'ai.manage',
         group: 'ai',
         label: '管理 AI 接入',
-        description: '维护接入模型、用量策略并查看 AI 调用记录',
+        description: '维护接入模型、用量策略、提示词模板与健康巡检，并查看调用记录',
         risk: 'high'
     },
     {
