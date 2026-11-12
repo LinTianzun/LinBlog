@@ -301,6 +301,7 @@
         saveAiPreviewImage,
         getAiPromptHistory,
         restoreAiPromptHistory,
+        type AiPromptAssistantResult,
         type AiPromptPreviewResult,
         type AiPromptHistoryItem,
         type AiPromptTemplate,

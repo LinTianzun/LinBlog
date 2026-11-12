@@ -86,6 +86,12 @@ import {
 } from '../../api/ai'
 import { markAiFeature } from '../../utils/aiMarker.ts'
 
+type SlateImageElement = SlateNode & {
+    type?: string
+    src?: string
+    alt?: string
+}
+
 const props = withDefaults(defineProps<{
     modelValue?: string
     aiTitle?: string
@@ -302,9 +308,9 @@ const applyAiImageDescription = (item: AiImageDescriptionItem): void => {
 
     let applied = 0
     for (const [node, path] of SlateNode.nodes(editor)) {
-        const image = node as { type?: string; src?: string }
+        const image = node as SlateImageElement
         if (image.type !== 'image' || image.src !== item.url) continue
-        Transforms.setNodes(editor, { alt: item.alt }, { at: path })
+        Transforms.setNodes<SlateImageElement>(editor, { alt: item.alt }, { at: path })
         applied += 1
     }
 

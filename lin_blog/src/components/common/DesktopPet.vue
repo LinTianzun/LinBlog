@@ -407,12 +407,12 @@ const stageStyle = computed(() => ({
     transform: `scaleX(${facing.value === 'right' ? -1 : 1}) scaleY(${squashY.value})`,
 }))
 
-// 命中区略小于视频盒：透明边不挡页面点击
+// 命中区只覆盖角色上半身：保留点击/拖拽，同时避开页面右下角的操作按钮
 const hitStyle = computed(() => ({
-    left: `${PET_W.value * 0.12}px`,
-    top: `${PET_H.value * 0.08}px`,
-    width: `${PET_W.value * 0.76}px`,
-    height: `${PET_H.value * 0.84}px`,
+    left: `${PET_W.value * 0.24}px`,
+    top: `${PET_H.value * 0.10}px`,
+    width: `${PET_W.value * 0.52}px`,
+    height: `${PET_H.value * 0.46}px`,
 }))
 
 // ===== 气泡 =====
