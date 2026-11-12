@@ -4,6 +4,7 @@ const config = require('../config/default')
 const { generateToken } = require('../utils/jwtutil')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { writeSystemLog } = require('../utils/logHelper')
+const loginGuard = require('../utils/loginGuard')
 const {
     SUPER_ADMIN_EMAIL,
     isSuperAdmin,
@@ -759,9 +760,28 @@ async function login(req, res) {
         if (!account || !password) {
             return res.status(400).json({ code: 400, message: '请提供账号（用户名/邮箱）和密码' })
         }
+        const accountText = String(account).trim()
+
+        const lock = loginGuard.isLocked(accountText)
+        if (lock.locked) {
+            const remainingMinutes = Math.max(1, Math.ceil(lock.remainingSeconds / 60))
+            return res.status(429).json({
+                code: 429,
+                message: `连续登录失败次数过多，该账号已临时锁定，请约 ${remainingMinutes} 分钟后再试`
+            })
+        }
+
         // 调用模型：同时按用户名和邮箱查询
-        const result = await userModel.findUserByAccount(account)
+        const result = await userModel.findUserByAccount(accountText)
         if (result.length === 0) {
+            const failure = loginGuard.recordFailure(accountText)
+            writeSystemLog({
+                userId: null,
+                action: 'login',
+                module: 'user',
+                detail: `登录失败：账号不存在（连续第 ${failure.failures} 次），账号「${accountText}」`,
+                ip: req.ip || null,
+            })
             return res.status(400).json({ code: 400, message: '用户未注册' });
         }
 
@@ -778,8 +798,26 @@ async function login(req, res) {
         // 密码校验（与数据库存储的 bcrypt 哈希匹配）
         const isPasswordValid = await bcrypt.compare(password, user.password)
         if (!isPasswordValid) {
+            const failure = loginGuard.recordFailure(accountText)
+            writeSystemLog({
+                userId: user.id,
+                action: 'login',
+                module: 'user',
+                targetType: 'user',
+                targetId: user.id,
+                detail: `登录失败：密码错误（连续第 ${failure.failures} 次），账号「${user.username}」`,
+                ip: req.ip || null,
+            })
+            if (failure.locked) {
+                return res.status(429).json({
+                    code: 429,
+                    message: `连续登录失败次数过多，该账号已临时锁定 ${failure.lockMinutes} 分钟`
+                })
+            }
             return res.status(400).json({ code: 400, message: '密码错误' });
         }
+
+        loginGuard.recordSuccess(accountText)
 
         // 生成 Token（沿用原有逻辑）
         const token = generateToken({

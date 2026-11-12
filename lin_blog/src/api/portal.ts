@@ -213,10 +213,10 @@ export function createPublicComment(data: {
   return request.post<ApiResult<CreateCommentResult>>("/public/comment", data);
 }
 
-export function getPublicSubsets() {
+export function getPublicSubsets(classify: "article" | "image" = "article") {
   return request.get<ApiResult<{ count: number; list: PortalSubset[] }>>(
     "/public/subset",
-    { params: { classify: "article" } }
+    { params: { classify } }
   );
 }
 

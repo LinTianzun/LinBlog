@@ -3,16 +3,29 @@
         <PortalPageHeader index="02" kicker="PHOTOGRAPHS" title="摄影"
             :description="`共 ${total} 组照片。点开任意一组，可以在当前页放大查看每一张。`"
             aside-label="VISUAL FIELD NOTES" :aside-value="`${total} 组`" aside-note="光线、街角与旅途中的停顿，组成一本持续生长的影像志。">
-            <div class="sort-bar">
-                <span class="filter-caption">SORT</span>
-                <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
-                    @click="setSort('latest')">
-                    最新
-                </button>
-                <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
-                    @click="setSort('hot')">
-                    最热
-                </button>
+            <div class="gallery-filters">
+                <div class="subset-pills">
+                    <button type="button" class="pill" :class="{ active: subsetId === null }"
+                        @click="selectSubset(null)">
+                        全部
+                    </button>
+                    <button v-for="subset in subsetList" :key="subset.id" type="button" class="pill"
+                        :class="{ active: subsetId === subset.id }" @click="selectSubset(subset.id)">
+                        {{ subset.name }}
+                        <span>{{ subset.value }}</span>
+                    </button>
+                </div>
+                <div class="sort-bar">
+                    <span class="filter-caption">SORT</span>
+                    <button type="button" class="sort-btn" :class="{ active: sort === 'latest' }"
+                        @click="setSort('latest')">
+                        最新
+                    </button>
+                    <button type="button" class="sort-btn" :class="{ active: sort === 'hot' }"
+                        @click="setSort('hot')">
+                        最热
+                    </button>
+                </div>
             </div>
         </PortalPageHeader>
 
@@ -80,8 +93,8 @@ import { useRoute, useRouter } from 'vue-router'
 import PortalLayout from '../components/portal/PortalLayout.vue'
 import PortalPageHeader from '../components/portal/PortalPageHeader.vue'
 import PortalGalleryDetail from '../components/portal/PortalGalleryDetail.vue'
-import { getPublicArticleById, getPublicArticles } from '../api/portal'
-import type { PortalSort } from '../api/portal'
+import { getPublicArticleById, getPublicArticles, getPublicSubsets } from '../api/portal'
+import type { PortalSort, PortalSubset } from '../api/portal'
 import { parseGalleryContent, type ArticleItem } from '../api/article'
 import AdminPager from '../components/common/AdminPager.vue'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
@@ -102,6 +115,8 @@ const loading = ref(false)
 const brokenIds = ref(new Set<number>())
 const loadedIds = ref(new Set<number>())
 const sort = ref<PortalSort>('latest')
+const subsetId = ref<number | null>(null)
+const subsetList = ref<PortalSubset[]>([])
 
 const detailVisible = ref(false)
 const activeGallery = ref<ArticleItem | null>(null)
@@ -167,7 +182,8 @@ const loadGallery = async () => {
             page: page.value,
             pageSize,
             classify: 'image',
-            sort: sort.value
+            sort: sort.value,
+            subsetId: subsetId.value || undefined
         })
         if (result.code === 200) {
             galleryList.value = result.data?.list || []
@@ -194,6 +210,7 @@ const syncQuery = (openId: number | null = activeGallery.value?.id ?? null) => {
     const query: Record<string, string> = {}
     if (page.value > 1) query.page = String(page.value)
     if (sort.value !== 'latest') query.sort = sort.value
+    if (subsetId.value !== null) query.subset = String(subsetId.value)
     if (openId) query.open = String(openId)
     void router.replace({ path: '/portal/gallery', query })
 }
@@ -205,6 +222,25 @@ const setSort = (next: PortalSort) => {
     page.value = 1
     syncQuery()
     void loadGallery()
+}
+
+const selectSubset = (id: number | null) => {
+    if (subsetId.value === id) return
+    subsetId.value = id
+    page.value = 1
+    syncQuery()
+    void loadGallery()
+}
+
+const loadFilters = async () => {
+    try {
+        const result = await getPublicSubsets('image')
+        if (result.code === 200) {
+            subsetList.value = (result.data?.list || []).filter(item => item.value > 0)
+        }
+    } catch {
+        subsetList.value = []
+    }
 }
 
 const openGallery = (item: ArticleItem, sync = true) => {
@@ -257,6 +293,8 @@ onMounted(async () => {
     applyPortalSeo(archiveSeoConfig('gallery'))
     if (route.query.sort === 'hot') sort.value = 'hot'
     if (typeof route.query.page === 'string') page.value = Number(route.query.page) || 1
+    if (typeof route.query.subset === 'string') subsetId.value = Number(route.query.subset) || null
+    await loadFilters()
     await loadGallery()
 
     // 支持从首页直接打开某组图库：?open=12
@@ -277,6 +315,52 @@ watch(() => route.query.open, (value) => {
 </script>
 
 <style lang="less" scoped>
+.gallery-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px 24px;
+}
+
+.subset-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 7px 16px;
+    border: 1px solid @line-color-s;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 13px;
+    color: @font-color-m;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+
+    span {
+        font-size: 11px;
+        color: @font-color-s;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &:hover {
+        border-color: @pcolor;
+        color: @pcolor;
+    }
+
+    &.active {
+        border-color: @pcolor;
+        background: var(--pcolor1);
+        color: @pcolor;
+        font-weight: 500;
+    }
+}
+
 .sort-bar {
     display: flex;
     align-items: center;

@@ -72,6 +72,25 @@ const smtp = {
     from: process.env.LINBLOG_SMTP_FROM || process.env.LINBLOG_SMTP_USER || '',
 }
 
+const configWarnings = []
+
+// 非致命但会在生产环境埋坑的配置：启动时提示一次，不阻止服务运行
+if (!process.env.LINBLOG_PUBLIC_URL) {
+    configWarnings.push('未设置 LINBLOG_PUBLIC_URL，SEO/RSS 将回退使用第一个允许来源，建议显式配置生产域名')
+}
+
+if (!smtp.host) {
+    configWarnings.push('未配置 SMTP，密码重置链接只输出到服务端日志，AI/备份告警邮件也不会发送')
+}
+
+if (process.env.RAILWAY_ENVIRONMENT && !process.env.LINBLOG_DB_BACKUP_DIR) {
+    configWarnings.push('Railway 环境未设置 LINBLOG_DB_BACKUP_DIR，数据库备份会落在容器临时目录，重启后可能丢失')
+}
+
+if (process.env.RAILWAY_ENVIRONMENT && !process.env.LINBLOG_FILE_STORAGE_DIR) {
+    configWarnings.push('Railway 环境未设置 LINBLOG_FILE_STORAGE_DIR，上传文件会落在容器临时目录，建议挂载 /data')
+}
+
 if (smtp.host && (!smtp.from || !Number.isInteger(smtp.port) || smtp.port < 1 || smtp.port > 65535)) {
     configErrors.push('配置 SMTP 时 LINBLOG_SMTP_FROM 必填，LINBLOG_SMTP_PORT 必须是 1-65535 的整数')
 }
@@ -95,6 +114,10 @@ const ai = aiBaseUrl && aiApiKey && aiModel
         timeoutMs: Math.min(Math.max(Number.parseInt(process.env.LINBLOG_AI_TIMEOUT_MS || '20000', 10) || 20000, 1000), 120000)
     }
     : null
+
+if (!ai) {
+    configWarnings.push('未配置 AI 环境变量，AI 功能可通过后台「AI 管理」接入模型后启用')
+}
 
 if (configErrors.length > 0) {
     throw new Error(`配置错误：\n- ${configErrors.join('\n- ')}\n请复制 serve/.env.example 为 serve/.env，并按部署环境填写变量。`)
@@ -134,6 +157,7 @@ const config = {
     publicUrl,
     smtp,
     ai,
+    configWarnings,
     jsonLimit: process.env.LINBLOG_JSON_LIMIT || '1mb',
     jwt: {
         secret: jwtSecret,

@@ -4,10 +4,19 @@ const { formatPaginationParams } = require('../utils/paginationUtil')
 const { hasPermission } = require('../utils/accessControl')
 
 function getLogFilters(query = {}) {
+    const startDate = typeof query.startDate === 'string' ? query.startDate.trim() : ''
+    const endDate = typeof query.endDate === 'string' ? query.endDate.trim() : ''
+    // 与举报中心一致：必须成对提供且都是合法日期，否则时间范围不参与筛选
+    const validDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+    const hasDateRange = Boolean(startDate) && Boolean(endDate)
+        && validDateText(startDate) && validDateText(endDate)
+
     return {
         keyword: typeof query.keyword === 'string' ? query.keyword.trim() : '',
         module: systemLogModel.MODULES.includes(query.module) ? query.module : '',
         action: systemLogModel.ACTIONS.includes(query.action) ? query.action : '',
+        startDate: hasDateRange ? startDate : null,
+        endDate: hasDateRange ? endDate : null,
         sortOrder: query.sortOrder === 'asc' ? 'asc' : 'desc'
     }
 }

@@ -4,6 +4,30 @@ const ACTIONS = ['login', 'logout', 'create', 'update', 'delete', 'publish', 're
 // permission 模块：角色权限矩阵变更属于高风险操作，必须可审计
 const MODULES = ['user', 'article', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'ai', 'permission', 'system', 'backup']
 const EXPORT_MAX_ROWS = 100000
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizeDateText(value) {
+    const trimmed = String(value || '').trim()
+    if (!DATE_PATTERN.test(trimmed)) return null
+    const date = new Date(`${trimmed}T00:00:00Z`)
+    if (Number.isNaN(date.getTime())) return null
+    // 形如 2026-02-31 会被 Date 进位到下个月，这里按字符串回读再比对一次
+    return date.toISOString().slice(0, 10) === trimmed ? trimmed : null
+}
+
+/**
+ * 日志日期范围转 SQL 条件。结束日期按「次日零点」比较，
+ * 避免 MySQL 连接时区与本地时区不一致时漏掉当天末尾日志。
+ */
+function buildLogDateRange(startDate, endDate) {
+    const from = normalizeDateText(startDate)
+    const to = normalizeDateText(endDate)
+    if (!from || !to) return null
+    const [begin, finish] = from <= to ? [from, to] : [to, from]
+    const next = new Date(`${finish}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    return { column: 'l.created_at', from: begin, to: next.toISOString().slice(0, 10) }
+}
 
 /**
  * 写入一条系统日志；字段已由调用方归一化，失败由调用方兜底
@@ -25,6 +49,8 @@ async function getLogsByPage({
     keyword = '',
     module = '',
     action = '',
+    startDate = null,
+    endDate = null,
     pageSize = 20,
     offset = 0,
     sortOrder = 'desc'
@@ -44,6 +70,11 @@ async function getLogsByPage({
     if (action) {
         where.push('l.action = ?')
         params.push(action)
+    }
+    const dateRange = buildLogDateRange(startDate, endDate)
+    if (dateRange) {
+        where.push(`${dateRange.column} >= ?`, `${dateRange.column} < ?`)
+        params.push(dateRange.from, dateRange.to)
     }
 
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
@@ -67,7 +98,13 @@ async function getLogsByPage({
     return { list, total: Number(totalRows[0]?.total || 0) }
 }
 
-function buildLogFilters({ keyword = '', module = '', action = '' } = {}) {
+function buildLogFilters({
+    keyword = '',
+    module = '',
+    action = '',
+    startDate = null,
+    endDate = null
+} = {}) {
     const where = []
     const params = []
 
@@ -83,6 +120,11 @@ function buildLogFilters({ keyword = '', module = '', action = '' } = {}) {
     if (action && ACTIONS.includes(action)) {
         where.push('l.action = ?')
         params.push(action)
+    }
+    const dateRange = buildLogDateRange(startDate, endDate)
+    if (dateRange) {
+        where.push(`${dateRange.column} >= ?`, `${dateRange.column} < ?`)
+        params.push(dateRange.from, dateRange.to)
     }
     return { whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '', params }
 }
@@ -100,8 +142,16 @@ function toCsv(rows) {
     ].join('\r\n')
 }
 
-async function getLogsForExport({ keyword = '', module = '', action = '', sortOrder = 'desc', limit = EXPORT_MAX_ROWS } = {}) {
-    const { whereSql, params } = buildLogFilters({ keyword, module, action })
+async function getLogsForExport({
+    keyword = '',
+    module = '',
+    action = '',
+    startDate = null,
+    endDate = null,
+    sortOrder = 'desc',
+    limit = EXPORT_MAX_ROWS
+} = {}) {
+    const { whereSql, params } = buildLogFilters({ keyword, module, action, startDate, endDate })
     const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
     const rows = await query(
         `SELECT l.id, l.user_id, u.username, l.action, l.module,

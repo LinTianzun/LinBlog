@@ -127,6 +127,20 @@ E2E 覆盖 53 条主链路：登录与权限守卫、评论举报（选原因与
 
 Railway 会自动注入 `PORT` 与 `RAILWAY_PUBLIC_DOMAIN`；MySQL 插件提供的 `MYSQLHOST/MYSQLPORT/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE` 也受支持。文件模块需要在 Railway 挂载 `/data` 持久化磁盘，并设置 `LINBLOG_FILE_STORAGE_DIR=/data/files`、`LINBLOG_FILE_BACKUP_DIR=/data/file-backups`。完整步骤见 [Documentation/Railway部署.md](Documentation/Railway部署.md)。
 
+#### 部署校验清单
+
+上线前按下面逐项确认；`serve/config/default.js` 会拦截致命配置错误，`serve/linlog.js` 还会在启动时打印不会阻断运行的环境告警：
+
+- `LINBLOG_JWT_SECRET` 至少 32 位随机值，且不要与测试环境复用。
+- `LINBLOG_ALLOWED_ORIGINS` 只填写真实前端来源（协议 + 域名 + 可选端口），生产环境建议同时显式设置 `LINBLOG_PUBLIC_URL`。
+- 反向代理后开启 `LINBLOG_TRUST_PROXY`，否则访问统计与登录限流会按代理 IP 归并。
+- 持久化目录已挂载：`LINBLOG_FILE_STORAGE_DIR`、`LINBLOG_FILE_BACKUP_DIR`、`LINBLOG_DB_BACKUP_DIR`；Railway 建议统一放到 `/data` 下。
+- SMTP 已配置并完成一次真实发信测试；未配置时密码重置链接只写服务端日志，`LINBLOG_AI_ALERT_EMAIL` / `LINBLOG_BACKUP_ALERT_EMAIL` 也不会投递。
+- `/healthz` 返回 200、`/readyz` 在数据库可用时返回 200；部署平台健康检查优先使用 `/healthz`，避免数据库抖动触发重启。
+- 至少执行一次手动数据库备份，并确认 `db_backup_log` 有记录；定时备份默认每天 03:00，成功/失败都会进入备份历史与系统日志。
+- AI 为可选能力：未配置 `LINBLOG_AI_*` 时可在后台「AI 管理」接入模型；启用后确认模型健康巡检、每日配额与提示词模板均符合预期。
+- 登录保护默认同一账号连续失败 5 次锁定 10 分钟，可通过 `LINBLOG_LOGIN_MAX_FAILURES` / `LINBLOG_LOGIN_LOCK_MINUTES` 调整。
+
 ### 已注册的后端 API
 
 | 模块 | 路由 | 认证/说明 |

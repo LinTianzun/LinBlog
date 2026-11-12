@@ -8,6 +8,9 @@ const { Readable } = require('node:stream')
 const { pipeline } = require('node:stream/promises')
 const mysql = require('mysql2')
 const config = require('../config/default')
+const backupModel = require('../model/dbModel/backup/index')
+const { writeSystemLog } = require('./logHelper')
+const mailer = require('./mailer')
 
 const DEFAULT_BACKUP_DIR = path.resolve(
     process.env.LINBLOG_DB_BACKUP_DIR || path.join(__dirname, '..', 'storage', 'db-backups')
@@ -772,19 +775,72 @@ async function getBackupDirectoryUsage(options = {}) {
  */
 function startScheduledBackup(options = {}) {
     const logger = options.logger || console
+    const createBackup = options.createDatabaseBackup || createDatabaseBackup
+    const prune = options.pruneOldBackups || pruneOldBackups
+    const pruneBackupLogs = options.pruneBackupLogs || ((days) => backupModel.pruneLogs(days))
     let timer = null
     let stopped = false
 
     const runOnce = async () => {
-        const result = await createDatabaseBackup(options.backupOptions)
+        let result
+        try {
+            result = await createBackup(options.backupOptions)
+        } catch (error) {
+            const detail = `定时数据库备份失败：${error.message}`
+            await backupModel.insertLog({
+                filename: '',
+                triggerType: 'scheduled',
+                status: 'failed',
+                errorMessage: error.message,
+            }).catch((logError) => logger.error('[DBBackup] 写入失败历史失败：', logError.message))
+            writeSystemLog({
+                action: 'system',
+                module: 'backup',
+                targetType: 'database',
+                detail,
+            })
+            const alertRecipient = process.env.LINBLOG_BACKUP_ALERT_EMAIL
+            if (alertRecipient) {
+                await mailer.sendAlertMail({
+                    to: alertRecipient,
+                    subject: 'LinBlog 定时数据库备份失败',
+                    text: detail,
+                }).catch((mailError) => logger.error('[DBBackup] 发送备份告警邮件失败：', mailError.message))
+            }
+            throw error
+        }
+
+        await backupModel.insertLog({
+            filename: result.filename,
+            targetDatabase: result.databaseName,
+            sizeBytes: result.sizeBytes,
+            checksum: result.checksum,
+            tableCount: result.tables,
+            rowCount: result.rows,
+            durationMs: result.durationMs,
+            triggerType: 'scheduled',
+            status: 'success',
+        }).catch((logError) => logger.error('[DBBackup] 写入备份历史失败：', logError.message))
+        writeSystemLog({
+            action: 'system',
+            module: 'backup',
+            targetType: 'database',
+            detail: `定时数据库备份完成：${result.filename}（${result.tables} 表 / ${result.rows ?? '?'} 行）`,
+        })
         logger.info(
             `[DBBackup] 数据库备份完成：${result.filename}`
             + `（${result.tables} 表 / ${result.rows ?? '?'} 行 / ${result.sizeBytes} bytes）`
         )
-        const pruned = await pruneOldBackups()
-        if (pruned.removed.length > 0) {
-            logger.info(`[DBBackup] 已清理 ${pruned.removed.length} 个过期备份`)
-        }
+
+        await prune(options.backupOptions)
+            .then((pruned) => {
+                if (pruned.removed.length > 0) {
+                    logger.info(`[DBBackup] 已清理 ${pruned.removed.length} 个过期备份`)
+                }
+            })
+            .catch((pruneError) => logger.error('[DBBackup] 清理过期备份失败：', pruneError.message))
+        await pruneBackupLogs(90)
+            .catch((pruneError) => logger.error('[DBBackup] 清理备份历史失败：', pruneError.message))
         return result
     }
 

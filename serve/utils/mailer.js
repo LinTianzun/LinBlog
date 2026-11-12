@@ -71,4 +71,22 @@ function escapeHtml(value) {
         .replaceAll("'", '&#39;')
 }
 
-module.exports = { sendPasswordResetMail }
+/**
+ * 发送系统告警邮件。仅 SMTP 与收件人都已配置时真正发送，
+ * 其余情况静默降级，避免巡检/备份失败被邮件故障放大。
+ */
+async function sendAlertMail({ to, subject, text }) {
+    if (!to) return { delivered: false, reason: 'recipient_not_configured' }
+    const mailer = getTransporter()
+    if (!mailer) return { delivered: false, reason: 'smtp_not_configured' }
+
+    await mailer.sendMail({
+        from: config.smtp.from,
+        to,
+        subject: String(subject).slice(0, 160),
+        text: String(text).slice(0, 3000),
+    })
+    return { delivered: true, development: false }
+}
+
+module.exports = { sendPasswordResetMail, sendAlertMail }

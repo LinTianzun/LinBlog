@@ -34,6 +34,10 @@ const { applyFrontendSecurityPolicy } = require('./middleware/frontendCsp')
 
 app.disable('x-powered-by')
 
+for (const warning of config.configWarnings || []) {
+    console.warn(`[Config] ${warning}`)
+}
+
 // 反向代理部署时按配置信任代理头，保证 req.ip 是真实客户端 IP
 if (config.trustProxy !== false) {
     app.set('trust proxy', config.trustProxy)

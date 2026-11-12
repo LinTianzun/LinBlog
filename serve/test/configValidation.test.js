@@ -31,6 +31,12 @@ function loadConfig(env) {
         'LINBLOG_SMTP_USER',
         'LINBLOG_SMTP_PASSWORD',
         'LINBLOG_SMTP_FROM',
+        'LINBLOG_AI_BASE_URL',
+        'LINBLOG_AI_API_KEY',
+        'LINBLOG_AI_MODEL',
+        'RAILWAY_ENVIRONMENT',
+        'LINBLOG_DB_BACKUP_DIR',
+        'LINBLOG_FILE_STORAGE_DIR',
     ]) {
         if (!(key in env)) {
             delete process.env[key]
@@ -181,4 +187,27 @@ test('password reset public URL and SMTP settings are validated', () => {
             return true
         }
     )
+})
+
+test('non-fatal deployment warnings are exported without blocking startup', () => {
+    const base = {
+        LINBLOG_JWT_SECRET: 'test-secret-that-is-at-least-32-characters-long',
+        LINBLOG_ALLOWED_ORIGINS: 'https://blog.example.com'
+    }
+
+    const minimal = loadConfig(base)
+    assert.ok(minimal.configWarnings.some((item) => /LINBLOG_PUBLIC_URL/.test(item)))
+    assert.ok(minimal.configWarnings.some((item) => /SMTP/.test(item)))
+    assert.ok(minimal.configWarnings.some((item) => /AI/.test(item)))
+
+    const complete = loadConfig({
+        ...base,
+        LINBLOG_PUBLIC_URL: 'https://blog.example.com',
+        LINBLOG_SMTP_HOST: 'smtp.example.com',
+        LINBLOG_SMTP_FROM: 'LinBlog <no-reply@example.com>',
+        LINBLOG_AI_BASE_URL: 'https://api.example.com/v1',
+        LINBLOG_AI_API_KEY: 'key',
+        LINBLOG_AI_MODEL: 'model',
+    })
+    assert.deepEqual(complete.configWarnings, [])
 })

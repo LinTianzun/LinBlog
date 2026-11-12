@@ -49,6 +49,8 @@ export function getSystemLogs(
     keyword?: string;
     module?: string;
     action?: string;
+    startDate?: string;
+    endDate?: string;
     sortOrder?: SystemLogSortOrder;
   } = {}
 ) {
@@ -59,6 +61,8 @@ export function exportSystemLogs(params: {
   keyword?: string;
   module?: string;
   action?: string;
+  startDate?: string;
+  endDate?: string;
   sortOrder?: SystemLogSortOrder;
 } = {}) {
   return request.get<Blob>("/systemLog/export", {

@@ -21,6 +21,28 @@
                     <yk-radio value="">全部动作</yk-radio>
                     <yk-radio v-for="item in actionOptions" :key="item.value" :value="item.value">{{ item.label }}</yk-radio>
                 </yk-radio-group>
+                <div class="date-filter">
+                    <div class="date-filter-presets">
+                        <button
+                            v-for="option in dateRangeOptions"
+                            :key="option.value"
+                            type="button"
+                            class="date-chip"
+                            :class="{ 'is-active': datePreset === option.value }"
+                            @click="applyDatePreset(option.value)"
+                        >
+                            {{ option.label }}
+                        </button>
+                    </div>
+                    <input v-model="startDate" type="date" aria-label="日志开始日期" :max="endDate || undefined"
+                        :disabled="loading" @change="applyDateRange" />
+                    <span class="date-separator">至</span>
+                    <input v-model="endDate" type="date" aria-label="日志结束日期" :min="startDate || undefined"
+                        :disabled="loading" @change="applyDateRange" />
+                    <button v-if="startDate || endDate" type="button" class="date-chip date-clear" @click="clearDateRange">
+                        清除日期
+                    </button>
+                </div>
             </yk-space>
 
             <yk-empty v-if="logs.length === 0" description="暂无日志" />
@@ -85,6 +107,13 @@
         type SystemLogItem,
         type SystemLogSortOrder,
     } from '../api/systemLog'
+    import {
+        REPORT_RANGE_OPTIONS,
+        resolveReportRange,
+        rangePresetFromDates,
+        isCompleteReportRange,
+        type ReportRangePreset,
+    } from '../utils/commentReportWorkbench'
 
     const route = useRoute()
 
@@ -121,6 +150,9 @@
     const actionFilter = ref('')
     //  默认最新在前；点击表头在升序/降序之间切换
     const sortOrder = ref<SystemLogSortOrder>('desc')
+    const datePreset = ref<ReportRangePreset>(0)
+    const startDate = ref('')
+    const endDate = ref('')
 
     const actionOptions = [
         { value: 'login', label: '登录' },
@@ -134,6 +166,8 @@
         { value: 'system', label: '系统' },
         { value: 'ai', label: 'AI' },
     ]
+
+    const dateRangeOptions = REPORT_RANGE_OPTIONS
 
     const actionLabel = (value: string): string =>
         actionOptions.find(item => item.value === value)?.label || value
@@ -155,6 +189,9 @@
                 keyword: keyword.value.trim() || undefined,
                 module: moduleFilter.value || undefined,
                 action: actionFilter.value || undefined,
+                ...(isCompleteReportRange(startDate.value, endDate.value)
+                    ? { startDate: startDate.value, endDate: endDate.value }
+                    : {}),
                 sortOrder: sortOrder.value,
             })
 
@@ -200,12 +237,46 @@
         void fetchLogs()
     }
 
+    const applyDatePreset = (value: ReportRangePreset): void => {
+        datePreset.value = value
+        const range = resolveReportRange(value)
+        startDate.value = range.startDate
+        endDate.value = range.endDate
+        reload()
+    }
+
+    const applyDateRange = (): void => {
+        if (!startDate.value && !endDate.value) {
+            datePreset.value = 0
+            reload()
+            return
+        }
+        if (!isCompleteReportRange(startDate.value, endDate.value)) return
+        if (startDate.value > endDate.value) {
+            const nextStart = endDate.value
+            endDate.value = startDate.value
+            startDate.value = nextStart
+        }
+        datePreset.value = rangePresetFromDates(startDate.value, endDate.value)
+        reload()
+    }
+
+    const clearDateRange = (): void => {
+        startDate.value = ''
+        endDate.value = ''
+        datePreset.value = 0
+        reload()
+    }
+
     const exportLogs = async (): Promise<void> => {
         try {
             const blob = await exportSystemLogs({
                 keyword: keyword.value.trim() || undefined,
                 module: moduleFilter.value || undefined,
                 action: actionFilter.value || undefined,
+                ...(isCompleteReportRange(startDate.value, endDate.value)
+                    ? { startDate: startDate.value, endDate: endDate.value }
+                    : {}),
                 sortOrder: sortOrder.value,
             })
             const url = URL.createObjectURL(blob)
@@ -232,6 +303,73 @@
             width: 100%;
             flex-wrap: wrap;
             row-gap: 8px;
+        }
+
+        .date-filter {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex: 1 1 360px;
+            min-width: 300px;
+            flex-wrap: wrap;
+        }
+
+        .date-filter-presets {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .date-chip {
+            margin: 0;
+            padding: 5px 12px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: 999px;
+            background: var(--admin-surface, var(--bgColor1));
+            color: var(--gray7);
+            font-size: 12px;
+            line-height: 1.4;
+            cursor: pointer;
+            transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+
+            &:hover {
+                border-color: color-mix(in srgb, var(--pcolor) 34%, transparent);
+                color: var(--pcolor);
+            }
+
+            &.is-active {
+                border-color: transparent;
+                background: var(--pcolor);
+                color: #fff;
+            }
+        }
+
+        .date-clear {
+            color: @ecolor;
+            background: rgba(250, 82, 71, 0.08);
+        }
+
+        .date-separator {
+            flex: none;
+            color: var(--gray6);
+            font-size: 12px;
+        }
+
+        .date-filter input[type='date'] {
+            height: 32px;
+            padding: 0 10px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: @radius-s;
+            background: var(--admin-surface, var(--bgColor1));
+            color: var(--gray8);
+            font-size: 12px;
+
+            &:focus {
+                outline: none;
+                border-color: var(--pcolor);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+            }
         }
 
         &-list {

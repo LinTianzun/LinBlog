@@ -1,5 +1,7 @@
 const aiModel = require('../model/dbModel/ai/index')
 const { writeSystemLog } = require('./logHelper')
+const { notifySuperAdmin } = require('./notificationHelper')
+const { sendAlertMail } = require('./mailer')
 
 // 巡检间隔默认 30 分钟：既能及时发现模型故障，又不会频繁打扰服务商
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000
@@ -89,15 +91,35 @@ async function runHealthCheck({ models = null, source = 'manual' } = {}) {
         })
 
         const failures = Number(result.health?.consecutiveFailures || 0)
-        if (!result.ok && failures >= ALERT_FAILURE_THRESHOLD) {
+        if (!result.ok && failures === ALERT_FAILURE_THRESHOLD) {
+            const detail = `模型「${model.name}」巡检连续失败 ${failures} 次：${result.error || '未知原因'}`
             writeSystemLog({
                 userId: null,
                 action: 'ai',
                 module: 'ai',
                 targetType: 'model',
                 targetId: model.id,
-                detail: `模型「${model.name}」巡检连续失败 ${failures} 次：${result.error || '未知原因'}`
+                detail
             })
+
+            try {
+                await notifySuperAdmin({ content: detail })
+            } catch (notifyError) {
+                console.warn('[AI] 发送模型健康站内通知失败：', notifyError?.message || notifyError)
+            }
+
+            const alertRecipient = process.env.LINBLOG_AI_ALERT_EMAIL
+            if (alertRecipient) {
+                try {
+                    await sendAlertMail({
+                        to: alertRecipient,
+                        subject: `LinBlog AI 模型健康告警：${model.name}`,
+                        text: detail,
+                    })
+                } catch (mailError) {
+                    console.warn('[AI] 发送模型健康告警邮件失败：', mailError?.message || mailError)
+                }
+            }
         }
     }
 
