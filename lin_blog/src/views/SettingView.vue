@@ -423,6 +423,21 @@
 
                         <div class="set-pet-row">
                             <div class="set-pet-copy">
+                                <strong>桌宠名字</strong>
+                                <p>
+                                    会出现在问候和状态气泡里；登录后跨设备同步。
+                                    留空则默认叫「小 Lin」。
+                                </p>
+                            </div>
+                            <div class="set-pet-name">
+                                <input :value="petNameDraft" maxlength="16" placeholder="小 Lin"
+                                    aria-label="桌宠名字" @input="onPetNameInput"
+                                    @change="savePetName" @keyup.enter="savePetName" />
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
                                 <strong>养成状态</strong>
                                 <p>
                                     称号「{{ petTitle }}」 · 心情{{ vitalsMoodLabel(petVitals) }} ·
@@ -446,6 +461,29 @@
                                 <yk-button type="secondary" size="s" @click="feedFromSettings">
                                     喂一口
                                 </yk-button>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-milestones">
+                            <div v-for="group in petMilestones" :key="group.label"
+                                class="set-pet-milestone-group">
+                                <div class="set-pet-milestone-label">{{ group.label }}</div>
+                                <div class="set-pet-milestone-list">
+                                    <div v-for="item in group.items" :key="item.target"
+                                        class="set-pet-milestone"
+                                        :class="{ 'is-achieved': item.achieved }">
+                                        <span class="set-pet-milestone-target">
+                                            {{ item.target }}{{ item.kind === 'streak' ? '天' : '次' }}
+                                        </span>
+                                        <span class="set-pet-milestone-track">
+                                            <span class="set-pet-milestone-progress"
+                                                :style="{ width: `${petMilestonePercent(item.current, item.target)}%` }" />
+                                        </span>
+                                        <span class="set-pet-milestone-state">
+                                            {{ item.achieved ? '已达成' : `${item.current}/${item.target}` }}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -625,6 +663,7 @@ import {
     vitalsIntimacyLevel,
     vitalsMoodLabel,
     vitalsNextMilestone,
+    vitalsMilestoneWall,
     type PetVitals,
 } from '../utils/desktopPetVitals'
 import {
@@ -696,6 +735,35 @@ const visitorPrefs = reactive<VisitorPetPreferences>(getVisitorPetPreferences())
 const petVitals = ref<PetVitals>(getPetVitals())
 const petTitle = computed(() => vitalsCompanionTitle(petVitals.value))
 const petMilestone = computed(() => vitalsNextMilestone(petVitals.value))
+const petMilestones = computed(() => vitalsMilestoneWall(petVitals.value))
+const petMilestonePercent = (current: number, target: number) =>
+    Math.min(100, Math.round((current / target) * 100))
+const petNameDraft = ref(petVitals.value.name)
+let petNameEditing = false
+const onPetNameInput = (event: Event) => {
+    petNameEditing = true
+    petNameDraft.value = (event.target as HTMLInputElement).value
+}
+const savePetName = () => {
+    petNameEditing = false
+    const name = petNameDraft.value.trim().replace(/\s+/g, ' ').slice(0, 16)
+    petNameDraft.value = name
+    if (name === petVitals.value.name) return
+    petVitals.value = { ...petVitals.value, name, updatedAt: Date.now() }
+    setPetVitals(petVitals.value)
+    emitPetReaction('vitals-updated')
+    void syncPetVitalsToServer(petVitals.value)
+    proxy?.$message?.({
+        type: 'success',
+        message: name ? `以后就叫它「${name}」啦` : '已改回默认名字',
+    })
+}
+watch(
+    () => petVitals.value.name,
+    (name) => {
+        if (!petNameEditing) petNameDraft.value = name
+    }
+)
 const quietActive = computed(() => isWithinQuietHours(visitorPrefs))
 const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
     Object.assign(visitorPrefs, next)
@@ -720,6 +788,7 @@ const feedFromSettings = () => {
     const result = applyFeeding(petVitals.value)
     petVitals.value = result.vitals
     setPetVitals(petVitals.value)
+    emitPetReaction('vitals-updated', { message: `${result.vitals.name || '小 Lin'} 的养成状态有更新` })
     void syncPetVitalsToServer(petVitals.value)
     if (result.effect === 'ok') {
         proxy?.$message?.({ type: 'success', message: '喂饱啦，心情也变好了' })
@@ -1848,6 +1917,29 @@ onUnmounted(() => unsubscribeVisitorPrefs())
     }
 }
 
+.set-pet-name {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+
+    input {
+        width: 180px;
+        padding: 6px 10px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 8px;
+        background: var(--bgColor2);
+        color: var(--font-color1);
+        font-family: inherit;
+        font-size: 13px;
+
+        &:focus {
+            outline: none;
+            border-color: var(--pcolor);
+            box-shadow: 0 0 0 2px var(--portal-accent-soft, rgba(80, 120, 255, 0.16));
+        }
+    }
+}
+
 .set-pet-vitals {
     display: inline-flex;
     flex: none;
@@ -1856,6 +1948,69 @@ onUnmounted(() => unsubscribeVisitorPrefs())
     color: var(--font-color3);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+}
+
+.set-pet-milestones {
+    display: grid;
+    gap: 12px;
+    padding-top: @space-m;
+    border-top: 1px solid var(--admin-line, var(--gray1));
+}
+
+.set-pet-milestone-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.set-pet-milestone-label {
+    color: var(--font-color2);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.set-pet-milestone-list {
+    display: grid;
+    gap: 6px;
+}
+
+.set-pet-milestone {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) 84px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 10px;
+    background: var(--bgColor2);
+    color: var(--font-color3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+
+    &.is-achieved {
+        border-color: color-mix(in srgb, var(--pcolor) 38%, transparent);
+        background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
+        color: var(--pcolor);
+    }
+}
+
+.set-pet-milestone-track {
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gray6) 18%, transparent);
+}
+
+.set-pet-milestone-progress {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--pcolor), var(--pcolor8));
+    transition: width 0.24s ease;
+}
+
+.set-pet-milestone-state {
+    text-align: right;
 }
 
 .set-pet-action-buttons {
@@ -2245,9 +2400,18 @@ onUnmounted(() => unsubscribeVisitorPrefs())
     }
 
     .set-pet-time,
+    .set-pet-name,
     .set-pet-vitals {
         flex-wrap: wrap;
         justify-content: flex-start;
+    }
+
+    .set-pet-name input {
+        width: min(180px, 60vw);
+    }
+
+    .set-pet-milestone {
+        grid-template-columns: 64px minmax(0, 1fr) 72px;
     }
 }
 

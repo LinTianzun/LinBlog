@@ -11,6 +11,7 @@ import {
   vitalsCompanionTitle,
   vitalsIntimacyLevel,
   vitalsMoodLabel,
+  vitalsMilestoneWall,
   vitalsNextMilestone,
 } from '../src/utils/desktopPetVitals.ts'
 
@@ -18,10 +19,12 @@ const HOUR = 3_600_000
 
 test('养成状态遇到非法数值时回落到默认值', () => {
   const normalized = normalizePetVitals({
+    name: '  小   林  ',
     mood: Number.NaN,
     satiety: 'bad' as unknown as number,
     intimacy: Infinity,
   })
+  assert.equal(normalized.name, '小 林')
   assert.equal(normalized.mood, DEFAULT_PET_VITALS.mood)
   assert.equal(normalized.satiety, DEFAULT_PET_VITALS.satiety)
   assert.equal(normalized.intimacy, DEFAULT_PET_VITALS.intimacy)
@@ -159,6 +162,28 @@ test('跨设备合并取较高进度并保留更早的首次访问时间', () =>
   assert.equal(merged.firstVisitAt, 1_000)
 })
 
+test('桌宠名字取更新时间较新的一端，空名字回落到另一端', () => {
+  const older = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    name: '旧名字',
+    updatedAt: 1_000,
+  })
+  const newer = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    name: '新名字',
+    updatedAt: 2_000,
+  })
+  assert.equal(mergePetVitals(older, newer).name, '新名字')
+  assert.equal(mergePetVitals(newer, older).name, '新名字')
+  assert.equal(
+    mergePetVitals(
+      { ...older, name: '保留名字', updatedAt: 3_000 },
+      { ...newer, name: '', updatedAt: 4_000 }
+    ).name,
+    '保留名字'
+  )
+})
+
 test('陪伴称号随连续天数与累计互动增长', () => {
   assert.equal(vitalsCompanionTitle({ ...DEFAULT_PET_VITALS }), '初来乍到')
   assert.equal(
@@ -208,6 +233,28 @@ test('下一个里程碑选择完成比例最近的目标', () => {
     }),
     null
   )
+})
+
+test('成就墙按当前进度标记已达成与剩余目标', () => {
+  const wall = vitalsMilestoneWall({
+    ...DEFAULT_PET_VITALS,
+    streakDays: 8,
+    totalInteractions: 12,
+  })
+  const streak = wall.find((group) => group.kind === 'streak')!
+  const interaction = wall.find((group) => group.kind === 'interaction')!
+  assert.deepEqual(
+    streak.items.filter((item) => item.achieved).map((item) => item.target),
+    [3, 7]
+  )
+  assert.deepEqual(
+    interaction.items.filter((item) => item.achieved).map((item) => item.target),
+    [10]
+  )
+  const nextStreak = streak.items.find((item) => item.target === 14)
+  assert.equal(nextStreak?.remaining, 6)
+  const nextInteraction = interaction.items.find((item) => item.target === 50)
+  assert.equal(nextInteraction?.remaining, 38)
 })
 
 test('心情文案与亲密度等级保持稳定', () => {

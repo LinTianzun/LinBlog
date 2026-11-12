@@ -271,8 +271,10 @@ const canRoam = computed(
 
 // ===== 养成状态（登录用户跨设备同步） =====
 const vitals = ref<PetVitals>(getPetVitals())
+const petName = computed(() => vitals.value.name.trim() || '小 Lin')
 let remoteSyncTimer: number | undefined
 let authRefreshTimer: number | undefined
+let milestoneTimer: number | undefined
 let greetingReady = false
 watch(
     vitals,
@@ -287,7 +289,7 @@ watch(
 )
 const petAriaLabel = computed(
     () =>
-        `桌面宠物，${vitalsCompanionTitle(vitals.value)}，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
+        `${petName.value}，${vitalsCompanionTitle(vitals.value)}，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
         `饱腹 ${vitals.value.satiety}，亲密度 Lv.${vitalsIntimacyLevel(vitals.value)}`
 )
 
@@ -504,6 +506,9 @@ const IDLE_LINES = [
     '有新留言吗？好期待',
     '困了……先眯一会儿',
 ]
+const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
+const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
+const MILESTONE_ANIMATIONS = ['放烟花', '收红包', '点击回应-开心跃动', '点击回应-元气挥手']
 /** 按当前页面给一句更贴场景的台词；没有匹配时回落通用台词 */
 const routeIdleLine = computed(() => {
     const path = route.path
@@ -1037,8 +1042,10 @@ const stopFlight = () => {
 
 const poke = () => {
     markInteraction()
+    const previous = normalizePetVitals(vitals.value)
     vitals.value = applyPetting(vitals.value)
     setPetVitals(vitals.value)
+    celebrateMilestones(previous, vitals.value, 1400)
     startSquash()
     const line =
         vitals.value.satiety < 20 && Math.random() < 0.5
@@ -1178,6 +1185,7 @@ const feedPet = () => {
     markInteraction()
     closeMenu()
     if (sleepPhase) wake()
+    const previous = normalizePetVitals(vitals.value)
     const result = applyFeeding(vitals.value)
     vitals.value = result.vitals
     setPetVitals(vitals.value)
@@ -1189,6 +1197,7 @@ const feedPet = () => {
         showBubble('吃不下啦，肚子已经圆滚滚的。', 3000, '🍚', true)
         return
     }
+    celebrateMilestones(previous, result.vitals, 1600)
     const eatCategory = CATEGORIES.find((category) => category.id === '吃什么')
     if (eatCategory) playAnim(pickFrom(eatCategory.actions, currentAnim), true)
     showBubble('好吃！谢谢你～', 3200, '🍚')
@@ -1200,6 +1209,7 @@ const showStatus = () => {
     const current = vitals.value
     const milestone = vitalsNextMilestone(current)
     const detail = [
+        `我叫${petName.value}`,
         `称号 ${vitalsCompanionTitle(current)}`,
         `心情 ${vitalsMoodLabel(current)}`,
         `饱腹 ${current.satiety}`,
@@ -1251,7 +1261,7 @@ const restorePet = () => {
     markInteraction()
     setVisitorPetPreferences({ hidden: false })
     window.setTimeout(() => {
-        showBubble('我回来啦～', 2600)
+        showBubble(`${petName.value}回来啦～`, 2600)
     }, 60)
 }
 
@@ -1351,6 +1361,7 @@ const markInteraction = () => {
 
 /** 合并当前账号的远端进度并结算每日问候；登录/退出后也会重跑 */
 const settleVitals = async (announce: boolean) => {
+    const previous = normalizePetVitals(vitals.value)
     const merged = await mergeRemotePetVitals(getPetVitals())
     const greeting = applyDailyGreeting(merged)
     vitals.value = greeting.vitals
@@ -1359,14 +1370,49 @@ const settleVitals = async (announce: boolean) => {
         window.setTimeout(() => {
             showBubble(
                 greeting.kind === 'first'
-                    ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
+                    ? `${timeOfDayGreeting()}！我是${petName.value}，右键可以喂我～`
                     : `${timeOfDayGreeting()}～今天也一起加油！`,
                 4800,
                 greeting.kind === 'first' ? '🐾' : '☀️'
             )
         }, 1200)
     }
+    celebrateMilestones(
+        previous,
+        greeting.vitals,
+        announce && greeting.kind !== 'none' && !quietNow.value ? 6200 : 0
+    )
     return greeting
+}
+
+/** 跨设备合并或每日结算后，如果刚好达成新目标就庆祝一次 */
+const celebrateMilestones = (
+    previous: PetVitals,
+    next: PetVitals,
+    delay = 0
+) => {
+    if (!previous.firstVisitAt) return
+    if (quietNow.value || document.hidden || !visible.value) return
+    const achieved: string[] = []
+    for (const target of STREAK_TARGETS) {
+        if (next.streakDays >= target && previous.streakDays < target) {
+            achieved.push(`连续陪伴 ${target} 天`)
+        }
+    }
+    for (const target of INTERACTION_TARGETS) {
+        if (next.totalInteractions >= target && previous.totalInteractions < target) {
+            achieved.push(`累计互动 ${target} 次`)
+        }
+    }
+    if (!achieved.length) return
+    const announce = () => {
+        if (quietNow.value || document.hidden || !visible.value) return
+        showBubble(`${petName.value}达成${achieved.join('、')}！好耶～`, 5200, '🎉')
+        playAnim(pickFrom(MILESTONE_ANIMATIONS, currentAnim), true)
+    }
+    window.clearTimeout(milestoneTimer)
+    if (delay > 0) milestoneTimer = window.setTimeout(announce, delay)
+    else announce()
 }
 
 const startAutoSleepWatch = () => {
@@ -1459,6 +1505,15 @@ const reactionAction = (payload: PetReactionPayload): BubbleAction | null => {
 }
 
 const handlePetReaction = (payload: PetReactionPayload) => {
+    if (payload.kind === 'vitals-updated') {
+        const previous = normalizePetVitals(vitals.value)
+        const merged = mergePetVitals(vitals.value, getPetVitals())
+        if (JSON.stringify(merged) !== JSON.stringify(vitals.value)) {
+            vitals.value = merged
+            celebrateMilestones(previous, merged)
+        }
+        return
+    }
     if (payload.kind === 'login' || payload.kind === 'logout') {
         if (payload.kind === 'logout') void syncPetVitalsToServer(vitals.value)
         window.clearTimeout(remoteSyncTimer)
@@ -1790,6 +1845,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(whisperTimer)
     window.clearTimeout(remoteSyncTimer)
     window.clearTimeout(authRefreshTimer)
+    window.clearTimeout(milestoneTimer)
     void syncPetVitalsToServer(vitals.value)
     window.clearInterval(sleepTalkTimer)
     window.removeEventListener('resize', onResize)

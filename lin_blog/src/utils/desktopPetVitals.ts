@@ -1,4 +1,5 @@
 export interface PetVitals {
+  name: string
   mood: number
   satiety: number
   intimacy: number
@@ -65,6 +66,7 @@ const currentStorageKey = (): string => {
 }
 
 export const DEFAULT_PET_VITALS: PetVitals = {
+  name: '',
   mood: 70,
   satiety: 60,
   intimacy: 10,
@@ -98,6 +100,10 @@ export function normalizePetVitals(
 ): PetVitals {
   const raw = value || {}
   return {
+    name:
+      typeof raw.name === 'string'
+        ? raw.name.trim().replace(/\s+/g, ' ').slice(0, 16)
+        : '',
     mood: statOr(raw.mood, DEFAULT_PET_VITALS.mood),
     satiety: statOr(raw.satiety, DEFAULT_PET_VITALS.satiety),
     intimacy: statOr(raw.intimacy, DEFAULT_PET_VITALS.intimacy),
@@ -283,7 +289,10 @@ export function mergePetVitals(
 ): PetVitals {
   const a = normalizePetVitals(local)
   const b = normalizePetVitals(remote)
+  const newer = b.updatedAt >= a.updatedAt ? b : a
+  const older = newer === a ? b : a
   return {
+    name: newer.name || older.name,
     mood: Math.max(a.mood, b.mood),
     satiety: Math.max(a.satiety, b.satiety),
     intimacy: Math.max(a.intimacy, b.intimacy),
@@ -336,6 +345,54 @@ export interface PetMilestone {
 
 const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
 const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
+
+export interface PetMilestoneProgress extends PetMilestone {
+  achieved: boolean
+}
+
+export interface PetMilestoneGroup {
+  kind: PetMilestone['kind']
+  label: string
+  items: PetMilestoneProgress[]
+}
+
+/** 成就墙：按目标类型分组，已完成的排在前面 */
+export function vitalsMilestoneWall(
+  vitals: PetVitals
+): PetMilestoneGroup[] {
+  const build = (
+    kind: PetMilestone['kind'],
+    label: string,
+    targets: readonly number[],
+    current: number
+  ): PetMilestoneProgress[] =>
+    targets.map((target) => ({
+      kind,
+      label,
+      current: Math.min(current, target),
+      target,
+      remaining: Math.max(0, target - current),
+      achieved: current >= target
+    }))
+
+  return [
+    {
+      kind: 'streak',
+      label: '连续陪伴',
+      items: build('streak', '连续陪伴', STREAK_TARGETS, vitals.streakDays)
+    },
+    {
+      kind: 'interaction',
+      label: '累计互动',
+      items: build(
+        'interaction',
+        '累计互动',
+        INTERACTION_TARGETS,
+        vitals.totalInteractions
+      )
+    }
+  ]
+}
 
 /** 取距离完成比例最近的下一个目标，全部完成后返回 null */
 export function vitalsNextMilestone(vitals: PetVitals): PetMilestone | null {

@@ -11,6 +11,7 @@ export type PetReactionKind =
   | 'login'
   | 'logout'
   | 'settings-saved'
+  | 'vitals-updated'
 
 export interface PetReactionPayload {
   kind: PetReactionKind

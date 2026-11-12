@@ -668,6 +668,7 @@ const tablesSql = {
 
   ,pet_state: `CREATE TABLE IF NOT EXISTS pet_state(
     user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    pet_name VARCHAR(24) NOT NULL DEFAULT '' COMMENT '桌宠名字',
     mood TINYINT UNSIGNED NOT NULL DEFAULT 70 COMMENT '心情（0-100）',
     satiety TINYINT UNSIGNED NOT NULL DEFAULT 60 COMMENT '饱腹（0-100）',
     intimacy TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '亲密度（0-100）',
@@ -2191,6 +2192,15 @@ async function ensureSiteSettingSchema(exec = query) {
   });
 }
 
+// 桌宠个性化：昵称需要跨设备同步，存量库补 pet_name 列。
+async function ensurePetProfileSchema(exec = query) {
+  await exec(tablesSql.pet_state);
+  await ensureColumn(exec, 'pet_state', 'pet_name', {
+    definition: "VARCHAR(24) NOT NULL DEFAULT ''",
+    comment: '桌宠名字'
+  });
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2561,6 +2571,10 @@ const migrations = [
     // 桌宠偏好扩容：已应用过 site_setting 的库需要再跑一次列级补全
     version: '20261112_pet_preferences',
     up: ensureSiteSettingSchema
+  },
+  {
+    version: '20261113_pet_profile',
+    up: ensurePetProfileSchema
   }
 ];
 

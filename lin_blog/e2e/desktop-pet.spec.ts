@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { installApiMock } from './fixtures/mockApi'
+import { installApiMock, seedSession } from './fixtures/mockApi'
 
 test('桌宠气泡贴近角色头部而不是视频框边缘', async ({ page }) => {
   await installApiMock(page)
@@ -159,4 +159,23 @@ test('动画加载失败时显示静态桌宠兜底', async ({ page }) => {
   await expect(pet).toBeVisible({ timeout: 30_000 })
   await pet.locator('.dsh-pet-video.is-front').dispatchEvent('error')
   await expect(pet.locator('.dsh-pet-fallback')).toBeVisible()
+})
+
+test('设置页修改桌宠名字后状态气泡立即使用新名字', async ({ page }) => {
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/setting')
+
+  const input = page.locator('.set-pet-name input')
+  await expect(input).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.set-pet-milestone').first()).toBeVisible()
+  await input.fill('团子')
+  await input.press('Enter')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet.locator('.dsh-pet-hit')).toHaveAttribute('aria-label', /团子/)
+
+  await pet.locator('.dsh-pet-hit').click({ button: 'right' })
+  await page.locator('.pet-menu button', { hasText: '看看状态' }).click()
+  await expect(page.locator('.pet-bubble')).toContainText('我叫团子')
 })

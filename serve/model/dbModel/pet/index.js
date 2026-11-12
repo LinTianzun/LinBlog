@@ -19,8 +19,14 @@ const normalizeDate = (value) => {
     return value
 }
 
+const normalizeName = (value) => {
+    if (typeof value !== 'string') return ''
+    return value.trim().replace(/\s+/g, ' ').slice(0, 16)
+}
+
 function normalizePetState(payload = {}) {
     return {
+        name: normalizeName(payload.name),
         mood: clampInt(payload.mood, 0, 100, 70),
         satiety: clampInt(payload.satiety, 0, 100, 60),
         intimacy: clampInt(payload.intimacy, 0, 100, 10),
@@ -35,6 +41,7 @@ function normalizePetState(payload = {}) {
 }
 
 const toCamelState = (row) => ({
+    name: row.pet_name || '',
     mood: Number(row.mood || 0),
     satiety: Number(row.satiety || 0),
     intimacy: Number(row.intimacy || 0),
@@ -48,7 +55,7 @@ const toCamelState = (row) => ({
 })
 
 const SELECT_FIELDS = `
-    mood, satiety, intimacy, streak_days,
+    pet_name, mood, satiety, intimacy, streak_days,
     DATE_FORMAT(last_visit_date, '%Y-%m-%d') AS last_visit_date,
     total_interactions, last_fed_at,
     DATE_FORMAT(last_greeting_date, '%Y-%m-%d') AS last_greeting_date,
@@ -67,11 +74,12 @@ async function savePetState(userId, payload) {
     const state = normalizePetState(payload)
     await query(
         `INSERT INTO pet_state
-         (user_id, mood, satiety, intimacy, streak_days, last_visit_date,
+         (user_id, pet_name, mood, satiety, intimacy, streak_days, last_visit_date,
           total_interactions, last_fed_at, last_greeting_date, first_visit_at,
           client_updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
+            pet_name = VALUES(pet_name),
             mood = VALUES(mood),
             satiety = VALUES(satiety),
             intimacy = VALUES(intimacy),
@@ -84,6 +92,7 @@ async function savePetState(userId, payload) {
             client_updated_at = VALUES(client_updated_at)`,
         [
             userId,
+            state.name,
             state.mood,
             state.satiety,
             state.intimacy,
