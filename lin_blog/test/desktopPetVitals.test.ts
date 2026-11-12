@@ -6,8 +6,11 @@ import {
   applyFeeding,
   applyPetting,
   decayPetVitals,
+  markAchievementsCelebrated,
   mergePetVitals,
   normalizePetVitals,
+  recordDailyTask,
+  unlockEligibleAchievements,
   vitalsCompanionTitle,
   vitalsIntimacyLevel,
   vitalsMoodLabel,
@@ -262,4 +265,156 @@ test('心情文案与亲密度等级保持稳定', () => {
   assert.equal(vitalsMoodLabel({ ...DEFAULT_PET_VITALS, mood: 90 }), '超开心')
   assert.equal(vitalsIntimacyLevel({ ...DEFAULT_PET_VITALS, intimacy: 0 }), 1)
   assert.equal(vitalsIntimacyLevel({ ...DEFAULT_PET_VITALS, intimacy: 100 }), 5)
+})
+
+test('每日任务同一天只奖励一次，跨日后自动重置', () => {
+  const dayOne = new Date('2026-11-12T09:00:00').getTime()
+  const dayTwo = new Date('2026-11-13T09:00:00').getTime()
+  const base = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    mood: 50,
+    intimacy: 10,
+    firstVisitAt: 1,
+    updatedAt: dayOne,
+  })
+
+  const first = recordDailyTask(base, 'feed', dayOne)
+  assert.equal(first.completedNow, true)
+  assert.equal(first.vitals.mood, 58)
+  assert.equal(first.vitals.intimacy, 11)
+  assert.equal(first.vitals.dailyTasks.date, '2026-11-12')
+  assert.equal(first.vitals.dailyTasks.progress.feed, 1)
+  assert.deepEqual(first.vitals.dailyTasks.rewarded, ['feed'])
+
+  const repeated = recordDailyTask(first.vitals, 'feed', dayOne + 60_000)
+  assert.equal(repeated.completedNow, false)
+  assert.equal(repeated.alreadyCompleted, true)
+  assert.equal(repeated.vitals.mood, first.vitals.mood)
+  assert.equal(repeated.vitals.intimacy, first.vitals.intimacy)
+
+  const nextDay = recordDailyTask(first.vitals, 'feed', dayTwo)
+  assert.equal(nextDay.completedNow, true)
+  assert.equal(nextDay.vitals.dailyTasks.date, '2026-11-13')
+  assert.equal(nextDay.vitals.dailyTasks.progress.feed, 1)
+  assert.deepEqual(nextDay.vitals.dailyTasks.rewarded, ['feed'])
+})
+
+test('每日任务合并取同日较高进度并保留已领取记录', () => {
+  const day = new Date('2026-11-12T09:00:00').getTime()
+  const local = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    dailyTasks: {
+      date: '2026-11-12',
+      progress: { feed: 1, publish: 0, comment: 0 },
+      rewarded: ['feed'],
+    },
+  })
+  const remote = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    dailyTasks: {
+      date: '2026-11-12',
+      progress: { feed: 0, publish: 1, comment: 1 },
+      rewarded: ['publish'],
+    },
+  })
+
+  const merged = mergePetVitals(local, remote, day)
+  assert.equal(merged.dailyTasks.date, '2026-11-12')
+  assert.deepEqual(merged.dailyTasks.progress, {
+    feed: 1,
+    publish: 1,
+    comment: 1,
+  })
+  assert.deepEqual(merged.dailyTasks.rewarded.sort(), ['feed', 'publish'])
+})
+
+test('成就会自动解锁且庆祝记录跨设备合并', () => {
+  const now = new Date('2026-11-12T09:00:00').getTime()
+  const unlocked = unlockEligibleAchievements(
+    normalizePetVitals({
+      ...DEFAULT_PET_VITALS,
+      firstVisitAt: 1,
+      streakDays: 8,
+      totalInteractions: 12,
+      updatedAt: now,
+    })
+  )
+  assert.deepEqual(unlocked.unlockedAchievements.sort(), [
+    'interaction:10',
+    'streak:3',
+    'streak:7',
+  ])
+
+  const afterCelebration = markAchievementsCelebrated(
+    unlocked,
+    ['streak:7'],
+    now + 1
+  )
+  assert.deepEqual(afterCelebration.celebratedAchievements, ['streak:7'])
+
+  const merged = mergePetVitals(
+    { ...afterCelebration, celebratedAchievements: ['streak:3'] },
+    { ...afterCelebration, celebratedAchievements: ['streak:7'] },
+    now
+  )
+  assert.deepEqual(merged.celebratedAchievements.sort(), ['streak:3', 'streak:7'])
+})
+
+test('已解锁成就在进度回落和远端旧存档下仍然保留', () => {
+  const local = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    streakDays: 1,
+    unlockedAchievements: ['streak:30'],
+    celebratedAchievements: ['streak:30'],
+  })
+  const remote = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    streakDays: 1,
+    totalInteractions: 0,
+  })
+
+  const merged = mergePetVitals(local, remote, Date.now())
+  assert.ok(merged.unlockedAchievements.includes('streak:30'))
+  const wall = vitalsMilestoneWall(merged)
+  const streakThirty = wall
+    .find((group) => group.kind === 'streak')!
+    .items.find((item) => item.target === 30)
+  assert.equal(streakThirty?.unlocked, true)
+  assert.equal(streakThirty?.isNew, false)
+})
+
+test('老存档的历史成就会静默标记为已庆祝', () => {
+  const now = new Date('2026-11-12T09:00:00').getTime()
+  const merged = mergePetVitals(
+    normalizePetVitals({
+      ...DEFAULT_PET_VITALS,
+      firstVisitAt: 1,
+      streakDays: 8,
+      totalInteractions: 12,
+      updatedAt: now,
+    }),
+    normalizePetVitals({
+      ...DEFAULT_PET_VITALS,
+      firstVisitAt: 1,
+      updatedAt: now,
+    }),
+    now
+  )
+
+  assert.deepEqual(merged.unlockedAchievements.sort(), [
+    'interaction:10',
+    'streak:3',
+    'streak:7',
+  ])
+  assert.deepEqual(merged.celebratedAchievements.sort(), [
+    'interaction:10',
+    'streak:3',
+    'streak:7',
+  ])
+  assert.equal(
+    vitalsMilestoneWall(merged)
+      .flatMap((group) => group.items)
+      .some((item) => item.isNew),
+    false
+  )
 })

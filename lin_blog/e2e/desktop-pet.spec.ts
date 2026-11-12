@@ -161,14 +161,14 @@ test('动画加载失败时显示静态桌宠兜底', async ({ page }) => {
   await expect(pet.locator('.dsh-pet-fallback')).toBeVisible()
 })
 
-test('设置页修改桌宠名字后状态气泡立即使用新名字', async ({ page }) => {
+test('宠物管理页修改桌宠名字后状态气泡立即使用新名字', async ({ page }) => {
   await seedSession(page, { id: 7, permissions: [] })
   await installApiMock(page)
-  await page.goto('/setting')
+  await page.goto('/petManage')
 
-  const input = page.locator('.set-pet-name input')
+  const input = page.locator('.pet-name-field input')
   await expect(input).toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('.set-pet-milestone').first()).toBeVisible()
+  await expect(page.locator('.pet-milestone').first()).toBeVisible()
   await input.fill('团子')
   await input.press('Enter')
 
@@ -178,4 +178,218 @@ test('设置页修改桌宠名字后状态气泡立即使用新名字', async ({
   await pet.locator('.dsh-pet-hit').click({ button: 'right' })
   await page.locator('.pet-menu button', { hasText: '看看状态' }).click()
   await expect(page.locator('.pet-bubble')).toContainText('我叫团子')
+})
+
+test('宠物管理页桌宠活动范围限制在宠物之家内', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  const pet = page.locator('.dsh-pet-root')
+  const home = page.locator('[data-pet-home-zone]')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+  await expect(home).toBeVisible()
+
+  const assertInsideHome = async () => {
+    const homeBox = await home.boundingBox()
+    const petBox = await pet.boundingBox()
+    expect(homeBox).not.toBeNull()
+    expect(petBox).not.toBeNull()
+    expect(petBox!.x).toBeGreaterThanOrEqual(homeBox!.x - 12)
+    expect(petBox!.y).toBeGreaterThanOrEqual(homeBox!.y - 12)
+    expect(petBox!.x + petBox!.width).toBeLessThanOrEqual(
+      homeBox!.x + homeBox!.width + 12
+    )
+    expect(petBox!.y + petBox!.height).toBeLessThanOrEqual(
+      homeBox!.y + homeBox!.height + 12
+    )
+  }
+
+  await assertInsideHome()
+
+  const hitBox = await pet.locator('.dsh-pet-hit').boundingBox()
+  expect(hitBox).not.toBeNull()
+  await page.mouse.move(hitBox!.x + hitBox!.width / 2, hitBox!.y + hitBox!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(16, 16, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(700)
+
+  await assertInsideHome()
+})
+
+test('系统设置只保留本机宠物偏好，不再承载完整宠物配置', async ({ page }) => {
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/setting')
+
+  const localPet = page.locator('.set-local-pet')
+  await expect(localPet).toBeVisible({ timeout: 30_000 })
+  await expect(localPet).toContainText('本机隐藏桌宠')
+  await expect(localPet).toContainText('夜间安静时段')
+  await expect(localPet).toContainText('重置本机偏好')
+
+  await expect(page.locator('.pet-name-field')).toHaveCount(0)
+  await expect(page.locator('.pet-milestone')).toHaveCount(0)
+  await expect(page.getByText('显示桌面宠物', { exact: true })).toHaveCount(0)
+})
+
+test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  await page.evaluate(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS:u7',
+      JSON.stringify({
+        name: '团子',
+        mood: 50,
+        satiety: 30,
+        intimacy: 10,
+        streakDays: 1,
+        lastVisitDate: today,
+        totalInteractions: 0,
+        lastFedAt: 0,
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 86_400_000,
+        unlockedAchievements: [],
+        celebratedAchievements: [],
+        dailyTasks: {
+          date: today,
+          progress: { feed: 0, publish: 0, comment: 0 },
+          rewarded: [],
+        },
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+
+  await page.goto('/petManage')
+  await expect(page.locator('.pet-task')).toHaveCount(3)
+  const feedTask = page.locator('.pet-task').filter({ hasText: '喂它一次' })
+  await expect(feedTask).toContainText('进行中')
+
+  await page.locator('.pet-hero-actions').getByRole('button', { name: /喂一口/ }).click()
+  await expect(feedTask).toContainText('已完成')
+  await expect(page.locator('.pet-task-count')).toHaveText('1/3')
+
+  await page.reload()
+  await expect(
+    page.locator('.pet-task').filter({ hasText: '喂它一次' })
+  ).toContainText('已完成')
+})
+
+test('桌宠隐藏时发布事件仍会记录每日任务', async ({ page }) => {
+  await page.addInitScript(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS',
+      JSON.stringify({
+        mood: 50,
+        satiety: 60,
+        intimacy: 10,
+        lastFedAt: 0,
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 86_400_000,
+        dailyTasks: {
+          date: today,
+          progress: { feed: 0, publish: 0, comment: 0 },
+          rewarded: [],
+        },
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+  await pet.locator('.dsh-pet-hit').click({ button: 'right' })
+  await page.locator('.pet-menu button', { hasText: '仅本机隐藏' }).click()
+  await expect(pet).toBeHidden()
+
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent('linblog:pet-reaction', {
+        detail: { kind: 'article-published' },
+      })
+    )
+  })
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_VITALS')
+        const vitals = raw ? JSON.parse(raw) : null
+        return vitals?.dailyTasks?.progress?.publish
+      })
+    )
+    .toBe(1)
+})
+
+test('宠物管理页展示已解锁成就与新成就标记', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  await page.evaluate(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS:u7',
+      JSON.stringify({
+        name: '团子',
+        mood: 70,
+        satiety: 60,
+        intimacy: 20,
+        streakDays: 8,
+        lastVisitDate: today,
+        totalInteractions: 12,
+        lastFedAt: 0,
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 8 * 86_400_000,
+        unlockedAchievements: ['streak:3', 'streak:7', 'interaction:10'],
+        celebratedAchievements: [],
+        dailyTasks: {
+          date: today,
+          progress: { feed: 0, publish: 0, comment: 0 },
+          rewarded: [],
+        },
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+
+  await page.goto('/petManage')
+  const streakGroup = page.locator('.pet-achievement-group').filter({
+    hasText: '连续陪伴',
+  })
+  const streakThree = streakGroup.locator('.pet-milestone').filter({
+    hasText: /^3天/,
+  })
+  await expect(streakThree).toContainText('已解锁')
+  await expect(streakThree.locator('.pet-milestone-new')).toBeVisible()
+  await expect(page.locator('.pet-card').filter({ hasText: '成长足迹' })).toContainText(
+    '已解锁 3 个成就'
+  )
 })

@@ -151,6 +151,14 @@ const routes = [
                 }
             },
             {
+                path: 'petManage',
+                component: () => import('../views/PetManageView.vue'),
+                // 宠物管理对所有登录用户开放，站点级配置仍由页面内权限控制
+                meta: {
+                    requiresAuth: true,
+                }
+            },
+            {
                 path: 'setting',
                 component: () => import('../views/SettingView.vue'),
                 // 系统设置对所有登录用户开放，无需额外权限
@@ -239,6 +247,7 @@ router.afterEach((to) => {
         '/scheduledPublish': '定时发布',
         '/gallery': '摄影图库',
         '/diary': '随笔随记',
+        '/petManage': '宠物管理',
         '/setting': '系统设置',
         '/loginRegister': '登录',
         '/resetPassword': '重置密码'

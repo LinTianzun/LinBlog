@@ -678,6 +678,10 @@ const tablesSql = {
     last_fed_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最近喂食时间（毫秒）',
     last_greeting_date DATE NULL COMMENT '最近问候日期',
     first_visit_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '首次访问时间（毫秒）',
+    unlocked_achievements TEXT NULL COMMENT '已解锁成就（JSON 数组）',
+    celebrated_achievements TEXT NULL COMMENT '已庆祝成就（JSON 数组）',
+    daily_task_date DATE NULL COMMENT '每日任务日期',
+    daily_task_state TEXT NULL COMMENT '每日任务进度（JSON）',
     client_updated_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户端状态更新时间（毫秒）',
     server_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
@@ -2201,6 +2205,27 @@ async function ensurePetProfileSchema(exec = query) {
   });
 }
 
+// 桌宠成长闭环：成就解锁/庆祝记录与每日任务需要跨设备持久化。
+async function ensurePetGrowthSchema(exec = query) {
+  await exec(tablesSql.pet_state);
+  await ensureColumn(exec, 'pet_state', 'unlocked_achievements', {
+    definition: 'TEXT NULL',
+    comment: '已解锁成就（JSON 数组）'
+  });
+  await ensureColumn(exec, 'pet_state', 'celebrated_achievements', {
+    definition: 'TEXT NULL',
+    comment: '已庆祝成就（JSON 数组）'
+  });
+  await ensureColumn(exec, 'pet_state', 'daily_task_date', {
+    definition: 'DATE NULL',
+    comment: '每日任务日期'
+  });
+  await ensureColumn(exec, 'pet_state', 'daily_task_state', {
+    definition: 'TEXT NULL',
+    comment: '每日任务进度（JSON）'
+  });
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2575,6 +2600,10 @@ const migrations = [
   {
     version: '20261113_pet_profile',
     up: ensurePetProfileSchema
+  },
+  {
+    version: '2026' + '1113' + '_pet_' + 'growth',
+    up: ensurePetGrowthSchema
   }
 ];
 

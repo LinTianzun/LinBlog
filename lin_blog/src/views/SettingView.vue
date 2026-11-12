@@ -215,177 +215,13 @@
                     </div>
 
                     <div class="set-subhead">
-                        <span class="set-label">桌面宠物</span>
-                        <yk-text type="tertiary">门户与后台通用，可细调范围、尺寸与行为</yk-text>
-                    </div>
-
-                    <div class="set-card set-pet">
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>显示桌面宠物</strong>
-                                <p>关闭后门户与后台都不再显示；重新打开即恢复，拖到的位置会记住。</p>
-                            </div>
-                            <yk-switch v-model="petSettings.desktopPetEnabled" :checked-value="true"
-                                :unchecked-value="false" :disabled="!canEditPet" />
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>大小</strong>
-                                <p>桌宠在页面上的显示尺寸，移动端会自动按比例缩小。</p>
-                            </div>
-                            <div class="set-mode-switch">
-                                <button v-for="option in sizeOptions" :key="option.value" type="button"
-                                    class="set-mode" :class="{ 'is-active': petSettings.petSize === option.value }"
-                                    :disabled="!canEditPet" @click="petSettings.petSize = option.value">
-                                    {{ option.label }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>尺寸微调</strong>
-                                <p>在大小档位基础上继续缩放，觉得还不够大就拉到 200%。</p>
-                            </div>
-                            <div class="set-pet-range">
-                                <input v-model.number="petSettings.petScale" type="range" min="60" max="200"
-                                    step="5" :disabled="!canEditPet" aria-label="桌宠尺寸缩放百分比" />
-                                <span class="set-pet-range-value">{{ petSettings.petScale }}%</span>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>活泼程度</strong>
-                                <p>影响随机动作与碎碎念的频率：安静更少打扰，活泼更爱折腾。</p>
-                            </div>
-                            <div class="set-mode-switch">
-                                <button v-for="option in activityOptions" :key="option.value" type="button"
-                                    class="set-mode"
-                                    :class="{ 'is-active': petSettings.petActivity === option.value }"
-                                    :disabled="!canEditPet" @click="petSettings.petActivity = option.value">
-                                    {{ option.label }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>气泡与碎碎念</strong>
-                                <p>关闭后不再弹对话气泡，也不会随机自言自语。</p>
-                            </div>
-                            <yk-switch v-model="petSettings.petBubbleEnabled" :checked-value="true"
-                                :unchecked-value="false" :disabled="!canEditPet" />
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>允许自主漫游</strong>
-                                <p>关闭后宠物不再四处走动，只做原地动作。</p>
-                            </div>
-                            <yk-switch v-model="petSettings.petRoamingEnabled" :checked-value="true"
-                                :unchecked-value="false" :disabled="!canEditPet" />
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>允许拖拽甩抛</strong>
-                                <p>关闭后点击仍会回应，但不能拖动或甩出宠物。</p>
-                            </div>
-                            <yk-switch v-model="petSettings.petDragEnabled" :checked-value="true"
-                                :unchecked-value="false" :disabled="!canEditPet" />
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>不透明度</strong>
-                                <p>调低后桌宠更“幽灵”，不想太抢眼时可以压到 40%。</p>
-                            </div>
-                            <div class="set-pet-range">
-                                <input v-model.number="petSettings.petOpacity" type="range" min="40" max="100"
-                                    step="5" :disabled="!canEditPet" aria-label="桌宠不透明度百分比" />
-                                <span class="set-pet-range-value">{{ petSettings.petOpacity }}%</span>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>无操作自动入睡</strong>
-                                <p>三分钟没有互动就自己睡一觉，点击或拖拽会把它叫醒。</p>
-                            </div>
-                            <yk-switch v-model="petSettings.petAutoSleepEnabled" :checked-value="true"
-                                :unchecked-value="false" :disabled="!canEditPet" />
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>显示范围</strong>
-                                <p>控制桌宠出现在门户、后台，还是两边都出现。</p>
-                            </div>
-                            <div class="set-mode-switch">
-                                <button v-for="option in scopeOptions" :key="option.value" type="button"
-                                    class="set-mode"
-                                    :class="{ 'is-active': petSettings.petScope === option.value }"
-                                    :disabled="!canEditPet" @click="petSettings.petScope = option.value">
-                                    {{ option.label }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>默认停靠角落</strong>
-                                <p>「回到原位」和首次出现时的位置，门户与后台共用。</p>
-                            </div>
-                            <div class="set-mode-switch">
-                                <button v-for="option in cornerOptions" :key="option.value" type="button"
-                                    class="set-mode"
-                                    :class="{ 'is-active': petSettings.petHomeCorner === option.value }"
-                                    :disabled="!canEditPet" @click="petSettings.petHomeCorner = option.value">
-                                    {{ option.label }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row set-pet-actions">
-                            <div class="set-pet-copy">
-                                <strong>立即操作</strong>
-                                <p>不用等随机动作，直接让桌宠回应一次；只影响当前浏览器。</p>
-                            </div>
-                            <div class="set-pet-action-buttons">
-                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
-                                    @click="sendDesktopPetCommand('home')">
-                                    回到原位
-                                </yk-button>
-                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
-                                    @click="sendDesktopPetCommand('speak')">
-                                    说句话
-                                </yk-button>
-                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
-                                    @click="sendDesktopPetCommand('sleep')">
-                                    睡一觉
-                                </yk-button>
-                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
-                                    @click="sendDesktopPetCommand('wake')">
-                                    叫醒它
-                                </yk-button>
-                                <yk-button type="secondary" size="s" :disabled="!canEditPet"
-                                    @click="resetPetSettings">
-                                    恢复默认
-                                </yk-button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="set-subhead">
-                        <span class="set-label">我的桌宠</span>
+                        <span class="set-label">我的宠物</span>
                         <yk-text type="tertiary">
-                            隐藏与安静时段仅本机生效；登录后养成状态会跨设备同步
+                            仅本机生效；养成状态、展示与行为请前往「宠物管理」
                         </yk-text>
                     </div>
 
-                    <div class="set-card set-pet">
+                    <div class="set-card set-pet set-local-pet">
                         <div class="set-pet-row">
                             <div class="set-pet-copy">
                                 <strong>本机隐藏桌宠</strong>
@@ -418,72 +254,6 @@
                                 <span>至</span>
                                 <input type="time" :value="visitorPrefs.quietEnd" aria-label="安静时段结束时间"
                                     @change="setQuietEnd" />
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>桌宠名字</strong>
-                                <p>
-                                    会出现在问候和状态气泡里；登录后跨设备同步。
-                                    留空则默认叫「小 Lin」。
-                                </p>
-                            </div>
-                            <div class="set-pet-name">
-                                <input :value="petNameDraft" maxlength="16" placeholder="小 Lin"
-                                    aria-label="桌宠名字" @input="onPetNameInput"
-                                    @change="savePetName" @keyup.enter="savePetName" />
-                            </div>
-                        </div>
-
-                        <div class="set-pet-row">
-                            <div class="set-pet-copy">
-                                <strong>养成状态</strong>
-                                <p>
-                                    称号「{{ petTitle }}」 · 心情{{ vitalsMoodLabel(petVitals) }} ·
-                                    饱腹 {{ petVitals.satiety }} · 亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；
-                                    连续陪伴 {{ petVitals.streakDays }} 天，累计互动
-                                    {{ petVitals.totalInteractions }} 次。
-                                    <template v-if="petMilestone">
-                                        下一个目标：{{ petMilestone.label }}
-                                        {{ petMilestone.target }}{{ petMilestone.kind === 'streak' ? ' 天' : ' 次' }}，
-                                        还差 {{ petMilestone.remaining }}。
-                                    </template>
-                                    <template v-else>所有陪伴目标都完成啦。</template>
-                                </p>
-                            </div>
-                            <div class="set-pet-vitals">
-                                <span>称号 {{ petTitle }}</span>
-                                <span>心情 {{ petVitals.mood }}</span>
-                                <span>饱腹 {{ petVitals.satiety }}</span>
-                                <span>连续 {{ petVitals.streakDays }} 天</span>
-                                <span>互动 {{ petVitals.totalInteractions }} 次</span>
-                                <yk-button type="secondary" size="s" @click="feedFromSettings">
-                                    喂一口
-                                </yk-button>
-                            </div>
-                        </div>
-
-                        <div class="set-pet-milestones">
-                            <div v-for="group in petMilestones" :key="group.label"
-                                class="set-pet-milestone-group">
-                                <div class="set-pet-milestone-label">{{ group.label }}</div>
-                                <div class="set-pet-milestone-list">
-                                    <div v-for="item in group.items" :key="item.target"
-                                        class="set-pet-milestone"
-                                        :class="{ 'is-achieved': item.achieved }">
-                                        <span class="set-pet-milestone-target">
-                                            {{ item.target }}{{ item.kind === 'streak' ? '天' : '次' }}
-                                        </span>
-                                        <span class="set-pet-milestone-track">
-                                            <span class="set-pet-milestone-progress"
-                                                :style="{ width: `${petMilestonePercent(item.current, item.target)}%` }" />
-                                        </span>
-                                        <span class="set-pet-milestone-state">
-                                            {{ item.achieved ? '已达成' : `${item.current}/${item.target}` }}
-                                        </span>
-                                    </div>
-                                </div>
                             </div>
                         </div>
 
@@ -621,7 +391,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
 import { getFileStorageStatus, type FileStorageStatus } from '../api/file'
@@ -637,15 +407,6 @@ import {
     type EdgeLevel
 } from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
-import {
-    DEFAULT_DESKTOP_PET_SETTINGS,
-    broadcastDesktopPetSettings,
-    getDesktopPetSettings,
-    normalizeDesktopPetSettings,
-    setDesktopPetSettings,
-    sendDesktopPetCommand,
-    type DesktopPetSettings
-} from '../utils/desktopPet'
 import { emitPetReaction } from '../utils/desktopPetScene'
 import {
     DEFAULT_VISITOR_PET_PREFERENCES,
@@ -655,22 +416,6 @@ import {
     setVisitorPetPreferences,
     type VisitorPetPreferences,
 } from '../utils/desktopPetVisitor'
-import {
-    applyFeeding,
-    getPetVitals,
-    setPetVitals,
-    vitalsCompanionTitle,
-    vitalsIntimacyLevel,
-    vitalsMoodLabel,
-    vitalsNextMilestone,
-    vitalsMilestoneWall,
-    type PetVitals,
-} from '../utils/desktopPetVitals'
-import {
-    mergeRemotePetVitals,
-    syncPetVitalsToServer,
-} from '../utils/desktopPetSync'
-import { getSiteSettings, updateSiteSettings } from '../api/site'
 import { useSessionStore } from '../store/session.ts'
 import {
     IconAvatarFill,
@@ -698,7 +443,7 @@ const session = useSessionStore()
 const sections = [
     { key: 'set-profile', name: '账号资料', hint: '头像与基本信息', icon: IconAvatarFill },
     { key: 'set-security', name: '安全', hint: '修改登录密码', icon: IconLockFill },
-    { key: 'set-appearance', name: '外观', hint: '主题与明暗', icon: IconImageFill },
+    { key: 'set-appearance', name: '外观与本机', hint: '主题、明暗与宠物偏好', icon: IconImageFill },
     { key: 'set-permissions', name: '我的权限', hint: '当前可操作范围', icon: IconSecurityOutline },
     { key: 'set-system', name: '系统信息', hint: '状态与快捷入口', icon: IconSettingsFill },
 ]
@@ -726,44 +471,9 @@ const syncActiveSection = () => {
 
 // ── 主题 ──
 const activePresetId = ref(getStoredPresetId())
-// 桌宠设置：服务端为准，localStorage 只做首屏缓存，保存后广播给全站桌宠组件
-const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
-const canEditPet = computed(() => session.can('permission.edit'))
 
-// 访客本机偏好与养成状态：不影响服务器配置，所有登录用户都可调整
+// 本机宠物偏好：不写入服务器，所有登录用户都可自由调整
 const visitorPrefs = reactive<VisitorPetPreferences>(getVisitorPetPreferences())
-const petVitals = ref<PetVitals>(getPetVitals())
-const petTitle = computed(() => vitalsCompanionTitle(petVitals.value))
-const petMilestone = computed(() => vitalsNextMilestone(petVitals.value))
-const petMilestones = computed(() => vitalsMilestoneWall(petVitals.value))
-const petMilestonePercent = (current: number, target: number) =>
-    Math.min(100, Math.round((current / target) * 100))
-const petNameDraft = ref(petVitals.value.name)
-let petNameEditing = false
-const onPetNameInput = (event: Event) => {
-    petNameEditing = true
-    petNameDraft.value = (event.target as HTMLInputElement).value
-}
-const savePetName = () => {
-    petNameEditing = false
-    const name = petNameDraft.value.trim().replace(/\s+/g, ' ').slice(0, 16)
-    petNameDraft.value = name
-    if (name === petVitals.value.name) return
-    petVitals.value = { ...petVitals.value, name, updatedAt: Date.now() }
-    setPetVitals(petVitals.value)
-    emitPetReaction('vitals-updated')
-    void syncPetVitalsToServer(petVitals.value)
-    proxy?.$message?.({
-        type: 'success',
-        message: name ? `以后就叫它「${name}」啦` : '已改回默认名字',
-    })
-}
-watch(
-    () => petVitals.value.name,
-    (name) => {
-        if (!petNameEditing) petNameDraft.value = name
-    }
-)
 const quietActive = computed(() => isWithinQuietHours(visitorPrefs))
 const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
     Object.assign(visitorPrefs, next)
@@ -784,118 +494,10 @@ const setQuietStart = (event: Event) => {
 const setQuietEnd = (event: Event) => {
     updateVisitorPrefs({ quietEnd: (event.target as HTMLInputElement).value })
 }
-const feedFromSettings = () => {
-    const result = applyFeeding(petVitals.value)
-    petVitals.value = result.vitals
-    setPetVitals(petVitals.value)
-    emitPetReaction('vitals-updated', { message: `${result.vitals.name || '小 Lin'} 的养成状态有更新` })
-    void syncPetVitalsToServer(petVitals.value)
-    if (result.effect === 'ok') {
-        proxy?.$message?.({ type: 'success', message: '喂饱啦，心情也变好了' })
-    } else if (result.effect === 'full') {
-        proxy?.$message?.({ type: 'warning', message: '它已经吃得很饱了' })
-    } else {
-        proxy?.$message?.({ type: 'primary', message: '刚喂过，等 60 秒再试吧' })
-    }
-}
-const resetPetSettings = () => {
-    if (!canEditPet.value) return
-    if (!window.confirm('恢复默认桌宠设置？当前尺寸、范围与行为会重置。')) return
-    Object.assign(petSettings, { ...DEFAULT_DESKTOP_PET_SETTINGS })
-    proxy?.$message?.({ type: 'primary', message: '已恢复默认设置，正在保存' })
-}
 const resetLocalPetPrefs = () => {
     updateVisitorPrefs({ ...DEFAULT_VISITOR_PET_PREFERENCES })
     proxy?.$message?.({ type: 'success', message: '本机桌宠偏好已恢复默认' })
 }
-
-const sizeOptions = [
-    { value: 'small' as const, label: '小' },
-    { value: 'medium' as const, label: '中' },
-    { value: 'large' as const, label: '大' }
-]
-const activityOptions = [
-    { value: 'quiet' as const, label: '安静' },
-    { value: 'normal' as const, label: '正常' },
-    { value: 'lively' as const, label: '活泼' }
-]
-const scopeOptions = [
-    { value: 'all' as const, label: '全站' },
-    { value: 'portal' as const, label: '仅门户' },
-    { value: 'admin' as const, label: '仅后台' }
-]
-const cornerOptions = [
-    { value: 'right' as const, label: '右下' },
-    { value: 'left' as const, label: '左下' }
-]
-
-const snapshotPetSettings = (): DesktopPetSettings => ({ ...petSettings })
-const isSamePetSettings = (a: DesktopPetSettings, b: DesktopPetSettings) =>
-    a.desktopPetEnabled === b.desktopPetEnabled &&
-    a.petSize === b.petSize &&
-    a.petScale === b.petScale &&
-    a.petActivity === b.petActivity &&
-    a.petRoamingEnabled === b.petRoamingEnabled &&
-    a.petDragEnabled === b.petDragEnabled &&
-    a.petBubbleEnabled === b.petBubbleEnabled &&
-    a.petOpacity === b.petOpacity &&
-    a.petAutoSleepEnabled === b.petAutoSleepEnabled &&
-    a.petHomeCorner === b.petHomeCorner &&
-    a.petScope === b.petScope
-
-let lastSavedPetSettings: DesktopPetSettings = { ...petSettings }
-let petSaveTimer: number | undefined
-let petSaving = false
-let petRevision = 0
-
-const flushPetSettings = async () => {
-    if (petSaving) return
-    const payload = snapshotPetSettings()
-    if (isSamePetSettings(payload, lastSavedPetSettings)) return
-    const revision = petRevision
-    petSaving = true
-    try {
-        const res = await updateSiteSettings(payload)
-        if (res?.code !== 200) throw new Error(res?.message || '保存失败')
-        lastSavedPetSettings = payload
-        setDesktopPetSettings(payload)
-        proxy?.$message?.({ type: 'success', message: '桌宠设置已保存' })
-        emitPetReaction('settings-saved', { message: '桌宠设置已保存' })
-    } catch {
-        // 没有新改动时回滚到上一次保存成功的状态；有新改动则保留并重试
-        if (petRevision === revision) {
-            Object.assign(petSettings, lastSavedPetSettings)
-            broadcastDesktopPetSettings(lastSavedPetSettings)
-        }
-        proxy?.$message?.({ type: 'error', message: '桌宠设置保存失败，请稍后重试' })
-    } finally {
-        petSaving = false
-        if (
-            petRevision !== revision &&
-            !isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)
-        ) {
-            window.clearTimeout(petSaveTimer)
-            petSaveTimer = window.setTimeout(() => void flushPetSettings(), 120)
-        }
-    }
-}
-
-watch(
-    petSettings,
-    () => {
-        if (!canEditPet.value) {
-            Object.assign(petSettings, lastSavedPetSettings)
-            return
-        }
-        if (isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)) return
-        petRevision++
-        // 先本地广播，拖动滑块时桌宠实时变化；保存成功后再落盘
-        broadcastDesktopPetSettings(snapshotPetSettings())
-        window.clearTimeout(petSaveTimer)
-        petSaveTimer = window.setTimeout(() => void flushPetSettings(), 350)
-    },
-    { deep: true }
-)
 const activePreset = computed(() =>
     themePresets.find(p => p.id === activePresetId.value) || themePresets[0]
 )
@@ -1310,32 +912,10 @@ const handleLogout = () => {
 onMounted(loadProfile)
 onMounted(() => void loadStorage())
 onMounted(() => void refreshUploadUrl())
-onMounted(() => {
-    void mergeRemotePetVitals(petVitals.value).then((merged) => {
-        petVitals.value = merged
-        setPetVitals(merged)
-    })
-})
-onMounted(async () => {
-    // 设置以服务端为准；读取失败时保留本地缓存值
-    try {
-        const res = await getSiteSettings()
-        if (res?.code === 200 && res.data) {
-            // 先更新基准值再写入表单：watcher 看到两者一致，不会误触发保存
-            const next = normalizeDesktopPetSettings(res.data)
-            lastSavedPetSettings = { ...next }
-            Object.assign(petSettings, next)
-            setDesktopPetSettings(next)
-        }
-    } catch {
-        // 忽略：沿用缓存
-    }
-})
 onMounted(() => window.addEventListener('theme:preset-change', onPresetChange))
 onMounted(() => window.addEventListener('scroll', syncActiveSection, { passive: true }))
 onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChange))
 onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
-onUnmounted(() => window.clearTimeout(petSaveTimer))
 onUnmounted(() => unsubscribeVisitorPrefs())
 </script>
 
@@ -1871,33 +1451,6 @@ onUnmounted(() => unsubscribeVisitorPrefs())
     }
 }
 
-.set-pet-range {
-    display: flex;
-    width: 250px;
-    flex: none;
-    align-items: center;
-    gap: 12px;
-
-    input[type='range'] {
-        width: 190px;
-        accent-color: var(--pcolor);
-        cursor: pointer;
-
-        &:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-    }
-}
-
-.set-pet-range-value {
-    min-width: 42px;
-    color: var(--font-color2);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-}
-
 .set-pet-time {
     display: inline-flex;
     flex: none;
@@ -1915,110 +1468,6 @@ onUnmounted(() => unsubscribeVisitorPrefs())
         font-family: inherit;
         font-size: 13px;
     }
-}
-
-.set-pet-name {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-
-    input {
-        width: 180px;
-        padding: 6px 10px;
-        border: 1px solid var(--admin-line, var(--gray1));
-        border-radius: 8px;
-        background: var(--bgColor2);
-        color: var(--font-color1);
-        font-family: inherit;
-        font-size: 13px;
-
-        &:focus {
-            outline: none;
-            border-color: var(--pcolor);
-            box-shadow: 0 0 0 2px var(--portal-accent-soft, rgba(80, 120, 255, 0.16));
-        }
-    }
-}
-
-.set-pet-vitals {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 12px;
-    color: var(--font-color3);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-}
-
-.set-pet-milestones {
-    display: grid;
-    gap: 12px;
-    padding-top: @space-m;
-    border-top: 1px solid var(--admin-line, var(--gray1));
-}
-
-.set-pet-milestone-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.set-pet-milestone-label {
-    color: var(--font-color2);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.set-pet-milestone-list {
-    display: grid;
-    gap: 6px;
-}
-
-.set-pet-milestone {
-    display: grid;
-    grid-template-columns: 76px minmax(0, 1fr) 84px;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 8px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: 10px;
-    background: var(--bgColor2);
-    color: var(--font-color3);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
-
-    &.is-achieved {
-        border-color: color-mix(in srgb, var(--pcolor) 38%, transparent);
-        background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
-        color: var(--pcolor);
-    }
-}
-
-.set-pet-milestone-track {
-    height: 6px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--gray6) 18%, transparent);
-}
-
-.set-pet-milestone-progress {
-    height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--pcolor), var(--pcolor8));
-    transition: width 0.24s ease;
-}
-
-.set-pet-milestone-state {
-    text-align: right;
-}
-
-.set-pet-action-buttons {
-    display: flex;
-    flex: none;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
 }
 
 .set-pet-copy {
@@ -2386,32 +1835,9 @@ onUnmounted(() => unsubscribeVisitorPrefs())
         gap: 12px;
     }
 
-    .set-pet-range {
-        width: 100%;
-
-        input[type='range'] {
-            width: auto;
-            flex: 1;
-        }
-    }
-
-    .set-pet-action-buttons {
-        justify-content: flex-start;
-    }
-
-    .set-pet-time,
-    .set-pet-name,
-    .set-pet-vitals {
+    .set-pet-time {
         flex-wrap: wrap;
         justify-content: flex-start;
-    }
-
-    .set-pet-name input {
-        width: min(180px, 60vw);
-    }
-
-    .set-pet-milestone {
-        grid-template-columns: 64px minmax(0, 1fr) 72px;
     }
 }
 

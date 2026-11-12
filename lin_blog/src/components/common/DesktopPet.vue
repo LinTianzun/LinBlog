@@ -138,7 +138,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
     getDesktopPetSettings,
@@ -155,6 +155,7 @@ import {
     onPetReaction,
     PET_COMMENT_POLL_INTERVAL,
     PET_LAST_COMMENT_KEY,
+    emitPetReaction,
     type PetReactionPayload,
 } from '../../utils/desktopPetScene'
 import {
@@ -171,11 +172,14 @@ import {
     applyFeeding,
     applyPetting,
     getPetVitals,
+    markAchievementsCelebrated,
     mergePetVitals,
     normalizePetVitals,
+    recordDailyTask,
     setPetVitals,
     vitalsCompanionTitle,
     vitalsIntimacyLevel,
+    vitalsMilestoneWall,
     vitalsMoodLabel,
     vitalsNextMilestone,
     type PetVitals,
@@ -221,21 +225,56 @@ const unsubscribeVisitor = onVisitorPetPreferencesChange((next) => {
     visitorPrefs.value = next
 })
 
+interface PetHomeRect {
+    left: number
+    top: number
+    right: number
+    bottom: number
+    width: number
+    height: number
+}
+
+const inPetHomePage = computed(() => route.path.startsWith('/petManage'))
+const petHomeRect = ref<PetHomeRect | null>(null)
+
 /**
  * 宠物显示宽度（px）：档位宽度 × 自定义缩放，素材是 16:9。
  * 移动端再收窄到 60%，并限制不超过视口宽度。
  */
 const SIZE_WIDTHS = { small: 200, medium: 300, large: 400 } as const
 const viewportWidth = ref(window.innerWidth)
-const viewportHeight = ref(window.innerHeight)
 const PET_W = computed(() => {
     const base = SIZE_WIDTHS[petSettings.value.petSize] ?? SIZE_WIDTHS.medium
     const scaled = base * (petSettings.value.petScale || 100) / 100
     const mobile = viewportWidth.value < 640 ? 0.6 : 1
-    const max = Math.max(120, viewportWidth.value - 16)
+    const homeLimit = inPetHomePage.value && petHomeRect.value
+        ? Math.max(120, petHomeRect.value.width - 28)
+        : Infinity
+    const max = Math.max(120, Math.min(viewportWidth.value - 16, homeLimit))
     return Math.max(120, Math.round(Math.min(scaled * mobile, max)))
 })
 const PET_H = computed(() => (PET_W.value * 9) / 16)
+const movementBounds = computed(() => {
+    const home = inPetHomePage.value ? petHomeRect.value : null
+    if (home) {
+        return {
+            left: home.left + 20,
+            top: home.top + 20,
+            right: home.right - 20,
+            bottom: home.bottom - 24,
+            maxX: Math.max(home.left + 20, home.right - PET_W.value - 20),
+            maxY: Math.max(home.top + 20, home.bottom - PET_H.value - 24),
+        }
+    }
+    return {
+        left: 8,
+        top: 8,
+        right: window.innerWidth - 8,
+        bottom: window.innerHeight - 8,
+        maxX: Math.max(8, window.innerWidth - PET_W.value - 8),
+        maxY: Math.max(8, window.innerHeight - PET_H.value - 8),
+    }
+})
 /** 走位距离的基准宽度（素材设计尺寸） */
 const PET_REF_WIDTH = 462
 
@@ -424,17 +463,19 @@ const BUBBLE_MAX_WIDTH = 240
 const MENU_MAX_WIDTH = 148
 const MENU_MAX_HEIGHT = 400
 
-const bubbleBelow = computed(
-    () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 64
-)
+const bubbleBelow = computed(() => {
+    const bounds = movementBounds.value
+    return pos.value.y + PET_H.value * PET_VISIBLE_TOP < bounds.top + 56
+})
 const menuSpace = computed(() => {
+    const bounds = movementBounds.value
     const above = Math.max(
         80,
-        pos.value.y + PET_H.value * PET_VISIBLE_TOP - 16
+        pos.value.y + PET_H.value * PET_VISIBLE_TOP - bounds.top - 16
     )
     const below = Math.max(
         80,
-        viewportHeight.value -
+        bounds.bottom -
             (pos.value.y + PET_H.value * (1 - PET_VISIBLE_BOTTOM) + 16)
     )
     return { above, below }
@@ -446,9 +487,13 @@ const menuBelow = computed(() => {
     return below >= above
 })
 
-/** 气泡中心跟随角色，但整体被限制在视口内；尾巴再指回角色中心 */
+/** 气泡中心跟随角色，但整体被限制在当前活动区域内；尾巴再指回角色中心 */
 const bubbleAnchorStyle = computed<Record<string, string>>(() => {
-    const maxWidth = Math.max(120, Math.min(BUBBLE_MAX_WIDTH, viewportWidth.value - 24))
+    const bounds = movementBounds.value
+    const maxWidth = Math.max(
+        120,
+        Math.min(BUBBLE_MAX_WIDTH, bounds.right - bounds.left - 24, viewportWidth.value - 24)
+    )
     // 13px 字号下中文约 13px/字，加左右内边距；估算宽度用于贴边时精准钳制
     const estimated =
         26 +
@@ -458,10 +503,9 @@ const bubbleAnchorStyle = computed<Record<string, string>>(() => {
     const bubbleWidth = Math.max(52, Math.min(estimated, maxWidth))
     const petCenter = pos.value.x + PET_W.value / 2
     const half = bubbleWidth / 2 + 12
-    const clamped = Math.min(
-        Math.max(petCenter, half),
-        Math.max(half, viewportWidth.value - half)
-    )
+    const minCenter = bounds.left + half
+    const maxCenter = Math.max(minCenter, bounds.right - half)
+    const clamped = Math.min(Math.max(petCenter, minCenter), maxCenter)
     const tailLimit = Math.max(0, bubbleWidth / 2 - 14)
     const tailShift = Math.min(Math.max(petCenter - clamped, -tailLimit), tailLimit)
     return {
@@ -475,17 +519,20 @@ const bubbleAnchorStyle = computed<Record<string, string>>(() => {
 })
 
 const menuAnchorStyle = computed<Record<string, string>>(() => {
-    const maxWidth = Math.max(148, Math.min(MENU_MAX_WIDTH, viewportWidth.value - 24))
+    const bounds = movementBounds.value
+    const maxWidth = Math.max(
+        148,
+        Math.min(MENU_MAX_WIDTH, bounds.right - bounds.left - 24, viewportWidth.value - 24)
+    )
     const maxHeight = Math.min(
         MENU_MAX_HEIGHT,
         menuBelow.value ? menuSpace.value.below : menuSpace.value.above
     )
     const petCenter = pos.value.x + PET_W.value / 2
     const half = maxWidth / 2 + 12
-    const clamped = Math.min(
-        Math.max(petCenter, half),
-        Math.max(half, viewportWidth.value - half)
-    )
+    const minCenter = bounds.left + half
+    const maxCenter = Math.max(minCenter, bounds.right - half)
+    const clamped = Math.min(Math.max(petCenter, minCenter), maxCenter)
     return {
         left: `${Math.round(clamped - pos.value.x)}px`,
         maxWidth: `${maxWidth}px`,
@@ -506,13 +553,12 @@ const IDLE_LINES = [
     '有新留言吗？好期待',
     '困了……先眯一会儿',
 ]
-const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
-const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
 const MILESTONE_ANIMATIONS = ['放烟花', '收红包', '点击回应-开心跃动', '点击回应-元气挥手']
 /** 按当前页面给一句更贴场景的台词；没有匹配时回落通用台词 */
 const routeIdleLine = computed(() => {
     const path = route.path
     if (focusMode.value) return '专心写，我不吵你～'
+    if (path.startsWith('/petManage')) return '这里是我的小屋～'
     if (path.startsWith('/setting')) return '慢慢调，我等你。'
     if (path.startsWith('/portal/gallery')) return '这张光线好漂亮。'
     if (path.startsWith('/portal/articles')) return '这篇写得真好。'
@@ -720,8 +766,8 @@ const tryWalk = (): boolean => {
     const scale = PET_W.value / PET_REF_WIDTH
     const dist = (action.minDist + Math.random() * (action.maxDist - action.minDist)) * scale
     const targetX = pos.value.x + dir * dist
-    const maxX = window.innerWidth - PET_W.value - 8
-    if (targetX < 8 || targetX > maxX) return false
+    const bounds = movementBounds.value
+    if (targetX < bounds.left || targetX > bounds.maxX) return false
     const el = elementOf(front.value)
     if (!el) return false
 
@@ -829,10 +875,13 @@ const startLongPress = (event: PointerEvent) => {
     }, LONG_PRESS_MS)
 }
 
-const clampPos = (p: { x: number; y: number }) => ({
-    x: Math.min(Math.max(p.x, 8), Math.max(window.innerWidth - PET_W.value - 8, 8)),
-    y: Math.min(Math.max(p.y, 8), Math.max(window.innerHeight - PET_H.value - 8, 8)),
-})
+const clampPos = (p: { x: number; y: number }) => {
+    const bounds = movementBounds.value
+    return {
+        x: Math.min(Math.max(p.x, bounds.left), bounds.maxX),
+        y: Math.min(Math.max(p.y, bounds.top), bounds.maxY),
+    }
+}
 
 const onPointerDown = (event: PointerEvent) => {
     markInteraction()
@@ -993,23 +1042,22 @@ const startFlight = (vx: number, vy: number) => {
         px += vx * dt
         py += vy * dt
 
-        const maxX = window.innerWidth - PET_W.value - 8
-        const maxY = window.innerHeight - PET_H.value - 8
+        const bounds = movementBounds.value
         let landed = 0
 
-        if (px < 8) {
-            px = 8
+        if (px < bounds.left) {
+            px = bounds.left
             if (vx < 0) vx = -vx * RESTITUTION
             py += 0
-        } else if (px > maxX) {
-            px = maxX
+        } else if (px > bounds.maxX) {
+            px = bounds.maxX
             if (vx > 0) vx = -vx * RESTITUTION
         }
-        if (py < 8) {
-            py = 8
+        if (py < bounds.top) {
+            py = bounds.top
             if (vy < 0) vy = -vy * RESTITUTION
-        } else if (py > maxY) {
-            py = maxY
+        } else if (py > bounds.maxY) {
+            py = bounds.maxY
             landed = Math.abs(vy)
             if (vy > 0) vy = -vy * RESTITUTION
             vx *= Math.max(0, 1 - GROUND_FRICTION * dt)
@@ -1018,15 +1066,18 @@ const startFlight = (vx: number, vy: number) => {
         pos.value = { x: px, y: py }
 
         // 触底且速度衰减到静止：落定
-        if (py >= maxY - 0.5 && Math.abs(vy) < 40 && Math.abs(vx) < 15) {
+        if (py >= bounds.maxY - 0.5 && Math.abs(vy) < 40 && Math.abs(vx) < 15) {
             flightRaf = 0
-            pos.value = { x: Math.min(Math.max(px, 8), maxX), y: maxY }
+            pos.value = {
+                x: Math.min(Math.max(px, bounds.left), bounds.maxX),
+                y: bounds.maxY,
+            }
             if (landed > 0) startSquash(Math.min(0.8, 1 - Math.min(1, Math.max(0, (landed - 300) / 1200)) * 0.45))
             settle()
             return
         }
 
-        if (py >= maxY - 0.5 && landed > 0) {
+        if (py >= bounds.maxY - 0.5 && landed > 0) {
             startSquash(Math.min(0.8, 1 - Math.min(1, Math.max(0, (landed - 300) / 1200)) * 0.45))
         }
 
@@ -1187,20 +1238,31 @@ const feedPet = () => {
     if (sleepPhase) wake()
     const previous = normalizePetVitals(vitals.value)
     const result = applyFeeding(vitals.value)
-    vitals.value = result.vitals
-    setPetVitals(vitals.value)
     if (result.effect === 'cooldown') {
+        vitals.value = result.vitals
+        setPetVitals(vitals.value)
         showBubble('刚吃过啦，等一小会儿再喂～', 3000, '🍵', true)
         return
     }
     if (result.effect === 'full') {
+        vitals.value = result.vitals
+        setPetVitals(vitals.value)
         showBubble('吃不下啦，肚子已经圆滚滚的。', 3000, '🍚', true)
         return
     }
-    celebrateMilestones(previous, result.vitals, 1600)
+    const task = recordDailyTask(result.vitals, 'feed')
+    vitals.value = task.vitals
+    setPetVitals(vitals.value)
+    celebrateMilestones(previous, task.vitals, 1600)
     const eatCategory = CATEGORIES.find((category) => category.id === '吃什么')
     if (eatCategory) playAnim(pickFrom(eatCategory.actions, currentAnim), true)
-    showBubble('好吃！谢谢你～', 3200, '🍚')
+    showBubble(
+        task.completedNow
+            ? '好吃！今日任务也完成啦，心情 +8、亲密度 +1～'
+            : '好吃！谢谢你～',
+        3200,
+        '🍚'
+    )
 }
 
 const showStatus = () => {
@@ -1208,12 +1270,16 @@ const showStatus = () => {
     closeMenu()
     const current = vitals.value
     const milestone = vitalsNextMilestone(current)
+    const completedTasks = Object.values(current.dailyTasks.progress)
+        .filter((value) => value >= 1)
+        .length
     const detail = [
         `我叫${petName.value}`,
         `称号 ${vitalsCompanionTitle(current)}`,
         `心情 ${vitalsMoodLabel(current)}`,
         `饱腹 ${current.satiety}`,
         `亲密度 Lv.${vitalsIntimacyLevel(current)}`,
+        `今日任务 ${completedTasks}/3`,
     ].join(' · ')
     const nextLine = milestone
         ? `；下一个目标：${milestone.label} ${milestone.target}${milestone.kind === 'streak' ? ' 天' : ' 次'}，还差 ${milestone.remaining}`
@@ -1262,6 +1328,7 @@ const restorePet = () => {
     setVisitorPetPreferences({ hidden: false })
     window.setTimeout(() => {
         showBubble(`${petName.value}回来啦～`, 2600)
+        window.setTimeout(() => announcePendingAchievements(), 2800)
     }, 60)
 }
 
@@ -1269,6 +1336,7 @@ const restorePet = () => {
 const STORAGE_KEY = 'linblog-dsh-pet-pos'
 
 const persistPosition = () => {
+    if (inPetHomePage.value) return
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(pos.value))
     } catch {
@@ -1292,18 +1360,139 @@ const restorePosition = () => {
 
 const onResize = () => {
     viewportWidth.value = window.innerWidth
-    viewportHeight.value = window.innerHeight
-    pos.value = clampPos(pos.value)
+    if (!inPetHomePage.value) {
+        pos.value = clampPos(pos.value)
+        return
+    }
+    schedulePetHomeBoundsSync()
 }
 
-/** 默认停靠位置：右下或左下，避开底部安全区 */
-const homePosition = () => ({
-    x:
-        petSettings.value.petHomeCorner === 'left'
-            ? 28
-            : Math.max(window.innerWidth - PET_W.value - 28, 8),
-    y: Math.max(window.innerHeight - PET_H.value - 96, 8),
-})
+/** 宠物管理页以小屋为准居中落地，其他页面仍是右下 / 左下 */
+const homePosition = () => {
+    const bounds = movementBounds.value
+    if (inPetHomePage.value && petHomeRect.value) {
+        return {
+            x: bounds.left + Math.max(0, (bounds.right - bounds.left - PET_W.value) / 2),
+            y: bounds.maxY,
+        }
+    }
+    return {
+        x:
+            petSettings.value.petHomeCorner === 'left'
+                ? 28
+                : Math.max(window.innerWidth - PET_W.value - 28, 8),
+        y: Math.max(window.innerHeight - PET_H.value - 96, 8),
+    }
+}
+
+// ===== 宠物管理页：活动范围绑定「宠物之家」 =====
+let petHomeZone: HTMLElement | null = null
+let petHomeResizeObserver: ResizeObserver | null = null
+let petHomeRetryTimer: number | undefined
+let petHomeSyncRaf = 0
+let wasInPetHome = false
+
+const clearPetHomeZone = () => {
+    petHomeResizeObserver?.disconnect()
+    petHomeResizeObserver = null
+    petHomeZone = null
+    petHomeRect.value = null
+}
+
+const readPetHomeRect = (): boolean => {
+    const zone = document.querySelector<HTMLElement>('[data-pet-home-zone]')
+    if (!zone) {
+        clearPetHomeZone()
+        return false
+    }
+
+    if (zone !== petHomeZone) {
+        petHomeResizeObserver?.disconnect()
+        petHomeZone = zone
+        if (typeof ResizeObserver !== 'undefined') {
+            petHomeResizeObserver = new ResizeObserver(() => {
+                schedulePetHomeBoundsSync()
+            })
+            petHomeResizeObserver.observe(zone)
+        }
+    }
+
+    const rect = zone.getBoundingClientRect()
+    const previous = petHomeRect.value
+    const changed =
+        !previous ||
+        Math.abs(previous.left - rect.left) > 0.5 ||
+        Math.abs(previous.top - rect.top) > 0.5 ||
+        Math.abs(previous.width - rect.width) > 0.5 ||
+        Math.abs(previous.height - rect.height) > 0.5
+    if (changed) {
+        petHomeRect.value = {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+        }
+    }
+    return true
+}
+
+const applyPetHomeMode = (resetPosition: boolean, attempt = 0) => {
+    if (!inPetHomePage.value) {
+        const wasHome = wasInPetHome
+        wasInPetHome = false
+        window.clearTimeout(petHomeRetryTimer)
+        petHomeRetryTimer = undefined
+        clearPetHomeZone()
+        if (wasHome) {
+            stopWalk()
+            stopFlight()
+            restorePosition()
+        }
+        return
+    }
+
+    if (!readPetHomeRect()) {
+        if (attempt < 12 && petHomeRetryTimer === undefined) {
+            petHomeRetryTimer = window.setTimeout(() => {
+                petHomeRetryTimer = undefined
+                if (inPetHomePage.value) applyPetHomeMode(true, attempt + 1)
+            }, 60)
+        }
+        return
+    }
+
+    window.clearTimeout(petHomeRetryTimer)
+    petHomeRetryTimer = undefined
+    const enteringHome = !wasInPetHome
+    wasInPetHome = true
+    if (enteringHome || resetPosition) {
+        stopWalk()
+        stopFlight()
+        pos.value = clampPos(homePosition())
+    } else {
+        pos.value = clampPos(pos.value)
+    }
+}
+
+const schedulePetHomeBoundsSync = () => {
+    if (!inPetHomePage.value) return
+    if (petHomeSyncRaf) return
+    petHomeSyncRaf = requestAnimationFrame(() => {
+        petHomeSyncRaf = 0
+        applyPetHomeMode(false)
+    })
+}
+
+watch(
+    () => route.path,
+    async () => {
+        await nextTick()
+        applyPetHomeMode(true)
+    },
+    { flush: 'post' }
+)
 
 // ===== 气泡 / 碎碎念开关 =====
 watch(
@@ -1348,6 +1537,7 @@ watch(quietNow, (quiet, wasQuiet) => {
     if (!bubble.value) {
         showBubble(`${timeOfDayGreeting()}～我回来啦`, 3000, '☀️')
     }
+    window.setTimeout(() => announcePendingAchievements(), 1200)
 })
 
 // ===== 自动入睡 =====
@@ -1385,34 +1575,82 @@ const settleVitals = async (announce: boolean) => {
     return greeting
 }
 
-/** 跨设备合并或每日结算后，如果刚好达成新目标就庆祝一次 */
+const milestoneItems = (value: PetVitals) =>
+    vitalsMilestoneWall(value).flatMap((group) => group.items)
+
+/** 待庆祝队列：计时器被后续互动打断、页面隐藏或安静时段都不会丢 */
+const pendingCelebrationKeys = new Set<string>()
+
+const announcePendingAchievements = (delay = 0) => {
+    const items = milestoneItems(vitals.value)
+    const byKey = new Map(items.map((item) => [item.key, item]))
+    for (const key of [...pendingCelebrationKeys]) {
+        const item = byKey.get(key)
+        if (!item?.unlocked || item.celebrated) {
+            pendingCelebrationKeys.delete(key)
+        }
+    }
+    if (!pendingCelebrationKeys.size) return
+    if (quietNow.value || document.hidden || !visible.value) return
+
+    const announce = () => {
+        if (quietNow.value || document.hidden || !visible.value) return
+        const currentItems = milestoneItems(vitals.value)
+        const currentByKey = new Map(
+            currentItems.map((item) => [item.key, item])
+        )
+        const pending = [...pendingCelebrationKeys]
+            .map((key) => currentByKey.get(key))
+            .filter(
+                (item): item is NonNullable<typeof item> =>
+                    Boolean(item?.unlocked && !item?.celebrated)
+            )
+        if (!pending.length) return
+        const labels = pending.map(
+            (item) =>
+                `${item.label} ${item.target}${item.kind === 'streak' ? ' 天' : ' 次'}`
+        )
+        showBubble(`${petName.value}达成${labels.join('、')}！好耶～`, 5200, '🎉')
+        playAnim(pickFrom(MILESTONE_ANIMATIONS, currentAnim), true)
+        for (const item of pending) pendingCelebrationKeys.delete(item.key)
+        const announced = markAchievementsCelebrated(
+            vitals.value,
+            pending.map((item) => item.key)
+        )
+        if (announced !== vitals.value) {
+            vitals.value = announced
+            setPetVitals(announced)
+            emitPetReaction('vitals-updated')
+        }
+    }
+
+    window.clearTimeout(milestoneTimer)
+    if (delay > 0) milestoneTimer = window.setTimeout(announce, delay)
+    else announce()
+}
+
+/** 跨设备合并或每日结算后，如果刚好达成新目标就加入待庆祝队列 */
 const celebrateMilestones = (
     previous: PetVitals,
     next: PetVitals,
     delay = 0
 ) => {
     if (!previous.firstVisitAt) return
-    if (quietNow.value || document.hidden || !visible.value) return
-    const achieved: string[] = []
-    for (const target of STREAK_TARGETS) {
-        if (next.streakDays >= target && previous.streakDays < target) {
-            achieved.push(`连续陪伴 ${target} 天`)
+    const previousUnlocked = new Set(
+        milestoneItems(previous)
+            .filter((item) => item.unlocked)
+            .map((item) => item.key)
+    )
+    for (const item of milestoneItems(next)) {
+        if (
+            item.unlocked &&
+            !item.celebrated &&
+            !previousUnlocked.has(item.key)
+        ) {
+            pendingCelebrationKeys.add(item.key)
         }
     }
-    for (const target of INTERACTION_TARGETS) {
-        if (next.totalInteractions >= target && previous.totalInteractions < target) {
-            achieved.push(`累计互动 ${target} 次`)
-        }
-    }
-    if (!achieved.length) return
-    const announce = () => {
-        if (quietNow.value || document.hidden || !visible.value) return
-        showBubble(`${petName.value}达成${achieved.join('、')}！好耶～`, 5200, '🎉')
-        playAnim(pickFrom(MILESTONE_ANIMATIONS, currentAnim), true)
-    }
-    window.clearTimeout(milestoneTimer)
-    if (delay > 0) milestoneTimer = window.setTimeout(announce, delay)
-    else announce()
+    announcePendingAchievements(delay)
 }
 
 const startAutoSleepWatch = () => {
@@ -1499,9 +1737,29 @@ const reactionAction = (payload: PetReactionPayload): BubbleAction | null => {
         return { path: '/messages', label: '去看看' }
     }
     if (payload.kind === 'settings-saved') {
-        return { path: '/setting', label: '去设置' }
+        return { path: '/petManage', label: '去宠物管理' }
     }
     return null
+}
+
+/** 发布/评论任务在桌宠隐藏或安静时段也要记账，因此放在可见性早退之前 */
+const recordBusinessDailyTask = (
+    kind: PetReactionPayload['kind']
+): boolean => {
+    const task =
+        kind === 'article-published' || kind === 'gallery-published'
+            ? 'publish'
+            : kind === 'comment-posted'
+              ? 'comment'
+              : null
+    if (!task) return false
+    const result = recordDailyTask(vitals.value, task)
+    if (JSON.stringify(result.vitals) !== JSON.stringify(vitals.value)) {
+        vitals.value = result.vitals
+        setPetVitals(result.vitals)
+    }
+    if (result.completedNow) emitPetReaction('vitals-updated')
+    return result.completedNow
 }
 
 const handlePetReaction = (payload: PetReactionPayload) => {
@@ -1515,6 +1773,8 @@ const handlePetReaction = (payload: PetReactionPayload) => {
         return
     }
     if (payload.kind === 'login' || payload.kind === 'logout') {
+        pendingCelebrationKeys.clear()
+        window.clearTimeout(milestoneTimer)
         if (payload.kind === 'logout') void syncPetVitalsToServer(vitals.value)
         window.clearTimeout(remoteSyncTimer)
         window.clearTimeout(authRefreshTimer)
@@ -1522,9 +1782,13 @@ const handlePetReaction = (payload: PetReactionPayload) => {
             void settleVitals(false)
         }, 0)
     }
+    const dailyTaskCompleted = recordBusinessDailyTask(payload.kind)
     if (!visible.value || quietNow.value || document.hidden) return
     const line = reactionMessage(payload)
     if (!line) return
+    const message = dailyTaskCompleted
+        ? `${line} 今日小任务完成，奖励已到账！`
+        : line
     markInteraction()
 
     if (sleepPhase) {
@@ -1532,7 +1796,7 @@ const handlePetReaction = (payload: PetReactionPayload) => {
         if (!shouldWake) return
         wake()
         showBubble(
-            line,
+            message,
             3600,
             REACTION_EMOJI[payload.kind] || '',
             false,
@@ -1541,7 +1805,7 @@ const handlePetReaction = (payload: PetReactionPayload) => {
         return
     }
     showBubble(
-        line,
+        message,
         3600,
         REACTION_EMOJI[payload.kind] || '',
         false,
@@ -1713,6 +1977,7 @@ const onVisibilityChange = () => {
     if (el?.paused) el.play().catch(() => {})
     scheduleWhisper()
     startCommentPolling()
+    announcePendingAchievements()
 }
 
 /** 跨标签页：登录态变化时切换账号状态，养成进度变化时取两边较高值 */
@@ -1732,12 +1997,14 @@ const onStorage = (event: StorageEvent) => {
         return
     }
     try {
+        const previous = normalizePetVitals(vitals.value)
         const incoming = normalizePetVitals(
             JSON.parse(event.newValue) as Partial<PetVitals>
         )
         const merged = mergePetVitals(vitals.value, incoming)
         if (JSON.stringify(merged) !== JSON.stringify(vitals.value)) {
             vitals.value = merged
+            celebrateMilestones(previous, merged)
         }
     } catch {
         // 忽略其他页面写入的损坏数据
@@ -1772,6 +2039,8 @@ onMounted(() => {
         })
     restorePosition()
     window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', schedulePetHomeBoundsSync, { passive: true })
+    void nextTick().then(() => applyPetHomeMode(true))
     startAutoSleepWatch()
     // 初始待机：呼吸动画循环播放
     const a = videoA.value
@@ -1789,6 +2058,7 @@ onMounted(() => {
         const rollover = applyDailyGreeting(vitals.value)
         if (rollover.kind === 'none') return
         vitals.value = rollover.vitals
+        emitPetReaction('vitals-updated')
         if (!quietNow.value && !sleepPhase) {
             showBubble(
                 `${timeOfDayGreeting()}～新的一天，继续加油！`,
@@ -1846,9 +2116,13 @@ onBeforeUnmount(() => {
     window.clearTimeout(remoteSyncTimer)
     window.clearTimeout(authRefreshTimer)
     window.clearTimeout(milestoneTimer)
+    window.clearTimeout(petHomeRetryTimer)
     void syncPetVitalsToServer(vitals.value)
     window.clearInterval(sleepTalkTimer)
+    if (petHomeSyncRaf) cancelAnimationFrame(petHomeSyncRaf)
+    clearPetHomeZone()
     window.removeEventListener('resize', onResize)
+    window.removeEventListener('scroll', schedulePetHomeBoundsSync)
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
     window.removeEventListener('pointercancel', onPointerUp)

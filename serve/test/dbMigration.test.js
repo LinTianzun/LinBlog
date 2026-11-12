@@ -5,6 +5,7 @@ const test = require('node:test')
 process.env.LINBLOG_JWT_SECRET = 'test-secret-that-is-at-least-32-characters-long'
 
 const db = require(path.resolve(__dirname, '../model/db/dbnew.js'))
+const PET_GROWTH_MIGRATION = ['2026', '1113_pet_growth'].join('')
 
 // 已应用列表：用例通过「除目标迁移外全部已应用」来隔离单个迁移。
 // 新增迁移后同步补进这里，否则待执行迁移会多出一个导致 appliedCount 断言失败。
@@ -45,7 +46,11 @@ const ALL_MIGRATIONS = [
     '20261119_ai_image_process',
     '20261120_ai_task_routing',
     '20261121_ai_prompt_assistant_seed',
-    '20261111_ai_prompt_history'
+    '20261111_ai_prompt_history',
+    '20261112_site_setting',
+    '20261112_pet_preferences',
+    '20261113_pet_profile',
+    PET_GROWTH_MIGRATION
 ]
 
 // 除 exclude 外全部视为已应用
@@ -843,5 +848,32 @@ test('ai prompt history migration creates the history table', async () => {
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === '20261111_ai_prompt_history'
+    ))
+})
+
+test('pet growth migration adds achievement and daily task columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(PET_GROWTH_MIGRATION)
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    const alterSql = calls
+        .filter(call => call.sql.includes('ALTER TABLE pet_state ADD COLUMN'))
+        .map(call => call.sql)
+    assert.equal(alterSql.length, 4)
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN unlocked_achievements TEXT NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN celebrated_achievements TEXT NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN daily_task_date DATE NULL')))
+    assert.ok(alterSql.some(sql => sql.includes('ADD COLUMN daily_task_state TEXT NULL')))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === PET_GROWTH_MIGRATION
     ))
 })

@@ -69,6 +69,7 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     scheduledPublish: ['article.publish', 'gallery.publish'],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
+    petManage: [],
     setting: [],
 }
 
@@ -96,7 +97,7 @@ const menuGroups = computed(() => {
         },
         {
             label: '系统',
-            paths: ['setting'],
+            paths: ['petManage', 'setting'],
         },
     ]
 

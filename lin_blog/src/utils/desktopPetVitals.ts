@@ -1,3 +1,23 @@
+export type PetAchievementKind = 'streak' | 'interaction'
+export type DailyPetTaskKey = 'feed' | 'publish' | 'comment'
+
+export interface DailyPetTasks {
+  date: string
+  progress: Record<DailyPetTaskKey, number>
+  rewarded: DailyPetTaskKey[]
+}
+
+export interface PetDailyTaskDefinition {
+  key: DailyPetTaskKey
+  label: string
+  description: string
+  icon: string
+  reward: {
+    mood: number
+    intimacy: number
+  }
+}
+
 export interface PetVitals {
   name: string
   mood: number
@@ -9,6 +29,9 @@ export interface PetVitals {
   lastFedAt: number
   lastGreetingDate: string
   firstVisitAt: number
+  unlockedAchievements: string[]
+  celebratedAchievements: string[]
+  dailyTasks: DailyPetTasks
   updatedAt: number
 }
 
@@ -65,6 +88,118 @@ const currentStorageKey = (): string => {
   return userStorageKey(userId)
 }
 
+const dateKey = (date: Date): string =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-')
+
+const toDayNumber = (value: string): number | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
+}
+
+export const PET_DAILY_TASK_DEFINITIONS: readonly PetDailyTaskDefinition[] = [
+  {
+    key: 'feed',
+    label: '喂它一次',
+    description: '准备一份小零食，让它今天也元气满满。',
+    icon: '🍚',
+    reward: { mood: 8, intimacy: 1 }
+  },
+  {
+    key: 'publish',
+    label: '发布一篇内容',
+    description: '发布文章或图库，它会为你放一场小烟花。',
+    icon: '🎉',
+    reward: { mood: 10, intimacy: 3 }
+  },
+  {
+    key: 'comment',
+    label: '留下一句评论',
+    description: '在文章、图库或随笔下留下一次真诚回应。',
+    icon: '💬',
+    reward: { mood: 6, intimacy: 2 }
+  }
+]
+
+const DAILY_TASK_KEYS = PET_DAILY_TASK_DEFINITIONS.map((task) => task.key)
+const ACHIEVEMENT_KEY_PATTERN = /^[a-z][a-z0-9_-]{0,31}:\d{1,6}$/
+const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
+const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
+
+const createEmptyDailyTasks = (date = ''): DailyPetTasks => ({
+  date,
+  progress: { feed: 0, publish: 0, comment: 0 },
+  rewarded: []
+})
+
+export const achievementKey = (
+  kind: PetAchievementKind,
+  target: number
+): string => `${kind}:${target}`
+
+export function achievementLabel(key: string): string {
+  const [kind, rawTarget] = key.split(':')
+  const target = Number(rawTarget)
+  if (!Number.isSafeInteger(target) || target <= 0) return key
+  if (kind === 'streak') return `连续陪伴 ${target} 天`
+  if (kind === 'interaction') return `累计互动 ${target} 次`
+  return key
+}
+
+/** 当前进度够得着的成就；即使旧存档没有 unlocked 字段也能正确展示 */
+export function eligibleAchievementKeys(vitals: PetVitals): string[] {
+  const result: string[] = []
+  for (const target of STREAK_TARGETS) {
+    if (vitals.streakDays >= target) {
+      result.push(achievementKey('streak', target))
+    }
+  }
+  for (const target of INTERACTION_TARGETS) {
+    if (vitals.totalInteractions >= target) {
+      result.push(achievementKey('interaction', target))
+    }
+  }
+  return result
+}
+
+export function unlockEligibleAchievements(vitals: PetVitals): PetVitals {
+  const unlocked = new Set(vitals.unlockedAchievements)
+  for (const key of eligibleAchievementKeys(vitals)) unlocked.add(key)
+  if (unlocked.size === vitals.unlockedAchievements.length) return vitals
+  return {
+    ...vitals,
+    unlockedAchievements: [...unlocked]
+  }
+}
+
+export function markAchievementsCelebrated(
+  vitals: PetVitals,
+  keys: readonly string[],
+  now = Date.now()
+): PetVitals {
+  const unlocked = new Set(vitals.unlockedAchievements)
+  const celebrated = new Set(vitals.celebratedAchievements)
+  let changed = false
+  for (const key of keys) {
+    if (!unlocked.has(key) || celebrated.has(key)) continue
+    celebrated.add(key)
+    changed = true
+  }
+  if (!changed) return vitals
+  return {
+    ...vitals,
+    celebratedAchievements: [...celebrated],
+    updatedAt: now
+  }
+}
+
 export const DEFAULT_PET_VITALS: PetVitals = {
   name: '',
   mood: 70,
@@ -76,6 +211,9 @@ export const DEFAULT_PET_VITALS: PetVitals = {
   lastFedAt: 0,
   lastGreetingDate: '',
   firstVisitAt: 0,
+  unlockedAchievements: [],
+  celebratedAchievements: [],
+  dailyTasks: createEmptyDailyTasks(),
   updatedAt: 0
 }
 
@@ -93,6 +231,55 @@ const intOr = (value: unknown, fallback: number, max = 1_000_000_000): number =>
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.min(max, Math.max(0, Math.round(number)))
+}
+
+const isDateKey = (value: unknown): value is string =>
+  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+
+const uniqueStringList = (
+  value: unknown,
+  pattern: RegExp,
+  max = 80
+): string[] => {
+  if (!Array.isArray(value)) return []
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const key = item.trim()
+    if (!pattern.test(key) || seen.has(key)) continue
+    seen.add(key)
+    result.push(key)
+    if (result.length >= max) break
+  }
+  return result
+}
+
+export function normalizeDailyTasks(
+  value?: Partial<DailyPetTasks> | null,
+  fallbackDate = ''
+): DailyPetTasks {
+  const raw = value && typeof value === 'object' ? value : {}
+  const hasDate = isDateKey(raw.date)
+  const date = hasDate ? raw.date : isDateKey(fallbackDate) ? fallbackDate : ''
+  if (!date) return createEmptyDailyTasks()
+
+  const rawProgress =
+    raw.progress && typeof raw.progress === 'object' ? raw.progress : null
+  const progress = {
+    feed: hasDate ? intOr(rawProgress?.feed, 0, 1) : 0,
+    publish: hasDate ? intOr(rawProgress?.publish, 0, 1) : 0,
+    comment: hasDate ? intOr(rawProgress?.comment, 0, 1) : 0
+  }
+  const rewarded = hasDate
+    ? uniqueStringList(raw.rewarded, /^(feed|publish|comment)$/).filter(
+        (key): key is DailyPetTaskKey =>
+          DAILY_TASK_KEYS.includes(key as DailyPetTaskKey) &&
+          progress[key as DailyPetTaskKey] >= 1
+      )
+    : []
+
+  return { date, progress, rewarded }
 }
 
 export function normalizePetVitals(
@@ -122,6 +309,15 @@ export function normalizePetVitals(
     firstVisitAt: Number.isFinite(Number(raw.firstVisitAt))
       ? Math.max(0, Number(raw.firstVisitAt))
       : 0,
+    unlockedAchievements: uniqueStringList(
+      raw.unlockedAchievements,
+      ACHIEVEMENT_KEY_PATTERN
+    ),
+    celebratedAchievements: uniqueStringList(
+      raw.celebratedAchievements,
+      ACHIEVEMENT_KEY_PATTERN
+    ),
+    dailyTasks: normalizeDailyTasks(raw.dailyTasks),
     updatedAt: Number.isFinite(Number(raw.updatedAt))
       ? Math.max(0, Number(raw.updatedAt))
       : 0
@@ -147,6 +343,40 @@ export function decayPetVitals(
   }
 }
 
+/** 每日任务按本地日期重置；跨天时旧进度与领取记录一起清空 */
+export function withTodayDailyTasks(
+  vitals: PetVitals,
+  now = Date.now()
+): PetVitals {
+  const today = dateKey(new Date(now))
+  const tasks = normalizeDailyTasks(vitals.dailyTasks, today)
+  if (tasks.date === today) return { ...vitals, dailyTasks: tasks }
+  return { ...vitals, dailyTasks: createEmptyDailyTasks(today) }
+}
+
+function finalizePetVitals(
+  vitals: PetVitals,
+  now: number,
+  decay = false
+): PetVitals {
+  const base = decay ? decayPetVitals(vitals, now) : normalizePetVitals(vitals)
+  const hadAchievementState =
+    base.unlockedAchievements.length > 0 ||
+    base.celebratedAchievements.length > 0
+  const settled = unlockEligibleAchievements(withTodayDailyTasks(base, now))
+  if (
+    !hadAchievementState &&
+    settled.unlockedAchievements.length > 0
+  ) {
+    // 老存档升级：历史已达成的目标静默视为已庆祝，避免一次性冒出满屏红点
+    return {
+      ...settled,
+      celebratedAchievements: [...settled.unlockedAchievements]
+    }
+  }
+  return settled
+}
+
 export function getPetVitals(now = Date.now()): PetVitals {
   let stored: Partial<PetVitals> | null = null
   try {
@@ -155,16 +385,20 @@ export function getPetVitals(now = Date.now()): PetVitals {
   } catch {
     stored = null
   }
-  const vitals = decayPetVitals(
+  const vitals = finalizePetVitals(
     normalizePetVitals(stored || DEFAULT_PET_VITALS),
-    now
+    now,
+    true
   )
-  setPetVitals(vitals)
+  writeStorage(currentStorageKey(), JSON.stringify(vitals))
   return vitals
 }
 
 export function setPetVitals(vitals: PetVitals): void {
-  writeStorage(currentStorageKey(), JSON.stringify(vitals))
+  writeStorage(
+    currentStorageKey(),
+    JSON.stringify(finalizePetVitals(normalizePetVitals(vitals), Date.now()))
+  )
 }
 
 export interface FeedResult {
@@ -173,7 +407,7 @@ export interface FeedResult {
 }
 
 export function applyFeeding(vitals: PetVitals, now = Date.now()): FeedResult {
-  const current = decayPetVitals(vitals, now)
+  const current = finalizePetVitals(vitals, now, true)
   if (now - current.lastFedAt < FEED_COOLDOWN_MS) {
     return { vitals: current, effect: 'cooldown' }
   }
@@ -198,7 +432,7 @@ export function applyFeeding(vitals: PetVitals, now = Date.now()): FeedResult {
 }
 
 export function applyPetting(vitals: PetVitals, now = Date.now()): PetVitals {
-  const current = decayPetVitals(vitals, now)
+  const current = finalizePetVitals(vitals, now, true)
   return {
     ...current,
     mood: roundStat(current.mood + 3),
@@ -210,29 +444,13 @@ export function applyPetting(vitals: PetVitals, now = Date.now()): PetVitals {
 
 export type GreetingKind = 'first' | 'daily' | 'none'
 
-const dateKey = (date: Date): string =>
-  [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0')
-  ].join('-')
-
-const toDayNumber = (value: string): number | null => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) return null
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
-}
-
 export function applyDailyGreeting(
   vitals: PetVitals,
   now = new Date()
 ): { vitals: PetVitals; kind: GreetingKind } {
   const timestamp = now.getTime()
   const today = dateKey(now)
-  const current = decayPetVitals(vitals, timestamp)
+  const current = finalizePetVitals(vitals, timestamp, true)
   if (!current.firstVisitAt) {
     return {
       kind: 'first',
@@ -282,16 +500,39 @@ export function applyDailyGreeting(
 
 const laterDate = (a: string, b: string): string => (a > b ? a : b)
 
+export function mergeDailyPetTasks(
+  local: DailyPetTasks,
+  remote: DailyPetTasks
+): DailyPetTasks {
+  const a = normalizeDailyTasks(local)
+  const b = normalizeDailyTasks(remote)
+  if (!a.date) return b
+  if (!b.date) return a
+  if (a.date > b.date) return a
+  if (b.date > a.date) return b
+
+  const progress = {
+    feed: Math.max(a.progress.feed, b.progress.feed),
+    publish: Math.max(a.progress.publish, b.progress.publish),
+    comment: Math.max(a.progress.comment, b.progress.comment)
+  }
+  const rewarded = [
+    ...new Set([...a.rewarded, ...b.rewarded])
+  ].filter((key) => progress[key] >= 1)
+  return { date: a.date, progress, rewarded }
+}
+
 /** 跨设备合并：取两端更高的养成进度，亲密度与连续天数不会倒退 */
 export function mergePetVitals(
   local: PetVitals,
-  remote: Partial<PetVitals>
+  remote: Partial<PetVitals>,
+  now = Date.now()
 ): PetVitals {
   const a = normalizePetVitals(local)
   const b = normalizePetVitals(remote)
   const newer = b.updatedAt >= a.updatedAt ? b : a
   const older = newer === a ? b : a
-  return {
+  return finalizePetVitals({
     name: newer.name || older.name,
     mood: Math.max(a.mood, b.mood),
     satiety: Math.max(a.satiety, b.satiety),
@@ -305,7 +546,77 @@ export function mergePetVitals(
       a.firstVisitAt && b.firstVisitAt
         ? Math.min(a.firstVisitAt, b.firstVisitAt)
         : a.firstVisitAt || b.firstVisitAt,
+    unlockedAchievements: [
+      ...new Set([...a.unlockedAchievements, ...b.unlockedAchievements])
+    ],
+    celebratedAchievements: [
+      ...new Set([...a.celebratedAchievements, ...b.celebratedAchievements])
+    ],
+    dailyTasks: mergeDailyPetTasks(a.dailyTasks, b.dailyTasks),
     updatedAt: Math.max(a.updatedAt, b.updatedAt)
+  }, now)
+}
+
+export function petDailyTaskDefinition(
+  key: DailyPetTaskKey
+): PetDailyTaskDefinition | null {
+  return PET_DAILY_TASK_DEFINITIONS.find((task) => task.key === key) || null
+}
+
+export interface DailyTaskResult {
+  vitals: PetVitals
+  task: PetDailyTaskDefinition | null
+  completedNow: boolean
+  alreadyCompleted: boolean
+}
+
+/** 记录一次业务事件；同一天同一任务只发一次奖励 */
+export function recordDailyTask(
+  vitals: PetVitals,
+  key: DailyPetTaskKey,
+  now = Date.now()
+): DailyTaskResult {
+  const current = finalizePetVitals(vitals, now)
+  const task = petDailyTaskDefinition(key)
+  if (!task) {
+    return {
+      vitals: current,
+      task: null,
+      completedNow: false,
+      alreadyCompleted: false
+    }
+  }
+  if (current.dailyTasks.progress[key] >= 1) {
+    return {
+      vitals: current,
+      task,
+      completedNow: false,
+      alreadyCompleted: true
+    }
+  }
+
+  const alreadyRewarded = current.dailyTasks.rewarded.includes(key)
+  const nextTasks: DailyPetTasks = {
+    ...current.dailyTasks,
+    progress: { ...current.dailyTasks.progress, [key]: 1 },
+    rewarded: alreadyRewarded
+      ? current.dailyTasks.rewarded
+      : [...current.dailyTasks.rewarded, key]
+  }
+  let next: PetVitals = { ...current, dailyTasks: nextTasks }
+  if (!alreadyRewarded) {
+    next = {
+      ...next,
+      mood: roundStat(next.mood + task.reward.mood),
+      intimacy: roundStat(next.intimacy + task.reward.intimacy),
+      updatedAt: now
+    }
+  }
+  return {
+    vitals: unlockEligibleAchievements(next),
+    task,
+    completedNow: true,
+    alreadyCompleted: false
   }
 }
 
@@ -343,11 +654,12 @@ export interface PetMilestone {
   remaining: number
 }
 
-const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
-const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
-
 export interface PetMilestoneProgress extends PetMilestone {
+  key: string
+  unlocked: boolean
   achieved: boolean
+  celebrated: boolean
+  isNew: boolean
 }
 
 export interface PetMilestoneGroup {
@@ -360,20 +672,33 @@ export interface PetMilestoneGroup {
 export function vitalsMilestoneWall(
   vitals: PetVitals
 ): PetMilestoneGroup[] {
+  const unlockedKeys = new Set([
+    ...vitals.unlockedAchievements,
+    ...eligibleAchievementKeys(vitals)
+  ])
+  const celebratedKeys = new Set(vitals.celebratedAchievements)
   const build = (
     kind: PetMilestone['kind'],
     label: string,
     targets: readonly number[],
     current: number
   ): PetMilestoneProgress[] =>
-    targets.map((target) => ({
-      kind,
-      label,
-      current: Math.min(current, target),
-      target,
-      remaining: Math.max(0, target - current),
-      achieved: current >= target
-    }))
+    targets.map((target) => {
+      const key = achievementKey(kind, target)
+      const unlocked = unlockedKeys.has(key)
+      return {
+        key,
+        kind,
+        label,
+        current: Math.min(current, target),
+        target,
+        remaining: Math.max(0, target - current),
+        unlocked,
+        achieved: unlocked,
+        celebrated: celebratedKeys.has(key),
+        isNew: unlocked && !celebratedKeys.has(key)
+      }
+    })
 
   return [
     {
@@ -397,7 +722,15 @@ export function vitalsMilestoneWall(
 /** 取距离完成比例最近的下一个目标，全部完成后返回 null */
 export function vitalsNextMilestone(vitals: PetVitals): PetMilestone | null {
   const candidates: PetMilestone[] = []
-  const streakTarget = STREAK_TARGETS.find((target) => vitals.streakDays < target)
+  const unlocked = new Set([
+    ...vitals.unlockedAchievements,
+    ...eligibleAchievementKeys(vitals)
+  ])
+  const streakTarget = STREAK_TARGETS.find(
+    (target) =>
+      vitals.streakDays < target &&
+      !unlocked.has(achievementKey('streak', target))
+  )
   if (streakTarget) {
     candidates.push({
       kind: 'streak',
@@ -408,7 +741,9 @@ export function vitalsNextMilestone(vitals: PetVitals): PetMilestone | null {
     })
   }
   const interactionTarget = INTERACTION_TARGETS.find(
-    (target) => vitals.totalInteractions < target
+    (target) =>
+      vitals.totalInteractions < target &&
+      !unlocked.has(achievementKey('interaction', target))
   )
   if (interactionTarget) {
     candidates.push({
