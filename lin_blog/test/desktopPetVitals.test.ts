@@ -6,6 +6,7 @@ import {
   applyFeeding,
   applyPetting,
   decayPetVitals,
+  mergePetVitals,
   normalizePetVitals,
   vitalsIntimacyLevel,
   vitalsMoodLabel,
@@ -102,6 +103,58 @@ test('每日问候区分首次、跨日与同一天', () => {
   )
   assert.equal(nextDay.kind, 'daily')
   assert.equal(nextDay.vitals.lastGreetingDate, '2026-11-13')
+})
+
+test('连续两天访问累加陪伴天数，断档后重置为 1', () => {
+  const first = applyDailyGreeting(
+    { ...DEFAULT_PET_VITALS, firstVisitAt: 1 },
+    new Date('2026-11-12T09:00:00')
+  )
+  assert.equal(first.vitals.streakDays, 1)
+
+  const nextDay = applyDailyGreeting(
+    first.vitals,
+    new Date('2026-11-13T09:00:00')
+  )
+  assert.equal(nextDay.vitals.streakDays, 2)
+
+  const afterGap = applyDailyGreeting(
+    nextDay.vitals,
+    new Date('2026-11-15T09:00:00')
+  )
+  assert.equal(afterGap.vitals.streakDays, 1)
+})
+
+test('跨设备合并取较高进度并保留更早的首次访问时间', () => {
+  const local = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    mood: 40,
+    satiety: 30,
+    intimacy: 12,
+    streakDays: 2,
+    totalInteractions: 8,
+    lastVisitDate: '2026-11-12',
+    firstVisitAt: 1_000,
+  })
+  const remote = {
+    ...DEFAULT_PET_VITALS,
+    mood: 80,
+    satiety: 20,
+    intimacy: 30,
+    streakDays: 5,
+    totalInteractions: 3,
+    lastVisitDate: '2026-11-10',
+    firstVisitAt: 2_000,
+  }
+
+  const merged = mergePetVitals(local, remote)
+  assert.equal(merged.mood, 80)
+  assert.equal(merged.satiety, 30)
+  assert.equal(merged.intimacy, 30)
+  assert.equal(merged.streakDays, 5)
+  assert.equal(merged.totalInteractions, 8)
+  assert.equal(merged.lastVisitDate, '2026-11-12')
+  assert.equal(merged.firstVisitAt, 1_000)
 })
 
 test('心情文案与亲密度等级保持稳定', () => {

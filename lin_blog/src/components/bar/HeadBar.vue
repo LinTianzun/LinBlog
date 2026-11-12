@@ -236,7 +236,11 @@ const fetchUnread = async () => {
                 && route.path !== '/messages'
             ) {
                 pulseInbox()
-                emitPetReaction('new-message', { count: nextCount })
+                emitPetReaction('new-message', {
+                    count: nextCount,
+                    actionPath: '/messages',
+                    actionLabel: '去看看',
+                })
             }
             unreadInitialized = true
         }

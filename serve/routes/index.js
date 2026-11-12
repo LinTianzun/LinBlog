@@ -47,4 +47,6 @@ module.exports = (app) => {
     require('./seo')(app)
     // 站点级展示设置：桌面宠物开关（公开读 / 管理写）
     require('./site')(app)
+    // 登录用户的桌宠养成状态（跨设备同步）
+    require('./pet')(app)
 }

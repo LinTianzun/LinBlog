@@ -594,7 +594,12 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
             clearLocalDraft('article-new')
             localDraftAvailable.value = false
             showMessage('success', action === 'publish' ? '文章已发布' : '文章已保存为草稿')
-            if (action === 'publish') emitPetReaction('article-published')
+            if (action === 'publish') {
+                emitPetReaction('article-published', {
+                    actionPath: `/portal/articles?open=${nextId}`,
+                    actionLabel: '去看看',
+                })
+            }
             await router.push('/article')
             return
         }
@@ -613,7 +618,10 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
                 throw new Error(published.message || '文章发布失败')
             }
             showMessage('success', '文章已发布')
-            emitPetReaction('article-published')
+            emitPetReaction('article-published', {
+                actionPath: `/portal/articles?open=${articleId.value}`,
+                actionLabel: '去看看',
+            })
             await loadArticle()
             return
         }
@@ -647,7 +655,10 @@ async function publishCurrentWorkflow(): Promise<void> {
         if (result.code !== 200) throw new Error(result.message || '发布失败')
         previewOpen.value = false
         showMessage('success', '当前工作稿已发布')
-        emitPetReaction('article-published')
+        emitPetReaction('article-published', {
+            actionPath: `/portal/articles?open=${articleId.value}`,
+            actionLabel: '去看看',
+        })
         await loadArticle()
     } catch (error) {
         showMessage('error', describeError(error, '发布失败，请稍后重试'))

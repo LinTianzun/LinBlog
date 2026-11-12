@@ -370,13 +370,19 @@
                                     @click="sendDesktopPetCommand('wake')">
                                     叫醒它
                                 </yk-button>
+                                <yk-button type="secondary" size="s" :disabled="!canEditPet"
+                                    @click="resetPetSettings">
+                                    恢复默认
+                                </yk-button>
                             </div>
                         </div>
                     </div>
 
                     <div class="set-subhead">
-                        <span class="set-label">我的桌宠（仅本机）</span>
-                        <yk-text type="tertiary">只影响当前浏览器，不改变其他访客看到的桌宠</yk-text>
+                        <span class="set-label">我的桌宠</span>
+                        <yk-text type="tertiary">
+                            隐藏与安静时段仅本机生效；登录后养成状态会跨设备同步
+                        </yk-text>
                     </div>
 
                     <div class="set-card set-pet">
@@ -420,16 +426,30 @@
                                 <strong>养成状态</strong>
                                 <p>
                                     心情{{ vitalsMoodLabel(petVitals) }} · 饱腹 {{ petVitals.satiety }} ·
-                                    亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；喂食有 60 秒冷却。
+                                    亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；
+                                    连续陪伴 {{ petVitals.streakDays }} 天，累计互动
+                                    {{ petVitals.totalInteractions }} 次。
                                 </p>
                             </div>
                             <div class="set-pet-vitals">
                                 <span>心情 {{ petVitals.mood }}</span>
                                 <span>饱腹 {{ petVitals.satiety }}</span>
+                                <span>连续 {{ petVitals.streakDays }} 天</span>
+                                <span>互动 {{ petVitals.totalInteractions }} 次</span>
                                 <yk-button type="secondary" size="s" @click="feedFromSettings">
                                     喂一口
                                 </yk-button>
                             </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>重置本机偏好</strong>
+                                <p>清除本机隐藏与安静时段，恢复默认问候设置；养成状态会保留。</p>
+                            </div>
+                            <yk-button type="secondary" size="s" @click="resetLocalPetPrefs">
+                                恢复默认
+                            </yk-button>
                         </div>
                     </div>
                 </section>
@@ -573,6 +593,7 @@ import {
 } from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
 import {
+    DEFAULT_DESKTOP_PET_SETTINGS,
     broadcastDesktopPetSettings,
     getDesktopPetSettings,
     normalizeDesktopPetSettings,
@@ -582,6 +603,7 @@ import {
 } from '../utils/desktopPet'
 import { emitPetReaction } from '../utils/desktopPetScene'
 import {
+    DEFAULT_VISITOR_PET_PREFERENCES,
     getVisitorPetPreferences,
     isWithinQuietHours,
     onVisitorPetPreferencesChange,
@@ -596,6 +618,10 @@ import {
     vitalsMoodLabel,
     type PetVitals,
 } from '../utils/desktopPetVitals'
+import {
+    mergeRemotePetVitals,
+    syncPetVitalsToServer,
+} from '../utils/desktopPetSync'
 import { getSiteSettings, updateSiteSettings } from '../api/site'
 import { useSessionStore } from '../store/session.ts'
 import {
@@ -683,6 +709,7 @@ const feedFromSettings = () => {
     const result = applyFeeding(petVitals.value)
     petVitals.value = result.vitals
     setPetVitals(petVitals.value)
+    void syncPetVitalsToServer(petVitals.value)
     if (result.effect === 'ok') {
         proxy?.$message?.({ type: 'success', message: '喂饱啦，心情也变好了' })
     } else if (result.effect === 'full') {
@@ -690,6 +717,16 @@ const feedFromSettings = () => {
     } else {
         proxy?.$message?.({ type: 'primary', message: '刚喂过，等 60 秒再试吧' })
     }
+}
+const resetPetSettings = () => {
+    if (!canEditPet.value) return
+    if (!window.confirm('恢复默认桌宠设置？当前尺寸、范围与行为会重置。')) return
+    Object.assign(petSettings, { ...DEFAULT_DESKTOP_PET_SETTINGS })
+    proxy?.$message?.({ type: 'primary', message: '已恢复默认设置，正在保存' })
+}
+const resetLocalPetPrefs = () => {
+    updateVisitorPrefs({ ...DEFAULT_VISITOR_PET_PREFERENCES })
+    proxy?.$message?.({ type: 'success', message: '本机桌宠偏好已恢复默认' })
 }
 
 const sizeOptions = [
@@ -1193,6 +1230,12 @@ const handleLogout = () => {
 onMounted(loadProfile)
 onMounted(() => void loadStorage())
 onMounted(() => void refreshUploadUrl())
+onMounted(() => {
+    void mergeRemotePetVitals(petVitals.value).then((merged) => {
+        petVitals.value = merged
+        setPetVitals(merged)
+    })
+})
 onMounted(async () => {
     // 设置以服务端为准；读取失败时保留本地缓存值
     try {

@@ -86,3 +86,77 @@ test('仅本机隐藏后可通过右下角爪印恢复', async ({ page }) => {
 
   await expect(pet).toBeVisible()
 })
+
+test('触摸长按桌宠可以打开操作菜单', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+
+  const hit = pet.locator('.dsh-pet-hit')
+  const box = await hit.boundingBox()
+  expect(box).not.toBeNull()
+  const init = {
+    pointerType: 'touch',
+    pointerId: 11,
+    bubbles: true,
+    clientX: box!.x + box!.width / 2,
+    clientY: box!.y + box!.height / 2,
+  }
+
+  await hit.dispatchEvent('pointerdown', init)
+  await expect(page.locator('.pet-menu')).toBeVisible({ timeout: 2_000 })
+  await hit.dispatchEvent('pointerup', init)
+})
+
+test('带跳转的气泡按钮可以打开对应内容', async ({ page }) => {
+  await page.addInitScript(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS',
+      JSON.stringify({
+        mood: 70,
+        satiety: 60,
+        intimacy: 10,
+        lastFedAt: 0,
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 86_400_000,
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+  await expect(page.locator('.dsh-pet-root')).toBeVisible({ timeout: 30_000 })
+
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent('linblog:pet-reaction', {
+        detail: {
+          kind: 'article-published',
+          actionPath: '/portal/articles?open=1201',
+          actionLabel: '去看看',
+        },
+      })
+    )
+  })
+
+  await page.locator('.pet-bubble-action').click()
+  await page.waitForURL(/\/portal\/articles\?open=1201/)
+})
+
+test('动画加载失败时显示静态桌宠兜底', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+  await pet.locator('.dsh-pet-video.is-front').dispatchEvent('error')
+  await expect(pet.locator('.dsh-pet-fallback')).toBeVisible()
+})

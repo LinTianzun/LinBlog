@@ -2,6 +2,9 @@ export interface PetVitals {
   mood: number
   satiety: number
   intimacy: number
+  streakDays: number
+  lastVisitDate: string
+  totalInteractions: number
   lastFedAt: number
   lastGreetingDate: string
   firstVisitAt: number
@@ -15,6 +18,9 @@ export const DEFAULT_PET_VITALS: PetVitals = {
   mood: 70,
   satiety: 60,
   intimacy: 10,
+  streakDays: 0,
+  lastVisitDate: '',
+  totalInteractions: 0,
   lastFedAt: 0,
   lastGreetingDate: '',
   firstVisitAt: 0,
@@ -31,6 +37,12 @@ const statOr = (value: unknown, fallback: number): number => {
   return Number.isFinite(number) ? roundStat(number) : fallback
 }
 
+const intOr = (value: unknown, fallback: number, max = 1_000_000_000): number => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(max, Math.max(0, Math.round(number)))
+}
+
 export function normalizePetVitals(
   value?: Partial<PetVitals> | null
 ): PetVitals {
@@ -39,6 +51,13 @@ export function normalizePetVitals(
     mood: statOr(raw.mood, DEFAULT_PET_VITALS.mood),
     satiety: statOr(raw.satiety, DEFAULT_PET_VITALS.satiety),
     intimacy: statOr(raw.intimacy, DEFAULT_PET_VITALS.intimacy),
+    streakDays: intOr(raw.streakDays, DEFAULT_PET_VITALS.streakDays, 36_500),
+    lastVisitDate:
+      typeof raw.lastVisitDate === 'string' ? raw.lastVisitDate : '',
+    totalInteractions: intOr(
+      raw.totalInteractions,
+      DEFAULT_PET_VITALS.totalInteractions
+    ),
     lastFedAt: Number.isFinite(Number(raw.lastFedAt))
       ? Math.max(0, Number(raw.lastFedAt))
       : 0,
@@ -118,6 +137,7 @@ export function applyFeeding(vitals: PetVitals, now = Date.now()): FeedResult {
       satiety: roundStat(current.satiety + 30),
       mood: roundStat(current.mood + 12),
       intimacy: roundStat(current.intimacy + 2),
+      totalInteractions: current.totalInteractions + 1,
       lastFedAt: now,
       updatedAt: now
     },
@@ -131,22 +151,35 @@ export function applyPetting(vitals: PetVitals, now = Date.now()): PetVitals {
     ...current,
     mood: roundStat(current.mood + 3),
     intimacy: roundStat(current.intimacy + 0.5),
+    totalInteractions: current.totalInteractions + 1,
     updatedAt: now
   }
 }
 
 export type GreetingKind = 'first' | 'daily' | 'none'
 
+const dateKey = (date: Date): string =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-')
+
+const toDayNumber = (value: string): number | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
+}
+
 export function applyDailyGreeting(
   vitals: PetVitals,
   now = new Date()
 ): { vitals: PetVitals; kind: GreetingKind } {
   const timestamp = now.getTime()
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0')
-  ].join('-')
+  const today = dateKey(now)
   const current = decayPetVitals(vitals, timestamp)
   if (!current.firstVisitAt) {
     return {
@@ -155,23 +188,70 @@ export function applyDailyGreeting(
         ...current,
         firstVisitAt: timestamp,
         lastGreetingDate: today,
+        lastVisitDate: today,
+        streakDays: Math.max(1, current.streakDays),
         intimacy: roundStat(current.intimacy + 2),
         updatedAt: timestamp
       }
     }
   }
   if (current.lastGreetingDate !== today) {
+    const todayNumber = toDayNumber(today)
+    const lastVisitNumber = toDayNumber(current.lastVisitDate)
+    let streakDays = Math.max(1, current.streakDays)
+    if (todayNumber === null || lastVisitNumber === null) {
+      streakDays = 1
+    } else {
+      const gap = todayNumber - lastVisitNumber
+      if (gap === 1) streakDays += 1
+      else if (gap > 1) streakDays = 1
+    }
     return {
       kind: 'daily',
       vitals: {
         ...current,
         lastGreetingDate: today,
+        lastVisitDate: today,
+        streakDays,
         intimacy: roundStat(current.intimacy + 1),
         updatedAt: timestamp
       }
     }
   }
-  return { kind: 'none', vitals: current }
+  return {
+    kind: 'none',
+    vitals: {
+      ...current,
+      lastVisitDate: current.lastVisitDate || today,
+      streakDays: Math.max(1, current.streakDays)
+    }
+  }
+}
+
+const laterDate = (a: string, b: string): string => (a > b ? a : b)
+
+/** 跨设备合并：取两端更高的养成进度，亲密度与连续天数不会倒退 */
+export function mergePetVitals(
+  local: PetVitals,
+  remote: Partial<PetVitals>
+): PetVitals {
+  const a = normalizePetVitals(local)
+  const b = normalizePetVitals(remote)
+  return {
+    mood: Math.max(a.mood, b.mood),
+    satiety: Math.max(a.satiety, b.satiety),
+    intimacy: Math.max(a.intimacy, b.intimacy),
+    streakDays: Math.max(a.streakDays, b.streakDays),
+    lastVisitDate: laterDate(a.lastVisitDate, b.lastVisitDate),
+    totalInteractions: Math.max(a.totalInteractions, b.totalInteractions),
+    lastFedAt: Math.max(a.lastFedAt, b.lastFedAt),
+    lastGreetingDate: laterDate(a.lastGreetingDate, b.lastGreetingDate),
+    firstVisitAt:
+      a.firstVisitAt && b.firstVisitAt
+        ? Math.min(a.firstVisitAt, b.firstVisitAt)
+        : a.firstVisitAt || b.firstVisitAt,
+    updatedAt: Math.max(a.updatedAt, b.updatedAt)
+  }
 }
 
 export function vitalsMoodLabel(vitals: PetVitals): string {

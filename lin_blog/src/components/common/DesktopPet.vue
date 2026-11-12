@@ -28,6 +28,7 @@
                     playsinline
                     preload="auto"
                     disablepictureinpicture
+                    @error="onVideoError"
                     @ended="onEnded"
                 />
                 <video
@@ -38,8 +39,10 @@
                     playsinline
                     preload="auto"
                     disablepictureinpicture
+                    @error="onVideoError"
                     @ended="onEnded"
                 />
+                <img v-if="videoFailed" class="dsh-pet-fallback" :src="petFallback" alt="" />
             </div>
 
             <!-- 命中区：只盖住身体，透明区域不挡页面内容 -->
@@ -64,7 +67,12 @@
                         <span v-if="bubbleEmoji" class="pet-bubble-emoji" aria-hidden="true">
                             {{ bubbleEmoji }}
                         </span>
-                        <span>{{ bubble }}</span>
+                        <span class="pet-bubble-text">{{ bubble }}</span>
+                        <button v-if="bubbleAction" type="button" class="pet-bubble-action"
+                            @click.stop="followBubbleAction">
+                            {{ bubbleAction.label }}
+                            <span aria-hidden="true">→</span>
+                        </button>
                     </div>
                 </Transition>
             </div>
@@ -73,32 +81,44 @@
             <Transition name="pet-menu">
                 <div v-if="menuOpen" class="pet-menu" :class="{ 'is-below': menuBelow }"
                     :style="menuAnchorStyle" @pointerdown.stop>
-                    <button type="button" @click="goHome">
-                        <span class="pet-menu-icon">🏠</span>回到原位
-                    </button>
-                    <button type="button" @click="toggleSleep">
-                        <span class="pet-menu-icon">{{ sleepPhase ? '☀️' : '🌙' }}</span>
-                        {{ sleepPhase ? '叫醒它' : '睡一觉' }}
-                    </button>
-                    <button type="button" @click="speakNow">
-                        <span class="pet-menu-icon">💬</span>说句话
-                    </button>
-                    <button type="button" @click="playRandomAction">
-                        <span class="pet-menu-icon">🎲</span>随便演一个
-                    </button>
-                    <button type="button" @click="feedPet">
-                        <span class="pet-menu-icon">🍚</span>喂一口
-                    </button>
-                    <button type="button" @click="showStatus">
-                        <span class="pet-menu-icon">💗</span>看看状态
-                    </button>
-                    <button type="button" @click="toggleQuietHours">
-                        <span class="pet-menu-icon">{{ visitorPrefs.quietHoursEnabled ? '☀️' : '🌙' }}</span>
-                        {{ visitorPrefs.quietHoursEnabled ? '关闭安静时段' : '开启安静时段' }}
-                    </button>
-                    <button type="button" @click="hidePet">
-                        <span class="pet-menu-icon">🙈</span>仅本机隐藏
-                    </button>
+                    <div class="pet-menu-section">
+                        <span class="pet-menu-label">互动</span>
+                        <button type="button" @click="feedPet">
+                            <span class="pet-menu-icon">🍚</span>喂一口
+                        </button>
+                        <button type="button" @click="showStatus">
+                            <span class="pet-menu-icon">💗</span>看看状态
+                        </button>
+                        <button type="button" @click="speakNow">
+                            <span class="pet-menu-icon">💬</span>说句话
+                        </button>
+                        <button type="button" @click="playRandomAction">
+                            <span class="pet-menu-icon">🎲</span>随便演一个
+                        </button>
+                    </div>
+                    <div class="pet-menu-section">
+                        <span class="pet-menu-label">行为</span>
+                        <button type="button" @click="goHome">
+                            <span class="pet-menu-icon">🏠</span>回到原位
+                        </button>
+                        <button type="button" @click="toggleSleep">
+                            <span class="pet-menu-icon">{{ sleepPhase ? '☀️' : '🌙' }}</span>
+                            {{ sleepPhase ? '叫醒它' : '睡一觉' }}
+                        </button>
+                    </div>
+                    <div class="pet-menu-section">
+                        <span class="pet-menu-label">本机偏好</span>
+                        <button type="button" @click="toggleQuietHours">
+                            <span class="pet-menu-icon">{{ visitorPrefs.quietHoursEnabled ? '☀️' : '🌙' }}</span>
+                            {{ visitorPrefs.quietHoursEnabled ? '关闭安静时段' : '开启安静时段' }}
+                        </button>
+                        <button type="button" @click="hidePet">
+                            <span class="pet-menu-icon">🙈</span>仅本机隐藏
+                        </button>
+                        <button type="button" @click="resetLocalPrefs">
+                            <span class="pet-menu-icon">🔄</span>重置本机偏好
+                        </button>
+                    </div>
                 </div>
             </Transition>
             </div>
@@ -119,7 +139,7 @@
 
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
     getDesktopPetSettings,
     normalizeDesktopPetSettings,
@@ -129,6 +149,7 @@ import {
     type DesktopPetSettings,
 } from '../../utils/desktopPet'
 import { getSiteSettings } from '../../api/site'
+import petFallback from '../../assets/svg/petFallback.svg'
 import { getIncomingCommentCursor } from '../../api/comment'
 import {
     onPetReaction,
@@ -137,6 +158,7 @@ import {
     type PetReactionPayload,
 } from '../../utils/desktopPetScene'
 import {
+    DEFAULT_VISITOR_PET_PREFERENCES,
     getVisitorPetPreferences,
     isWithinQuietHours,
     onVisitorPetPreferencesChange,
@@ -154,6 +176,10 @@ import {
     vitalsMoodLabel,
     type PetVitals,
 } from '../../utils/desktopPetVitals'
+import {
+    mergeRemotePetVitals,
+    syncPetVitalsToServer,
+} from '../../utils/desktopPetSync'
 
 // dsh-pet 桌面宠物移植版（素材来自 PC2005-cloud/dsh-pet，MIT）：
 // 纯 webm 透明动画 + 随机动作链 + 拖拽甩抛物理 + 睡觉 + 碎碎念。
@@ -162,6 +188,7 @@ import {
 /** 站点设置（大小 / 活泼程度 / 漫游 / 拖拽），服务端为准，本地缓存避免首屏闪烁 */
 const petSettings = ref<DesktopPetSettings>(getDesktopPetSettings())
 const route = useRoute()
+const router = useRouter()
 const inPortal = computed(() => route.path.startsWith('/portal'))
 const inAdmin = computed(() => !inPortal.value && Boolean(route.meta.requiresAuth))
 const scopeMatches = computed(() => {
@@ -196,6 +223,7 @@ const unsubscribeVisitor = onVisitorPetPreferencesChange((next) => {
  */
 const SIZE_WIDTHS = { small: 200, medium: 300, large: 400 } as const
 const viewportWidth = ref(window.innerWidth)
+const viewportHeight = ref(window.innerHeight)
 const PET_W = computed(() => {
     const base = SIZE_WIDTHS[petSettings.value.petSize] ?? SIZE_WIDTHS.medium
     const scaled = base * (petSettings.value.petScale || 100) / 100
@@ -237,8 +265,20 @@ const canRoam = computed(
         !reducedMotion.value
 )
 
-// ===== 养成状态（仅本机） =====
+// ===== 养成状态（登录用户跨设备同步） =====
 const vitals = ref<PetVitals>(getPetVitals())
+let remoteSyncTimer: number | undefined
+watch(
+    vitals,
+    (next) => {
+        setPetVitals(next)
+        window.clearTimeout(remoteSyncTimer)
+        remoteSyncTimer = window.setTimeout(() => {
+            void syncPetVitalsToServer(next)
+        }, 1500)
+    },
+    { deep: true }
+)
 const petAriaLabel = computed(
     () =>
         `桌面宠物，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
@@ -317,6 +357,8 @@ watch(
         if (el && !el.getAttribute('src')) {
             el.src = animUrl(currentAnim)
             el.loop = false
+            videoFailed.value = false
+            fallbackNotified = false
             el.play().catch(() => {})
         }
     },
@@ -336,9 +378,16 @@ const facing = ref<'left' | 'right'>('left')
 const front = ref<0 | 1>(0)
 const dragging = ref(false)
 const menuOpen = ref(false)
+interface BubbleAction {
+    path: string
+    label: string
+}
 const bubble = ref('')
 const bubbleEmoji = ref('')
+const bubbleAction = ref<BubbleAction | null>(null)
 const sleeping = ref(false)
+const videoFailed = ref(false)
+let fallbackNotified = false
 const squashY = ref(1)
 const walking = ref(false)
 
@@ -365,19 +414,39 @@ const PET_VISIBLE_TOP = 0.172
 const PET_VISIBLE_BOTTOM = 0.083
 const BUBBLE_MAX_WIDTH = 240
 const MENU_MAX_WIDTH = 148
+const MENU_MAX_HEIGHT = 400
 
 const bubbleBelow = computed(
     () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 64
 )
-const menuBelow = computed(
-    () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 330
-)
+const menuSpace = computed(() => {
+    const above = Math.max(
+        80,
+        pos.value.y + PET_H.value * PET_VISIBLE_TOP - 16
+    )
+    const below = Math.max(
+        80,
+        viewportHeight.value -
+            (pos.value.y + PET_H.value * (1 - PET_VISIBLE_BOTTOM) + 16)
+    )
+    return { above, below }
+})
+const menuBelow = computed(() => {
+    const { above, below } = menuSpace.value
+    if (below >= MENU_MAX_HEIGHT) return true
+    if (above >= MENU_MAX_HEIGHT) return false
+    return below >= above
+})
 
 /** 气泡中心跟随角色，但整体被限制在视口内；尾巴再指回角色中心 */
 const bubbleAnchorStyle = computed<Record<string, string>>(() => {
     const maxWidth = Math.max(120, Math.min(BUBBLE_MAX_WIDTH, viewportWidth.value - 24))
     // 13px 字号下中文约 13px/字，加左右内边距；估算宽度用于贴边时精准钳制
-    const estimated = 26 + bubble.value.length * 13 + (bubbleEmoji.value ? 29 : 0)
+    const estimated =
+        26 +
+        bubble.value.length * 13 +
+        (bubbleEmoji.value ? 29 : 0) +
+        (bubbleAction.value ? 66 : 0)
     const bubbleWidth = Math.max(52, Math.min(estimated, maxWidth))
     const petCenter = pos.value.x + PET_W.value / 2
     const half = bubbleWidth / 2 + 12
@@ -399,6 +468,10 @@ const bubbleAnchorStyle = computed<Record<string, string>>(() => {
 
 const menuAnchorStyle = computed<Record<string, string>>(() => {
     const maxWidth = Math.max(148, Math.min(MENU_MAX_WIDTH, viewportWidth.value - 24))
+    const maxHeight = Math.min(
+        MENU_MAX_HEIGHT,
+        menuBelow.value ? menuSpace.value.below : menuSpace.value.above
+    )
     const petCenter = pos.value.x + PET_W.value / 2
     const half = maxWidth / 2 + 12
     const clamped = Math.min(
@@ -408,6 +481,7 @@ const menuAnchorStyle = computed<Record<string, string>>(() => {
     return {
         left: `${Math.round(clamped - pos.value.x)}px`,
         maxWidth: `${maxWidth}px`,
+        maxHeight: `${Math.round(maxHeight)}px`,
         ...(menuBelow.value
             ? { top: `${Math.round(PET_H.value * (1 - PET_VISIBLE_BOTTOM) + 8)}px` }
             : { bottom: `${Math.round(PET_H.value * (1 - PET_VISIBLE_TOP) + 8)}px` }),
@@ -424,6 +498,23 @@ const IDLE_LINES = [
     '有新留言吗？好期待',
     '困了……先眯一会儿',
 ]
+/** 按当前页面给一句更贴场景的台词；没有匹配时回落通用台词 */
+const routeIdleLine = computed(() => {
+    const path = route.path
+    if (focusMode.value) return '专心写，我不吵你～'
+    if (path.startsWith('/setting')) return '慢慢调，我等你。'
+    if (path.startsWith('/portal/gallery')) return '这张光线好漂亮。'
+    if (path.startsWith('/portal/articles')) return '这篇写得真好。'
+    if (path.startsWith('/portal/diary')) return '今天的随笔也很温柔。'
+    if (path.startsWith('/portal/messages')) return '有悄悄话就慢慢说～'
+    if (portalHome.value) return '门户这边也很热闹～'
+    return ''
+})
+const pickIdleLine = (preferContext = false) => {
+    const context = routeIdleLine.value
+    if (context && (preferContext || Math.random() < 0.5)) return context
+    return randomFrom(IDLE_LINES)
+}
 const POKE_LINES = ['呀！被抓到了', '喵？', '嘿嘿，好痒', '再来一次！', 'Q 弹 Q 弹的～']
 const SLEEP_LINES = ['zzz……', '梦到小鱼干了……', '呼……呼……']
 const WAKE_LINES = ['唔……我醒了。', '睡饱啦，主人！']
@@ -432,14 +523,33 @@ const randomFrom = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() 
 
 let bubbleTimer: number | undefined
 
-const showBubble = (text: string, duration = 3000, emoji = '', force = false) => {
+const showBubble = (
+    text: string,
+    duration = 3000,
+    emoji = '',
+    force = false,
+    action: BubbleAction | null = null
+) => {
     if (!petSettings.value.petBubbleEnabled && !force) return
     bubble.value = text
     bubbleEmoji.value = emoji
+    bubbleAction.value = action
+    const visibleFor = action ? Math.max(duration, 6000) : duration
     window.clearTimeout(bubbleTimer)
     bubbleTimer = window.setTimeout(() => {
         bubble.value = ''
-    }, duration)
+        bubbleAction.value = null
+    }, visibleFor)
+}
+
+const followBubbleAction = () => {
+    const action = bubbleAction.value
+    if (!action) return
+    markInteraction()
+    bubble.value = ''
+    bubbleAction.value = null
+    closeMenu()
+    void router.push(action.path)
 }
 
 // ===== 动画链 =====
@@ -451,6 +561,19 @@ let sleepPhase: '' | 'start' | 'loop' | 'end' = ''
 let sleepSetActive = { ...SLEEP_SET }
 
 const elementOf = (index: 0 | 1) => (index === 0 ? videoA.value : videoB.value)
+
+/** 视频加载失败：当前前台也不可用时切换到静态形象，避免透明空场 */
+const onVideoError = (event: Event) => {
+    const target = event.target as HTMLVideoElement | null
+    const frontEl = elementOf(front.value)
+    if (frontEl && frontEl !== target && frontEl.readyState >= 2 && !frontEl.error) {
+        return
+    }
+    videoFailed.value = true
+    if (fallbackNotified) return
+    fallbackNotified = true
+    showBubble('动画没加载出来，先这样陪你～', 4200, '⚠️', true)
+}
 
 /** 换源：后台槽加载新动画，就绪后再交换前台，避免黑帧 */
 const playAnim = (name: string, once: boolean) => {
@@ -466,6 +589,8 @@ const playAnim = (name: string, once: boolean) => {
         // 旧前台暂停：否则它播完会触发 ended，造成动画链双跳
         elementOf(front.value)?.pause()
         front.value = next
+        videoFailed.value = false
+        fallbackNotified = false
         const el = elementOf(next)
         if (!el) return
         el.play().catch(() => {
@@ -666,6 +791,32 @@ let grabOffset = { x: 0, y: 0 }
 let pressMoved = false
 let trail: Sample[] = []
 let flightRaf = 0
+const LONG_PRESS_MS = 520
+const LONG_PRESS_MOVE_PX = 6
+let longPressTimer: number | undefined
+let longPressTriggered = false
+
+const clearLongPress = () => {
+    if (longPressTimer !== undefined) {
+        window.clearTimeout(longPressTimer)
+        longPressTimer = undefined
+    }
+}
+
+const startLongPress = (event: PointerEvent) => {
+    clearLongPress()
+    longPressTriggered = false
+    pressMoved = false
+    if (event.pointerType === 'mouse') return
+    longPressTimer = window.setTimeout(() => {
+        longPressTimer = undefined
+        if (pressMoved) return
+        longPressTriggered = true
+        dragging.value = false
+        navigator.vibrate?.(12)
+        openMenu()
+    }, LONG_PRESS_MS)
+}
 
 const clampPos = (p: { x: number; y: number }) => ({
     x: Math.min(Math.max(p.x, 8), Math.max(window.innerWidth - PET_W.value - 8, 8)),
@@ -679,12 +830,43 @@ const onPointerDown = (event: PointerEvent) => {
         return
     }
     event.preventDefault()
+    startLongPress(event)
     // 关闭拖拽时仍保留点击回应，只是不再跟手/甩抛
     if (!petSettings.value.petDragEnabled) {
-        poke()
+        if (event.pointerType === 'mouse') {
+            poke()
+            return
+        }
+        const trackMove = (moveEvent: PointerEvent) => {
+            if (
+                Math.hypot(
+                    moveEvent.clientX - pressOrigin.x,
+                    moveEvent.clientY - pressOrigin.y
+                ) > LONG_PRESS_MOVE_PX
+            ) {
+                pressMoved = true
+                clearLongPress()
+            }
+        }
+        pressOrigin = { x: event.clientX, y: event.clientY }
+        const finishTap = () => {
+            window.removeEventListener('pointerup', finishTap)
+            window.removeEventListener('pointercancel', finishTap)
+            window.removeEventListener('pointermove', trackMove)
+            clearLongPress()
+            if (!longPressTriggered) poke()
+            longPressTriggered = false
+        }
+        window.addEventListener('pointerup', finishTap, { once: true })
+        window.addEventListener('pointercancel', finishTap, { once: true })
+        window.addEventListener('pointermove', trackMove)
         return
     }
-    ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
+    try {
+        ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
+    } catch {
+        // 合成事件或指针已释放时忽略
+    }
     stopFlight()
     stopWalk()
     if (sleepPhase) wake()
@@ -714,9 +896,10 @@ const onPointerMove = (event: PointerEvent) => {
     trail = trail.filter((s) => now - s.t <= 250)
     if (
         !pressMoved &&
-        Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) > 6
+        Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) > LONG_PRESS_MOVE_PX
     ) {
         pressMoved = true
+        clearLongPress()
     }
 }
 
@@ -757,7 +940,17 @@ const onPointerUp = (event: PointerEvent) => {
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
     window.removeEventListener('pointercancel', onPointerUp)
-    ;(event.target as HTMLElement).releasePointerCapture?.(event.pointerId)
+    try {
+        ;(event.target as HTMLElement).releasePointerCapture?.(event.pointerId)
+    } catch {
+        // 合成事件或指针已释放时忽略
+    }
+    clearLongPress()
+    if (longPressTriggered) {
+        longPressTriggered = false
+        dragging.value = false
+        return
+    }
     if (!dragging.value) return
     dragging.value = false
 
@@ -908,7 +1101,7 @@ const speakNow = () => {
         return
     }
     playAnim(pickFrom(WHISPER, currentAnim), true)
-    showBubble(randomFrom(IDLE_LINES))
+    showBubble(pickIdleLine(true))
 }
 
 const scheduleWhisper = () => {
@@ -924,7 +1117,7 @@ const scheduleWhisper = () => {
             showBubble(
                 hungry && Math.random() < 0.65
                     ? '我有点饿了……右键喂我一口？'
-                    : randomFrom(IDLE_LINES)
+                    : pickIdleLine()
             )
         }
         scheduleWhisper()
@@ -1034,6 +1227,13 @@ const hidePet = () => {
     setVisitorPetPreferences({ hidden: true })
 }
 
+const resetLocalPrefs = () => {
+    markInteraction()
+    closeMenu()
+    setVisitorPetPreferences({ ...DEFAULT_VISITOR_PET_PREFERENCES })
+    showBubble('本机偏好已恢复默认～', 3000, '🔄', true)
+}
+
 const restorePet = () => {
     markInteraction()
     setVisitorPetPreferences({ hidden: false })
@@ -1069,6 +1269,7 @@ const restorePosition = () => {
 
 const onResize = () => {
     viewportWidth.value = window.innerWidth
+    viewportHeight.value = window.innerHeight
     pos.value = clampPos(pos.value)
 }
 
@@ -1092,6 +1293,7 @@ watch(
         window.clearTimeout(whisperTimer)
         window.clearTimeout(bubbleTimer)
         bubble.value = ''
+        bubbleAction.value = null
     }
 )
 
@@ -1210,6 +1412,19 @@ const reactionMessage = (payload: PetReactionPayload): string => {
     }
 }
 
+const reactionAction = (payload: PetReactionPayload): BubbleAction | null => {
+    if (payload.actionPath) {
+        return { path: payload.actionPath, label: payload.actionLabel || '去看看' }
+    }
+    if (payload.kind === 'new-message') {
+        return { path: '/messages', label: '去看看' }
+    }
+    if (payload.kind === 'settings-saved') {
+        return { path: '/setting', label: '去设置' }
+    }
+    return null
+}
+
 const handlePetReaction = (payload: PetReactionPayload) => {
     if (!visible.value || quietNow.value || document.hidden) return
     const line = reactionMessage(payload)
@@ -1220,10 +1435,22 @@ const handlePetReaction = (payload: PetReactionPayload) => {
         const shouldWake = ['new-message', 'new-comment', 'article-published', 'gallery-published'].includes(payload.kind)
         if (!shouldWake) return
         wake()
-        showBubble(line, 3600, REACTION_EMOJI[payload.kind] || '')
+        showBubble(
+            line,
+            3600,
+            REACTION_EMOJI[payload.kind] || '',
+            false,
+            reactionAction(payload)
+        )
         return
     }
-    showBubble(line, 3600, REACTION_EMOJI[payload.kind] || '')
+    showBubble(
+        line,
+        3600,
+        REACTION_EMOJI[payload.kind] || '',
+        false,
+        reactionAction(payload)
+    )
     if (dragging.value) return
     const pool = REACTION_ACTIONS[payload.kind]
     if (pool?.length) playAnim(pickFrom(pool, currentAnim), true)
@@ -1308,7 +1535,22 @@ const pollIncomingComments = async () => {
             diary: Number(result.data.latest?.diary) || 0,
         })
         if (result.data.newCount > 0) {
-            handlePetReaction({ kind: 'new-comment', count: result.data.newCount })
+            const articleTarget = result.data.targets?.article
+            const diaryTarget = result.data.targets?.diary
+            let actionPath: string | undefined
+            if (articleTarget?.id) {
+                actionPath =
+                    articleTarget.classify === 'image'
+                        ? `/portal/gallery?open=${articleTarget.id}`
+                        : `/portal/articles?open=${articleTarget.id}`
+            } else if (diaryTarget?.id) {
+                actionPath = `/portal/diary?open=${diaryTarget.id}`
+            }
+            handlePetReaction({
+                kind: 'new-comment',
+                count: result.data.newCount,
+                ...(actionPath ? { actionPath, actionLabel: '去看看' } : {}),
+            })
         }
     } catch {
         // 接口不可用时下一轮再试
@@ -1420,21 +1662,23 @@ onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange)
     startCommentPolling()
 
-    // 每日首次问候 / 第一次见面
-    const greeting = applyDailyGreeting(vitals.value)
-    vitals.value = greeting.vitals
-    setPetVitals(vitals.value)
-    if (greeting.kind !== 'none' && !quietNow.value) {
-        window.setTimeout(() => {
-            showBubble(
-                greeting.kind === 'first'
-                    ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
-                    : `${timeOfDayGreeting()}～今天也一起加油！`,
-                4800,
-                greeting.kind === 'first' ? '🐾' : '☀️'
-            )
-        }, 1200)
-    }
+    // 登录用户先合并远端养成进度，再做每日问候；匿名访客只读本机
+    void (async () => {
+        const merged = await mergeRemotePetVitals(getPetVitals())
+        const greeting = applyDailyGreeting(merged)
+        vitals.value = greeting.vitals
+        if (greeting.kind !== 'none' && !quietNow.value) {
+            window.setTimeout(() => {
+                showBubble(
+                    greeting.kind === 'first'
+                        ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
+                        : `${timeOfDayGreeting()}～今天也一起加油！`,
+                    4800,
+                    greeting.kind === 'first' ? '🐾' : '☀️'
+                )
+            }, 1200)
+        }
+    })()
     if (quietNow.value) {
         sleep()
         showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
@@ -1463,6 +1707,7 @@ onBeforeUnmount(() => {
     unsubscribeVisitor()
     unsubscribeReaction()
     unsubscribeCommand()
+    clearLongPress()
     stopCommentPolling()
     stopWalk()
     stopFlight()
@@ -1471,6 +1716,8 @@ onBeforeUnmount(() => {
     if (squashRaf) cancelAnimationFrame(squashRaf)
     window.clearTimeout(bubbleTimer)
     window.clearTimeout(whisperTimer)
+    window.clearTimeout(remoteSyncTimer)
+    void syncPetVitalsToServer(vitals.value)
     window.clearInterval(sleepTalkTimer)
     window.removeEventListener('resize', onResize)
     window.removeEventListener('pointermove', onPointerMove)
@@ -1549,6 +1796,17 @@ onBeforeUnmount(() => {
     }
 }
 
+.dsh-pet-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.12));
+}
+
 .dsh-pet-hit {
     position: absolute;
     pointer-events: auto;
@@ -1579,6 +1837,7 @@ onBeforeUnmount(() => {
     position: relative;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 7px;
     max-width: 100%;
     padding: 8px 12px;
@@ -1631,6 +1890,32 @@ onBeforeUnmount(() => {
     line-height: 1;
 }
 
+.pet-bubble-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pet-bubble-action {
+    flex: none;
+    padding: 2px 9px;
+    border: 1px solid var(--pet-popover-line);
+    border-radius: 999px;
+    background: var(--admin-accent-soft, var(--portal-accent-soft, rgba(80, 120, 255, 0.12)));
+    color: var(--portal-accent, var(--pcolor, #4f7cff));
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    cursor: pointer;
+    pointer-events: auto;
+
+    &:hover,
+    &:focus-visible {
+        filter: brightness(1.05);
+        outline: none;
+        box-shadow: 0 0 0 2px var(--portal-accent-soft, rgba(80, 120, 255, 0.18));
+    }
+}
+
 .pet-menu {
     position: absolute;
     display: flex;
@@ -1638,7 +1923,7 @@ onBeforeUnmount(() => {
     gap: 2px;
     min-width: 148px;
     max-width: 100%;
-    max-height: min(360px, calc(100vh - 120px));
+    max-height: min(400px, calc(100vh - 96px));
     padding: 6px;
     border-radius: 12px;
     background: var(--admin-surface, var(--portal-surface-strong, var(--bgColor1)));
@@ -1650,6 +1935,25 @@ onBeforeUnmount(() => {
     z-index: 4;
     overflow-y: auto;
     scrollbar-width: thin;
+
+    .pet-menu-section {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .pet-menu-section + .pet-menu-section {
+        margin-top: 4px;
+        padding-top: 5px;
+        border-top: 1px solid var(--admin-line, var(--portal-surface-border, rgba(0, 0, 0, 0.08)));
+    }
+
+    .pet-menu-label {
+        padding: 3px 10px 2px;
+        color: var(--admin-muted, var(--portal-text-tertiary, rgba(0, 0, 0, 0.45)));
+        font-size: 11px;
+        letter-spacing: 0.08em;
+    }
 
     button {
         display: flex;

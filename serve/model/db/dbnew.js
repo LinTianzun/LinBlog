@@ -665,6 +665,23 @@ const tablesSql = {
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站点级展示设置';`
+
+  ,pet_state: `CREATE TABLE IF NOT EXISTS pet_state(
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    mood TINYINT UNSIGNED NOT NULL DEFAULT 70 COMMENT '心情（0-100）',
+    satiety TINYINT UNSIGNED NOT NULL DEFAULT 60 COMMENT '饱腹（0-100）',
+    intimacy TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '亲密度（0-100）',
+    streak_days INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '连续陪伴天数',
+    last_visit_date DATE NULL COMMENT '最近访问日期',
+    total_interactions INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计互动次数',
+    last_fed_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最近喂食时间（毫秒）',
+    last_greeting_date DATE NULL COMMENT '最近问候日期',
+    first_visit_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '首次访问时间（毫秒）',
+    client_updated_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户端状态更新时间（毫秒）',
+    server_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户桌面宠物养成状态';`
 };
 
 // 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
@@ -1646,7 +1663,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }

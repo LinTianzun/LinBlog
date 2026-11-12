@@ -389,13 +389,54 @@ async function getIncomingCommentCursor(userId, articleAfter = 0, diaryAfter = 0
         [diaryAfter, userId, userId]
     )
 
+    const articleFresh = Number(articleResult?.fresh || 0)
+    const diaryFresh = Number(diaryResult?.fresh || 0)
+    const targets = {}
+
+    if (articleFresh > 0) {
+        const [target] = await query(
+            `SELECT c.article_id AS id, a.classify, a.title
+             FROM comment c
+             JOIN article a ON c.article_id = a.id
+             WHERE a.user_id = ? AND c.user_id <> ? AND c.status = 1 AND c.id > ?
+             ORDER BY c.id DESC
+             LIMIT 1`,
+            [userId, userId, articleAfter]
+        )
+        if (target) {
+            targets.article = {
+                id: Number(target.id),
+                classify: target.classify || 'article',
+                title: target.title || ''
+            }
+        }
+    }
+
+    if (diaryFresh > 0) {
+        const [target] = await query(
+            `SELECT dc.diary_id AS id, d.title
+             FROM diary_comment dc
+             JOIN diary d ON dc.diary_id = d.id
+             WHERE d.user_id = ? AND dc.user_id <> ? AND dc.status = 1 AND dc.id > ?
+             ORDER BY dc.id DESC
+             LIMIT 1`,
+            [userId, userId, diaryAfter]
+        )
+        if (target) {
+            targets.diary = {
+                id: Number(target.id),
+                title: target.title || ''
+            }
+        }
+    }
+
     return {
         latest: {
             article: Number(articleResult?.latest || 0),
             diary: Number(diaryResult?.latest || 0)
         },
-        newCount:
-            Number(articleResult?.fresh || 0) + Number(diaryResult?.fresh || 0)
+        newCount: articleFresh + diaryFresh,
+        targets: Object.keys(targets).length ? targets : null
     }
 }
 

@@ -63,6 +63,17 @@ export interface IncomingCommentCursor {
     diary: number;
   };
   newCount: number;
+  targets?: {
+    article?: {
+      id: number;
+      classify?: "article" | "image" | null;
+      title?: string;
+    };
+    diary?: {
+      id: number;
+      title?: string;
+    };
+  } | null;
 }
 
 // 桌宠新评论提醒：只回游标与新增条数，不拉整页评论

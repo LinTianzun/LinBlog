@@ -16,6 +16,9 @@ export interface PetReactionPayload {
   kind: PetReactionKind
   message?: string
   count?: number
+  /** 气泡旁的操作按钮，点击后跳转到对应页面 */
+  actionPath?: string
+  actionLabel?: string
 }
 
 const REACTION_EVENT = 'linblog:pet-reaction'
@@ -23,7 +26,7 @@ const REACTION_EVENT = 'linblog:pet-reaction'
 /** 业务页面只负责广播发生了什么，具体动作与文案由桌宠决定 */
 export function emitPetReaction(
   kind: PetReactionKind,
-  options: { message?: string; count?: number } = {}
+  options: Omit<PetReactionPayload, 'kind'> = {}
 ): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(

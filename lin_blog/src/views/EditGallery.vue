@@ -604,7 +604,12 @@ const submitGallery = async (action: 'save' | 'publish' | 'withdraw'): Promise<v
             clearLocalDraft('gallery-new')
             localDraftAvailable.value = false
             showMessage('success', action === 'publish' ? '图库已发布' : '图库已保存为草稿')
-            if (action === 'publish') emitPetReaction('gallery-published')
+            if (action === 'publish') {
+                emitPetReaction('gallery-published', {
+                    actionPath: `/portal/gallery?open=${nextId}`,
+                    actionLabel: '去看看',
+                })
+            }
             //  保存后留在当前页并进入编辑态，让用户看到最新状态标识
             await router.replace(`/editgallery/${nextId}`)
             await loadGallery()
@@ -628,7 +633,10 @@ const submitGallery = async (action: 'save' | 'publish' | 'withdraw'): Promise<v
                 throw new Error(published.message || '图库发布失败')
             }
             showMessage('success', '图库已发布')
-            emitPetReaction('gallery-published')
+            emitPetReaction('gallery-published', {
+                actionPath: `/portal/gallery?open=${id}`,
+                actionLabel: '去看看',
+            })
             await loadGallery()
             return
         }
@@ -665,7 +673,10 @@ async function publishCurrentWorkflow(): Promise<void> {
         if (result.code !== 200) throw new Error(result.message || '发布失败')
         previewOpen.value = false
         showMessage('success', '当前工作稿已发布')
-        emitPetReaction('gallery-published')
+        emitPetReaction('gallery-published', {
+            actionPath: `/portal/gallery?open=${articleId.value}`,
+            actionLabel: '去看看',
+        })
         await loadGallery()
     } catch (error) {
         showMessage('error', describeError(error, '发布失败，请稍后重试'))
