@@ -648,6 +648,23 @@ const tablesSql = {
     INDEX idx_db_backup_kind_status (kind, status),
     INDEX idx_db_backup_created (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库备份与演练历史';`
+
+  ,site_setting: `CREATE TABLE IF NOT EXISTS site_setting(
+    id TINYINT UNSIGNED NOT NULL,
+    desktop_pet_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否在全站显示桌面宠物',
+    pet_size ENUM('small', 'medium', 'large') NOT NULL DEFAULT 'medium' COMMENT '桌宠大小档位',
+    pet_scale TINYINT UNSIGNED NOT NULL DEFAULT 100 COMMENT '桌宠尺寸缩放百分比（60-200）',
+    pet_activity ENUM('quiet', 'normal', 'lively') NOT NULL DEFAULT 'normal' COMMENT '桌宠活泼程度',
+    pet_roaming_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '桌宠是否允许自主漫游',
+    pet_drag_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '桌宠是否允许拖拽甩抛',
+    pet_bubble_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '桌宠是否显示气泡与碎碎念',
+    pet_opacity TINYINT UNSIGNED NOT NULL DEFAULT 100 COMMENT '桌宠不透明度百分比（40-100）',
+    pet_auto_sleep_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '桌宠是否无操作自动入睡',
+    pet_home_corner ENUM('left', 'right') NOT NULL DEFAULT 'right' COMMENT '桌宠默认停靠角落',
+    pet_scope ENUM('all', 'portal', 'admin') NOT NULL DEFAULT 'all' COMMENT '桌宠显示范围',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站点级展示设置';`
 };
 
 // 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
@@ -1629,7 +1646,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2107,6 +2124,56 @@ async function ensureDbBackupLogSchema(exec = query) {
   await exec(tablesSql.db_backup_log);
 }
 
+// 站点展示设置：桌宠开关之外的分档配置。
+// 存量库可能只有 desktop_pet_enabled，逐列补齐；新库由建表语句直接带上。
+async function ensureSiteSettingSchema(exec = query) {
+  await exec(tablesSql.site_setting);
+  await ensureColumn(exec, 'site_setting', 'desktop_pet_enabled', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '是否在全站显示桌面宠物'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_size', {
+    definition: "ENUM('small', 'medium', 'large') NOT NULL DEFAULT 'medium'",
+    comment: '桌宠大小档位'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_activity', {
+    definition: "ENUM('quiet', 'normal', 'lively') NOT NULL DEFAULT 'normal'",
+    comment: '桌宠活泼程度'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_roaming_enabled', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '桌宠是否允许自主漫游'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_drag_enabled', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '桌宠是否允许拖拽甩抛'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_scale', {
+    definition: 'TINYINT UNSIGNED NOT NULL DEFAULT 100',
+    comment: '桌宠尺寸缩放百分比（60-200）'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_bubble_enabled', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '桌宠是否显示气泡与碎碎念'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_opacity', {
+    definition: 'TINYINT UNSIGNED NOT NULL DEFAULT 100',
+    comment: '桌宠不透明度百分比（40-100）'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_auto_sleep_enabled', {
+    definition: 'TINYINT(1) NOT NULL DEFAULT 1',
+    comment: '桌宠是否无操作自动入睡'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_home_corner', {
+    definition: "ENUM('left', 'right') NOT NULL DEFAULT 'right'",
+    comment: '桌宠默认停靠角落'
+  });
+  await ensureColumn(exec, 'site_setting', 'pet_scope', {
+    definition: "ENUM('all', 'portal', 'admin') NOT NULL DEFAULT 'all'",
+    comment: '桌宠显示范围'
+  });
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2468,6 +2535,15 @@ const migrations = [
     up: async (exec = query) => {
       await exec(tablesSql.ai_prompt_history);
     }
+  },
+  {
+    version: '20261112_site_setting',
+    up: ensureSiteSettingSchema
+  },
+  {
+    // 桌宠偏好扩容：已应用过 site_setting 的库需要再跑一次列级补全
+    version: '20261112_pet_preferences',
+    up: ensureSiteSettingSchema
   }
 ];
 

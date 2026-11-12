@@ -212,6 +212,166 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="set-subhead">
+                        <span class="set-label">桌面宠物</span>
+                        <yk-text type="tertiary">门户与后台通用，可细调范围、尺寸与行为</yk-text>
+                    </div>
+
+                    <div class="set-card set-pet">
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>显示桌面宠物</strong>
+                                <p>关闭后门户与后台都不再显示；重新打开即恢复，拖到的位置会记住。</p>
+                            </div>
+                            <yk-switch v-model="petSettings.desktopPetEnabled" :checked-value="true"
+                                :unchecked-value="false" :disabled="!canEditPet" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>大小</strong>
+                                <p>桌宠在页面上的显示尺寸，移动端会自动按比例缩小。</p>
+                            </div>
+                            <div class="set-mode-switch">
+                                <button v-for="option in sizeOptions" :key="option.value" type="button"
+                                    class="set-mode" :class="{ 'is-active': petSettings.petSize === option.value }"
+                                    :disabled="!canEditPet" @click="petSettings.petSize = option.value">
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>尺寸微调</strong>
+                                <p>在大小档位基础上继续缩放，觉得还不够大就拉到 200%。</p>
+                            </div>
+                            <div class="set-pet-range">
+                                <input v-model.number="petSettings.petScale" type="range" min="60" max="200"
+                                    step="5" :disabled="!canEditPet" aria-label="桌宠尺寸缩放百分比" />
+                                <span class="set-pet-range-value">{{ petSettings.petScale }}%</span>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>活泼程度</strong>
+                                <p>影响随机动作与碎碎念的频率：安静更少打扰，活泼更爱折腾。</p>
+                            </div>
+                            <div class="set-mode-switch">
+                                <button v-for="option in activityOptions" :key="option.value" type="button"
+                                    class="set-mode"
+                                    :class="{ 'is-active': petSettings.petActivity === option.value }"
+                                    :disabled="!canEditPet" @click="petSettings.petActivity = option.value">
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>气泡与碎碎念</strong>
+                                <p>关闭后不再弹对话气泡，也不会随机自言自语。</p>
+                            </div>
+                            <yk-switch v-model="petSettings.petBubbleEnabled" :checked-value="true"
+                                :unchecked-value="false" :disabled="!canEditPet" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>允许自主漫游</strong>
+                                <p>关闭后宠物不再四处走动，只做原地动作。</p>
+                            </div>
+                            <yk-switch v-model="petSettings.petRoamingEnabled" :checked-value="true"
+                                :unchecked-value="false" :disabled="!canEditPet" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>允许拖拽甩抛</strong>
+                                <p>关闭后点击仍会回应，但不能拖动或甩出宠物。</p>
+                            </div>
+                            <yk-switch v-model="petSettings.petDragEnabled" :checked-value="true"
+                                :unchecked-value="false" :disabled="!canEditPet" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>不透明度</strong>
+                                <p>调低后桌宠更“幽灵”，不想太抢眼时可以压到 40%。</p>
+                            </div>
+                            <div class="set-pet-range">
+                                <input v-model.number="petSettings.petOpacity" type="range" min="40" max="100"
+                                    step="5" :disabled="!canEditPet" aria-label="桌宠不透明度百分比" />
+                                <span class="set-pet-range-value">{{ petSettings.petOpacity }}%</span>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>无操作自动入睡</strong>
+                                <p>三分钟没有互动就自己睡一觉，点击或拖拽会把它叫醒。</p>
+                            </div>
+                            <yk-switch v-model="petSettings.petAutoSleepEnabled" :checked-value="true"
+                                :unchecked-value="false" :disabled="!canEditPet" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>显示范围</strong>
+                                <p>控制桌宠出现在门户、后台，还是两边都出现。</p>
+                            </div>
+                            <div class="set-mode-switch">
+                                <button v-for="option in scopeOptions" :key="option.value" type="button"
+                                    class="set-mode"
+                                    :class="{ 'is-active': petSettings.petScope === option.value }"
+                                    :disabled="!canEditPet" @click="petSettings.petScope = option.value">
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>默认停靠角落</strong>
+                                <p>「回到原位」和首次出现时的位置，门户与后台共用。</p>
+                            </div>
+                            <div class="set-mode-switch">
+                                <button v-for="option in cornerOptions" :key="option.value" type="button"
+                                    class="set-mode"
+                                    :class="{ 'is-active': petSettings.petHomeCorner === option.value }"
+                                    :disabled="!canEditPet" @click="petSettings.petHomeCorner = option.value">
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row set-pet-actions">
+                            <div class="set-pet-copy">
+                                <strong>立即操作</strong>
+                                <p>不用等随机动作，直接让桌宠回应一次；只影响当前浏览器。</p>
+                            </div>
+                            <div class="set-pet-action-buttons">
+                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
+                                    @click="sendDesktopPetCommand('home')">
+                                    回到原位
+                                </yk-button>
+                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
+                                    @click="sendDesktopPetCommand('speak')">
+                                    说句话
+                                </yk-button>
+                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
+                                    @click="sendDesktopPetCommand('sleep')">
+                                    睡一觉
+                                </yk-button>
+                                <yk-button type="secondary" size="s" :disabled="!petSettings.desktopPetEnabled"
+                                    @click="sendDesktopPetCommand('wake')">
+                                    叫醒它
+                                </yk-button>
+                            </div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- ── 我的权限 ── -->
@@ -336,7 +496,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo, changePassword, updateUserAvatar, type UserInfo } from '../api/user'
 import { getFileStorageStatus, type FileStorageStatus } from '../api/file'
@@ -352,6 +512,15 @@ import {
     type EdgeLevel
 } from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
+import {
+    broadcastDesktopPetSettings,
+    getDesktopPetSettings,
+    normalizeDesktopPetSettings,
+    setDesktopPetSettings,
+    sendDesktopPetCommand,
+    type DesktopPetSettings
+} from '../utils/desktopPet'
+import { getSiteSettings, updateSiteSettings } from '../api/site'
 import { useSessionStore } from '../store/session.ts'
 import {
     IconAvatarFill,
@@ -407,6 +576,96 @@ const syncActiveSection = () => {
 
 // ── 主题 ──
 const activePresetId = ref(getStoredPresetId())
+// 桌宠设置：服务端为准，localStorage 只做首屏缓存，保存后广播给全站桌宠组件
+const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
+const canEditPet = computed(() => session.can('permission.edit'))
+
+const sizeOptions = [
+    { value: 'small' as const, label: '小' },
+    { value: 'medium' as const, label: '中' },
+    { value: 'large' as const, label: '大' }
+]
+const activityOptions = [
+    { value: 'quiet' as const, label: '安静' },
+    { value: 'normal' as const, label: '正常' },
+    { value: 'lively' as const, label: '活泼' }
+]
+const scopeOptions = [
+    { value: 'all' as const, label: '全站' },
+    { value: 'portal' as const, label: '仅门户' },
+    { value: 'admin' as const, label: '仅后台' }
+]
+const cornerOptions = [
+    { value: 'right' as const, label: '右下' },
+    { value: 'left' as const, label: '左下' }
+]
+
+const snapshotPetSettings = (): DesktopPetSettings => ({ ...petSettings })
+const isSamePetSettings = (a: DesktopPetSettings, b: DesktopPetSettings) =>
+    a.desktopPetEnabled === b.desktopPetEnabled &&
+    a.petSize === b.petSize &&
+    a.petScale === b.petScale &&
+    a.petActivity === b.petActivity &&
+    a.petRoamingEnabled === b.petRoamingEnabled &&
+    a.petDragEnabled === b.petDragEnabled &&
+    a.petBubbleEnabled === b.petBubbleEnabled &&
+    a.petOpacity === b.petOpacity &&
+    a.petAutoSleepEnabled === b.petAutoSleepEnabled &&
+    a.petHomeCorner === b.petHomeCorner &&
+    a.petScope === b.petScope
+
+let lastSavedPetSettings: DesktopPetSettings = { ...petSettings }
+let petSaveTimer: number | undefined
+let petSaving = false
+let petRevision = 0
+
+const flushPetSettings = async () => {
+    if (petSaving) return
+    const payload = snapshotPetSettings()
+    if (isSamePetSettings(payload, lastSavedPetSettings)) return
+    const revision = petRevision
+    petSaving = true
+    try {
+        const res = await updateSiteSettings(payload)
+        if (res?.code !== 200) throw new Error(res?.message || '保存失败')
+        lastSavedPetSettings = payload
+        setDesktopPetSettings(payload)
+        proxy?.$message?.({ type: 'success', message: '桌宠设置已保存' })
+    } catch {
+        // 没有新改动时回滚到上一次保存成功的状态；有新改动则保留并重试
+        if (petRevision === revision) {
+            Object.assign(petSettings, lastSavedPetSettings)
+            broadcastDesktopPetSettings(lastSavedPetSettings)
+        }
+        proxy?.$message?.({ type: 'error', message: '桌宠设置保存失败，请稍后重试' })
+    } finally {
+        petSaving = false
+        if (
+            petRevision !== revision &&
+            !isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)
+        ) {
+            window.clearTimeout(petSaveTimer)
+            petSaveTimer = window.setTimeout(() => void flushPetSettings(), 120)
+        }
+    }
+}
+
+watch(
+    petSettings,
+    () => {
+        if (!canEditPet.value) {
+            Object.assign(petSettings, lastSavedPetSettings)
+            return
+        }
+        if (isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)) return
+        petRevision++
+        // 先本地广播，拖动滑块时桌宠实时变化；保存成功后再落盘
+        broadcastDesktopPetSettings(snapshotPetSettings())
+        window.clearTimeout(petSaveTimer)
+        petSaveTimer = window.setTimeout(() => void flushPetSettings(), 350)
+    },
+    { deep: true }
+)
 const activePreset = computed(() =>
     themePresets.find(p => p.id === activePresetId.value) || themePresets[0]
 )
@@ -820,10 +1079,26 @@ const handleLogout = () => {
 onMounted(loadProfile)
 onMounted(() => void loadStorage())
 onMounted(() => void refreshUploadUrl())
+onMounted(async () => {
+    // 设置以服务端为准；读取失败时保留本地缓存值
+    try {
+        const res = await getSiteSettings()
+        if (res?.code === 200 && res.data) {
+            // 先更新基准值再写入表单：watcher 看到两者一致，不会误触发保存
+            const next = normalizeDesktopPetSettings(res.data)
+            lastSavedPetSettings = { ...next }
+            Object.assign(petSettings, next)
+            setDesktopPetSettings(next)
+        }
+    } catch {
+        // 忽略：沿用缓存
+    }
+})
 onMounted(() => window.addEventListener('theme:preset-change', onPresetChange))
 onMounted(() => window.addEventListener('scroll', syncActiveSection, { passive: true }))
 onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChange))
 onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
+onUnmounted(() => window.clearTimeout(petSaveTimer))
 </script>
 
 <style lang="less" scoped>
@@ -1340,6 +1615,77 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     margin-top: @space-m;
 }
 
+.set-pet {
+    display: flex;
+    flex-direction: column;
+    gap: @space-m;
+}
+
+.set-pet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: @space-l;
+
+    & + & {
+        padding-top: @space-m;
+        border-top: 1px solid var(--admin-line, var(--gray1));
+    }
+}
+
+.set-pet-range {
+    display: flex;
+    width: 250px;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+
+    input[type='range'] {
+        width: 190px;
+        accent-color: var(--pcolor);
+        cursor: pointer;
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+    }
+}
+
+.set-pet-range-value {
+    min-width: 42px;
+    color: var(--font-color2);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.set-pet-action-buttons {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.set-pet-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    strong {
+        font-size: 14px;
+        color: var(--font-color1);
+    }
+
+    p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--font-color3);
+    }
+}
+
 .set-themes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
@@ -1679,6 +2025,25 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     .set-danger {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .set-pet-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .set-pet-range {
+        width: 100%;
+
+        input[type='range'] {
+            width: auto;
+            flex: 1;
+        }
+    }
+
+    .set-pet-action-buttons {
+        justify-content: flex-start;
     }
 }
 

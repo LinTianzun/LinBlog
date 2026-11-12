@@ -27,6 +27,7 @@ declare module 'vue' {
     ContentStatBar: typeof import('./src/components/content/ContentStatBar.vue')['default']
     DatabaseBackupPanel: typeof import('./src/components/common/DatabaseBackupPanel.vue')['default']
     Datas: typeof import('./src/components/overview/datas.vue')['default']
+    DesktopPet: typeof import('./src/components/common/DesktopPet.vue')['default']
     Diary: typeof import('./src/components/diary/diary.vue')['default']
     DiaryCommentList: typeof import('./src/components/diary/diaryCommentList.vue')['default']
     DiaryDetailView: typeof import('./src/components/diary/diaryDetailView.vue')['default']

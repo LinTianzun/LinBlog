@@ -45,4 +45,6 @@ module.exports = (app) => {
     require('./backup')(app)
     //  门户 SEO：站点地图、robots 与 RSS
     require('./seo')(app)
+    // 站点级展示设置：桌面宠物开关（公开读 / 管理写）
+    require('./site')(app)
 }
