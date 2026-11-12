@@ -8,8 +8,10 @@ import {
   decayPetVitals,
   mergePetVitals,
   normalizePetVitals,
+  vitalsCompanionTitle,
   vitalsIntimacyLevel,
   vitalsMoodLabel,
+  vitalsNextMilestone,
 } from '../src/utils/desktopPetVitals.ts'
 
 const HOUR = 3_600_000
@@ -155,6 +157,57 @@ test('跨设备合并取较高进度并保留更早的首次访问时间', () =>
   assert.equal(merged.totalInteractions, 8)
   assert.equal(merged.lastVisitDate, '2026-11-12')
   assert.equal(merged.firstVisitAt, 1_000)
+})
+
+test('陪伴称号随连续天数与累计互动增长', () => {
+  assert.equal(vitalsCompanionTitle({ ...DEFAULT_PET_VITALS }), '初来乍到')
+  assert.equal(
+    vitalsCompanionTitle({ ...DEFAULT_PET_VITALS, streakDays: 3 }),
+    '常来串门'
+  )
+  assert.equal(
+    vitalsCompanionTitle({ ...DEFAULT_PET_VITALS, streakDays: 7 }),
+    '熟悉的朋友'
+  )
+  assert.equal(
+    vitalsCompanionTitle({ ...DEFAULT_PET_VITALS, streakDays: 30 }),
+    '形影不离'
+  )
+  assert.equal(
+    vitalsCompanionTitle({ ...DEFAULT_PET_VITALS, streakDays: 60 }),
+    '灵魂伙伴'
+  )
+  assert.equal(
+    vitalsCompanionTitle({
+      ...DEFAULT_PET_VITALS,
+      totalInteractions: 600,
+    }),
+    '形影不离'
+  )
+})
+
+test('下一个里程碑选择完成比例最近的目标', () => {
+  const first = vitalsNextMilestone({ ...DEFAULT_PET_VITALS })
+  assert.equal(first?.kind, 'streak')
+  assert.equal(first?.target, 3)
+
+  const nearInteraction = vitalsNextMilestone({
+    ...DEFAULT_PET_VITALS,
+    streakDays: 6,
+    totalInteractions: 45,
+  })
+  assert.equal(nearInteraction?.kind, 'interaction')
+  assert.equal(nearInteraction?.target, 50)
+  assert.equal(nearInteraction?.remaining, 5)
+
+  assert.equal(
+    vitalsNextMilestone({
+      ...DEFAULT_PET_VITALS,
+      streakDays: 365,
+      totalInteractions: 5000,
+    }),
+    null
+  )
 })
 
 test('心情文案与亲密度等级保持稳定', () => {

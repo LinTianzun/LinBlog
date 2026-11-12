@@ -425,13 +425,20 @@
                             <div class="set-pet-copy">
                                 <strong>养成状态</strong>
                                 <p>
-                                    心情{{ vitalsMoodLabel(petVitals) }} · 饱腹 {{ petVitals.satiety }} ·
-                                    亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；
+                                    称号「{{ petTitle }}」 · 心情{{ vitalsMoodLabel(petVitals) }} ·
+                                    饱腹 {{ petVitals.satiety }} · 亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；
                                     连续陪伴 {{ petVitals.streakDays }} 天，累计互动
                                     {{ petVitals.totalInteractions }} 次。
+                                    <template v-if="petMilestone">
+                                        下一个目标：{{ petMilestone.label }}
+                                        {{ petMilestone.target }}{{ petMilestone.kind === 'streak' ? ' 天' : ' 次' }}，
+                                        还差 {{ petMilestone.remaining }}。
+                                    </template>
+                                    <template v-else>所有陪伴目标都完成啦。</template>
                                 </p>
                             </div>
                             <div class="set-pet-vitals">
+                                <span>称号 {{ petTitle }}</span>
                                 <span>心情 {{ petVitals.mood }}</span>
                                 <span>饱腹 {{ petVitals.satiety }}</span>
                                 <span>连续 {{ petVitals.streakDays }} 天</span>
@@ -614,8 +621,10 @@ import {
     applyFeeding,
     getPetVitals,
     setPetVitals,
+    vitalsCompanionTitle,
     vitalsIntimacyLevel,
     vitalsMoodLabel,
+    vitalsNextMilestone,
     type PetVitals,
 } from '../utils/desktopPetVitals'
 import {
@@ -685,6 +694,8 @@ const canEditPet = computed(() => session.can('permission.edit'))
 // 访客本机偏好与养成状态：不影响服务器配置，所有登录用户都可调整
 const visitorPrefs = reactive<VisitorPetPreferences>(getVisitorPetPreferences())
 const petVitals = ref<PetVitals>(getPetVitals())
+const petTitle = computed(() => vitalsCompanionTitle(petVitals.value))
+const petMilestone = computed(() => vitalsNextMilestone(petVitals.value))
 const quietActive = computed(() => isWithinQuietHours(visitorPrefs))
 const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
     Object.assign(visitorPrefs, next)

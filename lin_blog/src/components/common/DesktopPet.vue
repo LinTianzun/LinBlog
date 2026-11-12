@@ -171,9 +171,13 @@ import {
     applyFeeding,
     applyPetting,
     getPetVitals,
+    mergePetVitals,
+    normalizePetVitals,
     setPetVitals,
+    vitalsCompanionTitle,
     vitalsIntimacyLevel,
     vitalsMoodLabel,
+    vitalsNextMilestone,
     type PetVitals,
 } from '../../utils/desktopPetVitals'
 import {
@@ -268,6 +272,8 @@ const canRoam = computed(
 // ===== 养成状态（登录用户跨设备同步） =====
 const vitals = ref<PetVitals>(getPetVitals())
 let remoteSyncTimer: number | undefined
+let authRefreshTimer: number | undefined
+let greetingReady = false
 watch(
     vitals,
     (next) => {
@@ -281,7 +287,7 @@ watch(
 )
 const petAriaLabel = computed(
     () =>
-        `桌面宠物，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
+        `桌面宠物，${vitalsCompanionTitle(vitals.value)}，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
         `饱腹 ${vitals.value.satiety}，亲密度 Lv.${vitalsIntimacyLevel(vitals.value)}`
 )
 
@@ -1192,13 +1198,20 @@ const showStatus = () => {
     markInteraction()
     closeMenu()
     const current = vitals.value
+    const milestone = vitalsNextMilestone(current)
     const detail = [
+        `称号 ${vitalsCompanionTitle(current)}`,
         `心情 ${vitalsMoodLabel(current)}`,
         `饱腹 ${current.satiety}`,
         `亲密度 Lv.${vitalsIntimacyLevel(current)}`,
     ].join(' · ')
+    const nextLine = milestone
+        ? `；下一个目标：${milestone.label} ${milestone.target}${milestone.kind === 'streak' ? ' 天' : ' 次'}，还差 ${milestone.remaining}`
+        : '；所有陪伴目标都完成啦'
     showBubble(
-        current.satiety < 20 ? `${detail}，喂我一口吧` : detail,
+        current.satiety < 20
+            ? `${detail}${nextLine}。先喂我一口吧`
+            : `${detail}${nextLine}`,
         5200,
         '💗',
         true
@@ -1336,6 +1349,26 @@ const markInteraction = () => {
     lastInteractionAt = Date.now()
 }
 
+/** 合并当前账号的远端进度并结算每日问候；登录/退出后也会重跑 */
+const settleVitals = async (announce: boolean) => {
+    const merged = await mergeRemotePetVitals(getPetVitals())
+    const greeting = applyDailyGreeting(merged)
+    vitals.value = greeting.vitals
+    greetingReady = true
+    if (announce && greeting.kind !== 'none' && !quietNow.value) {
+        window.setTimeout(() => {
+            showBubble(
+                greeting.kind === 'first'
+                    ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
+                    : `${timeOfDayGreeting()}～今天也一起加油！`,
+                4800,
+                greeting.kind === 'first' ? '🐾' : '☀️'
+            )
+        }, 1200)
+    }
+    return greeting
+}
+
 const startAutoSleepWatch = () => {
     window.clearInterval(autoSleepTimer)
     autoSleepTimer = window.setInterval(() => {
@@ -1426,6 +1459,14 @@ const reactionAction = (payload: PetReactionPayload): BubbleAction | null => {
 }
 
 const handlePetReaction = (payload: PetReactionPayload) => {
+    if (payload.kind === 'login' || payload.kind === 'logout') {
+        if (payload.kind === 'logout') void syncPetVitalsToServer(vitals.value)
+        window.clearTimeout(remoteSyncTimer)
+        window.clearTimeout(authRefreshTimer)
+        authRefreshTimer = window.setTimeout(() => {
+            void settleVitals(false)
+        }, 0)
+    }
     if (!visible.value || quietNow.value || document.hidden) return
     const line = reactionMessage(payload)
     if (!line) return
@@ -1619,6 +1660,39 @@ const onVisibilityChange = () => {
     startCommentPolling()
 }
 
+/** 跨标签页：登录态变化时切换账号状态，养成进度变化时取两边较高值 */
+const onStorage = (event: StorageEvent) => {
+    if (event.key === 'token' || event.key === 'userInfo') {
+        window.clearTimeout(authRefreshTimer)
+        authRefreshTimer = window.setTimeout(() => {
+            void settleVitals(false)
+        }, 0)
+        return
+    }
+    if (
+        !event.key ||
+        !/^LINBLOG_DESKTOP_PET_VITALS(?::u\d+)?$/.test(event.key) ||
+        !event.newValue
+    ) {
+        return
+    }
+    try {
+        const incoming = normalizePetVitals(
+            JSON.parse(event.newValue) as Partial<PetVitals>
+        )
+        const merged = mergePetVitals(vitals.value, incoming)
+        if (JSON.stringify(merged) !== JSON.stringify(vitals.value)) {
+            vitals.value = merged
+        }
+    } catch {
+        // 忽略其他页面写入的损坏数据
+    }
+}
+
+const onOnline = () => {
+    void syncPetVitalsToServer(vitals.value)
+}
+
 let clockTimer: number | undefined
 let motionQuery: MediaQueryList | null = null
 const onMotionChange = (event: MediaQueryListEvent) => {
@@ -1656,29 +1730,27 @@ onMounted(() => {
     scheduleWhisper()
     clockTimer = window.setInterval(() => {
         nowTick.value = Date.now()
+        if (!greetingReady) return
+        const rollover = applyDailyGreeting(vitals.value)
+        if (rollover.kind === 'none') return
+        vitals.value = rollover.vitals
+        if (!quietNow.value && !sleepPhase) {
+            showBubble(
+                `${timeOfDayGreeting()}～新的一天，继续加油！`,
+                4200,
+                '☀️'
+            )
+        }
     }, 30_000)
     motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null
     motionQuery?.addEventListener('change', onMotionChange)
     document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('online', onOnline)
     startCommentPolling()
 
     // 登录用户先合并远端养成进度，再做每日问候；匿名访客只读本机
-    void (async () => {
-        const merged = await mergeRemotePetVitals(getPetVitals())
-        const greeting = applyDailyGreeting(merged)
-        vitals.value = greeting.vitals
-        if (greeting.kind !== 'none' && !quietNow.value) {
-            window.setTimeout(() => {
-                showBubble(
-                    greeting.kind === 'first'
-                        ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
-                        : `${timeOfDayGreeting()}～今天也一起加油！`,
-                    4800,
-                    greeting.kind === 'first' ? '🐾' : '☀️'
-                )
-            }, 1200)
-        }
-    })()
+    void settleVitals(true)
     if (quietNow.value) {
         sleep()
         showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
@@ -1717,6 +1789,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(bubbleTimer)
     window.clearTimeout(whisperTimer)
     window.clearTimeout(remoteSyncTimer)
+    window.clearTimeout(authRefreshTimer)
     void syncPetVitalsToServer(vitals.value)
     window.clearInterval(sleepTalkTimer)
     window.removeEventListener('resize', onResize)
@@ -1725,6 +1798,8 @@ onBeforeUnmount(() => {
     window.removeEventListener('pointercancel', onPointerUp)
     window.removeEventListener('pointerdown', onMenuOutside)
     window.removeEventListener('visibilitychange', onVisibilityChange)
+    window.removeEventListener('storage', onStorage)
+    window.removeEventListener('online', onOnline)
     motionQuery?.removeEventListener('change', onMotionChange)
 })
 </script>

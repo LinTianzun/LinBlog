@@ -12,7 +12,57 @@ export interface PetVitals {
 }
 
 const STORAGE_KEY = 'LINBLOG_DESKTOP_PET_VITALS'
+const LEGACY_OWNER_KEY = `${STORAGE_KEY}:legacy-owner`
 const FEED_COOLDOWN_MS = 60_000
+
+const readStorage = (key: string): string | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const writeStorage = (key: string, value: string): void => {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value)
+  } catch {
+    // 忽略持久化失败
+  }
+}
+
+const readCurrentUserId = (): number => {
+  if (!readStorage('token')) return 0
+  try {
+    const raw = readStorage('userInfo')
+    if (!raw) return 0
+    const id = Number((JSON.parse(raw) as { id?: number }).id)
+    return Number.isSafeInteger(id) && id > 0 ? id : 0
+  } catch {
+    return 0
+  }
+}
+
+const userStorageKey = (userId: number): string => `${STORAGE_KEY}:u${userId}`
+
+/** 老版本只有一份全局存档：只迁移给第一个登录账号，避免后续账号继承 */
+const migrateLegacyVitals = (userId: number): void => {
+  const scopedKey = userStorageKey(userId)
+  if (readStorage(scopedKey)) return
+  const owner = Number(readStorage(LEGACY_OWNER_KEY)) || 0
+  if (owner && owner !== userId) return
+  const legacy = readStorage(STORAGE_KEY)
+  if (!legacy) return
+  writeStorage(scopedKey, legacy)
+  if (!owner) writeStorage(LEGACY_OWNER_KEY, String(userId))
+}
+
+const currentStorageKey = (): string => {
+  const userId = readCurrentUserId()
+  if (!userId) return STORAGE_KEY
+  migrateLegacyVitals(userId)
+  return userStorageKey(userId)
+}
 
 export const DEFAULT_PET_VITALS: PetVitals = {
   mood: 70,
@@ -94,7 +144,7 @@ export function decayPetVitals(
 export function getPetVitals(now = Date.now()): PetVitals {
   let stored: Partial<PetVitals> | null = null
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = readStorage(currentStorageKey())
     if (raw) stored = JSON.parse(raw) as Partial<PetVitals>
   } catch {
     stored = null
@@ -108,11 +158,7 @@ export function getPetVitals(now = Date.now()): PetVitals {
 }
 
 export function setPetVitals(vitals: PetVitals): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(vitals))
-  } catch {
-    // 忽略持久化失败
-  }
+  writeStorage(currentStorageKey(), JSON.stringify(vitals))
 }
 
 export interface FeedResult {
@@ -263,5 +309,63 @@ export function vitalsMoodLabel(vitals: PetVitals): string {
 
 export function vitalsIntimacyLevel(vitals: PetVitals): number {
   return Math.min(5, Math.floor(vitals.intimacy / 20) + 1)
+}
+
+/** 陪伴称号：连续天数为主，累计互动与亲密度作为辅助 */
+export function vitalsCompanionTitle(vitals: PetVitals): string {
+  const stage = Math.max(
+    vitals.streakDays,
+    Math.floor(vitals.totalInteractions / 20),
+    Math.floor(vitals.intimacy / 20)
+  )
+  if (stage >= 60) return '灵魂伙伴'
+  if (stage >= 30) return '形影不离'
+  if (stage >= 14) return '默契搭档'
+  if (stage >= 7) return '熟悉的朋友'
+  if (stage >= 3) return '常来串门'
+  return '初来乍到'
+}
+
+export interface PetMilestone {
+  kind: 'streak' | 'interaction'
+  label: string
+  current: number
+  target: number
+  remaining: number
+}
+
+const STREAK_TARGETS = [3, 7, 14, 30, 60, 100, 365]
+const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
+
+/** 取距离完成比例最近的下一个目标，全部完成后返回 null */
+export function vitalsNextMilestone(vitals: PetVitals): PetMilestone | null {
+  const candidates: PetMilestone[] = []
+  const streakTarget = STREAK_TARGETS.find((target) => vitals.streakDays < target)
+  if (streakTarget) {
+    candidates.push({
+      kind: 'streak',
+      label: '连续陪伴',
+      current: vitals.streakDays,
+      target: streakTarget,
+      remaining: streakTarget - vitals.streakDays
+    })
+  }
+  const interactionTarget = INTERACTION_TARGETS.find(
+    (target) => vitals.totalInteractions < target
+  )
+  if (interactionTarget) {
+    candidates.push({
+      kind: 'interaction',
+      label: '累计互动',
+      current: vitals.totalInteractions,
+      target: interactionTarget,
+      remaining: interactionTarget - vitals.totalInteractions
+    })
+  }
+  if (!candidates.length) return null
+  return candidates.sort(
+    (left, right) =>
+      left.remaining / left.target - right.remaining / right.target
+  )[0]
 }
 
