@@ -357,11 +357,38 @@ async function getMyComments(req, res) {
     }
 }
 
+/**
+ * 桌面宠物轮询：返回我的作品下「他人评论」的最新游标与新增条数
+ */
+async function getIncomingCommentCursor(req, res) {
+    try {
+        const userId = Number(req.user?.userId)
+        if (!Number.isSafeInteger(userId) || userId <= 0) {
+            return res.status(401).json({ code: 401, message: '请先登录' })
+        }
+
+        const readCursor = (value) => {
+            const parsed = Number(value)
+            return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0
+        }
+        const result = await commentModel.getIncomingCommentCursor(
+            userId,
+            readCursor(req.query.articleAfter),
+            readCursor(req.query.diaryAfter)
+        )
+
+        res.json({ code: 200, message: '查询成功', data: result })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '查询新评论失败：' + err.message })
+    }
+}
+
 module.exports = {
     getComments,
     getPublicComments,
     createComment,
     createPublicComment,
     deleteComment,
-    getMyComments
+    getMyComments,
+    getIncomingCommentCursor
 }

@@ -75,6 +75,7 @@
                             </div>
                         </div>
                     </div>
+
                 </section>
 
                 <!-- ── 安全 ── -->
@@ -372,6 +373,65 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="set-subhead">
+                        <span class="set-label">我的桌宠（仅本机）</span>
+                        <yk-text type="tertiary">只影响当前浏览器，不改变其他访客看到的桌宠</yk-text>
+                    </div>
+
+                    <div class="set-card set-pet">
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>本机隐藏桌宠</strong>
+                                <p>隐藏后会在右下角保留一个小爪印，随时可以点回来。</p>
+                            </div>
+                            <yk-switch :model-value="visitorPrefs.hidden" :checked-value="true"
+                                :unchecked-value="false" @update:model-value="setLocalHidden" />
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>夜间安静时段</strong>
+                                <p>
+                                    时段内不漫游、不碎碎念，并自动入睡。
+                                    {{ quietActive ? '当前正处于安静时段。' : '当前不在安静时段。' }}
+                                </p>
+                            </div>
+                            <yk-switch :model-value="visitorPrefs.quietHoursEnabled" :checked-value="true"
+                                :unchecked-value="false" @update:model-value="setQuietEnabled" />
+                        </div>
+
+                        <div v-if="visitorPrefs.quietHoursEnabled" class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>安静时间</strong>
+                                <p>支持跨零点，例如 23:00 至次日 07:00。</p>
+                            </div>
+                            <div class="set-pet-time">
+                                <input type="time" :value="visitorPrefs.quietStart" aria-label="安静时段开始时间"
+                                    @change="setQuietStart" />
+                                <span>至</span>
+                                <input type="time" :value="visitorPrefs.quietEnd" aria-label="安静时段结束时间"
+                                    @change="setQuietEnd" />
+                            </div>
+                        </div>
+
+                        <div class="set-pet-row">
+                            <div class="set-pet-copy">
+                                <strong>养成状态</strong>
+                                <p>
+                                    心情{{ vitalsMoodLabel(petVitals) }} · 饱腹 {{ petVitals.satiety }} ·
+                                    亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}；喂食有 60 秒冷却。
+                                </p>
+                            </div>
+                            <div class="set-pet-vitals">
+                                <span>心情 {{ petVitals.mood }}</span>
+                                <span>饱腹 {{ petVitals.satiety }}</span>
+                                <yk-button type="secondary" size="s" @click="feedFromSettings">
+                                    喂一口
+                                </yk-button>
+                            </div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- ── 我的权限 ── -->
@@ -520,6 +580,22 @@ import {
     sendDesktopPetCommand,
     type DesktopPetSettings
 } from '../utils/desktopPet'
+import { emitPetReaction } from '../utils/desktopPetScene'
+import {
+    getVisitorPetPreferences,
+    isWithinQuietHours,
+    onVisitorPetPreferencesChange,
+    setVisitorPetPreferences,
+    type VisitorPetPreferences,
+} from '../utils/desktopPetVisitor'
+import {
+    applyFeeding,
+    getPetVitals,
+    setPetVitals,
+    vitalsIntimacyLevel,
+    vitalsMoodLabel,
+    type PetVitals,
+} from '../utils/desktopPetVitals'
 import { getSiteSettings, updateSiteSettings } from '../api/site'
 import { useSessionStore } from '../store/session.ts'
 import {
@@ -580,6 +656,42 @@ const activePresetId = ref(getStoredPresetId())
 const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
 const canEditPet = computed(() => session.can('permission.edit'))
 
+// 访客本机偏好与养成状态：不影响服务器配置，所有登录用户都可调整
+const visitorPrefs = reactive<VisitorPetPreferences>(getVisitorPetPreferences())
+const petVitals = ref<PetVitals>(getPetVitals())
+const quietActive = computed(() => isWithinQuietHours(visitorPrefs))
+const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
+    Object.assign(visitorPrefs, next)
+})
+
+const updateVisitorPrefs = (patch: Partial<VisitorPetPreferences>) => {
+    Object.assign(visitorPrefs, setVisitorPetPreferences(patch))
+}
+const setLocalHidden = (value: boolean | string | number) =>
+    updateVisitorPrefs({ hidden: value === true || value === 1 || value === 'true' })
+const setQuietEnabled = (value: boolean | string | number) =>
+    updateVisitorPrefs({
+        quietHoursEnabled: value === true || value === 1 || value === 'true',
+    })
+const setQuietStart = (event: Event) => {
+    updateVisitorPrefs({ quietStart: (event.target as HTMLInputElement).value })
+}
+const setQuietEnd = (event: Event) => {
+    updateVisitorPrefs({ quietEnd: (event.target as HTMLInputElement).value })
+}
+const feedFromSettings = () => {
+    const result = applyFeeding(petVitals.value)
+    petVitals.value = result.vitals
+    setPetVitals(petVitals.value)
+    if (result.effect === 'ok') {
+        proxy?.$message?.({ type: 'success', message: '喂饱啦，心情也变好了' })
+    } else if (result.effect === 'full') {
+        proxy?.$message?.({ type: 'warning', message: '它已经吃得很饱了' })
+    } else {
+        proxy?.$message?.({ type: 'primary', message: '刚喂过，等 60 秒再试吧' })
+    }
+}
+
 const sizeOptions = [
     { value: 'small' as const, label: '小' },
     { value: 'medium' as const, label: '中' },
@@ -631,6 +743,7 @@ const flushPetSettings = async () => {
         lastSavedPetSettings = payload
         setDesktopPetSettings(payload)
         proxy?.$message?.({ type: 'success', message: '桌宠设置已保存' })
+        emitPetReaction('settings-saved', { message: '桌宠设置已保存' })
     } catch {
         // 没有新改动时回滚到上一次保存成功的状态；有新改动则保留并重试
         if (petRevision === revision) {
@@ -1070,6 +1183,7 @@ const submitPassword = async () => {
 }
 
 const handleLogout = () => {
+    emitPetReaction('logout')
     session.clear()
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
@@ -1099,6 +1213,7 @@ onMounted(() => window.addEventListener('scroll', syncActiveSection, { passive: 
 onUnmounted(() => window.removeEventListener('theme:preset-change', onPresetChange))
 onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 onUnmounted(() => window.clearTimeout(petSaveTimer))
+onUnmounted(() => unsubscribeVisitorPrefs())
 </script>
 
 <style lang="less" scoped>
@@ -1660,6 +1775,35 @@ onUnmounted(() => window.clearTimeout(petSaveTimer))
     text-align: right;
 }
 
+.set-pet-time {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    color: var(--font-color3);
+    font-size: 12px;
+
+    input {
+        padding: 6px 10px;
+        border: 1px solid var(--admin-line, var(--gray1));
+        border-radius: 8px;
+        background: var(--bgColor2);
+        color: var(--font-color1);
+        font-family: inherit;
+        font-size: 13px;
+    }
+}
+
+.set-pet-vitals {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    color: var(--font-color3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 .set-pet-action-buttons {
     display: flex;
     flex: none;
@@ -2043,6 +2187,12 @@ onUnmounted(() => window.clearTimeout(petSaveTimer))
     }
 
     .set-pet-action-buttons {
+        justify-content: flex-start;
+    }
+
+    .set-pet-time,
+    .set-pet-vitals {
+        flex-wrap: wrap;
         justify-content: flex-start;
     }
 }

@@ -1,12 +1,13 @@
 <template>
     <Teleport to="body">
-        <div
-            v-if="visible"
-            ref="rootRef"
-            class="dsh-pet-root"
-            :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
-            :data-facing="facing"
-        >
+        <div class="dsh-pet-layer">
+            <div
+                v-if="visible"
+                ref="rootRef"
+                class="dsh-pet-root"
+                :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
+                :data-facing="facing"
+            >
             <!-- 素材透明区 alpha 恒为 1/255，扣一档归零（与 dsh-pet 同一修正） -->
             <svg class="dsh-pet-alpha-filter" width="0" height="0" aria-hidden="true">
                 <defs>
@@ -46,15 +47,23 @@
                 class="dsh-pet-hit"
                 :class="{ dragging }"
                 :style="hitStyle"
+                role="button"
+                tabindex="0"
+                :aria-label="petAriaLabel"
                 @pointerdown="onPointerDown"
                 @contextmenu.prevent="openMenu"
+                @keydown.enter.prevent="poke"
+                @keydown.space.prevent="poke"
             />
 
             <!-- 对话气泡：锚定到角色头部，而不是视频盒边缘 -->
-            <div class="pet-bubble-anchor" :class="{ 'is-below': bubbleBelow }" :style="bubbleAnchorStyle">
+            <div class="pet-bubble-anchor" :class="{ 'is-below': bubbleBelow }" :style="bubbleAnchorStyle"
+                role="status" aria-live="polite">
                 <Transition name="pet-bubble">
                     <div v-if="bubble" class="pet-bubble">
-                        <img v-if="bubbleEmoji" class="pet-bubble-emoji" :src="bubbleEmoji" alt="" />
+                        <span v-if="bubbleEmoji" class="pet-bubble-emoji" aria-hidden="true">
+                            {{ bubbleEmoji }}
+                        </span>
                         <span>{{ bubble }}</span>
                     </div>
                 </Transition>
@@ -77,8 +86,33 @@
                     <button type="button" @click="playRandomAction">
                         <span class="pet-menu-icon">🎲</span>随便演一个
                     </button>
+                    <button type="button" @click="feedPet">
+                        <span class="pet-menu-icon">🍚</span>喂一口
+                    </button>
+                    <button type="button" @click="showStatus">
+                        <span class="pet-menu-icon">💗</span>看看状态
+                    </button>
+                    <button type="button" @click="toggleQuietHours">
+                        <span class="pet-menu-icon">{{ visitorPrefs.quietHoursEnabled ? '☀️' : '🌙' }}</span>
+                        {{ visitorPrefs.quietHoursEnabled ? '关闭安静时段' : '开启安静时段' }}
+                    </button>
+                    <button type="button" @click="hidePet">
+                        <span class="pet-menu-icon">🙈</span>仅本机隐藏
+                    </button>
                 </div>
             </Transition>
+            </div>
+
+            <button
+                v-else-if="restoreVisible"
+                type="button"
+                class="dsh-pet-restore"
+                aria-label="显示桌面宠物"
+                title="显示桌面宠物"
+                @click="restorePet"
+            >
+                <span aria-hidden="true">🐾</span>
+            </button>
         </div>
     </Teleport>
 </template>
@@ -95,6 +129,31 @@ import {
     type DesktopPetSettings,
 } from '../../utils/desktopPet'
 import { getSiteSettings } from '../../api/site'
+import { getIncomingCommentCursor } from '../../api/comment'
+import {
+    onPetReaction,
+    PET_COMMENT_POLL_INTERVAL,
+    PET_LAST_COMMENT_KEY,
+    type PetReactionPayload,
+} from '../../utils/desktopPetScene'
+import {
+    getVisitorPetPreferences,
+    isWithinQuietHours,
+    onVisitorPetPreferencesChange,
+    setVisitorPetPreferences,
+    timeOfDayGreeting,
+    type VisitorPetPreferences,
+} from '../../utils/desktopPetVisitor'
+import {
+    applyDailyGreeting,
+    applyFeeding,
+    applyPetting,
+    getPetVitals,
+    setPetVitals,
+    vitalsIntimacyLevel,
+    vitalsMoodLabel,
+    type PetVitals,
+} from '../../utils/desktopPetVitals'
 
 // dsh-pet 桌面宠物移植版（素材来自 PC2005-cloud/dsh-pet，MIT）：
 // 纯 webm 透明动画 + 随机动作链 + 拖拽甩抛物理 + 睡觉 + 碎碎念。
@@ -111,11 +170,24 @@ const scopeMatches = computed(() => {
     if (scope === 'admin') return inAdmin.value
     return true
 })
+const visitorPrefs = ref<VisitorPetPreferences>(getVisitorPetPreferences())
 const visible = computed(
-    () => petSettings.value.desktopPetEnabled && scopeMatches.value
+    () =>
+        petSettings.value.desktopPetEnabled &&
+        scopeMatches.value &&
+        !visitorPrefs.value.hidden
+)
+const restoreVisible = computed(
+    () =>
+        petSettings.value.desktopPetEnabled &&
+        scopeMatches.value &&
+        visitorPrefs.value.hidden
 )
 const unsubscribeSettings = onDesktopPetSettingsChange((next) => {
     petSettings.value = normalizeDesktopPetSettings(next)
+})
+const unsubscribeVisitor = onVisitorPetPreferencesChange((next) => {
+    visitorPrefs.value = next
 })
 
 /**
@@ -137,6 +209,40 @@ const PET_REF_WIDTH = 462
 
 const petOpacity = computed(() =>
     Math.min(100, Math.max(40, Number(petSettings.value.petOpacity) || 100)) / 100
+)
+
+// ===== 页面语境 / 安静时段 / 无障碍 =====
+// 编辑器里进入「安静陪写」：不漫游、降低动作频率；门户首页则更活泼一点。
+const focusMode = computed(
+    () => route.path.startsWith('/editarticle') || route.path.startsWith('/editgallery')
+)
+const portalHome = computed(() => route.path === '/portal')
+const nowTick = ref(Date.now())
+const quietNow = computed(() =>
+    isWithinQuietHours(visitorPrefs.value, new Date(nowTick.value))
+)
+const reducedMotion = ref(
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+)
+const effectiveActivity = computed<DesktopPetSettings['petActivity']>(() => {
+    if (quietNow.value || focusMode.value) return 'quiet'
+    if (portalHome.value && petSettings.value.petActivity !== 'quiet') return 'lively'
+    return petSettings.value.petActivity
+})
+const canRoam = computed(
+    () =>
+        petSettings.value.petRoamingEnabled &&
+        !quietNow.value &&
+        !focusMode.value &&
+        !reducedMotion.value
+)
+
+// ===== 养成状态（仅本机） =====
+const vitals = ref<PetVitals>(getPetVitals())
+const petAriaLabel = computed(
+    () =>
+        `桌面宠物，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
+        `饱腹 ${vitals.value.satiety}，亲密度 Lv.${vitalsIntimacyLevel(vitals.value)}`
 )
 
 // ===== 动画池（与 dsh-pet assets/config.jsonc 同名精简） =====
@@ -264,7 +370,7 @@ const bubbleBelow = computed(
     () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 64
 )
 const menuBelow = computed(
-    () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 190
+    () => pos.value.y + PET_H.value * PET_VISIBLE_TOP < 330
 )
 
 /** 气泡中心跟随角色，但整体被限制在视口内；尾巴再指回角色中心 */
@@ -326,8 +432,8 @@ const randomFrom = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() 
 
 let bubbleTimer: number | undefined
 
-const showBubble = (text: string, duration = 3000, emoji = '') => {
-    if (!petSettings.value.petBubbleEnabled) return
+const showBubble = (text: string, duration = 3000, emoji = '', force = false) => {
+    if (!petSettings.value.petBubbleEnabled && !force) return
     bubble.value = text
     bubbleEmoji.value = emoji
     window.clearTimeout(bubbleTimer)
@@ -373,7 +479,8 @@ const playAnim = (name: string, once: boolean) => {
 
 /** 按权重掷骰：idle / turn / move / action */
 const rollKind = () => {
-    const weights = ACTIVITY_WEIGHTS[petSettings.value.petActivity] ?? ACTIVITY_WEIGHTS.normal
+    if (focusMode.value) return Math.random() < 0.7 ? 'idle' : 'turn'
+    const weights = ACTIVITY_WEIGHTS[effectiveActivity.value] ?? ACTIVITY_WEIGHTS.normal
     const roll = Math.random()
     if (roll < weights.idle / 100) return 'idle'
     if (roll < (weights.idle + weights.turn) / 100) return 'turn'
@@ -401,6 +508,15 @@ const pickFrom = (pool: readonly string[], exclude?: string) => {
 /** 随机链：选下一段自播动画 */
 const pickNext = () => {
     if (!visible.value || dragging.value || sleeping.value || document.hidden) return
+    if (quietNow.value) {
+        playAnim(
+            Math.random() < 0.15
+                ? pickFrom(TURN, currentAnim)
+                : pickFrom(IDLE, currentAnim),
+            true
+        )
+        return
+    }
     const kind = rollKind()
     if (kind === 'idle') {
         playAnim(pickFrom(IDLE, currentAnim), true)
@@ -461,7 +577,7 @@ const stopWalk = () => {
 }
 
 const tryWalk = (): boolean => {
-    if (!petSettings.value.petRoamingEnabled) return false
+    if (!canRoam.value) return false
     if (walkRaf) return true
     const action = randomFrom(MOVES)
     const dir = facing.value === 'right' ? 1 : -1
@@ -650,7 +766,7 @@ const onPointerUp = (event: PointerEvent) => {
         return
     }
     const velocity = estimateRelease()
-    if (velocity) startFlight(velocity.vx, velocity.vy)
+    if (velocity && !reducedMotion.value) startFlight(velocity.vx, velocity.vy)
     else settle()
 }
 
@@ -722,8 +838,14 @@ const stopFlight = () => {
 
 const poke = () => {
     markInteraction()
+    vitals.value = applyPetting(vitals.value)
+    setPetVitals(vitals.value)
     startSquash()
-    showBubble(randomFrom(POKE_LINES))
+    const line =
+        vitals.value.satiety < 20 && Math.random() < 0.5
+            ? '肚子空空的……右键喂我一口吧'
+            : randomFrom(POKE_LINES)
+    showBubble(line)
     playAnim(pickFrom(CLICKS, currentAnim), true)
 }
 
@@ -792,12 +914,18 @@ const speakNow = () => {
 const scheduleWhisper = () => {
     window.clearTimeout(whisperTimer)
     if (!petSettings.value.petBubbleEnabled) return
+    if (quietNow.value) return
     const [minDelay, maxDelay] =
-        WHISPER_DELAYS[petSettings.value.petActivity] ?? WHISPER_DELAYS.normal
+        WHISPER_DELAYS[effectiveActivity.value] ?? WHISPER_DELAYS.normal
     whisperTimer = window.setTimeout(() => {
-        if (visible.value && !dragging.value && !sleepPhase && !document.hidden && bubble.value === '') {
+        if (visible.value && !dragging.value && !sleepPhase && !document.hidden && bubble.value === '' && !quietNow.value) {
             playAnim(pickFrom(WHISPER, currentAnim), true)
-            showBubble(randomFrom(IDLE_LINES))
+            const hungry = vitals.value.satiety < 20
+            showBubble(
+                hungry && Math.random() < 0.65
+                    ? '我有点饿了……右键喂我一口？'
+                    : randomFrom(IDLE_LINES)
+            )
         }
         scheduleWhisper()
     }, minDelay + Math.random() * (maxDelay - minDelay))
@@ -845,6 +973,73 @@ const playRandomAction = () => {
     if (sleepPhase) wake()
     const category = pickWeightedCategory()
     playAnim(pickFrom(category.actions, currentAnim), true)
+}
+
+const feedPet = () => {
+    markInteraction()
+    closeMenu()
+    if (sleepPhase) wake()
+    const result = applyFeeding(vitals.value)
+    vitals.value = result.vitals
+    setPetVitals(vitals.value)
+    if (result.effect === 'cooldown') {
+        showBubble('刚吃过啦，等一小会儿再喂～', 3000, '🍵', true)
+        return
+    }
+    if (result.effect === 'full') {
+        showBubble('吃不下啦，肚子已经圆滚滚的。', 3000, '🍚', true)
+        return
+    }
+    const eatCategory = CATEGORIES.find((category) => category.id === '吃什么')
+    if (eatCategory) playAnim(pickFrom(eatCategory.actions, currentAnim), true)
+    showBubble('好吃！谢谢你～', 3200, '🍚')
+}
+
+const showStatus = () => {
+    markInteraction()
+    closeMenu()
+    const current = vitals.value
+    const detail = [
+        `心情 ${vitalsMoodLabel(current)}`,
+        `饱腹 ${current.satiety}`,
+        `亲密度 Lv.${vitalsIntimacyLevel(current)}`,
+    ].join(' · ')
+    showBubble(
+        current.satiety < 20 ? `${detail}，喂我一口吧` : detail,
+        5200,
+        '💗',
+        true
+    )
+}
+
+const toggleQuietHours = () => {
+    markInteraction()
+    closeMenu()
+    const next = setVisitorPetPreferences({
+        quietHoursEnabled: !visitorPrefs.value.quietHoursEnabled,
+    })
+    showBubble(
+        next.quietHoursEnabled
+            ? `安静时段已开启（${next.quietStart}–${next.quietEnd}）`
+            : '安静时段已关闭，我回来陪你啦～',
+        3200,
+        next.quietHoursEnabled ? '🌙' : '☀️',
+        true
+    )
+}
+
+const hidePet = () => {
+    markInteraction()
+    closeMenu()
+    setVisitorPetPreferences({ hidden: true })
+}
+
+const restorePet = () => {
+    markInteraction()
+    setVisitorPetPreferences({ hidden: false })
+    window.setTimeout(() => {
+        showBubble('我回来啦～', 2600)
+    }, 60)
 }
 
 // ===== 位置持久化 =====
@@ -905,6 +1100,31 @@ watch(
     () => scheduleWhisper()
 )
 
+watch(effectiveActivity, () => scheduleWhisper())
+
+watch(focusMode, (focused) => {
+    if (focused) stopWalk()
+    scheduleWhisper()
+})
+
+// 安静时段：自动入睡并停止碎碎念；离开时段后轻轻叫醒
+watch(quietNow, (quiet, wasQuiet) => {
+    if (quiet === wasQuiet) return
+    if (quiet) {
+        window.clearTimeout(whisperTimer)
+        stopWalk()
+        if (!sleepPhase) sleep()
+        if (!bubble.value) {
+            showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
+        }
+        return
+    }
+    if (sleepPhase) wake()
+    if (!bubble.value) {
+        showBubble(`${timeOfDayGreeting()}～我回来啦`, 3000, '☀️')
+    }
+})
+
 // ===== 自动入睡 =====
 const AUTO_SLEEP_IDLE_MS = 3 * 60 * 1000
 let lastInteractionAt = Date.now()
@@ -934,6 +1154,239 @@ const unsubscribeCommand = onDesktopPetCommand((command) => {
     else if (command === 'speak') speakNow()
 })
 
+// ===== 业务事件联动 =====
+const REACTION_ACTIONS: Partial<Record<PetReactionPayload['kind'], string[]>> = {
+    'article-published': ['放烟花', '收红包', '点击回应-元气挥手'],
+    'gallery-published': ['放烟花', '收红包', '点击回应-元气挥手'],
+    'article-saved': ['点击回应-开心跃动'],
+    'gallery-saved': ['点击回应-开心跃动'],
+    'save-failed': ['被吓一跳'],
+    'publish-failed': ['打瞌睡被惊醒'],
+    'new-message': ['点击回应-害羞惊讶'],
+    'new-comment': ['点击回应-开心跃动'],
+    'comment-posted': ['点击回应-元气挥手'],
+    login: ['点击回应-元气挥手'],
+    logout: ['点击回应-害羞惊讶'],
+    'settings-saved': ['点击回应-开心跃动'],
+}
+const REACTION_EMOJI: Partial<Record<PetReactionPayload['kind'], string>> = {
+    'article-published': '🎉',
+    'gallery-published': '🎉',
+    'new-message': '💌',
+    'new-comment': '💬',
+    login: '👋',
+    logout: '👋',
+    'save-failed': '⚠️',
+    'publish-failed': '⚠️',
+}
+
+const reactionMessage = (payload: PetReactionPayload): string => {
+    const count = Math.max(1, Number(payload.count) || 1)
+    switch (payload.kind) {
+        case 'article-published':
+        case 'gallery-published':
+            return payload.message || '发布成功！好棒！'
+        case 'article-saved':
+        case 'gallery-saved':
+            return payload.message || '保存好啦～'
+        case 'save-failed':
+            return payload.message || '保存出错了，我有点担心…'
+        case 'publish-failed':
+            return payload.message || '发布没有成功，再试一次吧'
+        case 'new-message':
+            return payload.message || `收到 ${count} 条新私信！`
+        case 'new-comment':
+            return payload.message || `作品下有 ${count} 条新评论！`
+        case 'comment-posted':
+            return payload.message || '评论发送成功！'
+        case 'login':
+            return payload.message || '欢迎回来，今天也一起加油！'
+        case 'logout':
+            return payload.message || '下次见，我会乖乖等你～'
+        case 'settings-saved':
+            return payload.message || '设置已保存'
+        default:
+            return payload.message || ''
+    }
+}
+
+const handlePetReaction = (payload: PetReactionPayload) => {
+    if (!visible.value || quietNow.value || document.hidden) return
+    const line = reactionMessage(payload)
+    if (!line) return
+    markInteraction()
+
+    if (sleepPhase) {
+        const shouldWake = ['new-message', 'new-comment', 'article-published', 'gallery-published'].includes(payload.kind)
+        if (!shouldWake) return
+        wake()
+        showBubble(line, 3600, REACTION_EMOJI[payload.kind] || '')
+        return
+    }
+    showBubble(line, 3600, REACTION_EMOJI[payload.kind] || '')
+    if (dragging.value) return
+    const pool = REACTION_ACTIONS[payload.kind]
+    if (pool?.length) playAnim(pickFrom(pool, currentAnim), true)
+}
+
+const unsubscribeReaction = onPetReaction(handlePetReaction)
+
+// ===== 新评论轮询 =====
+interface StoredCommentCursor {
+    userId: number
+    article: number
+    diary: number
+}
+
+let commentTimer: number | undefined
+let commentPolling = false
+
+const readCommentCursor = (): StoredCommentCursor | null => {
+    try {
+        const raw = localStorage.getItem(PET_LAST_COMMENT_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw) as Partial<StoredCommentCursor>
+        const cursor = {
+            userId: Number(parsed.userId) || 0,
+            article: Math.max(0, Number(parsed.article) || 0),
+            diary: Math.max(0, Number(parsed.diary) || 0),
+        }
+        return cursor.userId ? cursor : null
+    } catch {
+        return null
+    }
+}
+
+const writeCommentCursor = (cursor: StoredCommentCursor) => {
+    try {
+        localStorage.setItem(PET_LAST_COMMENT_KEY, JSON.stringify(cursor))
+    } catch {
+        // 隐私模式下忽略
+    }
+}
+
+const currentUserId = (): number => {
+    try {
+        const raw = localStorage.getItem('userInfo')
+        if (!raw) return 0
+        return Number((JSON.parse(raw) as { id?: number }).id) || 0
+    } catch {
+        return 0
+    }
+}
+
+const pollIncomingComments = async () => {
+    if (commentPolling || !visible.value || document.hidden) return
+    if (!localStorage.getItem('token')) return
+    const userId = currentUserId()
+    if (!userId) return
+
+    commentPolling = true
+    try {
+        const stored = readCommentCursor()
+        // 首次或切换账号：只记录当前位置，不倒灌历史评论
+        if (!stored || stored.userId !== userId) {
+            const result = await getIncomingCommentCursor()
+            if (result.code === 200 && result.data) {
+                writeCommentCursor({
+                    userId,
+                    article: Number(result.data.latest?.article) || 0,
+                    diary: Number(result.data.latest?.diary) || 0,
+                })
+            }
+            return
+        }
+
+        const result = await getIncomingCommentCursor({
+            articleAfter: stored.article,
+            diaryAfter: stored.diary,
+        })
+        if (result.code !== 200 || !result.data) return
+        writeCommentCursor({
+            userId,
+            article: Number(result.data.latest?.article) || 0,
+            diary: Number(result.data.latest?.diary) || 0,
+        })
+        if (result.data.newCount > 0) {
+            handlePetReaction({ kind: 'new-comment', count: result.data.newCount })
+        }
+    } catch {
+        // 接口不可用时下一轮再试
+    } finally {
+        commentPolling = false
+    }
+}
+
+const startCommentPolling = () => {
+    if (commentTimer !== undefined) window.clearInterval(commentTimer)
+    void pollIncomingComments()
+    commentTimer = window.setInterval(() => {
+        void pollIncomingComments()
+    }, PET_COMMENT_POLL_INTERVAL)
+}
+
+const stopCommentPolling = () => {
+    if (commentTimer !== undefined) window.clearInterval(commentTimer)
+    commentTimer = undefined
+}
+
+// ===== 性能：空闲预取少量常用动画 =====
+const PREFETCH_ANIMS = [
+    IDLE[0],
+    TURN[0],
+    CLICKS[0],
+    CLICKS[1],
+    SLEEP_SET.start,
+    SLEEP_SET.loop,
+    SLEEP_SET.end,
+    WHISPER[0],
+]
+
+const prefetchAnimations = () => {
+    const connection = (
+        navigator as Navigator & {
+            connection?: { saveData?: boolean; effectiveType?: string }
+        }
+    ).connection
+    if (connection?.saveData || /(^|-)2g$/.test(connection?.effectiveType || '')) return
+    for (const name of new Set(PREFETCH_ANIMS)) {
+        if (document.querySelector(`link[data-pet-prefetch="${name}"]`)) continue
+        const link = document.createElement('link')
+        link.rel = 'prefetch'
+        link.as = 'video'
+        link.href = animUrl(name)
+        link.dataset.petPrefetch = name
+        document.head.appendChild(link)
+    }
+}
+
+// ===== 页签可见性：隐藏时暂停视频与 rAF，回来再恢复 =====
+const onVisibilityChange = () => {
+    if (document.hidden) {
+        videoA.value?.pause()
+        videoB.value?.pause()
+        stopWalk()
+        stopFlight()
+        window.clearTimeout(whisperTimer)
+        stopCommentPolling()
+        return
+    }
+    const el = elementOf(front.value)
+    if (el?.paused) el.play().catch(() => {})
+    scheduleWhisper()
+    startCommentPolling()
+}
+
+let clockTimer: number | undefined
+let motionQuery: MediaQueryList | null = null
+const onMotionChange = (event: MediaQueryListEvent) => {
+    reducedMotion.value = event.matches
+    if (event.matches) {
+        stopWalk()
+        stopFlight()
+    }
+}
+
 // ===== 生命周期 =====
 onMounted(() => {
     // 以服务端配置为准：缓存只负责首屏不闪，接口回来后校正
@@ -959,6 +1412,43 @@ onMounted(() => {
         })
     }
     scheduleWhisper()
+    clockTimer = window.setInterval(() => {
+        nowTick.value = Date.now()
+    }, 30_000)
+    motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null
+    motionQuery?.addEventListener('change', onMotionChange)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    startCommentPolling()
+
+    // 每日首次问候 / 第一次见面
+    const greeting = applyDailyGreeting(vitals.value)
+    vitals.value = greeting.vitals
+    setPetVitals(vitals.value)
+    if (greeting.kind !== 'none' && !quietNow.value) {
+        window.setTimeout(() => {
+            showBubble(
+                greeting.kind === 'first'
+                    ? `${timeOfDayGreeting()}！我是你的桌宠，右键可以喂我～`
+                    : `${timeOfDayGreeting()}～今天也一起加油！`,
+                4800,
+                greeting.kind === 'first' ? '🐾' : '☀️'
+            )
+        }, 1200)
+    }
+    if (quietNow.value) {
+        sleep()
+        showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
+    }
+
+    // 空闲时只预取少量高频动画，避免一次拉取上百个 webm
+    const requestIdle = (
+        window as Window & {
+            requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number
+        }
+    ).requestIdleCallback
+    if (requestIdle) requestIdle(prefetchAnimations, { timeout: 3000 })
+    else window.setTimeout(prefetchAnimations, 2500)
+
     // 某些浏览器会拦截静音自动播放：首次任意交互后补一次播放
     const resume = () => {
         const el = elementOf(front.value)
@@ -970,10 +1460,14 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     unsubscribeSettings()
+    unsubscribeVisitor()
+    unsubscribeReaction()
     unsubscribeCommand()
+    stopCommentPolling()
     stopWalk()
     stopFlight()
     window.clearInterval(autoSleepTimer)
+    window.clearInterval(clockTimer)
     if (squashRaf) cancelAnimationFrame(squashRaf)
     window.clearTimeout(bubbleTimer)
     window.clearTimeout(whisperTimer)
@@ -983,15 +1477,53 @@ onBeforeUnmount(() => {
     window.removeEventListener('pointerup', onPointerUp)
     window.removeEventListener('pointercancel', onPointerUp)
     window.removeEventListener('pointerdown', onMenuOutside)
+    window.removeEventListener('visibilitychange', onVisibilityChange)
+    motionQuery?.removeEventListener('change', onMotionChange)
 })
 </script>
 
 <style lang="less" scoped>
+.dsh-pet-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 9600;
+    pointer-events: none;
+}
+
 .dsh-pet-root {
     position: fixed;
     z-index: 9600;
     pointer-events: none;
     user-select: none;
+}
+
+.dsh-pet-restore {
+    position: fixed;
+    right: 16px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid var(--admin-line, var(--portal-surface-border, rgba(0, 0, 0, 0.12)));
+    border-radius: 999px;
+    background: var(--admin-surface, var(--portal-surface-strong, #fff));
+    box-shadow: var(--admin-shadow-md, var(--portal-shadow-soft, 0 10px 26px rgba(0, 0, 0, 0.14)));
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0.82;
+    transition: opacity 160ms ease, transform 160ms ease;
+
+    &:hover,
+    &:focus-visible {
+        opacity: 1;
+        transform: translateY(-1px);
+    }
 }
 
 .dsh-pet-stage {
@@ -1089,9 +1621,14 @@ onBeforeUnmount(() => {
 }
 
 .pet-bubble-emoji {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 22px;
     height: 22px;
-    object-fit: contain;
+    font-size: 17px;
+    line-height: 1;
 }
 
 .pet-menu {
@@ -1101,6 +1638,7 @@ onBeforeUnmount(() => {
     gap: 2px;
     min-width: 148px;
     max-width: 100%;
+    max-height: min(360px, calc(100vh - 120px));
     padding: 6px;
     border-radius: 12px;
     background: var(--admin-surface, var(--portal-surface-strong, var(--bgColor1)));
@@ -1110,6 +1648,8 @@ onBeforeUnmount(() => {
     translate: -50% 0;
     pointer-events: auto;
     z-index: 4;
+    overflow-y: auto;
+    scrollbar-width: thin;
 
     button {
         display: flex;

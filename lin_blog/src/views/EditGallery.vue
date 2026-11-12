@@ -184,6 +184,7 @@ import { momentDay } from '../utils/moment'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import { validateScheduleValue } from '../utils/scheduledPublish'
 import { getAiFeatures, resetAiFeatures } from '../utils/aiMarker.ts'
+import { emitPetReaction } from '../utils/desktopPetScene'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
@@ -496,12 +497,14 @@ async function saveWorkingCopy(source: 'autosave' | 'manual'): Promise<boolean> 
         }
         saveStatus.value = 'saved'
         saveMoment.value = `${momentDay(new Date())} 已保存`
+        if (source === 'manual') emitPetReaction('gallery-saved')
         return true
     } catch (error) {
         const status = (error as { response?: { status?: number } })?.response?.status
         saveStatus.value = status === 409 ? 'conflict' : 'error'
         if (source === 'manual') {
             showMessage('error', describeError(error, '保存失败，请稍后重试'))
+            emitPetReaction('save-failed')
         }
         return false
     } finally {
@@ -601,6 +604,7 @@ const submitGallery = async (action: 'save' | 'publish' | 'withdraw'): Promise<v
             clearLocalDraft('gallery-new')
             localDraftAvailable.value = false
             showMessage('success', action === 'publish' ? '图库已发布' : '图库已保存为草稿')
+            if (action === 'publish') emitPetReaction('gallery-published')
             //  保存后留在当前页并进入编辑态，让用户看到最新状态标识
             await router.replace(`/editgallery/${nextId}`)
             await loadGallery()
@@ -624,6 +628,7 @@ const submitGallery = async (action: 'save' | 'publish' | 'withdraw'): Promise<v
                 throw new Error(published.message || '图库发布失败')
             }
             showMessage('success', '图库已发布')
+            emitPetReaction('gallery-published')
             await loadGallery()
             return
         }
@@ -644,6 +649,7 @@ const submitGallery = async (action: 'save' | 'publish' | 'withdraw'): Promise<v
         return
     } catch (error) {
         showMessage('error', describeError(error, '操作失败，请稍后重试'))
+        if (action === 'publish') emitPetReaction('publish-failed')
     } finally {
         submitting.value = ''
     }
@@ -659,9 +665,11 @@ async function publishCurrentWorkflow(): Promise<void> {
         if (result.code !== 200) throw new Error(result.message || '发布失败')
         previewOpen.value = false
         showMessage('success', '当前工作稿已发布')
+        emitPetReaction('gallery-published')
         await loadGallery()
     } catch (error) {
         showMessage('error', describeError(error, '发布失败，请稍后重试'))
+        emitPetReaction('publish-failed')
     } finally {
         submitting.value = ''
     }

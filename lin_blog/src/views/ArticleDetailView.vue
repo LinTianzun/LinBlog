@@ -197,6 +197,7 @@ import {
 import { useSubsetStore } from '../store/subset'
 import { useSessionStore } from '../store/session.ts'
 import { useContentAccess } from '../utils/contentAccess.ts'
+import { emitPetReaction } from '../utils/desktopPetScene'
 import ContentDetailHero from '../components/content/ContentDetailHero.vue'
 import ContentCommentThread from '../components/content/ContentCommentThread.vue'
 import CommentReportDialog from '../components/content/CommentReportDialog.vue'
@@ -516,6 +517,7 @@ const submitComment = async (parentId: number): Promise<void> => {
         article.value.comments = Number(article.value.comments || 0) + 1
         commentTotal.value = Math.max(commentTotal.value, comments.value.length)
         showMessage('success', parentId > 0 ? '回复已发表' : '评论已发表')
+        emitPetReaction('comment-posted')
         emits('changed', { type: 'updated', articleId: article.value.id })
     } catch (error) {
         commentError.value = getRequestErrorMessage(error, '评论失败，请稍后重试')

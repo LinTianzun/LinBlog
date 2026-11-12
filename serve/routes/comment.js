@@ -36,6 +36,9 @@ module.exports = (app) => {
     // 分页查询当前用户发出的所有评论（需登录，无需传用户ID/评论ID）
     app.get('/api/comment/my', authMiddleware, commentController.getMyComments)
 
+    // 桌面宠物轮询：我的作品下他人新评论的最新游标（需登录）
+    app.get('/api/comment/incoming/latest', authMiddleware, commentController.getIncomingCommentCursor)
+
     // 后台举报处理：列表与处理结果（需登录，控制器内校验 comment.moderate）
     app.get('/api/comment/reports', authMiddleware, commentInteractionController.getReports)
     // 批量处理必须挂在 /:id 之前，否则会被 :id 路由先吃掉

@@ -57,6 +57,24 @@ export function getComments(
   return request.get<ApiResult<CommentPageData>>("/comment", { params });
 }
 
+export interface IncomingCommentCursor {
+  latest: {
+    article: number;
+    diary: number;
+  };
+  newCount: number;
+}
+
+// 桌宠新评论提醒：只回游标与新增条数，不拉整页评论
+export function getIncomingCommentCursor(
+  params: { articleAfter?: number; diaryAfter?: number } = {}
+) {
+  return request.get<ApiResult<IncomingCommentCursor>>(
+    "/comment/incoming/latest",
+    { params }
+  );
+}
+
 export interface CreateCommentResult {
   commentId: number;
   createdAt: string;

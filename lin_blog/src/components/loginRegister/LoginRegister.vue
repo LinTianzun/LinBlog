@@ -102,6 +102,7 @@ import { ref, getCurrentInstance } from "vue";
 import { useRouter } from "vue-router";
 import { requestPasswordReset } from "../../api/user";
 import { useSessionStore } from "../../store/session";
+import { emitPetReaction } from "../../utils/desktopPetScene";
 
 const router = useRouter();
 const session = useSessionStore();
@@ -208,6 +209,7 @@ const login = async () => {
             message: result.message || "登录成功",
         });
 
+        emitPetReaction("login");
         await router.push("/overView");
     } catch (error) {
         console.error("登录请求失败：", error);

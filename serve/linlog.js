@@ -98,7 +98,10 @@ if (hasFrontendBuild) {
         setHeaders(res, filePath) {
             // 前端构建产物不能用全局的 `default-src 'none'`，否则浏览器会拦掉脚本
             applyFrontendSecurityPolicy(res)
-            if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            if (
+                filePath.includes(`${path.sep}assets${path.sep}`) ||
+                filePath.includes(`${path.sep}pet${path.sep}`)
+            ) {
                 res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
             } else {
                 res.setHeader('Cache-Control', 'no-cache')

@@ -94,6 +94,10 @@
                         {{ item.label }}
                     </RouterLink>
                 </nav>
+                <button type="button" class="foot-pet" @click="togglePet">
+                    <span aria-hidden="true">🐾</span>
+                    {{ visitorPrefs.hidden ? '显示桌宠' : '隐藏桌宠' }}
+                </button>
                 <p class="foot-legal">
                     © {{ year }} 林知雨 · Vue 3 + Express + MySQL
                 </p>
@@ -111,6 +115,12 @@ import unityLogo from '../../assets/svg/unity.svg'
 import PortalAmbientBackground from './PortalAmbientBackground.vue'
 import { themePresets, findPreset } from '../../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
+import {
+    getVisitorPetPreferences,
+    onVisitorPetPreferencesChange,
+    setVisitorPetPreferences,
+    type VisitorPetPreferences,
+} from '../../utils/desktopPetVisitor'
 
 const props = withDefaults(defineProps<{
     // 导航高亮覆盖项：子页面可指定高亮哪个入口
@@ -137,6 +147,15 @@ const isActive = (path: string): boolean => {
 }
 
 const year = computed(() => new Date().getFullYear())
+
+// 页脚提供移动端也能触达的桌宠偏好入口：只影响当前浏览器
+const visitorPrefs = ref<VisitorPetPreferences>(getVisitorPetPreferences())
+const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
+    visitorPrefs.value = next
+})
+const togglePet = () => {
+    setVisitorPetPreferences({ hidden: !visitorPrefs.value.hidden })
+}
 
 // 主题预设：与后台设置共用同一份数据与切换函数，
 // applyThemePreset 会派发事件，后台设置页监听后可同步高亮
@@ -187,6 +206,7 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener('theme:preset-change', onPresetChange)
     window.removeEventListener('keydown', onGlobalKeydown)
+    unsubscribeVisitorPrefs()
 })
 
 const goAdmin = () => router.push('/overView')
@@ -647,6 +667,27 @@ const goAdmin = () => router.push('/overView')
         &:hover {
             color: var(--portal-accent);
         }
+    }
+}
+
+.foot-pet {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--portal-surface-border);
+    border-radius: var(--portal-radius-pill);
+    background: var(--portal-surface);
+    color: var(--portal-text-secondary);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color var(--portal-transition-fast), border-color var(--portal-transition-fast);
+
+    &:hover,
+    &:focus-visible {
+        color: var(--portal-accent);
+        border-color: var(--portal-accent-soft);
     }
 }
 

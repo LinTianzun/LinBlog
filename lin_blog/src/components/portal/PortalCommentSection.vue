@@ -123,6 +123,7 @@ import {
     type CommentReportReason,
 } from '../../api/comment'
 import { useSessionStore } from '../../store/session.ts'
+import { emitPetReaction } from '../../utils/desktopPetScene'
 
 type CommentRow = PortalComment | DiaryComment
 
@@ -470,6 +471,7 @@ const submitReply = async () => {
             replyDraft.value = ''
             await reloadAfterChange(rootId)
             proxy?.$message?.({ type: 'success', message: '回复已发表' })
+            emitPetReaction('comment-posted')
         }
     } catch (error) {
         replyError.value = getRequestErrorMessage(error, '回复失败，请稍后重试')
@@ -495,6 +497,7 @@ const submitComment = async () => {
             commentDraft.value = ''
             await reloadAfterChange()
             proxy?.$message?.({ type: 'success', message: '评论已发表' })
+            emitPetReaction('comment-posted')
         }
     } catch (error) {
         const message = (error as { response?: { data?: { message?: string } } })

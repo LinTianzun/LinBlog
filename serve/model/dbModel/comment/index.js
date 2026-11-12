@@ -365,10 +365,45 @@ async function findMyCommentsByPage(userId, page, pageSize, offset) {
     }
 }
 
+/**
+ * 桌面宠物新评论提醒：只统计「别人评论我的作品」的最新位置
+ *
+ * 前端每轮把上次看到的 article/diary 评论 ID 带回来，服务端同时返回
+ * 最新 ID 与新增条数。这样无需拉整页评论，也不会把点赞/回复通知混进来。
+ */
+async function getIncomingCommentCursor(userId, articleAfter = 0, diaryAfter = 0) {
+    const [articleResult] = await query(
+        `SELECT COALESCE(MAX(c.id), 0) AS latest,
+                COALESCE(SUM(CASE WHEN c.id > ? THEN 1 ELSE 0 END), 0) AS fresh
+         FROM comment c
+         JOIN article a ON c.article_id = a.id
+         WHERE a.user_id = ? AND c.user_id <> ? AND c.status = 1`,
+        [articleAfter, userId, userId]
+    )
+    const [diaryResult] = await query(
+        `SELECT COALESCE(MAX(dc.id), 0) AS latest,
+                COALESCE(SUM(CASE WHEN dc.id > ? THEN 1 ELSE 0 END), 0) AS fresh
+         FROM diary_comment dc
+         JOIN diary d ON dc.diary_id = d.id
+         WHERE d.user_id = ? AND dc.user_id <> ? AND dc.status = 1`,
+        [diaryAfter, userId, userId]
+    )
+
+    return {
+        latest: {
+            article: Number(articleResult?.latest || 0),
+            diary: Number(diaryResult?.latest || 0)
+        },
+        newCount:
+            Number(articleResult?.fresh || 0) + Number(diaryResult?.fresh || 0)
+    }
+}
+
 module.exports = {
     getCommentsByPage,
     getPublicCommentsByArticle,
     createComment,
     deleteComment,
-    findMyCommentsByPage
+    findMyCommentsByPage,
+    getIncomingCommentCursor
 }

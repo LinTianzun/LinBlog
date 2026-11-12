@@ -122,6 +122,7 @@ import ContentCommentThread from './ContentCommentThread.vue'
 import CommentReportDialog from './CommentReportDialog.vue'
 import { buildCommentThreads } from './comment.ts'
 import { useSessionStore } from '../../store/session.ts'
+import { emitPetReaction } from '../../utils/desktopPetScene'
 import {
     createComment,
     deleteComment,
@@ -327,6 +328,7 @@ const submitComment = async (): Promise<void> => {
         commentDraft.value = ''
         await loadComments()
         showMessage('success', '评论已发表')
+        emitPetReaction('comment-posted')
         emit('changed', commentTotal.value)
     } catch (error) {
         commentError.value = getRequestErrorMessage(error, '评论失败，请稍后重试')

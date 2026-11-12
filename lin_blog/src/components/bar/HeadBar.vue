@@ -96,6 +96,7 @@ import {
     MESSAGE_STATE_EVENT,
     isDocumentVisible,
 } from '../../utils/messageRealtime'
+import { emitPetReaction } from '../../utils/desktopPetScene'
 
 const isDark = useThemeDark()
 const session = useSessionStore()
@@ -142,6 +143,7 @@ const goPortal = () => {
 
 // 退出登录
 const quit = () => {
+    emitPetReaction('logout')
     stopUnreadPolling()
     unreadCount.value = 0
     // 清除本地登录信息
@@ -234,6 +236,7 @@ const fetchUnread = async () => {
                 && route.path !== '/messages'
             ) {
                 pulseInbox()
+                emitPetReaction('new-message', { count: nextCount })
             }
             unreadInitialized = true
         }
