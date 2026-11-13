@@ -150,6 +150,13 @@ export async function seedSession(
     mail = 'user@example.com',
   } = options
 
+  // 路由处理器在 Node 侧直接读取这份配置，避免导航期间 page.evaluate
+  // 撞上 execution context destroyed，导致偶发超时。
+  seededSessions.set(page, {
+    permissions: [...permissions],
+    isSuperAdmin,
+  })
+
   await page.addInitScript((session) => {
     localStorage.setItem('token', 'mock-token')
     localStorage.setItem('userInfo', JSON.stringify({
@@ -163,14 +170,13 @@ export async function seedSession(
     }))
     localStorage.setItem('linlogPermissions', JSON.stringify(session.permissions))
     localStorage.setItem('linlogSuperAdmin', session.isSuperAdmin ? '1' : '0')
-    // 供 mock 读取：会话首屏会重新拉一次 /api/permission/me，
-    // mock 必须回同样的权限，否则会把注入的会话覆盖成写死的普通用户。
-    localStorage.setItem('e2eMockSession', JSON.stringify({
-      permissions: session.permissions,
-      isSuperAdmin: session.isSuperAdmin,
-    }))
   }, { id, permissions, isSuperAdmin, username, mail })
 }
+
+const seededSessions = new WeakMap<Page, {
+  permissions: string[]
+  isSuperAdmin: boolean
+}>()
 
 interface MockState {
   messages: typeof initialMessage[]
@@ -323,15 +329,13 @@ export async function installApiMock(page: Page): Promise<MockState> {
     const path = url.pathname
     const method = request.method()
 
-    // 同步一次 seedSession 注入的会话，供 /api/permission/me 回同样的权限
-    if (!state.session.permissions.length) {
-      const raw = await page.evaluate(() => localStorage.getItem('e2eMockSession'))
-      if (raw) {
-        try {
-          state.session = JSON.parse(raw) as MockState['session']
-        } catch {
-          // 解析失败时保持默认空权限
-        }
+    // 同步 seedSession 注入的会话，供 /api/permission/me 回同样的权限。
+    // 不读页面上下文：导航时 localStorage 所属的 execution context 会销毁。
+    const seeded = seededSessions.get(page)
+    if (seeded) {
+      state.session = {
+        permissions: [...seeded.permissions],
+        isSuperAdmin: seeded.isSuperAdmin,
       }
     }
     let body: Record<string, unknown> | null = null
