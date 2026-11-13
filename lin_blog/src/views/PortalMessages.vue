@@ -229,7 +229,9 @@ onUnmounted(() => {
 
 .wall-card {
     padding: 20px;
-    transition: all var(--portal-transition-medium);
+    transition: transform var(--portal-transition-medium),
+        box-shadow var(--portal-transition-medium),
+        background-color var(--portal-transition-medium);
 
     &:hover {
         transform: translateY(-3px);
@@ -326,7 +328,9 @@ onUnmounted(() => {
     color: var(--portal-text-secondary);
     font-size: 14px;
     cursor: pointer;
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast);
 
     &:hover:not(:disabled):not(.active) {
         background: var(--portal-accent-soft);

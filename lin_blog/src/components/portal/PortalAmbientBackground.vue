@@ -69,9 +69,14 @@ let stopRotation: (() => void) | null = null
 
 onMounted(() => {
     currentIndex.value = deriveCurrentIndex()
-    stopRotation = startBannerRotation((idx) => {
-        currentIndex.value = idx
-    })
+    // 环境层在首页与移动端不可见，不额外占用共享计时器；
+    // 减少动态效果时也保持静态，避免模糊背景持续淡入淡出
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (showPhotos.value && !reduceMotion) {
+        stopRotation = startBannerRotation((idx) => {
+            currentIndex.value = idx
+        })
+    }
     unsub = subscribeBanner((idx) => {
         currentIndex.value = idx
     })

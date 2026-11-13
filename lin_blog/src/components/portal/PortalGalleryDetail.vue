@@ -301,7 +301,9 @@ watch(loadKey, async (key, previousKey) => {
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast);
 
     .yk-icon {
         width: 15px;
@@ -311,6 +313,11 @@ watch(loadKey, async (key, previousKey) => {
     &:hover:not(:disabled) {
         border-color: var(--portal-accent);
         color: var(--portal-accent);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--portal-accent);
+        outline-offset: 2px;
     }
 
     &.liked {

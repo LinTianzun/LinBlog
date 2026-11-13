@@ -141,6 +141,12 @@ function writeState(index: number) {
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: state }));
 }
 
+// 手动切换时同步到共享状态，避免下一个计时周期跳回旧位置
+export function setBannerIndex(index: number): void {
+    const total = BANNER_SLIDES.length
+    writeState(((index % total) + total) % total)
+}
+
 // 从已存储时间戳派生当前 index（切页后继续轮播，不重置）
 export function deriveCurrentIndex(): number {
     const { index, updatedAt } = readState();
@@ -155,11 +161,15 @@ export function subscribeBanner(cb: (index: number) => void): () => void {
         const detail = (e as CustomEvent).detail as StoredState;
         if (detail && typeof detail.index === 'number') cb(detail.index);
     };
-    window.addEventListener(EVENT_NAME, handler);
-    window.addEventListener('storage', (e) => {
+    const storageHandler = (e: StorageEvent) => {
         if (e.key === STORAGE_KEY) cb(deriveCurrentIndex());
-    });
-    return () => window.removeEventListener(EVENT_NAME, handler);
+    };
+    window.addEventListener(EVENT_NAME, handler);
+    window.addEventListener('storage', storageHandler);
+    return () => {
+        window.removeEventListener(EVENT_NAME, handler);
+        window.removeEventListener('storage', storageHandler);
+    };
 }
 
 // 单一共享 interval：所有页面共用一个计时器，切页不重置不冻结

@@ -107,9 +107,13 @@ const submitAsk = async (): Promise<void> => {
     transition: border-color 0.2s, box-shadow 0.2s;
 
     &:focus {
-        outline: none;
         border-color: var(--pcolor);
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 1px;
     }
 }
 

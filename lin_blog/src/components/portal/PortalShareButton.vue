@@ -71,7 +71,9 @@ const share = async (): Promise<void> => {
     color: var(--portal-text-tertiary);
     font-size: 13px;
     cursor: pointer;
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast);
 
     :deep(svg) {
         width: 15px;
@@ -83,7 +85,11 @@ const share = async (): Promise<void> => {
         border-color: var(--portal-accent);
         background: var(--portal-accent-soft);
         color: var(--portal-accent);
-        outline: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--portal-accent);
+        outline-offset: 2px;
     }
 }
 </style>

@@ -774,7 +774,8 @@ watch(loadKey, async (key, previousKey) => {
         &:focus-visible {
             color: @pcolor;
             background: var(--pcolor1);
-            outline: none;
+            outline: 2px solid @pcolor;
+            outline-offset: 2px;
         }
     }
 
@@ -1015,7 +1016,8 @@ watch(loadKey, async (key, previousKey) => {
                 opacity: 1;
                 border-color: @pcolor;
                 color: @pcolor;
-                outline: none;
+                outline: 2px solid @pcolor;
+                outline-offset: 2px;
             }
         }
     }
@@ -1110,7 +1112,8 @@ watch(loadKey, async (key, previousKey) => {
     &:hover,
     &:focus-visible {
         color: @pcolor;
-        outline: none;
+        outline: 2px solid @pcolor;
+        outline-offset: 2px;
     }
 }
 
@@ -1154,7 +1157,8 @@ watch(loadKey, async (key, previousKey) => {
     &:focus-visible {
         border-color: color-mix(in srgb, @pcolor 36%, @line-color-s);
         background: color-mix(in srgb, @pcolor 6%, @bg-color-s);
-        outline: none;
+        outline: 2px solid @pcolor;
+        outline-offset: 2px;
 
         strong {
             color: @pcolor;
@@ -1242,7 +1246,8 @@ watch(loadKey, async (key, previousKey) => {
         transform: translateY(-2px);
         border-color: color-mix(in srgb, @pcolor 36%, @line-color-s);
         box-shadow: @shadow-s;
-        outline: none;
+        outline: 2px solid @pcolor;
+        outline-offset: 2px;
     }
 }
 

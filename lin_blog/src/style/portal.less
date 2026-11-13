@@ -303,7 +303,10 @@
     color: var(--portal-text-primary);
     font-size: 0.875rem;
     cursor: pointer;
-    transition: all var(--portal-transition-fast);
+    transition: background-color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast),
+        transform var(--portal-transition-fast),
+        box-shadow var(--portal-transition-fast);
     &:hover {
         background: var(--portal-accent-soft);
         border-color: var(--portal-accent);
@@ -356,6 +359,14 @@
 .portal-reveal {
     animation: portal-reveal var(--portal-transition-slow) both;
 }
+
+// 统一键盘焦点环：组件内若用背景/描边表达焦点，仍需保留清晰的轮廓，
+// 避免键盘用户在玻璃底与图片上失去当前位置。
+.portal-layout :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .portal-reveal {
         animation: none;

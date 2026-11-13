@@ -68,8 +68,15 @@
                 </aside>
             </div>
             <div class="hero-meta">
-                <span class="hero-counter">{{ slideNumber }} / {{ slideTotal }}</span>
-                <div class="hero-dots">
+                <div class="hero-meta-start">
+                    <span class="hero-counter">{{ slideNumber }} / {{ slideTotal }}</span>
+                    <button type="button" class="hero-toggle"
+                        :aria-label="rotationPaused ? '继续自动轮播' : '暂停自动轮播'"
+                        @click="toggleRotation">
+                        <span aria-hidden="true">{{ rotationPaused ? '▶' : '❚❚' }}</span>
+                    </button>
+                </div>
+                <div class="hero-dots" role="group" aria-label="轮播图分页">
                     <button
                         v-for="(slide, i) in slides"
                         :key="slide.id"
@@ -77,6 +84,7 @@
                         class="hero-dot"
                         :class="{ active: i === currentIndex }"
                         :aria-label="`切换到第 ${i + 1} 张`"
+                        :aria-current="i === currentIndex ? 'true' : undefined"
                         @click="goToSlide(i)"
                     />
                 </div>
@@ -281,6 +289,7 @@ import {
     deriveCurrentIndex,
     getSlide,
     preloadBannerSlide,
+    setBannerIndex,
     shouldRenderSlide,
     startBannerRotation,
     subscribeBanner,
@@ -339,6 +348,7 @@ const slideNumber = computed(() => String(currentIndex.value + 1).padStart(2, '0
 const slideTotal = computed(() => String(slides.length).padStart(2, '0'))
 const goToSlide = (i: number) => {
     currentIndex.value = i
+    setBannerIndex(i)
 }
 // 只预加载当前这一张：幻灯片会轮播，提前拉全部 9 张反而挤占首屏带宽
 watch(currentSlide, slide => {
@@ -346,6 +356,36 @@ watch(currentSlide, slide => {
 }, { immediate: true })
 let stopRotation: (() => void) | null = null
 let unsub: (() => void) | null = null
+let motionQuery: MediaQueryList | null = null
+const rotationPaused = ref(false)
+
+const startRotation = () => {
+    if (stopRotation) return
+    stopRotation = startBannerRotation((idx) => {
+        currentIndex.value = idx
+    })
+}
+
+const pauseRotation = () => {
+    rotationPaused.value = true
+    stopRotation?.()
+    stopRotation = null
+}
+
+// 用户显式点击后允许在减少动态效果环境中继续播放
+const toggleRotation = () => {
+    if (rotationPaused.value) {
+        rotationPaused.value = false
+        startRotation()
+        return
+    }
+    pauseRotation()
+}
+
+// 系统切换到减少动态效果时立即暂停；切回时不自动恢复，尊重用户当前选择
+const onMotionPreferenceChange = (event: MediaQueryListEvent) => {
+    if (event.matches && !rotationPaused.value) pauseRotation()
+}
 
 const stats = computed(() => ({
     articles: totalArticles.value,
@@ -620,9 +660,13 @@ onMounted(() => {
     void loadSubsetCount()
     // 启动轮播：单一共享 interval，切页不重置
     currentIndex.value = deriveCurrentIndex()
-    stopRotation = startBannerRotation((idx) => {
-        currentIndex.value = idx
-    })
+    motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
+    if (motionQuery?.matches) {
+        rotationPaused.value = true
+    } else {
+        startRotation()
+    }
+    motionQuery?.addEventListener('change', onMotionPreferenceChange)
     unsub = subscribeBanner((idx) => {
         currentIndex.value = idx
     })
@@ -657,7 +701,9 @@ watch(
 
 onUnmounted(() => {
     stopRotation?.()
+    stopRotation = null
     unsub?.()
+    motionQuery?.removeEventListener('change', onMotionPreferenceChange)
 })
 </script>
 <style lang="less" scoped>
@@ -847,7 +893,11 @@ onUnmounted(() => {
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast),
+        transform var(--portal-transition-fast),
+        box-shadow var(--portal-transition-fast);
 
     &:hover,
     &:focus-visible {
@@ -942,9 +992,39 @@ onUnmounted(() => {
     letter-spacing: 0.16em;
 }
 
-.hero-counter {
+.hero-meta-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     justify-self: start;
+}
+
+.hero-counter {
     font-variant-numeric: tabular-nums;
+}
+
+.hero-toggle {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    border-radius: 50%;
+    background: rgba(7, 10, 17, 0.34);
+    color: var(--portal-hero-ink);
+    font-size: 8px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+        background: rgba(7, 10, 17, 0.5);
+    }
+
+    &:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.9);
+        outline-offset: 3px;
+    }
 }
 
 .hero-scroll {
@@ -970,7 +1050,8 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.52);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
     cursor: pointer;
-    transition: all var(--portal-transition-fast);
+    transition: width var(--portal-transition-fast),
+        background-color var(--portal-transition-fast);
     &.active {
         background: var(--portal-hero-ink);
         width: 28px;
@@ -1324,7 +1405,10 @@ onUnmounted(() => {
     border: 1px solid var(--portal-surface-border);
     border-radius: 50%;
     color: var(--portal-text-secondary);
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast),
+        transform var(--portal-transition-fast);
 }
 
 .story-compact-link:hover .story-compact-arrow {
@@ -1345,7 +1429,9 @@ onUnmounted(() => {
     color: var(--portal-text-secondary);
     font-size: 13px;
     text-decoration: none;
-    transition: all var(--portal-transition-fast);
+    transition: color var(--portal-transition-fast),
+        background-color var(--portal-transition-fast),
+        border-color var(--portal-transition-fast);
 
     &:hover {
         border-color: var(--portal-accent);
@@ -1510,7 +1596,9 @@ onUnmounted(() => {
     color: var(--portal-text-on-accent);
     font-size: 14px;
     text-decoration: none;
-    transition: all var(--portal-transition-fast);
+    transition: transform var(--portal-transition-fast),
+        box-shadow var(--portal-transition-fast),
+        filter var(--portal-transition-fast);
 
     &:hover {
         transform: translateY(-2px);
