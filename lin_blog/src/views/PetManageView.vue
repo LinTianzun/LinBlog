@@ -550,17 +550,40 @@
                         <span class="pet-home-room-note">{{ petHomeNote }}</span>
                     </div>
 
+                    <div v-if="petHomeTab !== 'home'" class="pet-homestead-business">
+                        <span class="pet-homestead-coins" title="小院金币">
+                            <span aria-hidden="true">🪙</span><b>{{ homestead.coins }}</b>
+                        </span>
+                        <span class="pet-homestead-orders-progress">
+                            今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}
+                        </span>
+                        <div class="pet-homestead-business-actions">
+                            <button type="button" class="pet-homestead-business-orders"
+                                @click="openBusiness('orders')">
+                                <span aria-hidden="true">📋</span>订单
+                                <b v-if="claimableOrderCount">{{ claimableOrderCount }}</b>
+                            </button>
+                            <button type="button" class="pet-homestead-business-shop"
+                                @click="openBusiness('shop')">
+                                <span aria-hidden="true">🛒</span>商店
+                            </button>
+                        </div>
+                    </div>
+
                     <div v-if="petHomeTab !== 'home'" class="pet-homestead-tools">
                         <div v-if="petHomeTab === 'grow'" class="pet-homestead-seeds"
                             role="group" aria-label="选择种子">
                             <button v-for="crop in HOMESTEAD_CROPS" :key="crop.id" type="button"
                                 class="pet-homestead-seed"
-                                :class="{ 'is-active': selectedSeedId === crop.id }"
+                                :class="{
+                                    'is-active': selectedSeedId === crop.id,
+                                    'is-sold-out': homestead.seedStock[crop.id] <= 0,
+                                }"
                                 :aria-pressed="selectedSeedId === crop.id"
-                                :title="`${crop.name}，${formatHomesteadDuration(crop.growMs)}成熟`"
+                                :title="`${crop.name}，库存 ${homestead.seedStock[crop.id]}，${formatHomesteadDuration(crop.growMs)}成熟`"
                                 @click="selectSeed(crop.id)">
                                 <span aria-hidden="true">{{ crop.icon }}</span>
-                                <small>{{ crop.name }}</small>
+                                <small>{{ crop.name }} ×{{ homestead.seedStock[crop.id] }}</small>
                             </button>
                         </div>
                         <span v-else class="pet-homestead-hint">
@@ -643,6 +666,117 @@
                 </section>
             </aside>
         </div>
+
+        <yk-modal v-model="businessOpen"
+            :title="businessPanel === 'orders' ? '今日订单' : '农场商店'"
+            size="m" :show-footer="false">
+            <div class="pet-farm-business">
+                <div class="pet-farm-business-summary">
+                    <span class="pet-farm-business-coins">
+                        <span aria-hidden="true">🪙</span>{{ homestead.coins }} 金币
+                    </span>
+                    <span>今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}</span>
+                </div>
+
+                <div class="pet-farm-business-tabs" role="tablist" aria-label="农场经营">
+                    <button type="button" role="tab" :aria-selected="businessPanel === 'orders'"
+                        :class="{ 'is-active': businessPanel === 'orders' }"
+                        @click="businessPanel = 'orders'">
+                        📋 今日订单
+                    </button>
+                    <button type="button" role="tab" :aria-selected="businessPanel === 'shop'"
+                        :class="{ 'is-active': businessPanel === 'shop' }"
+                        @click="businessPanel = 'shop'">
+                        🛒 农场商店
+                    </button>
+                </div>
+
+                <div v-if="businessPanel === 'orders'" class="pet-farm-orders">
+                    <article v-for="order in orderCards" :key="order.id"
+                        class="pet-farm-order"
+                        :class="{
+                            'is-complete': order.completed,
+                            'is-ready': order.canComplete,
+                        }">
+                        <header class="pet-farm-order-head">
+                            <strong>订单 {{ order.index + 1 }}</strong>
+                            <span class="pet-farm-order-reward">+{{ order.reward }} 🪙</span>
+                        </header>
+                        <div class="pet-farm-order-items">
+                            <span v-for="item in order.items" :key="item.id"
+                                class="pet-farm-order-item"
+                                :class="{ 'is-missing': !item.enough && !order.completed }">
+                                <span aria-hidden="true">{{ item.icon }}</span>{{ item.name }}
+                                {{ item.have }}/{{ item.need }}
+                            </span>
+                        </div>
+                        <footer class="pet-farm-order-foot">
+                            <span>
+                                {{ order.completed
+                                    ? '已交付'
+                                    : order.canComplete
+                                      ? '材料齐了，可以交付'
+                                      : '材料还不够' }}
+                            </span>
+                            <button v-if="!order.completed" type="button"
+                                :disabled="!order.canComplete" @click="deliverOrder(order.id)">
+                                交付
+                            </button>
+                        </footer>
+                    </article>
+                    <p class="pet-farm-business-hint">
+                        每天 0 点刷新 3 个订单，交付后获得金币。
+                    </p>
+                </div>
+
+                <div v-else class="pet-farm-shop">
+                    <section class="pet-farm-shop-section">
+                        <h4>种子</h4>
+                        <div class="pet-farm-shop-grid">
+                            <article v-for="item in seedShopItems" :key="item.id"
+                                class="pet-farm-shop-card">
+                                <span class="pet-farm-shop-icon" aria-hidden="true">{{ item.icon }}</span>
+                                <div class="pet-farm-shop-copy">
+                                    <strong>{{ item.name }}种子</strong>
+                                    <small>库存 {{ item.stock }}</small>
+                                </div>
+                                <div class="pet-farm-shop-buy">
+                                    <span>{{ item.price }} 🪙</span>
+                                    <button type="button"
+                                        :disabled="homestead.coins < item.price"
+                                        @click="buySeedNow(item.id)">
+                                        +{{ item.pack }}
+                                    </button>
+                                </div>
+                            </article>
+                        </div>
+                    </section>
+                    <section class="pet-farm-shop-section">
+                        <h4>农资</h4>
+                        <div class="pet-farm-shop-grid">
+                            <article class="pet-farm-shop-card">
+                                <span class="pet-farm-shop-icon" aria-hidden="true">🌱</span>
+                                <div class="pet-farm-shop-copy">
+                                    <strong>肥料</strong>
+                                    <small>库存 {{ homestead.inventory.fertilizer }}</small>
+                                </div>
+                                <div class="pet-farm-shop-buy">
+                                    <span>{{ HOMESTEAD_FERTILIZER_PACK.price }} 🪙</span>
+                                    <button type="button"
+                                        :disabled="homestead.coins < HOMESTEAD_FERTILIZER_PACK.price"
+                                        @click="buyFertilizerNow">
+                                        +{{ HOMESTEAD_FERTILIZER_PACK.count }}
+                                    </button>
+                                </div>
+                            </article>
+                        </div>
+                    </section>
+                    <p class="pet-farm-business-hint">
+                        种子按包出售；肥料可以缩短作物成熟时间。
+                    </p>
+                </div>
+            </div>
+        </yk-modal>
     </yk-space>
 </template>
 
@@ -687,20 +821,27 @@ import {
     HOMESTEAD_ANIMALS,
     HOMESTEAD_ANIMAL_IDS,
     HOMESTEAD_CROPS,
+    HOMESTEAD_FERTILIZER_PACK,
     HOMESTEAD_ITEMS,
+    HOMESTEAD_SEED_PACKS,
     animalStatusText,
+    buyFertilizerPack,
+    buySeedPack,
+    canCompleteOrder,
     collectAnimal,
+    completeOrder,
     fertilizePlot,
     fishPond,
     formatHomesteadDuration,
     getHomesteadCrop,
+    getHomesteadItem,
     getHomesteadState,
     harvestPlot,
     isAnimalManureReady,
     isAnimalProduceReady,
     isPlotRipe,
     isPondReady,
-    plantCrop,
+    plantCropWithSeed,
     plotProgress,
     plotRemainingMs,
     plotStatusText,
@@ -716,9 +857,11 @@ import {
 import {
     flushPetSyncQueue,
     getPetSyncStatus,
+    mergeRemoteHomestead,
     mergeRemotePetVitals,
     onPetSyncStatusChange,
     refreshPetSyncStatus,
+    syncHomesteadToServer,
     syncPetVitalsToServer,
     type PetSyncState,
     type PetSyncStatus,
@@ -744,6 +887,8 @@ const selectedSeedId = ref<HomesteadCropId>('radish')
 const selectedSeed = computed(
     () => getHomesteadCrop(selectedSeedId.value) || HOMESTEAD_CROPS[0]
 )
+const businessOpen = ref(false)
+const businessPanel = ref<'orders' | 'shop'>('orders')
 const selectedFoodId = ref<PetFoodId>(getSelectedPetFoodId())
 const selectedFood = computed(() => getPetFood(selectedFoodId.value))
 const PET_HOME_TABS = [
@@ -830,8 +975,8 @@ const petSyncState = computed(() => petSync.value.state)
 const petSyncLabel = computed(() => PET_SYNC_LABELS[petSyncState.value])
 const petSyncHint = computed(() => {
     const current = petSync.value
-    if (current.state === 'local') return '未登录时养成进度只保存在当前设备'
-    if (current.state === 'syncing') return '正在把最新养成进度保存到云端'
+    if (current.state === 'local') return '未登录时养成与小院进度只保存在当前设备'
+    if (current.state === 'syncing') return '正在把最新养成与小院进度保存到云端'
     if (current.state === 'pending') {
         return current.lastError || '这次同步没有成功，稍后会自动重试'
     }
@@ -842,7 +987,7 @@ const petSyncHint = computed(() => {
         })
         return `上次同步 ${time}`
     }
-    return '养成进度已与云端一致'
+    return '养成与小院进度已与云端一致'
 })
 const retryPetSync = () => {
     void flushPetSyncQueue()
@@ -968,6 +1113,42 @@ const inventoryChips = computed(() =>
     }))
 )
 
+const orderCards = computed(() =>
+    homestead.value.orders.map((order, index) => {
+        const items = order.requirements.map((requirement) => {
+            const item = getHomesteadItem(requirement.itemId)
+            const have = homestead.value.inventory[requirement.itemId]
+            return {
+                ...item,
+                need: requirement.count,
+                have,
+                enough: have >= requirement.count,
+            }
+        })
+        return {
+            ...order,
+            index,
+            items,
+            completed: order.completedAt > 0,
+            canComplete: canCompleteOrder(homestead.value, order),
+        }
+    })
+)
+const completedOrderCount = computed(
+    () => orderCards.value.filter((order) => order.completed).length
+)
+const claimableOrderCount = computed(
+    () => orderCards.value.filter((order) => order.canComplete).length
+)
+const seedShopItems = computed(() =>
+    HOMESTEAD_CROPS.map((crop) => ({
+        ...crop,
+        price: HOMESTEAD_SEED_PACKS[crop.id].price,
+        pack: HOMESTEAD_SEED_PACKS[crop.id].count,
+        stock: homestead.value.seedStock[crop.id],
+    }))
+)
+
 const homesteadTendCount = computed(() => {
     let count = 0
     let fertilizable = 0
@@ -991,11 +1172,13 @@ const autoHelpEnabled = computed({
     get: () => homestead.value.autoHelp.enabled,
     set: (enabled: boolean) => {
         if (enabled === homestead.value.autoHelp.enabled) return
-        homestead.value = setHomesteadState({
+        const saved = setHomesteadState({
             ...homestead.value,
             autoHelp: { ...homestead.value.autoHelp, enabled },
             updatedAt: Date.now(),
         })
+        homestead.value = saved
+        void syncHomesteadToServer(saved)
         proxy?.$message?.({
             type: 'primary',
             message: enabled
@@ -1070,8 +1253,68 @@ const selectSeed = (id: HomesteadCropId) => {
     selectedSeedId.value = id
 }
 
+const openBusiness = (panel: 'orders' | 'shop') => {
+    businessPanel.value = panel
+    businessOpen.value = true
+}
+
+watch(businessOpen, (open) => {
+    document.body.classList.toggle('pet-farm-business-open', open)
+})
+
+const deliverOrder = (orderId: string) => {
+    const result = completeOrder(homestead.value, orderId, Date.now())
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'warning',
+            message:
+                result.reason === 'missing'
+                    ? '仓库里的材料还不够，再攒一攒吧'
+                    : result.reason === 'completed'
+                      ? '这个订单今天已经交付过了'
+                      : '这个订单已经失效，刷新后再看看',
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `订单完成，获得 ${result.order?.reward || 0} 金币`,
+    })
+}
+
+const buySeedNow = (cropId: HomesteadCropId) => {
+    const crop = getHomesteadCrop(cropId)
+    const pack = HOMESTEAD_SEED_PACKS[cropId]
+    const next = buySeedPack(homestead.value, cropId, Date.now())
+    if (next === homestead.value) {
+        proxy?.$message?.({ type: 'warning', message: '金币不够，先完成几个订单吧' })
+        return
+    }
+    commitHomestead(next)
+    proxy?.$message?.({
+        type: 'success',
+        message: `买了 ${pack.count} 颗${crop?.name || ''}种子`,
+    })
+}
+
+const buyFertilizerNow = () => {
+    const next = buyFertilizerPack(homestead.value, Date.now())
+    if (next === homestead.value) {
+        proxy?.$message?.({ type: 'warning', message: '金币不够，先完成几个订单吧' })
+        return
+    }
+    commitHomestead(next)
+    proxy?.$message?.({
+        type: 'success',
+        message: `买了 ${HOMESTEAD_FERTILIZER_PACK.count} 份肥料`,
+    })
+}
+
 const commitHomestead = (next: HomesteadState) => {
-    homestead.value = setHomesteadState(next)
+    const saved = setHomesteadState(next)
+    homestead.value = saved
+    void syncHomesteadToServer(saved)
 }
 
 const handlePlotClick = (index: number) => {
@@ -1080,12 +1323,19 @@ const handlePlotClick = (index: number) => {
     const now = Date.now()
     if (!plot || !crop) {
         const seed = selectedSeed.value
-        const next = plantCrop(homestead.value, index, seed.id, now)
+        if (homestead.value.seedStock[seed.id] <= 0) {
+            proxy?.$message?.({
+                type: 'warning',
+                message: `${seed.name}种子用完了，去商店补一点吧`,
+            })
+            return
+        }
+        const next = plantCropWithSeed(homestead.value, index, seed.id, now)
         if (next === homestead.value) return
         commitHomestead(next)
         proxy?.$message?.({
             type: 'success',
-            message: `种下了${seed.name}，${formatHomesteadDuration(seed.growMs)}后成熟`,
+            message: `种下了${seed.name}，还剩 ${next.seedStock[seed.id]} 颗种子`,
         })
         return
     }
@@ -1247,12 +1497,13 @@ const resetPetGrowth = () => {
     petVitals.value = next
     petNameDraft.value = next.name
     setPetVitals(next)
-    homestead.value = resetHomesteadState()
+    homestead.value = resetHomesteadState(Date.now(), homestead.value)
     selectedSeedId.value = 'radish'
     emitPetReaction('vitals-updated', {
         message: '宠物成长已重置',
     })
     void syncPetVitalsToServer(next)
+    void syncHomesteadToServer(homestead.value)
     proxy?.$message?.({
         type: 'success',
         message: '已经重新开始，新的陪伴从今天算起，小院也整理好了',
@@ -1398,6 +1649,9 @@ onMounted(() => {
         petVitals.value = merged
         setPetVitals(merged)
     })
+    void mergeRemoteHomestead(homestead.value).then((merged) => {
+        homestead.value = setHomesteadState(merged)
+    })
 })
 
 onMounted(async () => {
@@ -1417,6 +1671,7 @@ onMounted(async () => {
 onUnmounted(() => {
     window.removeEventListener(HOMESTEAD_AUTO_HELP_EVENT, onHomesteadAutoHelp)
     window.removeEventListener(HOMESTEAD_TAB_EVENT, onHomesteadTabRequest)
+    document.body.classList.remove('pet-farm-business-open')
     unsubscribeFood?.()
     unsubscribeReaction?.()
     unsubscribeSync?.()
@@ -4489,6 +4744,402 @@ onUnmounted(() => {
     line-height: 1.5;
 }
 
+.pet-homestead-business {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 16%, var(--admin-line, var(--gray1)));
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--pcolor) 7%, transparent),
+            transparent 64%),
+        var(--admin-surface, var(--bgColor1));
+}
+
+.pet-homestead-coins {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #9a6500;
+    font-size: 12px;
+    font-weight: 650;
+
+    span {
+        font-size: 15px;
+        line-height: 1;
+    }
+
+    b {
+        font-size: 15px;
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+.pet-homestead-orders-progress {
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pet-homestead-business-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+
+    button {
+        position: relative;
+        display: inline-flex;
+        min-height: 32px;
+        align-items: center;
+        gap: 4px;
+        padding: 0 10px;
+        border: 1px solid color-mix(in srgb, var(--pcolor) 22%, var(--admin-line, var(--gray1)));
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--pcolor) 5%, var(--admin-surface, var(--bgColor1)));
+        color: var(--admin-text, var(--gray));
+        font: inherit;
+        font-size: 11px;
+        font-weight: 650;
+        cursor: pointer;
+        transition:
+            background 0.18s ease,
+            border-color 0.18s ease,
+            transform 0.18s ease;
+
+        span {
+            font-size: 13px;
+            line-height: 1;
+        }
+
+        b {
+            display: inline-grid;
+            min-width: 17px;
+            height: 17px;
+            margin-left: 2px;
+            padding: 0 4px;
+            place-items: center;
+            border-radius: 999px;
+            background: #f2a63c;
+            color: #fff;
+            font-size: 9px;
+            line-height: 1;
+        }
+
+        &:hover {
+            border-color: color-mix(in srgb, var(--pcolor) 42%, var(--admin-line, var(--gray1)));
+            background: color-mix(in srgb, var(--pcolor) 10%, var(--admin-surface, var(--bgColor1)));
+            transform: translateY(-1px);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--pcolor);
+            outline-offset: 2px;
+        }
+    }
+}
+
+.pet-farm-business {
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    min-width: min(520px, 78vw);
+    max-height: min(68vh, 640px);
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.pet-farm-business-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 12px;
+}
+
+.pet-farm-business-coins {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #9a6500;
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+
+    span {
+        font-size: 17px;
+        line-height: 1;
+    }
+}
+
+.pet-farm-business-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background: var(--bgColor2);
+
+    button {
+        min-height: 34px;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--admin-muted, var(--gray6));
+        font: inherit;
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
+
+        &.is-active {
+            background: var(--pcolor);
+            color: #fff;
+            box-shadow: 0 4px 10px color-mix(in srgb, var(--pcolor) 26%, transparent);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--pcolor);
+            outline-offset: 2px;
+        }
+    }
+}
+
+.pet-farm-orders {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.pet-farm-order {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 14px;
+    background: var(--admin-surface, var(--bgColor1));
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        opacity 0.18s ease;
+
+    &.is-ready {
+        border-color: color-mix(in srgb, #e8a93b 42%, var(--admin-line, var(--gray1)));
+        box-shadow: 0 6px 18px rgba(208, 151, 44, 0.12);
+    }
+
+    &.is-complete {
+        opacity: 0.62;
+        background: var(--bgColor2);
+    }
+}
+
+.pet-farm-order-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 13px;
+    }
+}
+
+.pet-farm-order-reward {
+    color: #9a6500;
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.pet-farm-order-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pet-farm-order-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--pcolor) 7%, var(--bgColor2));
+    color: var(--admin-text, var(--gray));
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+
+    &.is-missing {
+        background: color-mix(in srgb, #d9534f 8%, var(--bgColor2));
+        color: #b64440;
+    }
+}
+
+.pet-farm-order-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+
+    button {
+        min-height: 30px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #f0ad3d, #e49722);
+        color: #fff;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 5px 12px rgba(210, 146, 29, 0.24);
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.42;
+            box-shadow: none;
+        }
+
+        &:focus-visible {
+            outline: 2px solid #e8a93b;
+            outline-offset: 2px;
+        }
+    }
+}
+
+.pet-farm-shop {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.pet-farm-shop-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    h4 {
+        margin: 0;
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+        font-weight: 700;
+    }
+}
+
+.pet-farm-shop-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.pet-farm-shop-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background: var(--admin-surface, var(--bgColor1));
+}
+
+.pet-farm-shop-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    place-items: center;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
+    font-size: 19px;
+}
+
+.pet-farm-shop-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+
+    strong {
+        overflow: hidden;
+        color: var(--admin-text, var(--gray));
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    small {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+.pet-farm-shop-buy {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+
+    span {
+        color: #9a6500;
+        font-size: 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    button {
+        min-width: 42px;
+        min-height: 26px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--pcolor);
+        color: #fff;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.42;
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--pcolor);
+            outline-offset: 2px;
+        }
+    }
+}
+
+.pet-farm-business-hint {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--bgColor2);
+    color: var(--admin-muted, var(--gray6));
+    font-size: 10px;
+    line-height: 1.6;
+}
+
+.pet-homestead-seed.is-sold-out {
+    opacity: 0.5;
+
+    &.is-active {
+        opacity: 0.78;
+    }
+}
+
 .pet-homestead-seeds {
     display: flex;
     flex: 1;
@@ -6237,6 +6888,29 @@ onUnmounted(() => {
         }
     }
 
+    .pet-homestead-business {
+        gap: 6px;
+    }
+
+    .pet-homestead-business-actions {
+        width: 100%;
+        margin-left: 0;
+
+        button {
+            flex: 1;
+            justify-content: center;
+        }
+    }
+
+    .pet-farm-business {
+        min-width: auto;
+        max-height: 66vh;
+    }
+
+    .pet-farm-shop-grid {
+        grid-template-columns: 1fr;
+    }
+
     .pet-homestead-tend {
         padding: 0 9px;
     }
@@ -6288,5 +6962,11 @@ onUnmounted(() => {
     .pet-home-plot:hover {
         transform: none;
     }
+}
+
+:global(body.pet-farm-business-open .dsh-pet-root) {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 </style>

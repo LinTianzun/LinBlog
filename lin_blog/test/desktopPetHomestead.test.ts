@@ -3,9 +3,18 @@ import test from 'node:test'
 import {
   HOMESTEAD_ANIMALS,
   HOMESTEAD_FISH_COOLDOWN_MS,
+  HOMESTEAD_FERTILIZER_PACK,
+  HOMESTEAD_SEED_PACKS,
+  HOMESTEAD_ORDER_COUNT,
+  HOMESTEAD_STARTING_COINS,
   animalStatusText,
+  buyFertilizerPack,
+  buySeedPack,
+  canCompleteOrder,
   collectAnimal,
+  completeOrder,
   createDefaultHomestead,
+  createDailyOrders,
   fishPond,
   fertilizePlot,
   formatHomesteadDuration,
@@ -15,8 +24,10 @@ import {
   isAnimalProduceReady,
   isPlotRipe,
   isPondReady,
+  mergeHomesteads,
   normalizeHomestead,
   plantCrop,
+  plantCropWithSeed,
   plotRemainingMs,
   plotStatusText,
   pondStatusText,
@@ -93,6 +104,124 @@ test('首次进入小院时动物和鱼塘都有可收产物，菜地是空地',
     fish: 0,
     fertilizer: 0
   })
+})
+
+test('首次进入小院有金币、种子库存和每日订单', () => {
+  const state = createDefaultHomestead(NOW)
+  assert.equal(state.coins, HOMESTEAD_STARTING_COINS)
+  assert.deepEqual(state.seedStock, {
+    radish: 4,
+    tomato: 3,
+    corn: 2,
+    strawberry: 1
+  })
+  assert.equal(state.ordersDay, '2026-11-13')
+  assert.equal(state.orders.length, HOMESTEAD_ORDER_COUNT)
+  assert.equal(
+    new Set(state.orders.map((order) => order.id)).size,
+    HOMESTEAD_ORDER_COUNT
+  )
+  assert.ok(
+    state.orders.every(
+      (order) =>
+        order.reward > 0 &&
+        order.requirements.length > 0 &&
+        order.completedAt === 0
+    )
+  )
+})
+
+test('每日订单按日期稳定生成，跨天会刷新', () => {
+  assert.deepEqual(
+    createDailyOrders('2026-11-13'),
+    createDailyOrders('2026-11-13')
+  )
+  assert.notDeepEqual(
+    createDailyOrders('2026-11-13').map((order) => order.id),
+    createDailyOrders('2026-11-14').map((order) => order.id)
+  )
+
+  const state = createDefaultHomestead(NOW)
+  const first = state.orders[0]
+  const withCompleted: HomesteadState = {
+    ...state,
+    orders: state.orders.map((order, index) =>
+      index === 0 ? { ...order, completedAt: NOW } : order
+    )
+  }
+  assert.equal(
+    normalizeHomestead(withCompleted, NOW).orders[0].completedAt,
+    NOW
+  )
+  const nextDay = normalizeHomestead(withCompleted, NOW + 24 * 60 * 60_000)
+  assert.equal(nextDay.ordersDay, '2026-11-14')
+  assert.ok(nextDay.orders.every((order) => order.completedAt === 0))
+  assert.notEqual(nextDay.orders[0].id, first.id)
+})
+
+test('播种会消耗种子，种子不足时不再播种', () => {
+  let state = createDefaultHomestead(NOW)
+  state = {
+    ...state,
+    seedStock: { ...state.seedStock, radish: 1 }
+  }
+  const planted = plantCropWithSeed(state, 0, 'radish', NOW)
+  assert.equal(planted.plots[0].cropId, 'radish')
+  assert.equal(planted.seedStock.radish, 0)
+  assert.equal(plantCropWithSeed(planted, 1, 'radish', NOW), planted)
+})
+
+test('商店购买会扣金币并增加种子或肥料库存', () => {
+  const state = createDefaultHomestead(NOW)
+  const radishPack = HOMESTEAD_SEED_PACKS.radish
+  const bought = buySeedPack(state, 'radish', NOW)
+  assert.equal(bought.coins, HOMESTEAD_STARTING_COINS - radishPack.price)
+  assert.equal(bought.seedStock.radish, state.seedStock.radish + radishPack.count)
+
+  const poor: HomesteadState = { ...bought, coins: 0 }
+  assert.equal(buySeedPack(poor, 'tomato', NOW), poor)
+
+  const fertilized = buyFertilizerPack(state, NOW)
+  assert.equal(
+    fertilized.coins,
+    HOMESTEAD_STARTING_COINS - HOMESTEAD_FERTILIZER_PACK.price
+  )
+  assert.equal(
+    fertilized.inventory.fertilizer,
+    state.inventory.fertilizer + HOMESTEAD_FERTILIZER_PACK.count
+  )
+})
+
+test('交付订单会消耗仓库材料并发放金币', () => {
+  const state = createDefaultHomestead(NOW)
+  const order = {
+    id: 'test-order',
+    requirements: [{ itemId: 'radish' as const, count: 2 }],
+    reward: 25,
+    completedAt: 0
+  }
+  const ready: HomesteadState = {
+    ...state,
+    coins: 10,
+    inventory: { ...state.inventory, radish: 3 },
+    orders: [order, ...state.orders.slice(1)]
+  }
+  assert.equal(canCompleteOrder(ready, order), true)
+
+  const result = completeOrder(ready, order.id, NOW)
+  assert.equal(result.changed, true)
+  assert.equal(result.reason, 'ok')
+  assert.equal(result.state.coins, 35)
+  assert.equal(result.state.inventory.radish, 1)
+  assert.equal(result.state.orders[0].completedAt, NOW)
+  assert.equal(completeOrder(result.state, order.id, NOW).reason, 'completed')
+
+  const missing: HomesteadState = {
+    ...ready,
+    inventory: { ...ready.inventory, radish: 0 }
+  }
+  assert.equal(completeOrder(missing, order.id, NOW).reason, 'missing')
+  assert.equal(completeOrder(ready, 'unknown', NOW).reason, 'unknown')
 })
 
 test('非法存档会修正菜地、时间戳和仓库数量', () => {
@@ -302,4 +431,84 @@ test('重置小院返回新的默认状态', () => {
   const reset = resetHomesteadState(NOW)
   assert.equal(reset.inventory.fish, 0)
   assert.equal(getHomesteadState(NOW).inventory.fish, 0)
+})
+
+test('同版本小院合并会保留两端资源、产物与订单进度', () => {
+  const local = createDefaultHomestead(NOW)
+  const remote = normalizeHomestead(
+    {
+      ...local,
+      coins: local.coins + 40,
+      inventory: {
+        ...local.inventory,
+        radish: 3,
+        egg: 2
+      },
+      seedStock: {
+        ...local.seedStock,
+        tomato: local.seedStock.tomato + 2
+      },
+      orders: local.orders.map((order, index) =>
+        index === 0 ? { ...order, completedAt: NOW } : order
+      ),
+      updatedAt: NOW + 10_000
+    },
+    NOW + 10_000
+  )
+  const merged = mergeHomesteads(local, remote, NOW + 20_000)
+
+  assert.equal(merged.coins, remote.coins)
+  assert.equal(merged.inventory.radish, 3)
+  assert.equal(merged.inventory.egg, 2)
+  assert.equal(merged.seedStock.tomato, remote.seedStock.tomato)
+  assert.equal(merged.orders[0].completedAt, NOW)
+})
+
+test('小院重置版本会优先于旧设备的高进度', () => {
+  const old = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      coins: 999,
+      stateVersion: 5,
+      updatedAt: NOW + 100_000
+    },
+    NOW + 100_000
+  )
+  const reset = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      stateVersion: 10,
+      updatedAt: NOW
+    },
+    NOW
+  )
+
+  assert.equal(mergeHomesteads(old, reset, NOW).coins, HOMESTEAD_STARTING_COINS)
+  assert.equal(mergeHomesteads(reset, old, NOW).stateVersion, 10)
+})
+
+test('新设备首次同步不会用空白默认存档覆盖云端作物', () => {
+  const remote = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      plots: [
+        {
+          cropId: 'radish',
+          plantedAt: NOW - 60_000,
+          wateredAt: NOW - 30_000,
+          fertilizedAt: 0
+        }
+      ],
+      seedStock: { radish: 1, tomato: 0, corn: 0, strawberry: 0 },
+      coins: 120,
+      updatedAt: NOW - 60_000
+    },
+    NOW
+  )
+  const freshLocal = createDefaultHomestead(NOW + 60_000)
+  const merged = mergeHomesteads(freshLocal, remote, NOW + 60_000)
+
+  assert.equal(merged.plots[0].cropId, 'radish')
+  assert.equal(merged.coins, 120)
+  assert.equal(merged.seedStock.radish, 1)
 })

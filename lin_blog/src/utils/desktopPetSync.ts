@@ -1,4 +1,14 @@
-import { getPetState, savePetState } from '../api/pet'
+import {
+  getPetHomestead,
+  getPetState,
+  savePetHomestead,
+  savePetState
+} from '../api/pet'
+import {
+  mergeHomesteads,
+  normalizeHomestead,
+  type HomesteadState
+} from './desktopPetHomestead'
 import {
   mergePetVitals,
   normalizePetVitals,
@@ -34,6 +44,8 @@ let status: PetSyncStatus = {
 }
 let pendingVitals: PetVitals | null = null
 let readRetryNeeded = false
+let pendingHomestead: HomesteadState | null = null
+let homesteadReadRetryNeeded = false
 let flushing = false
 let retryTimer: number | undefined
 let retryAttempt = 0
@@ -81,9 +93,17 @@ const clearRetryTimer = () => {
   retryTimer = undefined
 }
 
+const hasPendingSync = (): boolean =>
+  Boolean(pendingVitals || pendingHomestead)
+
+const hasReadRetry = (): boolean =>
+  readRetryNeeded || homesteadReadRetryNeeded
+
 const markSynced = () => {
   pendingVitals = null
+  pendingHomestead = null
   readRetryNeeded = false
+  homesteadReadRetryNeeded = false
   retryAttempt = 0
   clearRetryTimer()
   setStatus({
@@ -104,7 +124,9 @@ const markPending = (error: string) => {
 
 const markLocal = () => {
   pendingVitals = null
+  pendingHomestead = null
   readRetryNeeded = false
+  homesteadReadRetryNeeded = false
   retryAttempt = 0
   clearRetryTimer()
   setStatus({
@@ -139,7 +161,9 @@ const bindSyncListeners = () => {
   })
 
   window.addEventListener('offline', () => {
-    if (pendingVitals && canSyncPetVitals()) markPending('当前处于离线状态')
+    if (hasPendingSync() && canSyncPetVitals()) {
+      markPending('当前处于离线状态')
+    }
   })
 
   // 其他标签页登录 / 退出时同步重置状态，避免把上一个账号的队列带过去
@@ -149,7 +173,7 @@ const bindSyncListeners = () => {
       markLocal()
       return
     }
-    if (pendingVitals) {
+    if (hasPendingSync()) {
       retryAttempt = 0
       clearRetryTimer()
       void flushPetSyncQueue()
@@ -165,15 +189,40 @@ const refreshRemoteSyncStatus = async (): Promise<boolean> => {
     }
     readRetryNeeded = false
     // 读取期间若又产生了新的本地修改，先补传，不能被这次读取清掉
-    if (pendingVitals) {
+    if (hasPendingSync()) {
       void flushPetSyncQueue()
       return true
+    }
+    if (homesteadReadRetryNeeded) {
+      return refreshRemoteHomesteadSyncStatus()
     }
     markSynced()
     return true
   } catch {
     readRetryNeeded = true
     markPending('读取云端进度失败，稍后会自动重试')
+    scheduleRetry()
+    return false
+  }
+}
+
+const refreshRemoteHomesteadSyncStatus = async (): Promise<boolean> => {
+  try {
+    const result = await getPetHomestead()
+    if (result.code !== 200) {
+      throw new Error(result.message || '读取云端小院失败')
+    }
+    homesteadReadRetryNeeded = false
+    if (hasPendingSync()) {
+      void flushPetSyncQueue()
+      return true
+    }
+    if (readRetryNeeded) return refreshRemoteSyncStatus()
+    markSynced()
+    return true
+  } catch {
+    homesteadReadRetryNeeded = true
+    markPending('读取云端小院失败，稍后会自动重试')
     scheduleRetry()
     return false
   }
@@ -190,8 +239,9 @@ export async function flushPetSyncQueue(): Promise<boolean> {
     return false
   }
   if (flushing) return false
-  if (!pendingVitals) {
+  if (!pendingVitals && !pendingHomestead) {
     if (readRetryNeeded) return refreshRemoteSyncStatus()
+    if (homesteadReadRetryNeeded) return refreshRemoteHomesteadSyncStatus()
     if (status.state === 'pending') markSynced()
     return true
   }
@@ -202,16 +252,23 @@ export async function flushPetSyncQueue(): Promise<boolean> {
   }
 
   flushing = true
-  const batch = pendingVitals
+  const vitalsBatch = pendingVitals
+  const homesteadBatch = pendingHomestead
   let ok = false
   setStatus({ state: 'syncing', lastError: null })
   try {
-    const result = await savePetState(normalizePetVitals(batch))
+    const result = vitalsBatch
+      ? await savePetState(normalizePetVitals(vitalsBatch))
+      : await savePetHomestead(normalizeHomestead(homesteadBatch))
     if (result.code !== 200) {
       throw new Error(result.message || '同步失败')
     }
     ok = true
-    if (pendingVitals === batch) markSynced()
+    if (vitalsBatch && pendingVitals === vitalsBatch) pendingVitals = null
+    if (homesteadBatch && pendingHomestead === homesteadBatch) {
+      pendingHomestead = null
+    }
+    if (!hasPendingSync() && !hasReadRetry()) markSynced()
   } catch {
     markPending('这次同步没有成功，稍后会自动重试')
     scheduleRetry()
@@ -219,7 +276,7 @@ export async function flushPetSyncQueue(): Promise<boolean> {
     flushing = false
   }
 
-  if (ok && pendingVitals) return flushPetSyncQueue()
+  if (ok && (pendingVitals || pendingHomestead)) return flushPetSyncQueue()
   return ok
 }
 
@@ -242,7 +299,7 @@ export async function mergeRemotePetVitals(
     return local
   }
 
-  const hadPending = Boolean(pendingVitals)
+  const hadPending = hasPendingSync()
   if (!hadPending) setStatus({ state: 'syncing', lastError: null })
   try {
     const result = await getPetState()
@@ -253,11 +310,11 @@ export async function mergeRemotePetVitals(
     const merged = result.data
       ? mergePetVitals(local, result.data)
       : normalizePetVitals(local)
-    if (pendingVitals) void flushPetSyncQueue()
+    if (hasPendingSync() || hasReadRetry()) void flushPetSyncQueue()
     else markSynced()
     return merged
   } catch {
-    if (!pendingVitals) {
+    if (!hasPendingSync()) {
       readRetryNeeded = true
       markPending('读取云端进度失败，稍后会自动重试')
       scheduleRetry()
@@ -278,6 +335,72 @@ export async function syncPetVitalsToServer(
 
   pendingVitals = normalizePetVitals(vitals)
   readRetryNeeded = false
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    markPending('当前处于离线状态')
+    scheduleRetry()
+    return false
+  }
+  return flushPetSyncQueue()
+}
+
+const isHomesteadSnapshot = (
+  value: unknown
+): value is Partial<HomesteadState> =>
+  Boolean(
+    value &&
+      typeof value === 'object' &&
+      (Array.isArray((value as Partial<HomesteadState>).plots) ||
+        (value as Partial<HomesteadState>).inventory ||
+        (value as Partial<HomesteadState>).animals ||
+        (value as Partial<HomesteadState>).stateVersion !== undefined)
+  )
+
+/** 读取远端小院并与本机合并；无云端存档时保留当前设备进度 */
+export async function mergeRemoteHomestead(
+  local: HomesteadState
+): Promise<HomesteadState> {
+  bindSyncListeners()
+  if (!canSyncPetVitals()) {
+    markLocal()
+    return local
+  }
+
+  const hadPending = hasPendingSync()
+  if (!hadPending) setStatus({ state: 'syncing', lastError: null })
+  try {
+    const result = await getPetHomestead()
+    if (result.code !== 200) {
+      throw new Error(result.message || '读取云端小院失败')
+    }
+    homesteadReadRetryNeeded = false
+    const merged = isHomesteadSnapshot(result.data)
+      ? mergeHomesteads(local, result.data)
+      : normalizeHomestead(local)
+    if (hasPendingSync() || hasReadRetry()) void flushPetSyncQueue()
+    else markSynced()
+    return merged
+  } catch {
+    if (!hasPendingSync()) {
+      homesteadReadRetryNeeded = true
+      markPending('读取云端小院失败，稍后会自动重试')
+      scheduleRetry()
+    }
+    return local
+  }
+}
+
+/** 写入失败或离线时保留最新小院快照，恢复网络后自动补传 */
+export async function syncHomesteadToServer(
+  state: HomesteadState
+): Promise<boolean> {
+  bindSyncListeners()
+  if (!canSyncPetVitals()) {
+    markLocal()
+    return false
+  }
+
+  pendingHomestead = normalizeHomestead(state)
+  homesteadReadRetryNeeded = false
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     markPending('当前处于离线状态')
     scheduleRetry()

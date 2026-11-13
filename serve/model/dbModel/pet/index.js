@@ -3,6 +3,20 @@ const { query } = require('../../db/dbnew')
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DAILY_TASK_KEYS = ['feed', 'publish', 'comment']
 const ACHIEVEMENT_PATTERN = /^[a-z][a-z0-9_-]{0,31}:\d{1,6}$/
+const HOMESTEAD_CROP_IDS = ['radish', 'tomato', 'corn', 'strawberry']
+const HOMESTEAD_PRODUCE_IDS = ['egg', 'milk']
+const HOMESTEAD_ITEM_IDS = [
+    ...HOMESTEAD_CROP_IDS,
+    ...HOMESTEAD_PRODUCE_IDS,
+    'fish',
+    'fertilizer'
+]
+const HOMESTEAD_ORDER_ITEM_IDS = HOMESTEAD_ITEM_IDS
+    .filter((id) => id !== 'fertilizer')
+const HOMESTEAD_ANIMAL_IDS = ['chicken', 'cow']
+const HOMESTEAD_PLOT_COUNT = 4
+const HOMESTEAD_ORDER_COUNT = 3
+const HOMESTEAD_ORDER_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/
 
 const clampInt = (value, min, max, fallback) => {
     const number = Number(value)
@@ -95,6 +109,138 @@ function normalizePetState(payload = {}) {
     }
 }
 
+const emptyHomesteadPlot = () => ({
+    cropId: null,
+    plantedAt: 0,
+    wateredAt: 0,
+    fertilizedAt: 0
+})
+
+function normalizeHomesteadOrders(value) {
+    if (!Array.isArray(value)) return []
+    const orders = []
+    const ids = new Set()
+    for (const item of value) {
+        if (!item || typeof item !== 'object') continue
+        const id = typeof item.id === 'string' ? item.id.trim() : ''
+        if (!HOMESTEAD_ORDER_ID_PATTERN.test(id) || ids.has(id)) continue
+        const requirements = []
+        for (const requirement of Array.isArray(item.requirements)
+            ? item.requirements
+            : []) {
+            if (!requirement || typeof requirement !== 'object') continue
+            const itemId = HOMESTEAD_ORDER_ITEM_IDS.includes(
+                requirement.itemId
+            )
+                ? requirement.itemId
+                : null
+            const count = clampInt(requirement.count, 1, 99, 0)
+            if (!itemId || !count) continue
+            requirements.push({ itemId, count })
+            if (requirements.length >= 3) break
+        }
+        const reward = clampInt(item.reward, 1, 999_999, 0)
+        if (!requirements.length || !reward) continue
+        ids.add(id)
+        orders.push({
+            id,
+            requirements,
+            reward,
+            completedAt: safeTimestamp(item.completedAt)
+        })
+        if (orders.length >= HOMESTEAD_ORDER_COUNT) break
+    }
+    return orders
+}
+
+function normalizeHomesteadState(payload) {
+    const raw = typeof payload === 'string'
+        ? parseJson(payload, null)
+        : payload
+    if (!raw || typeof raw !== 'object') return null
+
+    const rawPlots = Array.isArray(raw.plots) ? raw.plots : []
+    const plots = Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+        const item = rawPlots[index]
+        if (!item || typeof item !== 'object') return emptyHomesteadPlot()
+        const cropId = HOMESTEAD_CROP_IDS.includes(item.cropId)
+            ? item.cropId
+            : null
+        if (!cropId) return emptyHomesteadPlot()
+        const plantedAt = safeTimestamp(item.plantedAt)
+        return {
+            cropId,
+            plantedAt,
+            wateredAt: Math.max(0, safeTimestamp(item.wateredAt)),
+            fertilizedAt: Math.max(0, safeTimestamp(item.fertilizedAt))
+        }
+    })
+
+    const rawAnimals = raw.animals && typeof raw.animals === 'object'
+        ? raw.animals
+        : {}
+    const animals = {}
+    for (const id of HOMESTEAD_ANIMAL_IDS) {
+        const item = rawAnimals[id]
+        animals[id] = {
+            lastProduceAt: safeTimestamp(item?.lastProduceAt),
+            lastManureAt: safeTimestamp(item?.lastManureAt)
+        }
+    }
+
+    const rawInventory = raw.inventory && typeof raw.inventory === 'object'
+        ? raw.inventory
+        : {}
+    const inventory = {}
+    for (const id of HOMESTEAD_ITEM_IDS) {
+        inventory[id] = clampInt(rawInventory[id], 0, 999_999, 0)
+    }
+
+    const rawSeedStock = raw.seedStock && typeof raw.seedStock === 'object'
+        ? raw.seedStock
+        : {}
+    const seedStock = {}
+    for (const id of HOMESTEAD_CROP_IDS) {
+        seedStock[id] = clampInt(rawSeedStock[id], 0, 999, 0)
+    }
+
+    const rawTotals = raw.totals && typeof raw.totals === 'object'
+        ? raw.totals
+        : {}
+    const rawAutoHelp = raw.autoHelp && typeof raw.autoHelp === 'object'
+        ? raw.autoHelp
+        : {}
+    return {
+        plots,
+        animals,
+        lastFishedAt: safeTimestamp(raw.lastFishedAt),
+        inventory,
+        coins: clampInt(raw.coins, 0, 9_999_999, 0),
+        seedStock,
+        ordersDay: normalizeDate(raw.ordersDay) || '',
+        orders: normalizeHomesteadOrders(raw.orders),
+        totals: {
+            harvests: clampInt(rawTotals.harvests, 0, 1_000_000_000, 0),
+            eggs: clampInt(rawTotals.eggs, 0, 1_000_000_000, 0),
+            milk: clampInt(rawTotals.milk, 0, 1_000_000_000, 0),
+            fish: clampInt(rawTotals.fish, 0, 1_000_000_000, 0),
+            manure: clampInt(rawTotals.manure, 0, 1_000_000_000, 0)
+        },
+        autoHelp: {
+            enabled:
+                typeof rawAutoHelp.enabled === 'boolean'
+                    ? rawAutoHelp.enabled
+                    : true,
+            lastAt: safeTimestamp(rawAutoHelp.lastAt),
+            day: normalizeDate(rawAutoHelp.day) || '',
+            count: clampInt(rawAutoHelp.count, 0, 99, 0),
+            total: clampInt(rawAutoHelp.total, 0, 1_000_000_000, 0)
+        },
+        stateVersion: safeTimestamp(raw.stateVersion),
+        updatedAt: safeTimestamp(raw.updatedAt)
+    }
+}
+
 const toCamelState = (row) => {
     const dailyTaskState = parseJson(row.daily_task_state, {})
     return {
@@ -184,6 +330,157 @@ function mergePetStates(existing, incoming) {
     }
 }
 
+const homesteadPlotEventAt = (plot) =>
+    Math.max(plot.plantedAt, plot.wateredAt, plot.fertilizedAt)
+
+function mergeHomesteadPlots(local, remote) {
+    return Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+        const a = local.plots[index] || emptyHomesteadPlot()
+        const b = remote.plots[index] || emptyHomesteadPlot()
+        if (!a.cropId && !b.cropId) return emptyHomesteadPlot()
+        if (!a.cropId || !b.cropId) {
+            const planted = a.cropId ? a : b
+            const plantedState = a.cropId ? local : remote
+            const emptyState = a.cropId ? remote : local
+            return emptyState.totals.harvests >
+                plantedState.totals.harvests &&
+                emptyState.updatedAt >= homesteadPlotEventAt(planted)
+                ? emptyHomesteadPlot()
+                : planted
+        }
+        if (a.cropId !== b.cropId) {
+            return a.plantedAt >= b.plantedAt ? a : b
+        }
+        return {
+            cropId: a.cropId,
+            plantedAt: Math.min(a.plantedAt, b.plantedAt),
+            wateredAt: Math.max(a.wateredAt, b.wateredAt),
+            fertilizedAt: Math.max(a.fertilizedAt, b.fertilizedAt)
+        }
+    })
+}
+
+function mergeHomesteadOrders(local, remote) {
+    if (local.ordersDay !== remote.ordersDay) {
+        return local.ordersDay > remote.ordersDay
+            ? { ordersDay: local.ordersDay, orders: local.orders }
+            : { ordersDay: remote.ordersDay, orders: remote.orders }
+    }
+    if (!local.orders.length) {
+        return { ordersDay: remote.ordersDay, orders: remote.orders }
+    }
+    if (!remote.orders.length) {
+        return { ordersDay: local.ordersDay, orders: local.orders }
+    }
+    const localOrders = new Map(local.orders.map((order) => [order.id, order]))
+    return {
+        ordersDay: local.ordersDay,
+        orders: remote.orders.map((order) => ({
+            ...order,
+            completedAt: Math.max(
+                order.completedAt,
+                localOrders.get(order.id)?.completedAt || 0
+            )
+        }))
+    }
+}
+
+const isFreshHomesteadState = (state) =>
+    state.plots.every((plot) => !plot.cropId) &&
+    HOMESTEAD_ITEM_IDS.every((id) => state.inventory[id] === 0) &&
+    state.seedStock.radish === 4 &&
+    state.seedStock.tomato === 3 &&
+    state.seedStock.corn === 2 &&
+    state.seedStock.strawberry === 1 &&
+    state.coins === 80 &&
+    Object.values(state.totals).every((value) => value === 0) &&
+    state.autoHelp.total === 0
+
+/** 小院快照合并：版本优先，同版本保留两端更高的资源进度 */
+function mergeHomesteadStates(existing, incoming) {
+    const a = normalizeHomesteadState(existing)
+    const b = normalizeHomesteadState(incoming)
+    if (!a) return b
+    if (!b) return a
+    if (a.stateVersion !== b.stateVersion) {
+        return a.stateVersion > b.stateVersion ? a : b
+    }
+    const newer = b.updatedAt >= a.updatedAt ? b : a
+    const localFresh = isFreshHomesteadState(a)
+    const remoteFresh = isFreshHomesteadState(b)
+    const economicSource = localFresh && !remoteFresh ? b : a
+    const otherEconomicSource = economicSource === a ? b : a
+    const inventory = {}
+    for (const id of HOMESTEAD_ITEM_IDS) {
+        inventory[id] = localFresh !== remoteFresh
+            ? economicSource.inventory[id]
+            : Math.max(
+                otherEconomicSource.inventory[id],
+                economicSource.inventory[id]
+            )
+    }
+    const seedStock = {}
+    for (const id of HOMESTEAD_CROP_IDS) {
+        seedStock[id] = localFresh !== remoteFresh
+            ? economicSource.seedStock[id]
+            : Math.max(
+                otherEconomicSource.seedStock[id],
+                economicSource.seedStock[id]
+            )
+    }
+    const orderState = mergeHomesteadOrders(a, b)
+    const autoHelpDay = a.autoHelp.day >= b.autoHelp.day
+        ? a.autoHelp.day
+        : b.autoHelp.day
+    const autoHelpSource = a.autoHelp.day === autoHelpDay
+        ? a.autoHelp
+        : b.autoHelp
+    const animals = {}
+    for (const id of HOMESTEAD_ANIMAL_IDS) {
+        animals[id] = {
+            lastProduceAt: Math.max(
+                a.animals[id].lastProduceAt,
+                b.animals[id].lastProduceAt
+            ),
+            lastManureAt: Math.max(
+                a.animals[id].lastManureAt,
+                b.animals[id].lastManureAt
+            )
+        }
+    }
+    return {
+        plots: mergeHomesteadPlots(a, b),
+        animals,
+        lastFishedAt: Math.max(a.lastFishedAt, b.lastFishedAt),
+        inventory,
+        coins: localFresh !== remoteFresh
+            ? economicSource.coins
+            : Math.max(a.coins, b.coins),
+        seedStock,
+        ordersDay: orderState.ordersDay,
+        orders: orderState.orders,
+        totals: {
+            harvests: Math.max(a.totals.harvests, b.totals.harvests),
+            eggs: Math.max(a.totals.eggs, b.totals.eggs),
+            milk: Math.max(a.totals.milk, b.totals.milk),
+            fish: Math.max(a.totals.fish, b.totals.fish),
+            manure: Math.max(a.totals.manure, b.totals.manure)
+        },
+        autoHelp: {
+            enabled: newer.autoHelp.enabled,
+            lastAt: Math.max(a.autoHelp.lastAt, b.autoHelp.lastAt),
+            day: autoHelpDay,
+            count:
+                a.autoHelp.day === b.autoHelp.day
+                    ? Math.max(a.autoHelp.count, b.autoHelp.count)
+                    : autoHelpSource.count,
+            total: Math.max(a.autoHelp.total, b.autoHelp.total)
+        },
+        stateVersion: a.stateVersion,
+        updatedAt: Math.max(a.updatedAt, b.updatedAt)
+    }
+}
+
 async function savePetState(userId, payload) {
     const existing = await getPetState(userId)
     const state = mergePetStates(existing, payload)
@@ -244,10 +541,48 @@ async function savePetState(userId, payload) {
     return getPetState(userId)
 }
 
+async function getHomesteadState(userId) {
+    const rows = await query(
+        `SELECT homestead_state, homestead_version
+         FROM pet_state WHERE user_id = ? LIMIT 1`,
+        [userId]
+    )
+    const row = rows?.[0]
+    if (!row || !row.homestead_state) return null
+    const state = normalizeHomesteadState(row.homestead_state)
+    if (!state) return null
+    state.stateVersion = Math.max(
+        state.stateVersion,
+        safeTimestamp(row.homestead_version)
+    )
+    return state
+}
+
+async function saveHomesteadState(userId, payload) {
+    const incoming = normalizeHomesteadState(payload)
+    if (!incoming) return getHomesteadState(userId)
+    const existing = await getHomesteadState(userId)
+    const state = mergeHomesteadStates(existing, incoming)
+    await query(
+        `INSERT INTO pet_state
+         (user_id, homestead_state, homestead_version)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            homestead_state = VALUES(homestead_state),
+            homestead_version = VALUES(homestead_version)`,
+        [userId, JSON.stringify(state), state.stateVersion]
+    )
+    return state
+}
+
 module.exports = {
     getPetState,
     savePetState,
     normalizePetState,
     mergePetStates,
-    mergeDailyTaskStates
+    mergeDailyTaskStates,
+    getHomesteadState,
+    saveHomesteadState,
+    normalizeHomesteadState,
+    mergeHomesteadStates
 }

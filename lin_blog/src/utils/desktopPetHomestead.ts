@@ -60,13 +60,33 @@ export interface HomesteadAutoHelpState {
   total: number
 }
 
+export type HomesteadOrderItemId = Exclude<HomesteadItemId, 'fertilizer'>
+
+export interface HomesteadOrderRequirement {
+  itemId: HomesteadOrderItemId
+  count: number
+}
+
+export interface HomesteadOrderState {
+  id: string
+  requirements: HomesteadOrderRequirement[]
+  reward: number
+  completedAt: number
+}
+
 export interface HomesteadState {
   plots: HomesteadPlotState[]
   animals: Record<HomesteadAnimalId, HomesteadAnimalState>
   lastFishedAt: number
   inventory: Record<HomesteadItemId, number>
+  coins: number
+  seedStock: Record<HomesteadCropId, number>
+  ordersDay: string
+  orders: HomesteadOrderState[]
   totals: HomesteadTotals
   autoHelp: HomesteadAutoHelpState
+  /** 小院独立版本号，重置后递增，阻止旧设备把进度合回来 */
+  stateVersion: number
   updatedAt: number
 }
 
@@ -74,6 +94,18 @@ export const HOMESTEAD_PLOT_COUNT = 4
 export const HOMESTEAD_FISH_COOLDOWN_MS = 3 * 60_000
 export const HOMESTEAD_WATER_BONUS_RATE = 0.2
 export const HOMESTEAD_FERTILIZER_BONUS_RATE = 0.2
+export const HOMESTEAD_STARTING_COINS = 80
+export const HOMESTEAD_ORDER_COUNT = 3
+export const HOMESTEAD_SEED_PACKS: Record<
+  HomesteadCropId,
+  { price: number; count: number }
+> = {
+  radish: { price: 12, count: 3 },
+  tomato: { price: 21, count: 3 },
+  corn: { price: 33, count: 3 },
+  strawberry: { price: 45, count: 3 }
+}
+export const HOMESTEAD_FERTILIZER_PACK = { price: 24, count: 2 } as const
 
 export const HOMESTEAD_CROPS: readonly HomesteadCropDefinition[] = [
   {
@@ -148,6 +180,23 @@ export const HOMESTEAD_ITEMS: readonly HomesteadItemDefinition[] = [
   { id: 'fish', name: '鱼', icon: '🐟' },
   { id: 'fertilizer', name: '肥料', icon: '🌱' }
 ]
+
+const HOMESTEAD_ORDER_ITEM_VALUES: Record<HomesteadOrderItemId, number> = {
+  radish: 4,
+  tomato: 7,
+  corn: 11,
+  strawberry: 9,
+  egg: 7,
+  milk: 12,
+  fish: 10
+}
+
+const DEFAULT_SEED_STOCK: Record<HomesteadCropId, number> = {
+  radish: 4,
+  tomato: 3,
+  corn: 2,
+  strawberry: 1
+}
 
 const CROP_MAP = new Map<HomesteadCropId, HomesteadCropDefinition>(
   HOMESTEAD_CROPS.map((crop) => [crop.id, crop])
@@ -245,6 +294,105 @@ export function homesteadDayKey(now = Date.now()): string {
 const isDayKey = (value: unknown): value is string =>
   typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
+const hashText = (value: string): number => {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+const mulberry32 = (seed: number): (() => number) => {
+  let state = seed >>> 0
+  return () => {
+    state += 0x6d2b79f5
+    let value = state
+    value = Math.imul(value ^ (value >>> 15), value | 1)
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const ORDER_POOL: readonly (readonly HomesteadOrderItemId[])[] = [
+  ['radish', 'egg'],
+  ['tomato', 'milk'],
+  ['corn', 'fish'],
+  ['strawberry', 'egg'],
+  ['radish', 'tomato'],
+  ['egg', 'milk'],
+  ['fish', 'corn'],
+  ['strawberry', 'milk'],
+  ['radish', 'egg', 'fish'],
+  ['tomato', 'corn']
+]
+
+export function createDailyOrders(
+  day = homesteadDayKey()
+): HomesteadOrderState[] {
+  const random = mulberry32(hashText(`orders:${day}`))
+  const available = ORDER_POOL.slice()
+  const orders: HomesteadOrderState[] = []
+  for (let index = 0; index < HOMESTEAD_ORDER_COUNT; index++) {
+    const poolIndex = Math.floor(random() * available.length)
+    const [items] = available.splice(poolIndex, 1)
+    const requirements = items.map((itemId, itemIndex) => ({
+      itemId,
+      count: (itemIndex === 0 ? 2 : 1) + Math.floor(random() * 2)
+    }))
+    const baseValue = requirements.reduce(
+      (total, requirement) =>
+        total +
+        HOMESTEAD_ORDER_ITEM_VALUES[requirement.itemId] * requirement.count,
+      0
+    )
+    orders.push({
+      id: `${day}-${index + 1}`,
+      requirements,
+      reward: Math.max(10, Math.round((baseValue * 1.45 + 8) / 5) * 5),
+      completedAt: 0
+    })
+  }
+  return orders
+}
+
+const normalizeDailyOrders = (
+  value: unknown,
+  now: number
+): HomesteadOrderState[] => {
+  if (!Array.isArray(value) || value.length !== HOMESTEAD_ORDER_COUNT) {
+    return []
+  }
+  const ids = new Set<string>()
+  const orders: HomesteadOrderState[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return []
+    const raw = item as Partial<HomesteadOrderState>
+    if (typeof raw.id !== 'string' || !raw.id || ids.has(raw.id)) return []
+    if (!Array.isArray(raw.requirements)) return []
+    const requirements: HomesteadOrderRequirement[] = []
+    for (const requirement of raw.requirements) {
+      if (!requirement || typeof requirement !== 'object') return []
+      const itemId = requirement.itemId as HomesteadOrderItemId
+      if (!(itemId in HOMESTEAD_ORDER_ITEM_VALUES)) return []
+      const count = intOr(requirement.count, 0, 9)
+      if (count <= 0) return []
+      requirements.push({ itemId, count })
+    }
+    if (!requirements.length || requirements.length > 3) return []
+    const reward = intOr(raw.reward, 0, 999_999)
+    if (reward <= 0) return []
+    ids.add(raw.id)
+    orders.push({
+      id: raw.id,
+      requirements,
+      reward,
+      completedAt: Math.min(now, safeTimestamp(raw.completedAt, 0))
+    })
+  }
+  return orders
+}
+
 const defaultAutoHelp = (now = Date.now()): HomesteadAutoHelpState => ({
   enabled: true,
   lastAt: 0,
@@ -265,7 +413,11 @@ const safeTimestamp = (value: unknown, fallback: number): number => {
   return Math.min(Math.round(number), Number.MAX_SAFE_INTEGER)
 }
 
-export function createDefaultHomestead(now = Date.now()): HomesteadState {
+export function createDefaultHomestead(
+  now = Date.now(),
+  stateVersion = 0
+): HomesteadState {
+  const day = homesteadDayKey(now)
   return {
     plots: Array.from({ length: HOMESTEAD_PLOT_COUNT }, emptyPlot),
     animals: {
@@ -280,11 +432,27 @@ export function createDefaultHomestead(now = Date.now()): HomesteadState {
     },
     lastFishedAt: now - HOMESTEAD_FISH_COOLDOWN_MS,
     inventory: emptyInventory(),
+    coins: HOMESTEAD_STARTING_COINS,
+    seedStock: { ...DEFAULT_SEED_STOCK },
+    ordersDay: day,
+    orders: createDailyOrders(day),
     totals: emptyTotals(),
     autoHelp: defaultAutoHelp(now),
+    stateVersion: intOr(stateVersion, 0, Number.MAX_SAFE_INTEGER),
     updatedAt: now
   }
 }
+
+const isFreshHomestead = (state: HomesteadState): boolean =>
+  state.plots.every((plot) => !plot.cropId) &&
+  HOMESTEAD_ITEMS.every((item) => state.inventory[item.id] === 0) &&
+  HOMESTEAD_CROPS.every(
+    (crop) =>
+      state.seedStock[crop.id] === DEFAULT_SEED_STOCK[crop.id]
+  ) &&
+  state.coins === HOMESTEAD_STARTING_COINS &&
+  Object.values(state.totals).every((value) => value === 0) &&
+  state.autoHelp.total === 0
 
 export function normalizeHomestead(
   value?: Partial<HomesteadState> | null,
@@ -339,6 +507,22 @@ export function normalizeHomestead(
     inventory[item.id] = intOr(rawInventory[item.id], 0, 999_999)
   }
 
+  const hasSeedStock =
+    raw.seedStock && typeof raw.seedStock === 'object'
+  const rawSeedStock = (hasSeedStock ? raw.seedStock : {}) as Partial<
+    Record<HomesteadCropId, number>
+  >
+  const seedStock = {} as Record<HomesteadCropId, number>
+  for (const crop of HOMESTEAD_CROPS) {
+    seedStock[crop.id] = hasSeedStock
+      ? intOr(rawSeedStock[crop.id], 0, 999)
+      : DEFAULT_SEED_STOCK[crop.id]
+  }
+  const coins =
+    raw.coins === undefined
+      ? HOMESTEAD_STARTING_COINS
+      : intOr(raw.coins, 0, 9_999_999)
+
   const rawTotals = (
     raw.totals && typeof raw.totals === 'object' ? raw.totals : {}
   ) as Partial<HomesteadTotals>
@@ -347,6 +531,11 @@ export function normalizeHomestead(
   ) as Partial<HomesteadAutoHelpState>
   const today = homesteadDayKey(now)
   const autoHelpDay = isDayKey(rawAutoHelp.day) ? rawAutoHelp.day : today
+  const storedOrders = normalizeDailyOrders(raw.orders, now)
+  const orders =
+    raw.ordersDay === today && storedOrders.length === HOMESTEAD_ORDER_COUNT
+      ? storedOrders
+      : createDailyOrders(today)
   return {
     plots,
     animals,
@@ -355,6 +544,10 @@ export function normalizeHomestead(
       safeTimestamp(raw.lastFishedAt, now - HOMESTEAD_FISH_COOLDOWN_MS)
     ),
     inventory,
+    coins,
+    seedStock,
+    ordersDay: today,
+    orders,
     totals: {
       harvests: intOr(rawTotals.harvests, 0),
       eggs: intOr(rawTotals.eggs, 0),
@@ -373,6 +566,7 @@ export function normalizeHomestead(
           : 0,
       total: intOr(rawAutoHelp.total, 0)
     },
+    stateVersion: intOr(raw.stateVersion, 0, Number.MAX_SAFE_INTEGER),
     updatedAt: Math.min(now, safeTimestamp(raw.updatedAt, now))
   }
 }
@@ -399,10 +593,177 @@ export function setHomesteadState(
   return normalized
 }
 
-export function resetHomesteadState(now = Date.now()): HomesteadState {
-  const state = createDefaultHomestead(now)
+export function resetHomesteadState(
+  now = Date.now(),
+  current?: Partial<HomesteadState> | null
+): HomesteadState {
+  const previous = normalizeHomestead(current, now)
+  const state = createDefaultHomestead(
+    now,
+    Math.max(now, previous.stateVersion + 1)
+  )
   writeStorage(currentStorageKey(), JSON.stringify(state))
   return state
+}
+
+const plotLastEventAt = (plot: HomesteadPlotState): number =>
+  Math.max(plot.plantedAt, plot.wateredAt, plot.fertilizedAt)
+
+const mergeHomesteadPlots = (
+  local: HomesteadState,
+  remote: HomesteadState
+): HomesteadPlotState[] =>
+  Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+    const a = local.plots[index] || emptyPlot()
+    const b = remote.plots[index] || emptyPlot()
+    if (!a.cropId && !b.cropId) return emptyPlot()
+    if (!a.cropId || !b.cropId) {
+      const planted = a.cropId ? a : b
+      const plantedState = a.cropId ? local : remote
+      const emptyFrom = a.cropId ? remote : local
+      return emptyFrom.totals.harvests > plantedState.totals.harvests &&
+        emptyFrom.updatedAt >= plotLastEventAt(planted)
+        ? emptyPlot()
+        : planted
+    }
+    if (a.cropId !== b.cropId) {
+      return a.plantedAt >= b.plantedAt ? a : b
+    }
+    return {
+      cropId: a.cropId,
+      plantedAt: Math.min(a.plantedAt, b.plantedAt),
+      wateredAt: Math.max(a.wateredAt, b.wateredAt),
+      fertilizedAt: Math.max(a.fertilizedAt, b.fertilizedAt)
+    }
+  })
+
+const mergeHomesteadOrders = (
+  local: HomesteadState,
+  remote: HomesteadState
+): Pick<HomesteadState, 'ordersDay' | 'orders'> => {
+  if (local.ordersDay !== remote.ordersDay) {
+    return local.ordersDay > remote.ordersDay
+      ? { ordersDay: local.ordersDay, orders: local.orders }
+      : { ordersDay: remote.ordersDay, orders: remote.orders }
+  }
+  const localOrders = new Map(local.orders.map((order) => [order.id, order]))
+  return {
+    ordersDay: local.ordersDay,
+    orders: remote.orders.map((order) => {
+      const other = localOrders.get(order.id)
+      return {
+        ...order,
+        completedAt: Math.max(order.completedAt, other?.completedAt || 0)
+      }
+    })
+  }
+}
+
+/**
+ * 跨设备合并小院快照。
+ * 同版本时保守地保留两端更高的资源进度，避免同步后金币、种子或收成倒退。
+ */
+export function mergeHomesteads(
+  local: HomesteadState,
+  remote?: Partial<HomesteadState> | null,
+  now = Date.now()
+): HomesteadState {
+  const a = normalizeHomestead(local, now)
+  const b = normalizeHomestead(remote, now)
+  if (a.stateVersion !== b.stateVersion) {
+    return a.stateVersion > b.stateVersion ? a : b
+  }
+  const newer = b.updatedAt >= a.updatedAt ? b : a
+  const localFresh = isFreshHomestead(a)
+  const remoteFresh = isFreshHomestead(b)
+  const economicSource = localFresh && !remoteFresh ? b : a
+  const otherEconomicSource =
+    economicSource === a ? b : a
+  const inventory = emptyInventory()
+  for (const item of HOMESTEAD_ITEMS) {
+    inventory[item.id] =
+      localFresh !== remoteFresh
+        ? economicSource.inventory[item.id]
+        : Math.max(
+            otherEconomicSource.inventory[item.id],
+            economicSource.inventory[item.id]
+          )
+  }
+  const seedStock = {} as Record<HomesteadCropId, number>
+  for (const crop of HOMESTEAD_CROPS) {
+    seedStock[crop.id] =
+      localFresh !== remoteFresh
+        ? economicSource.seedStock[crop.id]
+        : Math.max(
+            otherEconomicSource.seedStock[crop.id],
+            economicSource.seedStock[crop.id]
+          )
+  }
+  const orderState = mergeHomesteadOrders(a, b)
+  const autoHelpDay =
+    a.autoHelp.day === b.autoHelp.day
+      ? a.autoHelp.day
+      : a.autoHelp.day > b.autoHelp.day
+        ? a.autoHelp.day
+        : b.autoHelp.day
+  const autoHelpSource =
+    a.autoHelp.day === autoHelpDay ? a.autoHelp : b.autoHelp
+  return normalizeHomestead(
+    {
+      plots: mergeHomesteadPlots(a, b),
+      animals: {
+        chicken: {
+          lastProduceAt: Math.max(
+            a.animals.chicken.lastProduceAt,
+            b.animals.chicken.lastProduceAt
+          ),
+          lastManureAt: Math.max(
+            a.animals.chicken.lastManureAt,
+            b.animals.chicken.lastManureAt
+          )
+        },
+        cow: {
+          lastProduceAt: Math.max(
+            a.animals.cow.lastProduceAt,
+            b.animals.cow.lastProduceAt
+          ),
+          lastManureAt: Math.max(
+            a.animals.cow.lastManureAt,
+            b.animals.cow.lastManureAt
+          )
+        }
+      },
+      lastFishedAt: Math.max(a.lastFishedAt, b.lastFishedAt),
+      inventory,
+      coins:
+        localFresh !== remoteFresh
+          ? economicSource.coins
+          : Math.max(a.coins, b.coins),
+      seedStock,
+      ordersDay: orderState.ordersDay,
+      orders: orderState.orders,
+      totals: {
+        harvests: Math.max(a.totals.harvests, b.totals.harvests),
+        eggs: Math.max(a.totals.eggs, b.totals.eggs),
+        milk: Math.max(a.totals.milk, b.totals.milk),
+        fish: Math.max(a.totals.fish, b.totals.fish),
+        manure: Math.max(a.totals.manure, b.totals.manure)
+      },
+      autoHelp: {
+        enabled: newer.autoHelp.enabled,
+        lastAt: Math.max(a.autoHelp.lastAt, b.autoHelp.lastAt),
+        day: autoHelpDay,
+        count:
+          a.autoHelp.day === b.autoHelp.day
+            ? Math.max(a.autoHelp.count, b.autoHelp.count)
+            : autoHelpSource.count,
+        total: Math.max(a.autoHelp.total, b.autoHelp.total)
+      },
+      stateVersion: a.stateVersion,
+      updatedAt: Math.max(a.updatedAt, b.updatedAt)
+    },
+    now
+  )
 }
 
 export function plotEffectiveGrowMs(plot: HomesteadPlotState): number {
@@ -503,6 +864,111 @@ export function plantCrop(
     fertilizedAt: 0
   }
   return { ...state, plots, updatedAt: now }
+}
+
+export function plantCropWithSeed(
+  state: HomesteadState,
+  plotIndex: number,
+  cropId: HomesteadCropId,
+  now = Date.now()
+): HomesteadState {
+  if ((state.seedStock[cropId] || 0) <= 0) return state
+  const next = plantCrop(state, plotIndex, cropId, now)
+  if (next === state) return state
+  return {
+    ...next,
+    seedStock: {
+      ...next.seedStock,
+      [cropId]: next.seedStock[cropId] - 1
+    },
+    updatedAt: now
+  }
+}
+
+export function buySeedPack(
+  state: HomesteadState,
+  cropId: HomesteadCropId,
+  now = Date.now()
+): HomesteadState {
+  const pack = HOMESTEAD_SEED_PACKS[cropId]
+  if (!pack || state.coins < pack.price) return state
+  return {
+    ...state,
+    coins: state.coins - pack.price,
+    seedStock: {
+      ...state.seedStock,
+      [cropId]: state.seedStock[cropId] + pack.count
+    },
+    updatedAt: now
+  }
+}
+
+export function buyFertilizerPack(
+  state: HomesteadState,
+  now = Date.now()
+): HomesteadState {
+  if (state.coins < HOMESTEAD_FERTILIZER_PACK.price) return state
+  return {
+    ...state,
+    coins: state.coins - HOMESTEAD_FERTILIZER_PACK.price,
+    inventory: {
+      ...state.inventory,
+      fertilizer: state.inventory.fertilizer + HOMESTEAD_FERTILIZER_PACK.count
+    },
+    updatedAt: now
+  }
+}
+
+export function canCompleteOrder(
+  state: HomesteadState,
+  order: HomesteadOrderState
+): boolean {
+  if (order.completedAt > 0) return false
+  return order.requirements.every(
+    (requirement) => state.inventory[requirement.itemId] >= requirement.count
+  )
+}
+
+export interface HomesteadOrderCompleteResult {
+  state: HomesteadState
+  order: HomesteadOrderState | null
+  changed: boolean
+  reason: 'ok' | 'unknown' | 'completed' | 'missing'
+}
+
+export function completeOrder(
+  state: HomesteadState,
+  orderId: string,
+  now = Date.now()
+): HomesteadOrderCompleteResult {
+  const order = state.orders.find((item) => item.id === orderId)
+  if (!order) {
+    return { state, order: null, changed: false, reason: 'unknown' }
+  }
+  if (order.completedAt > 0) {
+    return { state, order, changed: false, reason: 'completed' }
+  }
+  if (!canCompleteOrder(state, order)) {
+    return { state, order, changed: false, reason: 'missing' }
+  }
+  const inventory = { ...state.inventory }
+  for (const requirement of order.requirements) {
+    inventory[requirement.itemId] -= requirement.count
+  }
+  return {
+    state: {
+      ...state,
+      inventory,
+      coins: state.coins + order.reward,
+      orders: state.orders.map((item) =>
+        item.id === order.id ? { ...item, completedAt: now } : item
+      ),
+      updatedAt: now
+    },
+    order,
+    changed: true,
+    reason: 'ok'
+  }
 }
 
 export function waterPlot(

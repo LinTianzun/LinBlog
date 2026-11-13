@@ -104,3 +104,196 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
   await expect(page.locator('.pet-home-plot')).toHaveCount(4)
   await expect(page.locator('.pet-home-pond')).toHaveCount(0)
 })
+
+test('每日订单可以换金币，商店可以买种子并继续播种', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await page.addInitScript(() => {
+    const now = Date.now()
+    const date = new Date(now)
+    const day = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_HOMESTEAD:u7',
+      JSON.stringify({
+        plots: [
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 }
+        ],
+        animals: {
+          chicken: { lastProduceAt: now, lastManureAt: now },
+          cow: { lastProduceAt: now, lastManureAt: now }
+        },
+        lastFishedAt: now,
+        inventory: {
+          radish: 3,
+          tomato: 0,
+          corn: 0,
+          strawberry: 0,
+          egg: 0,
+          milk: 0,
+          fish: 0,
+          fertilizer: 0
+        },
+        coins: 50,
+        seedStock: {
+          radish: 0,
+          tomato: 0,
+          corn: 0,
+          strawberry: 0
+        },
+        ordersDay: day,
+        orders: [
+          {
+            id: `${day}-test-1`,
+            requirements: [{ itemId: 'radish', count: 2 }],
+            reward: 40,
+            completedAt: 0
+          },
+          {
+            id: `${day}-test-2`,
+            requirements: [{ itemId: 'fish', count: 9 }],
+            reward: 20,
+            completedAt: 0
+          },
+          {
+            id: `${day}-test-3`,
+            requirements: [{ itemId: 'milk', count: 9 }],
+            reward: 20,
+            completedAt: 0
+          }
+        ],
+        totals: { harvests: 0, eggs: 0, milk: 0, fish: 0, manure: 0 },
+        updatedAt: now
+      })
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  await expect(page.locator('.pet-homestead-coins')).toContainText('50', {
+    timeout: 30_000,
+  })
+  await page.locator('.pet-homestead-business-orders').click()
+
+  const modal = page.locator('.yk-modal__main:visible').last()
+  await expect(modal.locator('.pet-farm-order')).toHaveCount(3)
+  const firstOrder = modal.locator('.pet-farm-order').first()
+  await expect(firstOrder).toHaveClass(/is-ready/)
+  await firstOrder.locator('.pet-farm-order-foot button').click()
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('90')
+
+  await modal.getByRole('tab', { name: /农场商店/ }).click()
+  const radishCard = modal.locator('.pet-farm-shop-card').filter({
+    hasText: '胡萝卜种子',
+  })
+  await radishCard.locator('button').click()
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('78')
+  await expect(radishCard).toContainText('库存 3')
+  await modal.locator('.yk-modal__close').click()
+  await expect(modal).toBeHidden()
+
+  await page.locator('.pet-home-plot').first().click()
+  await expect(page.locator('.pet-home-plot').first()).toHaveAttribute(
+    'aria-label',
+    /胡萝卜还没浇水/
+  )
+  const saved = await page.evaluate(() => {
+    const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
+    return raw
+      ? (JSON.parse(raw) as {
+          coins?: number
+          seedStock?: { radish?: number }
+        })
+      : null
+  })
+  expect(saved?.coins).toBe(78)
+  expect(saved?.seedStock?.radish).toBe(2)
+})
+
+test('小院存档会从云端合并并在改动后自动回传', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+
+  const now = Date.now()
+  let remote = {
+    plots: [
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+    ],
+    animals: {
+      chicken: { lastProduceAt: now, lastManureAt: now },
+      cow: { lastProduceAt: now, lastManureAt: now },
+    },
+    lastFishedAt: now,
+    inventory: { radish: 2 },
+    coins: 210,
+    seedStock: { radish: 2 },
+    ordersDay: '',
+    orders: [],
+    totals: { harvests: 2, eggs: 0, milk: 0, fish: 0, manure: 0 },
+    autoHelp: {
+      enabled: true,
+      lastAt: 0,
+      day: '',
+      count: 0,
+      total: 0,
+    },
+    stateVersion: 0,
+    updatedAt: now,
+  }
+  let uploaded: Record<string, unknown> | null = null
+
+  await page.route('**/api/pet/homestead', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, message: 'ok', data: remote }),
+      })
+      return
+    }
+    const payload = route.request().postDataJSON() as Record<string, unknown>
+    uploaded = payload
+    remote = { ...remote, ...payload }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 200, message: 'ok', data: remote }),
+    })
+  })
+
+  await page.goto('/petManage')
+  await expect(page.locator('.pet-homestead-coins')).toContainText('210', {
+    timeout: 30_000,
+  })
+  await expect(page.locator('.pet-sync-chip')).toHaveText('已同步')
+
+  await page.locator('.pet-home-plot').first().click()
+  await expect(page.locator('.pet-home-plot').first()).toHaveAttribute(
+    'aria-label',
+    /胡萝卜还没浇水/,
+  )
+  await expect.poll(() => uploaded).not.toBeNull()
+  expect(uploaded?.stateVersion).toBe(0)
+  expect((uploaded?.seedStock as { radish?: number } | undefined)?.radish).toBe(1)
+
+  await page.evaluate(() => {
+    localStorage.removeItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
+  })
+  await page.reload()
+  await expect(page.locator('.pet-home-plot').first()).toHaveAttribute(
+    'aria-label',
+    /胡萝卜还没浇水/,
+    { timeout: 30_000 },
+  )
+  await expect(page.locator('.pet-homestead-coins')).toContainText('210')
+})

@@ -258,7 +258,9 @@ import {
 } from '../../utils/desktopPetHomestead'
 import {
     flushPetSyncQueue,
+    mergeRemoteHomestead,
     mergeRemotePetVitals,
+    syncHomesteadToServer,
     syncPetVitalsToServer,
 } from '../../utils/desktopPetSync'
 
@@ -2094,6 +2096,7 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
             return false
         }
         const saved = setHomesteadState(result.state, finishedAt)
+        void syncHomesteadToServer(saved)
         notifyHomesteadAutoHelp({
             state: saved,
             task: result.task,
@@ -2212,6 +2215,11 @@ const settleVitals = async (announce: boolean) => {
         announce && greeting.kind !== 'none' && !quietNow.value ? 6200 : 0
     )
     return greeting
+}
+
+const settleHomestead = async () => {
+    const merged = await mergeRemoteHomestead(getHomesteadState())
+    setHomesteadState(merged)
 }
 
 const milestoneItems = (value: PetVitals) =>
@@ -2416,11 +2424,15 @@ const handlePetReaction = (payload: PetReactionPayload) => {
     if (payload.kind === 'login' || payload.kind === 'logout') {
         pendingCelebrationKeys.clear()
         window.clearTimeout(milestoneTimer)
-        if (payload.kind === 'logout') void syncPetVitalsToServer(vitals.value)
+        if (payload.kind === 'logout') {
+            void syncPetVitalsToServer(vitals.value)
+            void syncHomesteadToServer(getHomesteadState())
+        }
         window.clearTimeout(remoteSyncTimer)
         window.clearTimeout(authRefreshTimer)
         authRefreshTimer = window.setTimeout(() => {
             void settleVitals(false)
+            void settleHomestead()
         }, 0)
     }
     const dailyTaskCompleted = recordBusinessDailyTask(payload.kind)
@@ -2628,6 +2640,7 @@ const onStorage = (event: StorageEvent) => {
         window.clearTimeout(authRefreshTimer)
         authRefreshTimer = window.setTimeout(() => {
             void settleVitals(false)
+            void settleHomestead()
         }, 0)
         return
     }
@@ -2726,6 +2739,7 @@ onMounted(() => {
 
     // 登录用户先合并远端养成进度，再做每日问候；匿名访客只读本机
     void settleVitals(true)
+    void settleHomestead()
     if (quietNow.value) {
         if (!staticMode.value) sleep()
         showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
