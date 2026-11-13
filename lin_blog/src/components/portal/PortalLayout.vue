@@ -73,6 +73,13 @@
             </div>
         </header>
 
+        <Transition name="portal-offline">
+            <div v-if="!isOnline" class="portal-offline" role="status" aria-live="polite">
+                <span class="portal-offline-dot" aria-hidden="true" />
+                <span>当前离线 · 已打开过的文章仍可阅读</span>
+            </div>
+        </Transition>
+
         <main class="portal-body">
             <slot />
         </main>
@@ -149,6 +156,11 @@ const isActive = (path: string): boolean => {
 
 const year = computed(() => new Date().getFullYear())
 
+const isOnline = ref(navigator.onLine)
+const syncOnlineState = () => {
+    isOnline.value = navigator.onLine
+}
+
 // 页脚提供移动端也能触达的桌宠偏好入口：只影响当前浏览器
 const visitorPrefs = ref<VisitorPetPreferences>(getVisitorPetPreferences())
 const unsubscribeVisitorPrefs = onVisitorPetPreferencesChange((next) => {
@@ -202,11 +214,15 @@ const onPresetChange = (event: Event) => {
 onMounted(() => {
     window.addEventListener('theme:preset-change', onPresetChange)
     window.addEventListener('keydown', onGlobalKeydown)
+    window.addEventListener('online', syncOnlineState)
+    window.addEventListener('offline', syncOnlineState)
 })
 
 onUnmounted(() => {
     window.removeEventListener('theme:preset-change', onPresetChange)
     window.removeEventListener('keydown', onGlobalKeydown)
+    window.removeEventListener('online', syncOnlineState)
+    window.removeEventListener('offline', syncOnlineState)
     unsubscribeVisitorPrefs()
 })
 
@@ -591,6 +607,60 @@ const goAdmin = () => router.push('/overView')
     flex: 1;
     width: var(--portal-page-width);
     margin: 0 auto;
+}
+
+.portal-offline {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 60;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+    padding: 9px 16px;
+    border: 1px solid color-mix(in srgb, var(--portal-accent) 28%, var(--portal-surface-border));
+    border-radius: var(--portal-radius-pill);
+    background: color-mix(in srgb, var(--portal-surface-strong) 90%, transparent);
+    color: var(--portal-text-secondary);
+    box-shadow: var(--portal-shadow-soft);
+    backdrop-filter: blur(var(--portal-blur-glass));
+    -webkit-backdrop-filter: blur(var(--portal-blur-glass));
+    font-size: 12px;
+    line-height: 1.5;
+    transform: translateX(-50%);
+}
+
+.portal-offline-dot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--portal-accent);
+    box-shadow: 0 0 0 4px var(--portal-accent-soft);
+    animation: portal-offline-pulse 1.8s ease-in-out infinite;
+}
+
+.portal-offline-enter-active,
+.portal-offline-leave-active {
+    transition: opacity var(--portal-transition-fast), transform var(--portal-transition-fast);
+}
+
+.portal-offline-enter-from,
+.portal-offline-leave-to {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+}
+
+@keyframes portal-offline-pulse {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 .portal-foot {

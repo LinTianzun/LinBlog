@@ -1,0 +1,53 @@
+{
+  "id": "/portal",
+  "name": "林知雨 · 个人刊物",
+  "short_name": "林知雨",
+  "description": "林知雨的个人博客，记录代码、摄影与日常。",
+  "lang": "zh-CN",
+  "start_url": "/portal",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111720",
+  "theme_color": "#111720",
+  "categories": ["blog", "books", "lifestyle"],
+  "icons": [
+    {
+      "src": "/unityWhite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/unityWhite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "文章归档",
+      "short_name": "文章",
+      "url": "/portal/articles",
+      "icons": [
+        {
+          "src": "/unityWhite.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "摄影图库",
+      "short_name": "摄影",
+      "url": "/portal/gallery",
+      "icons": [
+        {
+          "src": "/unityWhite.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

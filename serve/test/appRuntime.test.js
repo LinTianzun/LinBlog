@@ -28,6 +28,8 @@ test('前端响应使用可用 CSP，接口响应保持严格策略', async () =
         assert.equal(pagePolicy, FRONTEND_SECURITY_POLICY)
         assert.match(pagePolicy, /script-src 'self'/)
         assert.match(pagePolicy, /img-src 'self' data: blob:/)
+        assert.match(pagePolicy, /manifest-src 'self'/)
+        assert.match(pagePolicy, /worker-src 'self'/)
         assert.doesNotMatch(pagePolicy, /default-src 'none'/)
     } finally {
         await new Promise((resolve) => {

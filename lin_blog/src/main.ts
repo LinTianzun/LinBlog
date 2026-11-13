@@ -15,6 +15,7 @@ import './style/portal.less'
 import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
 import { ensureServerClock } from './utils/serverClock'
+import { registerServiceWorker } from './utils/pwa'
 
 // 启动时恢复用户选择的主题预设（设置 data-theme 与 data-theme-preset）
 initThemePreset()
@@ -48,3 +49,6 @@ app
 
 // 等路由解析完成后再挂载，避免占位路由导致顶栏在匿名页短暂渲染并发出 401 请求
 router.isReady().then(() => app.mount('#app'))
+
+// 仅生产构建注册：避免 Vite HMR 请求被离线缓存接管
+registerServiceWorker()
