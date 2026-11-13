@@ -42,3 +42,34 @@ test('窄屏下 hero 选取 960 档资产', async ({ page }) => {
 
   expect(resolved).toMatch(/-960\.webp$/)
 })
+
+test('移动端不加载装饰背景照片', async ({ page }) => {
+  const bannerRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/portal/banner/')) bannerRequests.push(request.url())
+  })
+
+  await installApiMock(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/portal/articles')
+
+  await expect(page.locator('.portal-ambient-photo')).toHaveCount(0)
+  await page.waitForTimeout(500)
+  expect(bannerRequests).toEqual([])
+})
+
+test('首页不再重复挂载环境背景照片', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/portal')
+
+  await expect(page.locator('.hero-slide-photo')).toHaveCount(3)
+  await expect(page.locator('.portal-ambient-photo')).toHaveCount(0)
+})
+
+test('桌面内页保留低优先级环境背景', async ({ page }) => {
+  await installApiMock(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/portal/articles')
+
+  await expect(page.locator('.portal-ambient-photo')).toHaveCount(3)
+})

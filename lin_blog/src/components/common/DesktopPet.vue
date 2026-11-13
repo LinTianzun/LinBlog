@@ -199,6 +199,7 @@ import {
     petBodyRect,
     type PetRect,
 } from '../../utils/desktopPetAvoidance'
+import { petPrefetchLimit } from '../../utils/desktopPetPrefetch'
 import { getSiteSettings } from '../../api/site'
 import petFallback from '../../assets/svg/petFallback.svg'
 import { getIncomingCommentCursor } from '../../api/comment'
@@ -2587,25 +2588,31 @@ const stopCommentPolling = () => {
 
 // ===== 性能：空闲预取少量常用动画 =====
 const PREFETCH_ANIMS = [
-    IDLE[0],
-    TURN[0],
     CLICKS[0],
     CLICKS[1],
-    SLEEP_SET.start,
+    TURN[0],
     SLEEP_SET.loop,
+    SLEEP_SET.start,
     SLEEP_SET.end,
     WHISPER[0],
 ]
 
 const prefetchAnimations = () => {
     if (staticMode.value) return
-    const connection = (
-        navigator as Navigator & {
-            connection?: { saveData?: boolean; effectiveType?: string }
-        }
-    ).connection
-    if (connection?.saveData || /(^|-)2g$/.test(connection?.effectiveType || '')) return
-    for (const name of new Set(PREFETCH_ANIMS)) {
+    const navigatorHints = navigator as Navigator & {
+        connection?: { saveData?: boolean; effectiveType?: string }
+        deviceMemory?: number
+    }
+    const connection = navigatorHints.connection
+    const limit = petPrefetchLimit({
+        isMobile: window.matchMedia?.('(max-width: 768px), (pointer: coarse)')?.matches ?? false,
+        saveData: connection?.saveData,
+        effectiveType: connection?.effectiveType,
+        deviceMemory: navigatorHints.deviceMemory,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+    })
+    if (!limit) return
+    for (const name of new Set(PREFETCH_ANIMS.slice(0, limit))) {
         if (document.querySelector(`link[data-pet-prefetch="${name}"]`)) continue
         const link = document.createElement('link')
         link.rel = 'prefetch'

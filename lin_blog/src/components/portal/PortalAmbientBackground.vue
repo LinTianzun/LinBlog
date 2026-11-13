@@ -13,6 +13,7 @@
                     fetchpriority=low 让浏览器把带宽留给卡片与正文图片。
                 -->
                 <img
+                    v-if="showPhotos"
                     class="portal-ambient-photo"
                     :src="bannerSrc(slide.image)"
                     :srcset="bannerSrcset(slide.image)"
@@ -30,7 +31,9 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
+import { useRoute } from 'vue-router'
 import {
     BANNER_SLIDES,
     type BannerSlide,
@@ -51,6 +54,9 @@ const props = withDefaults(defineProps<{
 
 const slides = BANNER_SLIDES
 const currentIndex = ref(0)
+const route = useRoute()
+const isMobile = useMediaQuery('(max-width: 900px)')
+const showPhotos = computed(() => route.path !== '/portal' && !isMobile.value)
 // 与 themePreset 共用同一存储键，避免组件重新挂载时把 data-theme 覆写成空串
 const isDark = useThemeDark()
 
@@ -132,6 +138,17 @@ onUnmounted(() => {
     background-attachment: fixed;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.5) 58%, #000 100%);
     mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.5) 58%, #000 100%);
+}
+
+@media (max-width: 900px) {
+    .portal-ambient {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .portal-ambient-mask::after {
+        background-attachment: scroll;
+    }
 }
 
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
