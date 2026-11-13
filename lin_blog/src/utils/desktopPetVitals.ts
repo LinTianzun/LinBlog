@@ -464,6 +464,21 @@ export function applyPetting(vitals: PetVitals, now = Date.now()): PetVitals {
   }
 }
 
+/** 小院自动帮忙的固定奖励：每天有次数上限，避免靠自动行为刷亲密度 */
+export function applyAutoHelpReward(
+  vitals: PetVitals,
+  now = Date.now()
+): PetVitals {
+  const current = normalizePetVitals(vitals)
+  return unlockEligibleAchievements({
+    ...current,
+    mood: roundStat(current.mood + 1),
+    intimacy: roundStat(current.intimacy + 1),
+    totalInteractions: current.totalInteractions + 1,
+    updatedAt: now
+  })
+}
+
 export type GreetingKind = 'first' | 'daily' | 'none'
 
 export function applyDailyGreeting(

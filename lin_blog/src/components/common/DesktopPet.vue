@@ -167,6 +167,18 @@
             >
                 <span aria-hidden="true">🐾</span>
             </button>
+
+            <Transition name="pet-auto-burst">
+                <span
+                    v-if="autoHelpBurst"
+                    class="pet-auto-help-burst"
+                    :style="{
+                        left: `${autoHelpBurst.x}px`,
+                        top: `${autoHelpBurst.y}px`,
+                    }"
+                    aria-hidden="true"
+                >{{ autoHelpBurst.emoji }}</span>
+            </Transition>
         </div>
     </Teleport>
 </template>
@@ -216,6 +228,7 @@ import {
 } from '../../utils/desktopPetFood'
 import {
     applyDailyGreeting,
+    applyAutoHelpReward,
     applyFeeding,
     applyPetting,
     getPetVitals,
@@ -231,6 +244,17 @@ import {
     vitalsNextMilestone,
     type PetVitals,
 } from '../../utils/desktopPetVitals'
+import {
+    HOMESTEAD_AUTO_HELP_DAILY_LIMIT,
+    canAutoHelp,
+    findAutoHelpTask,
+    notifyHomesteadAutoHelp,
+    performAutoHelp,
+} from '../../utils/desktopPetAutoHelp'
+import {
+    getHomesteadState,
+    setHomesteadState,
+} from '../../utils/desktopPetHomestead'
 import {
     flushPetSyncQueue,
     mergeRemotePetVitals,
@@ -501,6 +525,7 @@ const videoFailed = ref(false)
 let fallbackNotified = false
 const squashY = ref(1)
 const walking = ref(false)
+const autoHelpBurst = ref<{ emoji: string; x: number; y: number } | null>(null)
 
 const stageStyle = computed(() => ({
     width: `${PET_W.value}px`,
@@ -622,7 +647,7 @@ const MILESTONE_ANIMATIONS = ['放烟花', '收红包', '点击回应-开心跃�
 const routeIdleLine = computed(() => {
     const path = route.path
     if (focusMode.value) return '专心写，我不吵你～'
-    if (path.startsWith('/petManage')) return '这里是我的小屋～'
+    if (path.startsWith('/petManage')) return '这里是我的小院～'
     if (path.startsWith('/setting')) return '慢慢调，我等你。'
     if (path.startsWith('/portal/gallery')) return '这张光线好漂亮。'
     if (path.startsWith('/portal/articles')) return '这篇写得真好。'
@@ -838,11 +863,19 @@ let walkTo = { x: 0, y: 0 }
 let walkLead = 2
 let walkTail = 2
 let walkDuration = 4
+let walkResolve: ((arrived: boolean) => void) | null = null
+
+const settleWalk = (arrived: boolean) => {
+    const resolve = walkResolve
+    walkResolve = null
+    resolve?.(arrived)
+}
 
 const stopWalk = () => {
     if (walkRaf) cancelAnimationFrame(walkRaf)
     walkRaf = 0
     walking.value = false
+    settleWalk(false)
 }
 
 const tryWalk = (): boolean => {
@@ -893,6 +926,66 @@ const tryWalk = (): boolean => {
     }
     walkRaf = requestAnimationFrame(step)
     return true
+}
+
+/** 走到指定坐标；供小院自动帮忙使用，被打断时返回 false */
+const walkToPosition = (
+    target: { x: number; y: number },
+    animation = '螃蟹走路'
+): Promise<boolean> => {
+    if (!canRoam.value || walkRaf) return Promise.resolve(false)
+    const destination = clampPos(target)
+    const distance = Math.hypot(
+        destination.x - pos.value.x,
+        destination.y - pos.value.y
+    )
+    if (distance < 4) return Promise.resolve(true)
+    const el = elementOf(front.value)
+    if (!el) return Promise.resolve(false)
+
+    autoShifting.value = false
+    if (destination.x !== pos.value.x) {
+        facing.value = destination.x > pos.value.x ? 'right' : 'left'
+    }
+    playAnim(animation, true)
+    walkFrom = { x: pos.value.x, y: pos.value.y }
+    walkTo = destination
+    walkLead = 0.45
+    walkTail = 0.45
+    walkDuration = Math.min(3.6, Math.max(1.1, distance / 120))
+    walkStart = performance.now()
+    walking.value = true
+
+    const promise = new Promise<boolean>((resolve) => {
+        walkResolve = resolve
+    })
+    const step = (now: number) => {
+        const t = (now - walkStart) / 1000
+        const travel = Math.max(0.1, walkDuration - walkLead - walkTail)
+        if (t <= walkLead) {
+            pos.value = { ...walkFrom }
+        } else if (t >= walkDuration - walkTail) {
+            pos.value = { ...walkTo }
+        } else {
+            const raw = (t - walkLead) / travel
+            const p = raw * raw * (3 - 2 * raw)
+            pos.value = {
+                x: walkFrom.x + (walkTo.x - walkFrom.x) * p,
+                y: walkFrom.y + (walkTo.y - walkFrom.y) * p,
+            }
+        }
+        if (t < walkDuration - walkTail) {
+            walkRaf = requestAnimationFrame(step)
+        } else {
+            walkRaf = 0
+            walking.value = false
+            settleWalk(true)
+            persistPosition()
+            schedulePetAvoidance(140)
+        }
+    }
+    walkRaf = requestAnimationFrame(step)
+    return promise
 }
 
 // ===== 挤压 =====
@@ -1734,7 +1827,7 @@ const onResize = () => {
     schedulePetHomeBoundsSync()
 }
 
-/** 宠物管理页以小屋为准居中落地，其他页面仍是右下 / 左下 */
+/** 宠物管理页以小院为准居中落地，其他页面仍是右下 / 左下 */
 const homePosition = () => {
     const bounds = movementBounds.value
     if (inPetHomePage.value && petHomeRect.value) {
@@ -1852,6 +1945,149 @@ const schedulePetHomeBoundsSync = () => {
         petHomeSyncRaf = 0
         applyPetHomeMode(false)
     })
+}
+
+// ===== 小院自动帮忙 =====
+const AUTO_HELP_IDLE_MS = 15_000
+const AUTO_HELP_CHECK_MS = 5_000
+let autoHelpTimer: number | undefined
+let autoHelpBusy = false
+let autoHelpBurstTimer: number | undefined
+
+const autoHelpBlockedText = (
+    availability: ReturnType<typeof canAutoHelp>
+): string => {
+    if (availability.reason === 'disabled') {
+        return '先在小院里打开自动帮忙，我才能自己干活。'
+    }
+    if (availability.reason === 'daily-limit') {
+        return `今天已经帮忙 ${HOMESTEAD_AUTO_HELP_DAILY_LIMIT} 次啦，明天再继续～`
+    }
+    if (availability.reason === 'cooldown') {
+        return `刚忙完，等 ${Math.ceil(
+            availability.remainingMs / 1000
+        )} 秒再来～`
+    }
+    return '小院现在没有要忙的，我先歇会儿。'
+}
+
+const showAutoHelpBurst = (anchor: string, emoji: string) => {
+    const el = document.querySelector<HTMLElement>(
+        `[data-homestead-target="${anchor}"]`
+    )
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    autoHelpBurst.value = {
+        emoji,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height * 0.26,
+    }
+    window.clearTimeout(autoHelpBurstTimer)
+    autoHelpBurstTimer = window.setTimeout(() => {
+        autoHelpBurst.value = null
+    }, 1800)
+}
+
+const runAutoHelp = async (manual = false): Promise<boolean> => {
+    if (autoHelpBusy) {
+        if (manual) showBubble('我正忙着呢，稍等一下～', 2400, '🐾', true)
+        return false
+    }
+    if (!inPetHomePage.value || !visible.value) return false
+    if (staticMode.value || reducedMotion.value) {
+        if (manual) {
+            showBubble('现在动不了，先关掉静态模式或减少动态效果～', 3400, '⏸️', true)
+        }
+        return false
+    }
+    if (quietNow.value || sleeping.value || sleepPhase) {
+        if (manual) showBubble('现在想安静待着，晚点再帮你～', 3200, '🌙', true)
+        return false
+    }
+    if (dragging.value || menuOpen.value || walkRaf || flightRaf || document.hidden) {
+        if (manual) showBubble('等我先忙完这一步～', 2600, '🐾', true)
+        return false
+    }
+    if (!canRoam.value) {
+        if (manual) {
+            showBubble('先允许我自由走动，我才能去小院帮忙～', 3400, '🐾', true)
+        }
+        return false
+    }
+
+    const now = Date.now()
+    const state = getHomesteadState()
+    const availability = canAutoHelp(state, now)
+    if (!availability.allowed) {
+        if (manual) showBubble(autoHelpBlockedText(availability), 3400, '🐾', true)
+        return false
+    }
+    const task = findAutoHelpTask(state, now)
+    if (!task) return false
+    const targetEl = document.querySelector<HTMLElement>(
+        `[data-homestead-target="${task.anchor}"]`
+    )
+    if (!targetEl) return false
+
+    autoHelpBusy = true
+    try {
+        const rect = targetEl.getBoundingClientRect()
+        const arrived = await walkToPosition({
+            x: rect.left + rect.width / 2 - PET_W.value / 2,
+            y: rect.bottom - PET_H.value * 0.917,
+        })
+        if (!arrived) {
+            if (manual) showBubble('路被挡住了，这次没走过去～', 2800, '😵', true)
+            return false
+        }
+
+        const finishedAt = Date.now()
+        const latest = getHomesteadState()
+        const latestTask = findAutoHelpTask(latest, finishedAt)
+        if (
+            !latestTask ||
+            latestTask.action !== task.action ||
+            latestTask.anchor !== task.anchor
+        ) {
+            if (manual) {
+                showBubble('小院的情况变了，我下次再来帮忙～', 3000, '👀', true)
+            }
+            return false
+        }
+        const result = performAutoHelp(latest, finishedAt)
+        if (!result) {
+            if (manual) showBubble('咦，好像已经被你收好啦。', 2800, '👀', true)
+            return false
+        }
+        const saved = setHomesteadState(result.state, finishedAt)
+        notifyHomesteadAutoHelp({
+            state: saved,
+            task: result.task,
+            message: result.message,
+            emoji: result.emoji,
+        })
+        showAutoHelpBurst(result.task.anchor, result.emoji)
+        playAnim(result.task.animation, true)
+        showBubble(result.message, 3800, result.emoji, manual)
+
+        if (!quietNow.value) {
+            const nextVitals = applyAutoHelpReward(vitals.value, finishedAt)
+            vitals.value = nextVitals
+            setPetVitals(nextVitals)
+            emitPetReaction('vitals-updated')
+        }
+        return true
+    } finally {
+        autoHelpBusy = false
+    }
+}
+
+const startAutoHelpWatch = () => {
+    window.clearInterval(autoHelpTimer)
+    autoHelpTimer = window.setInterval(() => {
+        if (Date.now() - lastInteractionAt < AUTO_HELP_IDLE_MS) return
+        void runAutoHelp(false)
+    }, AUTO_HELP_CHECK_MS)
 }
 
 watch(
@@ -2041,6 +2277,7 @@ const unsubscribeCommand = onDesktopPetCommand((command) => {
     else if (command === 'sleep' && !sleepPhase) sleep()
     else if (command === 'wake' && sleepPhase) wake()
     else if (command === 'speak') speakNow()
+    else if (command === 'homestead') void runAutoHelp(true)
 })
 
 // ===== 业务事件联动 =====
@@ -2417,6 +2654,7 @@ onMounted(() => {
     void nextTick().then(() => applyPetHomeMode(true))
     startAvoidanceWatch()
     startAutoSleepWatch()
+    startAutoHelpWatch()
     // 初始待机：呼吸动画循环播放
     const a = videoA.value
     if (a) {
@@ -2488,9 +2726,11 @@ onBeforeUnmount(() => {
     stopWalk()
     stopFlight()
     window.clearInterval(autoSleepTimer)
+    window.clearInterval(autoHelpTimer)
     window.clearInterval(clockTimer)
     if (squashRaf) cancelAnimationFrame(squashRaf)
     window.clearTimeout(bubbleTimer)
+    window.clearTimeout(autoHelpBurstTimer)
     window.clearTimeout(whisperTimer)
     window.clearTimeout(remoteSyncTimer)
     window.clearTimeout(authRefreshTimer)
@@ -2586,6 +2826,54 @@ onBeforeUnmount(() => {
         opacity: 1;
         transform: translateY(-1px);
     }
+}
+
+.pet-auto-help-burst {
+    position: fixed;
+    z-index: 9700;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-size: 28px;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 8px rgba(41, 28, 18, 0.28));
+    animation: pet-auto-help-float 1.6s ease-out forwards;
+}
+
+.pet-auto-help-burst::after {
+    position: absolute;
+    inset: -7px;
+    content: '';
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent 68%);
+    z-index: -1;
+}
+
+@keyframes pet-auto-help-float {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -30%) scale(0.6);
+    }
+
+    18% {
+        opacity: 1;
+        transform: translate(-50%, -70%) scale(1.06);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -180%) scale(1.2);
+    }
+}
+
+.pet-auto-burst-enter-active,
+.pet-auto-burst-leave-active {
+    transition: opacity 180ms ease;
+}
+
+.pet-auto-burst-enter-from,
+.pet-auto-burst-leave-to {
+    opacity: 0;
 }
 
 .dsh-pet-stage {

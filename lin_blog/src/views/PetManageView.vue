@@ -384,8 +384,8 @@
                     <header class="pet-home-head">
                         <div>
                             <span class="pet-home-kicker">PET HOME</span>
-                            <h2>{{ displayPetName }} 的小屋</h2>
-                            <p>在这个页面，它只会待在房间范围内。</p>
+                            <h2>{{ displayPetName }} 的小院</h2>
+                            <p>在这个页面，它会在小屋和院子里活动。</p>
                         </div>
                         <span class="pet-home-status">
                             <span aria-hidden="true" />在家
@@ -393,24 +393,146 @@
                     </header>
 
                     <div class="pet-home-room" data-pet-home-zone>
-                        <span class="pet-home-window" aria-hidden="true">
-                            <span class="pet-home-moon" />
-                            <span class="pet-home-star pet-home-star-a" />
-                            <span class="pet-home-star pet-home-star-b" />
+                        <div class="pet-home-interior" aria-hidden="true">
+                            <span class="pet-home-window">
+                                <span class="pet-home-moon" />
+                                <span class="pet-home-star pet-home-star-a" />
+                                <span class="pet-home-star pet-home-star-b" />
+                            </span>
+                            <span class="pet-home-curtain pet-home-curtain-left" />
+                            <span class="pet-home-curtain pet-home-curtain-right" />
+                            <span class="pet-home-shelf">
+                                <i />
+                                <i />
+                                <i />
+                            </span>
+                            <span class="pet-home-picture">♥</span>
+                            <span class="pet-home-clock" />
+                            <span class="pet-home-door" />
+                            <span class="pet-home-plant">🪴</span>
+                            <span class="pet-home-rug" />
+                            <span class="pet-home-cushion" />
+                            <span class="pet-home-bowl">🥣</span>
+                        </div>
+
+                        <div class="pet-home-yard">
+                            <span class="pet-home-sun" aria-hidden="true" />
+                            <span class="pet-home-cloud pet-home-cloud-a" aria-hidden="true" />
+                            <span class="pet-home-cloud pet-home-cloud-b" aria-hidden="true" />
+                            <span class="pet-home-hill pet-home-hill-a" aria-hidden="true" />
+                            <span class="pet-home-hill pet-home-hill-b" aria-hidden="true" />
+                            <span class="pet-home-fence" aria-hidden="true" />
+                            <span class="pet-home-path" aria-hidden="true" />
+                            <span class="pet-home-tree" aria-hidden="true">
+                                <i class="pet-home-tree-trunk" />
+                                <i class="pet-home-tree-canopy" />
+                            </span>
+                            <button type="button" class="pet-home-coop"
+                                :class="{ 'is-ready': chicken.eggReady || chicken.manureReady }"
+                                :aria-label="chickenLabel" :title="chickenLabel"
+                                data-homestead-target="coop" @click="collectChicken">
+                                <i class="pet-home-coop-wall" aria-hidden="true" />
+                                <i class="pet-home-coop-roof" aria-hidden="true" />
+                                <i class="pet-home-coop-door" aria-hidden="true" />
+                                <b class="pet-home-chicken" aria-hidden="true">🐔</b>
+                                <b v-if="chicken.eggReady" class="pet-home-yard-badge is-egg"
+                                    aria-hidden="true">🥚</b>
+                                <b v-if="chicken.manureReady" class="pet-home-yard-badge is-manure"
+                                    aria-hidden="true">💩</b>
+                            </button>
+                            <button type="button" class="pet-home-pasture"
+                                :class="{ 'is-ready': cow.milkReady || cow.manureReady }"
+                                :aria-label="cowLabel" :title="cowLabel"
+                                data-homestead-target="cow" @click="collectCow">
+                                <b aria-hidden="true">🐄</b>
+                                <b v-if="cow.milkReady" class="pet-home-yard-badge is-milk"
+                                    aria-hidden="true">🥛</b>
+                                <b v-if="cow.manureReady" class="pet-home-yard-badge is-manure"
+                                    aria-hidden="true">💩</b>
+                            </button>
+                            <div class="pet-home-plots">
+                                <button v-for="plot in homesteadPlots" :key="plot.index" type="button"
+                                    class="pet-home-plot"
+                                    :class="{ 'is-ready': plot.ripe, 'is-watered': plot.watered, 'is-empty': !plot.cropId }"
+                                    :aria-label="plot.label" :title="plot.label"
+                                    :data-homestead-target="`plot-${plot.index}`"
+                                    @click="handlePlotClick(plot.index)">
+                                    <template v-if="plot.cropId">
+                                        <b v-for="leaf in 3" :key="leaf"
+                                            :style="plotGrowthStyle(plot.progress)" aria-hidden="true" />
+                                        <b v-if="plot.ripe" class="pet-home-plot-crop"
+                                            aria-hidden="true">{{ plot.icon }}</b>
+                                        <i v-if="plot.watered && !plot.ripe"
+                                            class="pet-home-plot-water" aria-hidden="true">💧</i>
+                                    </template>
+                                    <span v-else class="pet-home-plot-empty" aria-hidden="true">+</span>
+                                </button>
+                            </div>
+                            <button type="button" class="pet-home-pond"
+                                :class="{ 'is-ready': pondReady }" :aria-label="pondLabel"
+                                :title="pondLabel" data-homestead-target="pond"
+                                @click="handlePondClick">
+                                <i class="pet-home-pond-ripple pet-home-pond-ripple-a" aria-hidden="true" />
+                                <i class="pet-home-pond-ripple pet-home-pond-ripple-b" aria-hidden="true" />
+                                <b class="pet-home-reeds" aria-hidden="true">🌾</b>
+                                <b v-if="pondReady" class="pet-home-yard-badge is-fish"
+                                    aria-hidden="true">🐟</b>
+                            </button>
+                            <span class="pet-home-sign" aria-hidden="true">小院</span>
+                        </div>
+
+                        <span class="pet-home-room-note">活动范围 · 拖动也不会离开小院</span>
+                    </div>
+
+                    <div class="pet-homestead-tools">
+                        <div class="pet-homestead-seeds" role="group" aria-label="选择种子">
+                            <button v-for="crop in HOMESTEAD_CROPS" :key="crop.id" type="button"
+                                class="pet-homestead-seed"
+                                :class="{ 'is-active': selectedSeedId === crop.id }"
+                                :aria-pressed="selectedSeedId === crop.id"
+                                :title="`${crop.name}，${formatHomesteadDuration(crop.growMs)}成熟`"
+                                @click="selectSeed(crop.id)">
+                                <span aria-hidden="true">{{ crop.icon }}</span>
+                                <small>{{ crop.name }}</small>
+                            </button>
+                        </div>
+                        <button type="button" class="pet-homestead-tend" :disabled="homesteadTendCount === 0"
+                            :title="homesteadTendCount ? '浇水、收获、收取产物并钓鱼' : '小院暂时没有需要忙的'"
+                            @click="tendHomesteadNow">
+                            <span aria-hidden="true">🧺</span>一键照料
+                            <b v-if="homesteadTendCount" class="pet-homestead-tend-count">
+                                {{ homesteadTendCount }}
+                            </b>
+                        </button>
+                    </div>
+
+                    <div class="pet-homestead-store" role="status" aria-live="polite">
+                        <span class="pet-homestead-store-label">仓库</span>
+                        <template v-if="inventoryChips.length">
+                            <span v-for="item in inventoryChips" :key="item.id" class="pet-homestead-item">
+                                <span aria-hidden="true">{{ item.icon }}</span>{{ item.name }} ×{{ item.count }}
+                            </span>
+                        </template>
+                        <span v-else class="pet-homestead-store-empty">
+                            空空如也，点菜地播种或去鸡舍看看
                         </span>
-                        <span class="pet-home-curtain pet-home-curtain-left" aria-hidden="true" />
-                        <span class="pet-home-curtain pet-home-curtain-right" aria-hidden="true" />
-                        <span class="pet-home-shelf" aria-hidden="true">
-                            <i />
-                            <i />
-                            <i />
-                        </span>
-                        <span class="pet-home-picture" aria-hidden="true">♥</span>
-                        <span class="pet-home-plant" aria-hidden="true">🪴</span>
-                        <span class="pet-home-rug" aria-hidden="true" />
-                        <span class="pet-home-cushion" aria-hidden="true" />
-                        <span class="pet-home-bowl" aria-hidden="true">🥣</span>
-                        <span class="pet-home-room-note">活动范围 · 拖动也不会离开小屋</span>
+                    </div>
+
+                    <div class="pet-homestead-auto">
+                        <div class="pet-homestead-auto-copy">
+                            <strong>自动帮忙</strong>
+                            <span>{{ autoHelpStatus }}</span>
+                        </div>
+                        <div class="pet-homestead-auto-actions">
+                            <button type="button" class="pet-homestead-auto-now"
+                                :disabled="!homestead.autoHelp.enabled"
+                                title="让它现在就去小院忙一轮"
+                                @click="requestAutoHelp">
+                                <span aria-hidden="true">🐾</span>去帮忙
+                            </button>
+                            <yk-switch v-model="autoHelpEnabled" :checked-value="true"
+                                :unchecked-value="false" aria-label="自动帮忙" />
+                        </div>
                     </div>
 
                     <div class="pet-home-actions">
@@ -421,7 +543,7 @@
                         </button>
                         <button type="button" :disabled="!petSettings.desktopPetEnabled"
                             @click="sendDesktopPetCommand('home')">
-                            <span>🏠</span>回到小屋
+                            <span>🏠</span>回到小院
                         </button>
                         <button type="button" :disabled="!petSettings.desktopPetEnabled"
                             @click="sendDesktopPetCommand('speak')">
@@ -489,6 +611,36 @@ import {
     type PetVitals,
 } from '../utils/desktopPetVitals'
 import {
+    HOMESTEAD_ANIMALS,
+    HOMESTEAD_ANIMAL_IDS,
+    HOMESTEAD_CROPS,
+    HOMESTEAD_ITEMS,
+    animalStatusText,
+    collectAnimal,
+    fertilizePlot,
+    fishPond,
+    formatHomesteadDuration,
+    getHomesteadCrop,
+    getHomesteadState,
+    harvestPlot,
+    isAnimalManureReady,
+    isAnimalProduceReady,
+    isPlotRipe,
+    isPondReady,
+    plantCrop,
+    plotProgress,
+    plotRemainingMs,
+    plotStatusText,
+    pondStatusText,
+    resetHomesteadState,
+    setHomesteadState,
+    tendHomestead,
+    waterPlot,
+    type HomesteadAnimalId,
+    type HomesteadCropId,
+    type HomesteadState,
+} from '../utils/desktopPetHomestead'
+import {
     flushPetSyncQueue,
     getPetSyncStatus,
     mergeRemotePetVitals,
@@ -498,6 +650,11 @@ import {
     type PetSyncState,
     type PetSyncStatus,
 } from '../utils/desktopPetSync'
+import {
+    HOMESTEAD_AUTO_HELP_EVENT,
+    autoHelpStatusText,
+    type HomesteadAutoHelpEventDetail,
+} from '../utils/desktopPetAutoHelp'
 import { useSessionStore } from '../store/session.ts'
 import { IconHeartFill } from '@yike-design/ui/es/components/svg-icon'
 
@@ -508,6 +665,11 @@ const session = useSessionStore()
 const canEditPet = computed(() => session.can('permission.edit'))
 const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
 const petVitals = ref<PetVitals>(getPetVitals())
+const homestead = ref<HomesteadState>(getHomesteadState())
+const selectedSeedId = ref<HomesteadCropId>('radish')
+const selectedSeed = computed(
+    () => getHomesteadCrop(selectedSeedId.value) || HOMESTEAD_CROPS[0]
+)
 const selectedFoodId = ref<PetFoodId>(getSelectedPetFoodId())
 const selectedFood = computed(() => getPetFood(selectedFoodId.value))
 const nowTick = ref(Date.now())
@@ -578,6 +740,150 @@ const newAchievementCount = computed(() =>
 )
 const displayPetName = computed(() => petVitals.value.name || '小 Lin')
 
+const homesteadPlots = computed(() =>
+    homestead.value.plots.map((plot, index) => {
+        const crop = getHomesteadCrop(plot.cropId)
+        return {
+            index,
+            cropId: plot.cropId,
+            icon: crop?.icon || '',
+            ripe: isPlotRipe(plot, nowTick.value),
+            watered: plot.wateredAt > 0,
+            fertilized: plot.fertilizedAt > 0,
+            canFertilize:
+                Boolean(plot.cropId) &&
+                Boolean(plot.wateredAt) &&
+                !plot.fertilizedAt &&
+                !isPlotRipe(plot, nowTick.value) &&
+                homestead.value.inventory.fertilizer > 0,
+            progress: plotProgress(plot, nowTick.value),
+            label: `第 ${index + 1} 块菜地：${plotStatusText(
+                plot,
+                nowTick.value
+            )}${
+                Boolean(plot.cropId) &&
+                Boolean(plot.wateredAt) &&
+                !plot.fertilizedAt &&
+                !isPlotRipe(plot, nowTick.value) &&
+                homestead.value.inventory.fertilizer > 0
+                    ? '，点击施肥'
+                    : ''
+            }`,
+        }
+    })
+)
+
+const chicken = computed(() => {
+    const definition = HOMESTEAD_ANIMALS.chicken
+    const animal = homestead.value.animals.chicken
+    return {
+        ...definition,
+        eggReady: isAnimalProduceReady(animal, definition, nowTick.value),
+        manureReady: isAnimalManureReady(animal, definition, nowTick.value),
+    }
+})
+
+const cow = computed(() => {
+    const definition = HOMESTEAD_ANIMALS.cow
+    const animal = homestead.value.animals.cow
+    return {
+        ...definition,
+        milkReady: isAnimalProduceReady(animal, definition, nowTick.value),
+        manureReady: isAnimalManureReady(animal, definition, nowTick.value),
+    }
+})
+
+const chickenLabel = computed(
+    () => `鸡舍：${animalStatusText(homestead.value, 'chicken', nowTick.value)}`
+)
+const cowLabel = computed(
+    () => `奶牛：${animalStatusText(homestead.value, 'cow', nowTick.value)}`
+)
+const pondReady = computed(() => isPondReady(homestead.value, nowTick.value))
+const pondLabel = computed(
+    () => `鱼塘：${pondStatusText(homestead.value, nowTick.value)}`
+)
+
+const inventoryChips = computed(() =>
+    HOMESTEAD_ITEMS.filter(
+        (item) => homestead.value.inventory[item.id] > 0
+    ).map((item) => ({
+        ...item,
+        count: homestead.value.inventory[item.id],
+    }))
+)
+
+const homesteadTendCount = computed(() => {
+    let count = 0
+    let fertilizable = 0
+    for (const plot of homestead.value.plots) {
+        if (isPlotRipe(plot, nowTick.value)) count++
+        else if (plot.cropId && !plot.wateredAt) count++
+        else if (plot.cropId && !plot.fertilizedAt) fertilizable++
+    }
+    count += Math.min(fertilizable, homestead.value.inventory.fertilizer)
+    for (const id of HOMESTEAD_ANIMAL_IDS) {
+        const definition = HOMESTEAD_ANIMALS[id]
+        const animal = homestead.value.animals[id]
+        if (isAnimalProduceReady(animal, definition, nowTick.value)) count++
+        if (isAnimalManureReady(animal, definition, nowTick.value)) count++
+    }
+    if (isPondReady(homestead.value, nowTick.value)) count++
+    return count
+})
+
+const autoHelpEnabled = computed({
+    get: () => homestead.value.autoHelp.enabled,
+    set: (enabled: boolean) => {
+        if (enabled === homestead.value.autoHelp.enabled) return
+        homestead.value = setHomesteadState({
+            ...homestead.value,
+            autoHelp: { ...homestead.value.autoHelp, enabled },
+            updatedAt: Date.now(),
+        })
+        proxy?.$message?.({
+            type: 'primary',
+            message: enabled
+                ? '自动帮忙已开启，它闲下来会自己去小院干活'
+                : '自动帮忙已关闭，小院交给你亲手打理',
+        })
+    },
+})
+
+const autoHelpStatus = computed(() => {
+    if (!petSettings.desktopPetEnabled) {
+        return '桌宠已隐藏，打开后才能自己去干活'
+    }
+    if (petSettings.petScope === 'portal') {
+        return '当前只在门户显示，后台小院不会自动帮忙'
+    }
+    if (!petSettings.petRoamingEnabled) {
+        return '需要开启「允许自主漫游」才能自己去干活'
+    }
+    return autoHelpStatusText(homestead.value, nowTick.value)
+})
+
+const requestAutoHelp = () => {
+    if (!homestead.value.autoHelp.enabled) return
+    if (!petSettings.desktopPetEnabled) {
+        proxy?.$message?.({
+            type: 'warning',
+            message: '桌宠当前已隐藏，打开后才能去小院帮忙',
+        })
+        return
+    }
+    sendDesktopPetCommand('homestead')
+    proxy?.$message?.({
+        type: 'primary',
+        message: '小 Lin 去小院看看有什么要忙的',
+    })
+}
+
+const plotGrowthStyle = (progress: number) => ({
+    transform: `scaleY(${0.38 + progress * 0.62})`,
+    transformOrigin: 'bottom center',
+})
+
 const petMilestonePercent = (current: number, target: number) =>
     Math.min(100, Math.round((current / target) * 100))
 
@@ -609,6 +915,141 @@ watch(
         if (!petNameEditing) petNameDraft.value = name
     }
 )
+
+const selectSeed = (id: HomesteadCropId) => {
+    selectedSeedId.value = id
+}
+
+const commitHomestead = (next: HomesteadState) => {
+    homestead.value = setHomesteadState(next)
+}
+
+const handlePlotClick = (index: number) => {
+    const plot = homestead.value.plots[index]
+    const crop = getHomesteadCrop(plot?.cropId)
+    const now = Date.now()
+    if (!plot || !crop) {
+        const seed = selectedSeed.value
+        const next = plantCrop(homestead.value, index, seed.id, now)
+        if (next === homestead.value) return
+        commitHomestead(next)
+        proxy?.$message?.({
+            type: 'success',
+            message: `种下了${seed.name}，${formatHomesteadDuration(seed.growMs)}后成熟`,
+        })
+        return
+    }
+    if (isPlotRipe(plot, now)) {
+        const result = harvestPlot(homestead.value, index, now)
+        if (!result.changed) return
+        commitHomestead(result.state)
+        proxy?.$message?.({
+            type: 'success',
+            message: `收获了 ${result.amount} 个${crop.name}`,
+        })
+        return
+    }
+    if (!plot.wateredAt) {
+        const next = waterPlot(homestead.value, index, now)
+        if (next === homestead.value) return
+        commitHomestead(next)
+        proxy?.$message?.({
+            type: 'success',
+            message: `给${crop.name}浇了水，成熟时间缩短 20%`,
+        })
+        return
+    }
+    if (!plot.fertilizedAt && homestead.value.inventory.fertilizer > 0) {
+        const next = fertilizePlot(homestead.value, index, now)
+        if (next === homestead.value) return
+        commitHomestead(next)
+        proxy?.$message?.({
+            type: 'success',
+            message: `给${crop.name}施了肥，成熟时间再缩短 20%`,
+        })
+        return
+    }
+    proxy?.$message?.({
+        type: 'primary',
+        message: `${crop.name}还要 ${formatHomesteadDuration(
+            plotRemainingMs(plot, now)
+        )} 才能收获${plot.fertilizedAt ? '' : '，攒到肥料后还能再快一点'}`,
+    })
+}
+
+const collectHomesteadAnimal = (animalId: HomesteadAnimalId) => {
+    const now = Date.now()
+    const result = collectAnimal(homestead.value, animalId, now)
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'primary',
+            message: animalStatusText(homestead.value, animalId, now),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    const summary = result.items
+        .map((item) => `${item.item.icon}${item.item.name}`)
+        .join('、')
+    proxy?.$message?.({
+        type: 'success',
+        message: `收起了 ${summary}`,
+    })
+}
+
+const collectChicken = () => {
+    collectHomesteadAnimal('chicken')
+}
+
+const collectCow = () => {
+    collectHomesteadAnimal('cow')
+}
+
+const handlePondClick = () => {
+    const now = Date.now()
+    const result = fishPond(homestead.value, now)
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'primary',
+            message: pondStatusText(homestead.value, now),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: '钓到一条鱼，已经放进仓库',
+    })
+}
+
+const tendHomesteadNow = () => {
+    const now = Date.now()
+    const result = tendHomestead(homestead.value, now)
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'primary',
+            message: '小院现在很安稳，没有需要忙的',
+        })
+        return
+    }
+    commitHomestead(result.state)
+    const parts: string[] = []
+    if (result.watered) parts.push(`浇了 ${result.watered} 块地`)
+    if (result.fertilized) parts.push(`施了 ${result.fertilized} 块地`)
+    if (result.harvested) parts.push(`收了 ${result.harvested} 块地`)
+    if (result.collected.length) {
+        const count = result.collected.reduce(
+            (total, item) => total + item.count,
+            0
+        )
+        parts.push(`收起了 ${count} 份产物`)
+    }
+    if (result.fished) parts.push('钓到一条鱼')
+    proxy?.$message?.({
+        type: 'success',
+        message: `小院忙完了：${parts.join('，')}`,
+    })
+}
 
 const feedFromSettings = (foodId: PetFoodId = selectedFoodId.value) => {
     const food = getPetFood(foodId)
@@ -649,20 +1090,22 @@ const feedFromSettings = (foodId: PetFoodId = selectedFoodId.value) => {
 }
 
 const resetPetGrowth = () => {
-    if (!window.confirm('重新养一只会清空名字、等级、成就和每日任务，并同步到其他设备。确认继续吗？')) {
+    if (!window.confirm('重新养一只会清空名字、等级、成就、每日任务和小院进度。确认继续吗？')) {
         return
     }
     const next = resetPetVitals(petVitals.value)
     petVitals.value = next
     petNameDraft.value = next.name
     setPetVitals(next)
+    homestead.value = resetHomesteadState()
+    selectedSeedId.value = 'radish'
     emitPetReaction('vitals-updated', {
         message: '宠物成长已重置',
     })
     void syncPetVitalsToServer(next)
     proxy?.$message?.({
         type: 'success',
-        message: '已经重新开始，新的陪伴从今天算起',
+        message: '已经重新开始，新的陪伴从今天算起，小院也整理好了',
     })
 }
 
@@ -770,7 +1213,14 @@ const go = (path: string) => {
 let unsubscribeReaction: (() => void) | undefined
 let unsubscribeSync: (() => void) | undefined
 
+const onHomesteadAutoHelp = (event: Event) => {
+    const detail = (event as CustomEvent<HomesteadAutoHelpEventDetail>).detail
+    homestead.value = detail?.state || getHomesteadState()
+}
+
 onMounted(() => {
+    homestead.value = getHomesteadState()
+    window.addEventListener(HOMESTEAD_AUTO_HELP_EVENT, onHomesteadAutoHelp)
     unsubscribeFood = onSelectedPetFoodChange((id) => {
         selectedFoodId.value = id
     })
@@ -807,6 +1257,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    window.removeEventListener(HOMESTEAD_AUTO_HELP_EVENT, onHomesteadAutoHelp)
     unsubscribeFood?.()
     unsubscribeReaction?.()
     unsubscribeSync?.()
@@ -953,7 +1404,8 @@ onUnmounted(() => {
 
 .pet-manage-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(350px, 390px);
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(460px, 0.88fr);
     align-items: start;
     gap: 20px;
 }
@@ -1718,9 +2170,9 @@ onUnmounted(() => {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
     overflow: hidden;
-    padding: 18px;
+    padding: 16px;
     border: 1px solid var(--admin-line, var(--gray1));
     border-radius: 24px;
     background:
@@ -1782,50 +2234,702 @@ onUnmounted(() => {
 .pet-home-room {
     position: relative;
     isolation: isolate;
-    min-height: clamp(390px, 50vh, 560px);
+    min-height: clamp(450px, 46vh, 580px);
     overflow: hidden;
     border: 1px solid color-mix(in srgb, #8f6a4e 16%, var(--admin-line, var(--gray1)));
     border-radius: 20px;
-    background:
-        linear-gradient(180deg,
-            color-mix(in srgb, var(--pcolor) 7%, #f8fbff) 0%,
-            #edf5ff 57%,
-            transparent 57%),
-        linear-gradient(180deg,
-            transparent 0%,
-            transparent 57%,
-            #ddba98 57%,
-            #c9936c 100%);
+    background: #dff0c9;
     box-shadow:
         inset 0 0 0 5px rgba(255, 255, 255, 0.34),
-        inset 0 -18px 34px rgba(111, 68, 39, 0.1);
+        inset 0 -18px 34px rgba(65, 91, 48, 0.12);
+}
+
+.pet-home-interior {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 46%;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg,
+            #fdf8f1 0%,
+            #fbf3e8 56%,
+            transparent 56%),
+        linear-gradient(180deg,
+            transparent 56%,
+            #e6c4a2 56%,
+            #d3a97e 100%);
+    box-shadow:
+        6px 0 0 #f7e9d8,
+        12px 0 26px rgba(77, 61, 44, 0.16);
 
     &::before {
+        position: absolute;
+        inset: 0 0 44%;
+        content: '';
+        opacity: 0.4;
+        background-image:
+            radial-gradient(circle,
+                color-mix(in srgb, var(--pcolor) 24%, transparent) 1px,
+                transparent 1.4px);
+        background-size: 22px 22px;
+        pointer-events: none;
+    }
+
+    &::after {
         position: absolute;
         right: 0;
         bottom: 0;
         left: 0;
-        height: 43%;
+        height: 44%;
         content: '';
-        opacity: 0.3;
+        opacity: 0.32;
         background:
             repeating-linear-gradient(90deg,
-                transparent 0 39px,
-                rgba(104, 64, 36, 0.18) 39px 40px);
+                transparent 0 47px,
+                rgba(104, 64, 36, 0.2) 47px 48px);
         pointer-events: none;
+    }
+}
+
+.pet-home-yard {
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 0 46%;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 82% 12%, rgba(255, 244, 188, 0.78), transparent 22%),
+        linear-gradient(180deg,
+            #dff0ff 0%,
+            #eef8ff 38%,
+            #f6fbef 46%,
+            #cfe8a8 46%,
+            #b9dc8c 100%);
+}
+
+.pet-home-yard :where(button) {
+    border: 0;
+    padding: 0;
+    color: inherit;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+    appearance: none;
+}
+
+.pet-home-yard :where(button):focus-visible {
+    z-index: 6;
+    outline: 3px solid color-mix(in srgb, var(--pcolor) 72%, white);
+    outline-offset: 3px;
+}
+
+.pet-home-sun {
+    position: absolute;
+    top: 8%;
+    right: 12%;
+    width: 13%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, #fffbe0, #ffe27a 64%, #ffd45f 100%);
+    box-shadow:
+        0 0 0 8px rgba(255, 226, 122, 0.16),
+        0 0 30px rgba(255, 226, 122, 0.52);
+    animation: pet-yard-sun 7s ease-in-out infinite;
+}
+
+.pet-home-cloud {
+    position: absolute;
+    height: 4.5%;
+    min-height: 11px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.86);
+    animation: pet-yard-cloud 26s ease-in-out infinite alternate;
+
+    &::before,
+    &::after {
+        position: absolute;
+        bottom: 38%;
+        content: '';
+        border-radius: 50%;
+        background: inherit;
+    }
+
+    &::before {
+        left: 16%;
+        width: 38%;
+        aspect-ratio: 1;
+    }
+
+    &::after {
+        right: 14%;
+        width: 52%;
+        aspect-ratio: 1;
+    }
+}
+
+.pet-home-cloud-a {
+    top: 15%;
+    left: 7%;
+    width: 34%;
+}
+
+.pet-home-cloud-b {
+    top: 27%;
+    right: 10%;
+    width: 24%;
+    opacity: 0.68;
+    animation-duration: 32s;
+}
+
+.pet-home-hill {
+    position: absolute;
+    bottom: 48%;
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+}
+
+.pet-home-hill-a {
+    left: -14%;
+    width: 80%;
+    height: 17%;
+    background: #c6e1ab;
+}
+
+.pet-home-hill-b {
+    right: -18%;
+    width: 74%;
+    height: 13%;
+    background: #b5d795;
+}
+
+.pet-home-fence {
+    position: absolute;
+    top: 47%;
+    right: 0;
+    left: 0;
+    height: 7%;
+    opacity: 0.92;
+    background:
+        repeating-linear-gradient(90deg,
+            #fffaf0 0 6px,
+            transparent 6px 18px);
+
+    &::before,
+    &::after {
+        position: absolute;
+        right: 0;
+        left: 0;
+        height: 2px;
+        content: '';
+        background: rgba(255, 250, 240, 0.86);
+    }
+
+    &::before {
+        top: 30%;
+    }
+
+    &::after {
+        top: 68%;
+    }
+}
+
+.pet-home-path {
+    position: absolute;
+    bottom: 3%;
+    left: 3%;
+    width: 34%;
+    height: 31%;
+    opacity: 0.9;
+    background:
+        radial-gradient(ellipse 19% 7% at 18% 92%, #f1e5cf 98%, transparent 100%),
+        radial-gradient(ellipse 16% 6% at 40% 74%, #f6ecda 98%, transparent 100%),
+        radial-gradient(ellipse 17% 6% at 56% 56%, #eee1ca 98%, transparent 100%),
+        radial-gradient(ellipse 14% 5% at 72% 38%, #f6ecda 98%, transparent 100%);
+}
+
+.pet-home-tree {
+    position: absolute;
+    top: 26%;
+    right: 2%;
+    width: 24%;
+    height: 23%;
+}
+
+.pet-home-tree-trunk {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 12%;
+    height: 45%;
+    transform: translateX(-50%);
+    border-radius: 4px 4px 0 0;
+    background: linear-gradient(90deg, #9a6b48, #7d5235);
+}
+
+.pet-home-tree-canopy {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 76%;
+    border-radius: 50% 50% 44% 44%;
+    background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.3), transparent 38%),
+        linear-gradient(145deg, #b9e08c, #7fbe62 68%, #69a84f);
+    box-shadow: inset -8px -8px 0 rgba(62, 107, 44, 0.16);
+    transform-origin: 50% 100%;
+    animation: pet-yard-sway 8s ease-in-out infinite;
+}
+
+.pet-home-coop {
+    position: absolute;
+    z-index: 2;
+    top: 46%;
+    right: 4%;
+    width: 29%;
+    height: 12%;
+    transition: filter 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-1px);
+    }
+
+    &.is-ready {
+        filter: drop-shadow(0 0 8px rgba(255, 205, 90, 0.78));
+    }
+}
+
+.pet-home-coop-wall {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 72%;
+    border-radius: 5px 5px 3px 3px;
+    background: linear-gradient(180deg, #f8ddc8, #e8b894);
+    box-shadow: inset 0 -6px 0 rgba(150, 91, 54, 0.12);
+}
+
+.pet-home-coop-roof {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    left: 2%;
+    width: 96%;
+    height: 42%;
+    background: linear-gradient(180deg, #e39b78, #cc7c5c);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    filter: drop-shadow(0 3px 3px rgba(109, 60, 40, 0.16));
+}
+
+.pet-home-coop-door {
+    position: absolute;
+    z-index: 2;
+    bottom: 0;
+    left: 38%;
+    width: 24%;
+    height: 52%;
+    border-radius: 50% 50% 0 0;
+    background: #8a5a3b;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14);
+}
+
+.pet-home-chicken {
+    position: absolute;
+    z-index: 3;
+    right: -12%;
+    bottom: -12%;
+    font-size: 24px;
+    font-weight: 400;
+    filter: drop-shadow(0 4px 5px rgba(70, 49, 30, 0.16));
+}
+
+.pet-home-yard-badge {
+    position: absolute;
+    z-index: 4;
+    display: grid;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 4px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(59, 42, 28, 0.2);
+    animation: pet-yard-bob 2.4s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.pet-home-coop .is-egg {
+    top: -18%;
+    right: -8%;
+}
+
+.pet-home-coop .is-manure {
+    top: 30%;
+    right: -18%;
+    font-size: 12px;
+    animation-delay: 0.4s;
+}
+
+.pet-home-pasture .is-milk {
+    top: -22%;
+    right: -10%;
+}
+
+.pet-home-pasture .is-manure {
+    top: 34%;
+    right: -16%;
+    font-size: 12px;
+    animation-delay: 0.4s;
+}
+
+.pet-home-pond .is-fish {
+    top: -10%;
+    right: 6%;
+}
+
+.pet-home-pasture {
+    position: absolute;
+    z-index: 1;
+    top: 64%;
+    right: 50%;
+    display: grid;
+    width: 18%;
+    height: 8%;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg,
+            rgba(202, 232, 166, 0.72),
+            rgba(169, 209, 128, 0.58));
+    box-shadow:
+        inset 0 0 0 2px rgba(255, 255, 255, 0.14),
+        inset 0 0 12px rgba(96, 143, 65, 0.14);
+    transition: filter 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-1px);
+    }
+
+    &.is-ready {
+        filter: drop-shadow(0 0 8px rgba(255, 205, 90, 0.78));
+    }
+
+    &::after {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 28%;
+        content: '';
+        border-radius: 0 0 12px 12px;
+        background:
+            repeating-linear-gradient(90deg,
+                rgba(255, 255, 255, 0.72) 0 3px,
+                transparent 3px 10px);
+    }
+
+    > b:not(.pet-home-yard-badge) {
+        position: relative;
+        z-index: 1;
+        font-size: 22px;
+        font-weight: 400;
+        filter: drop-shadow(0 3px 4px rgba(70, 49, 30, 0.18));
+    }
+}
+
+.pet-home-plots {
+    position: absolute;
+    right: 4%;
+    top: 60%;
+    display: grid;
+    width: 46%;
+    height: 20%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6%;
+}
+
+.pet-home-plot {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-evenly;
+    overflow: hidden;
+    padding: 8% 6% 7%;
+    border-radius: 12px;
+    background:
+        repeating-linear-gradient(180deg,
+            #8a5c3b 0 6px,
+            #7c5033 6px 12px);
+    box-shadow:
+        inset 0 0 0 2px rgba(255, 255, 255, 0.12),
+        0 5px 10px rgba(70, 49, 30, 0.16);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+    }
+
+    &.is-empty {
+        background:
+            repeating-linear-gradient(180deg,
+                #946542 0 6px,
+                #855638 6px 12px);
+    }
+
+    &.is-ready {
+        animation: pet-plot-ready 1.8s ease-in-out infinite;
+    }
+
+    &::before {
+        position: absolute;
+        inset: 0;
+        content: '';
+        border-radius: inherit;
+        background: radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.18), transparent 62%);
+    }
+
+    b:not(.pet-home-plot-crop) {
+        position: relative;
+        width: 15%;
+        height: 34%;
+        border-radius: 999px 999px 4px 4px;
+        background: linear-gradient(180deg, #7ec25e, #4e9a42);
+        box-shadow: inset -2px 0 0 rgba(255, 255, 255, 0.16);
+        transform-origin: bottom center;
+
+        &::before,
+        &::after {
+            position: absolute;
+            top: 18%;
+            width: 74%;
+            height: 42%;
+            content: '';
+            border-radius: 50%;
+            background: #8ed06a;
+        }
+
+        &::before {
+            left: -46%;
+            transform: rotate(-26deg);
+        }
+
+        &::after {
+            right: -46%;
+            transform: rotate(26deg);
+        }
+    }
+
+    b:nth-child(2) {
+        height: 47%;
+    }
+
+    b:nth-child(3) {
+        height: 29%;
+    }
+}
+
+.pet-home-plot-crop {
+    position: absolute;
+    top: 3%;
+    right: 4%;
+    z-index: 2;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1;
+    filter: drop-shadow(0 3px 4px rgba(70, 49, 30, 0.2));
+    animation: pet-yard-bob 2.4s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.pet-home-plot-water {
+    position: absolute;
+    top: 4%;
+    left: 4%;
+    z-index: 2;
+    font-size: 10px;
+    font-style: normal;
+    line-height: 1;
+    filter: drop-shadow(0 2px 3px rgba(52, 106, 135, 0.22));
+    pointer-events: none;
+}
+
+.pet-home-plot-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.56);
+    font-size: 20px;
+    font-weight: 300;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.pet-home-pond {
+    position: absolute;
+    right: 4%;
+    bottom: 4%;
+    width: 46%;
+    height: 14%;
+    overflow: hidden;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse at 50% 38%,
+            #c9eef7 0 42%,
+            #98dcec 43% 70%,
+            #75c4de 71% 100%);
+    box-shadow:
+        inset 0 6px 12px rgba(255, 255, 255, 0.38),
+        0 6px 14px rgba(58, 123, 140, 0.18);
+    transition: filter 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-1px);
+    }
+
+    &.is-ready {
+        filter: drop-shadow(0 0 8px rgba(255, 205, 90, 0.72));
+    }
+}
+
+.pet-home-pond-ripple {
+    position: absolute;
+    border: 1.5px solid rgba(255, 255, 255, 0.56);
+    border-radius: 50%;
+    animation: pet-yard-ripple 4.8s ease-in-out infinite;
+}
+
+.pet-home-pond-ripple-a {
+    top: 24%;
+    left: 18%;
+    width: 34%;
+    height: 26%;
+}
+
+.pet-home-pond-ripple-b {
+    right: 14%;
+    bottom: 20%;
+    width: 24%;
+    height: 20%;
+    animation-delay: 1.6s;
+}
+
+.pet-home-reeds {
+    position: absolute;
+    right: 4%;
+    bottom: 6%;
+    font-size: 22px;
+    font-weight: 400;
+    filter: drop-shadow(0 3px 4px rgba(58, 123, 140, 0.2));
+}
+
+.pet-home-sign {
+    position: absolute;
+    bottom: 44%;
+    left: 4%;
+    padding: 4px 8px;
+    border: 2px solid #a97852;
+    border-radius: 4px;
+    background: #f7e6cf;
+    box-shadow: 0 4px 8px rgba(70, 49, 30, 0.14);
+    color: #8a5a3b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    transform: rotate(-3deg);
+}
+
+@keyframes pet-yard-sun {
+    0%,
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+        filter: brightness(1.06);
+    }
+}
+
+@keyframes pet-yard-cloud {
+    from {
+        transform: translateX(-4%);
+    }
+
+    to {
+        transform: translateX(5%);
+    }
+}
+
+@keyframes pet-yard-sway {
+    0%,
+    100% {
+        transform: rotate(-1.5deg);
+    }
+
+    50% {
+        transform: rotate(1.5deg);
+    }
+}
+
+@keyframes pet-yard-ripple {
+    0%,
+    100% {
+        opacity: 0.4;
+        transform: scale(0.92);
+    }
+
+    50% {
+        opacity: 0.9;
+        transform: scale(1.06);
+    }
+}
+
+@keyframes pet-yard-bob {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-3px);
+    }
+}
+
+@keyframes pet-plot-ready {
+    0%,
+    100% {
+        box-shadow:
+            inset 0 0 0 2px rgba(255, 255, 255, 0.2),
+            0 0 0 1px rgba(255, 215, 120, 0.35),
+            0 5px 12px rgba(70, 49, 30, 0.18);
+    }
+
+    50% {
+        box-shadow:
+            inset 0 0 0 2px rgba(255, 255, 255, 0.3),
+            0 0 0 3px rgba(255, 215, 120, 0.5),
+            0 0 18px rgba(255, 205, 90, 0.52);
     }
 }
 
 .pet-home-window {
     position: absolute;
-    top: 48px;
+    top: 8%;
     left: 50%;
-    width: 152px;
-    height: 112px;
+    width: 52%;
+    aspect-ratio: 4 / 3;
     transform: translateX(-50%);
     overflow: hidden;
-    border: 7px solid rgba(255, 255, 255, 0.9);
-    border-radius: 76px 76px 12px 12px;
+    border: 6px solid rgba(255, 255, 255, 0.9);
+    border-radius: 48% 48% 10px 10px;
     background: linear-gradient(180deg, #182e62, #4366a5 62%, #8cb0d8);
     box-shadow:
         0 10px 24px rgba(48, 73, 121, 0.16),
@@ -1857,10 +2961,10 @@ onUnmounted(() => {
 
 .pet-home-moon {
     position: absolute;
-    top: 20px;
-    right: 24px;
-    width: 22px;
-    height: 22px;
+    top: 17%;
+    right: 15%;
+    width: 15%;
+    aspect-ratio: 1;
     border-radius: 50%;
     background: #fff2b0;
     box-shadow: 0 0 18px rgba(255, 242, 176, 0.72);
@@ -1868,29 +2972,29 @@ onUnmounted(() => {
 
 .pet-home-star {
     position: absolute;
-    width: 4px;
-    height: 4px;
+    width: 5%;
+    aspect-ratio: 1;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.84);
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
 }
 
 .pet-home-star-a {
-    top: 30px;
-    left: 28px;
+    top: 26%;
+    left: 18%;
 }
 
 .pet-home-star-b {
-    top: 58px;
-    left: 44px;
+    top: 50%;
+    left: 29%;
 }
 
 .pet-home-curtain {
     position: absolute;
-    top: 38px;
+    top: 6%;
     z-index: 1;
-    width: 58px;
-    height: 142px;
+    width: 18%;
+    height: 23%;
     border-radius: 14px 10px 26px 12px;
     background:
         repeating-linear-gradient(90deg,
@@ -1901,23 +3005,23 @@ onUnmounted(() => {
 }
 
 .pet-home-curtain-left {
-    left: calc(50% - 104px);
+    left: 4%;
     transform: rotate(4deg);
     transform-origin: top right;
 }
 
 .pet-home-curtain-right {
-    right: calc(50% - 104px);
+    right: 4%;
     transform: rotate(-4deg) scaleX(-1);
     transform-origin: top left;
 }
 
 .pet-home-shelf {
     position: absolute;
-    top: 174px;
-    left: 22px;
-    width: 86px;
-    height: 10px;
+    top: 29%;
+    left: 7%;
+    width: 27%;
+    height: 8px;
     border-radius: 4px;
     background: #a97852;
     box-shadow: 0 5px 0 rgba(126, 82, 50, 0.16);
@@ -1925,27 +3029,27 @@ onUnmounted(() => {
     i {
         position: absolute;
         bottom: 9px;
-        width: 12px;
+        width: 14%;
         border-radius: 3px 3px 0 0;
         background: var(--pcolor);
     }
 
     i:nth-child(1) {
-        left: 10px;
-        height: 32px;
+        left: 12%;
+        height: 26px;
         opacity: 0.68;
     }
 
     i:nth-child(2) {
-        left: 27px;
-        height: 25px;
+        left: 31%;
+        height: 20px;
         background: var(--scolor, #1fb4a2);
         opacity: 0.65;
     }
 
     i:nth-child(3) {
-        left: 44px;
-        height: 36px;
+        left: 50%;
+        height: 29px;
         background: #e9976e;
         opacity: 0.8;
     }
@@ -1953,36 +3057,106 @@ onUnmounted(() => {
 
 .pet-home-picture {
     position: absolute;
-    top: 142px;
-    right: 24px;
+    top: 10%;
+    right: 5%;
     display: grid;
-    width: 48px;
-    height: 48px;
+    width: 16%;
+    aspect-ratio: 1;
     place-items: center;
-    border: 5px solid #fff8ef;
+    border: 4px solid #fff8ef;
     border-radius: 12px;
     background: color-mix(in srgb, var(--pcolor) 16%, #fff);
     box-shadow: 0 7px 14px rgba(101, 70, 44, 0.12);
     color: var(--pcolor);
-    font-size: 18px;
+    font-size: 15px;
+}
+
+.pet-home-clock {
+    position: absolute;
+    top: 37%;
+    left: 8%;
+    width: 14%;
+    aspect-ratio: 1;
+    border: 3px solid #fff8ef;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fffdf8, #f0e2ce);
+    box-shadow: 0 6px 12px rgba(101, 70, 44, 0.12);
+
+    &::before,
+    &::after {
+        position: absolute;
+        bottom: 50%;
+        left: 50%;
+        content: '';
+        border-radius: 2px;
+        background: #8a6a4f;
+        transform-origin: bottom center;
+    }
+
+    &::before {
+        width: 2px;
+        height: 28%;
+        transform: translateX(-50%) rotate(42deg);
+    }
+
+    &::after {
+        width: 2px;
+        height: 20%;
+        transform: translateX(-50%) rotate(-68deg);
+    }
+}
+
+.pet-home-door {
+    position: absolute;
+    right: 1%;
+    bottom: 44%;
+    width: 24%;
+    height: 26%;
+    border-radius: 46% 46% 4px 4px / 24% 24% 4px 4px;
+    background: linear-gradient(100deg, #b9855d, #9a6b48 60%, #845a3c);
+    box-shadow:
+        inset 0 0 0 3px #f6e6d2,
+        inset 0 0 0 5px rgba(120, 76, 47, 0.22),
+        0 8px 16px rgba(83, 54, 34, 0.18);
+
+    &::before {
+        position: absolute;
+        inset: 12% 18% 10%;
+        content: '';
+        border: 2px solid rgba(255, 240, 220, 0.34);
+        border-radius: 40% 40% 3px 3px / 18% 18% 3px 3px;
+    }
+
+    &::after {
+        position: absolute;
+        right: 18%;
+        bottom: 30%;
+        width: 9%;
+        aspect-ratio: 1;
+        content: '';
+        border-radius: 50%;
+        background: #f4d58c;
+        box-shadow: 0 0 0 2px rgba(120, 76, 47, 0.24);
+    }
 }
 
 .pet-home-plant {
     position: absolute;
-    right: 18px;
-    bottom: 66px;
+    right: 5%;
+    bottom: 10%;
     z-index: 1;
-    font-size: 42px;
+    font-size: 36px;
     filter: drop-shadow(0 8px 10px rgba(62, 84, 50, 0.16));
     transform: rotate(-4deg);
 }
 
 .pet-home-rug {
     position: absolute;
-    bottom: 22px;
+    bottom: 3.5%;
     left: 50%;
-    width: min(78%, 260px);
-    height: 62px;
+    width: 82%;
+    height: 10%;
+    min-height: 44px;
     transform: translateX(-50%);
     border-radius: 50%;
     background:
@@ -1994,10 +3168,11 @@ onUnmounted(() => {
 
 .pet-home-cushion {
     position: absolute;
-    bottom: 52px;
-    left: 34px;
-    width: 74px;
-    height: 38px;
+    bottom: 8%;
+    left: 9%;
+    width: 24%;
+    height: 6%;
+    min-height: 26px;
     border-radius: 18px 18px 14px 14px;
     background: linear-gradient(145deg, #e8f0ff, #bfd1ee);
     box-shadow: 0 7px 12px rgba(69, 91, 130, 0.14);
@@ -2006,10 +3181,10 @@ onUnmounted(() => {
 
 .pet-home-bowl {
     position: absolute;
-    right: 28px;
-    bottom: 30px;
+    right: 8%;
+    bottom: 5%;
     z-index: 1;
-    font-size: 30px;
+    font-size: 28px;
     filter: drop-shadow(0 5px 7px rgba(82, 49, 27, 0.18));
 }
 
@@ -2017,7 +3192,7 @@ onUnmounted(() => {
     position: absolute;
     top: 12px;
     left: 12px;
-    z-index: 2;
+    z-index: 5;
     padding: 5px 9px;
     border: 1px solid rgba(255, 255, 255, 0.56);
     border-radius: 999px;
@@ -2026,6 +3201,231 @@ onUnmounted(() => {
     font-size: 10px;
     backdrop-filter: blur(5px);
     pointer-events: none;
+}
+
+.pet-homestead-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pet-homestead-seeds {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 4px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background: var(--bgColor2);
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+.pet-homestead-seed {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--admin-muted, var(--gray6));
+    font: inherit;
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+
+    span {
+        font-size: 14px;
+    }
+
+    small {
+        font-size: 10px;
+    }
+
+    &.is-active {
+        background: linear-gradient(135deg, var(--pcolor), var(--pcolor8));
+        color: #fff;
+        box-shadow: 0 4px 10px var(--pcolor3);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 2px;
+    }
+}
+
+.pet-homestead-tend {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    min-height: 38px;
+    padding: 0 11px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--pcolor), var(--pcolor8));
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 6px 14px var(--pcolor3);
+    transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+
+    span {
+        font-size: 14px;
+    }
+
+    &:hover:not(:disabled) {
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+        box-shadow: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 2px;
+    }
+}
+
+.pet-homestead-tend-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    display: grid;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    place-items: center;
+    border-radius: 999px;
+    background: #ffb44d;
+    color: #5a3200;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 2px 6px rgba(90, 50, 0, 0.18);
+}
+
+.pet-homestead-store {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    overflow-x: auto;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    scrollbar-width: thin;
+}
+
+.pet-homestead-store-label {
+    flex: none;
+    color: var(--admin-text, var(--gray));
+    font-weight: 650;
+}
+
+.pet-homestead-item {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 7px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 999px;
+    background: var(--admin-surface, var(--bgColor1));
+    white-space: nowrap;
+
+    span {
+        font-size: 12px;
+    }
+}
+
+.pet-homestead-store-empty {
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+}
+
+.pet-homestead-auto {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 11px;
+    border: 1px dashed color-mix(in srgb, var(--pcolor) 26%, var(--admin-line, var(--gray1)));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--pcolor) 5%, var(--admin-surface, var(--bgColor1)));
+}
+
+.pet-homestead-auto-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 11px;
+        font-weight: 650;
+    }
+
+    span {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+        line-height: 1.45;
+    }
+}
+
+.pet-homestead-auto-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 7px;
+}
+
+.pet-homestead-auto-now {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    padding: 0 9px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 28%, var(--admin-line, var(--gray1)));
+    border-radius: 9px;
+    background: var(--admin-surface, var(--bgColor1));
+    color: var(--pcolor);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.18s ease, transform 0.18s ease;
+
+    span {
+        font-size: 13px;
+    }
+
+    &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--pcolor) 10%, var(--admin-surface, var(--bgColor1)));
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 2px;
+    }
 }
 
 .pet-home-actions {
@@ -2107,6 +3507,18 @@ onUnmounted(() => {
     }
 }
 
+@media (max-width: 1420px) {
+    .pet-manage-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(420px, 0.78fr);
+    }
+}
+
+@media (max-height: 940px) and (min-width: 1181px) {
+    .pet-manage-side {
+        position: static;
+    }
+}
+
 @media (max-width: 1180px) {
     .pet-manage-grid {
         grid-template-columns: 1fr;
@@ -2118,7 +3530,7 @@ onUnmounted(() => {
     }
 
     .pet-home-room {
-        min-height: 480px;
+        min-height: 500px;
     }
 }
 
@@ -2173,7 +3585,91 @@ onUnmounted(() => {
     }
 
     .pet-home-room {
-        min-height: 420px;
+        min-height: 460px;
+    }
+
+    .pet-home-room-note {
+        display: none;
+    }
+
+    .pet-home-interior {
+        width: 48%;
+    }
+
+    .pet-home-yard {
+        left: 48%;
+    }
+
+    .pet-home-window {
+        border-width: 4px;
+    }
+
+    .pet-home-curtain {
+        width: 16%;
+        height: 21%;
+    }
+
+    .pet-home-shelf i:nth-child(1) {
+        height: 18px;
+    }
+
+    .pet-home-shelf i:nth-child(2) {
+        height: 14px;
+    }
+
+    .pet-home-shelf i:nth-child(3) {
+        height: 21px;
+    }
+
+    .pet-home-picture {
+        border-width: 3px;
+        font-size: 11px;
+    }
+
+    .pet-home-plant {
+        font-size: 28px;
+    }
+
+    .pet-home-bowl {
+        font-size: 22px;
+    }
+
+    .pet-home-chicken {
+        font-size: 18px;
+    }
+
+    .pet-home-pasture b {
+        font-size: 16px;
+    }
+
+    .pet-home-reeds {
+        font-size: 16px;
+    }
+
+    .pet-home-sign {
+        display: none;
+    }
+
+    .pet-homestead-seed {
+        padding: 5px 7px;
+
+        small {
+            display: none;
+        }
+    }
+
+    .pet-homestead-tend {
+        padding: 0 9px;
+    }
+
+    .pet-home-yard-badge {
+        min-width: 19px;
+        height: 19px;
+        font-size: 11px;
+    }
+
+    .pet-home-plot-crop {
+        font-size: 15px;
     }
 
     .pet-next-progress,
@@ -2194,8 +3690,24 @@ onUnmounted(() => {
 @media (prefers-reduced-motion: reduce) {
     .pet-stat-track span,
     .pet-milestone-track span,
-    .pet-next-progress span {
+    .pet-next-progress span,
+    .pet-home-sun,
+    .pet-home-cloud,
+    .pet-home-tree-canopy,
+    .pet-home-pond-ripple,
+    .pet-home-plot,
+    .pet-home-plot.is-ready,
+    .pet-home-plot-crop,
+    .pet-home-yard-badge {
+        animation: none;
         transition: none;
+    }
+
+    .pet-home-coop:hover,
+    .pet-home-pasture:hover,
+    .pet-home-pond:hover,
+    .pet-home-plot:hover {
+        transform: none;
     }
 }
 </style>

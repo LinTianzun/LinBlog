@@ -129,7 +129,7 @@ export function onDesktopPetSettingsChange(
     return () => window.removeEventListener(CHANGE_EVENT, listener)
 }
 
-export type DesktopPetCommand = 'home' | 'sleep' | 'wake' | 'speak'
+export type DesktopPetCommand = 'home' | 'sleep' | 'wake' | 'speak' | 'homestead'
 
 const COMMAND_EVENT = 'desktop-pet:command'
 
