@@ -586,3 +586,73 @@ test('桌宠会自动避让身下的操作按钮', async ({ page }) => {
     '1'
   )
 })
+
+test('同步失败进入待重试，恢复网络后自动补传', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+
+  let allowPut = false
+  let putCount = 0
+  const saved: Record<string, unknown>[] = []
+
+  await page.route('**/api/pet/state', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, message: 'ok', data: null }),
+      })
+      return
+    }
+
+    putCount += 1
+    if (!allowPut) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 500,
+          message: 'sync failed',
+          data: null,
+        }),
+      })
+      return
+    }
+
+    const payload = route.request().postDataJSON()
+    if (payload && typeof payload === 'object') {
+      saved.push(payload as Record<string, unknown>)
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 200, message: 'ok', data: payload }),
+    })
+  })
+
+  await page.goto('/petManage')
+  await expect(page.locator('.pet-name-field input')).toBeVisible({
+    timeout: 30_000,
+  })
+
+  const syncChip = page.locator('.pet-sync-chip')
+  await expect(syncChip).toHaveText('已同步')
+
+  await page
+    .locator('.pet-hero-actions')
+    .getByRole('button', { name: /喂一口/ })
+    .click()
+
+  await expect(syncChip).toHaveText('待重试', { timeout: 5_000 })
+  await expect(page.locator('.pet-sync-note')).toContainText('自动重试')
+  await expect(page.locator('.pet-sync-retry')).toBeVisible()
+
+  allowPut = true
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+
+  await expect(syncChip).toHaveText('已同步', { timeout: 5_000 })
+  expect(putCount).toBeGreaterThanOrEqual(2)
+  expect(saved.length).toBeGreaterThan(0)
+  expect(Number(saved.at(-1)?.mood)).toBeGreaterThan(0)
+})

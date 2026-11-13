@@ -191,6 +191,7 @@ import {
     type PetVitals,
 } from '../../utils/desktopPetVitals'
 import {
+    flushPetSyncQueue,
     mergeRemotePetVitals,
     syncPetVitalsToServer,
 } from '../../utils/desktopPetSync'
@@ -2185,7 +2186,7 @@ const onStorage = (event: StorageEvent) => {
 }
 
 const onOnline = () => {
-    void syncPetVitalsToServer(vitals.value)
+    void flushPetSyncQueue()
 }
 
 let clockTimer: number | undefined

@@ -40,8 +40,22 @@
                         <div>
                             <h2>我的宠物</h2>
                             <p>名字与养成状态会跟随账号跨设备同步</p>
+                            <p v-if="petSyncState === 'pending'" class="pet-sync-note">
+                                {{ petSyncHint }}
+                            </p>
                         </div>
-                        <span class="pet-level-pill">Lv.{{ vitalsIntimacyLevel(petVitals) }}</span>
+                        <div class="pet-card-badges">
+                            <span class="pet-sync-chip" :class="`is-${petSyncState}`"
+                                role="status" aria-live="polite" :title="petSyncHint">
+                                <span class="pet-sync-dot" aria-hidden="true" />
+                                {{ petSyncLabel }}
+                            </span>
+                            <button v-if="petSyncState === 'pending'" type="button"
+                                class="pet-sync-retry" @click="retryPetSync">
+                                重试
+                            </button>
+                            <span class="pet-level-pill">Lv.{{ vitalsIntimacyLevel(petVitals) }}</span>
+                        </div>
                     </header>
 
                     <div class="pet-name-row">
@@ -429,8 +443,14 @@ import {
     type PetVitals,
 } from '../utils/desktopPetVitals'
 import {
+    flushPetSyncQueue,
+    getPetSyncStatus,
     mergeRemotePetVitals,
+    onPetSyncStatusChange,
+    refreshPetSyncStatus,
     syncPetVitalsToServer,
+    type PetSyncState,
+    type PetSyncStatus,
 } from '../utils/desktopPetSync'
 import { useSessionStore } from '../store/session.ts'
 import { IconHeartFill } from '@yike-design/ui/es/components/svg-icon'
@@ -442,6 +462,34 @@ const session = useSessionStore()
 const canEditPet = computed(() => session.can('permission.edit'))
 const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
 const petVitals = ref<PetVitals>(getPetVitals())
+const petSync = ref<PetSyncStatus>(getPetSyncStatus())
+const PET_SYNC_LABELS: Record<PetSyncState, string> = {
+    local: '仅本机',
+    syncing: '同步中',
+    synced: '已同步',
+    pending: '待重试',
+}
+const petSyncState = computed(() => petSync.value.state)
+const petSyncLabel = computed(() => PET_SYNC_LABELS[petSyncState.value])
+const petSyncHint = computed(() => {
+    const current = petSync.value
+    if (current.state === 'local') return '未登录时养成进度只保存在当前设备'
+    if (current.state === 'syncing') return '正在把最新养成进度保存到云端'
+    if (current.state === 'pending') {
+        return current.lastError || '这次同步没有成功，稍后会自动重试'
+    }
+    if (current.lastSyncedAt) {
+        const time = new Date(current.lastSyncedAt).toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+        return `上次同步 ${time}`
+    }
+    return '养成进度已与云端一致'
+})
+const retryPetSync = () => {
+    void flushPetSyncQueue()
+}
 const petTitle = computed(() => vitalsCompanionTitle(petVitals.value))
 const petMilestone = computed(() => vitalsNextMilestone(petVitals.value))
 const petMilestones = computed(() => vitalsMilestoneWall(petVitals.value))
@@ -651,8 +699,13 @@ const go = (path: string) => {
 }
 
 let unsubscribeReaction: (() => void) | undefined
+let unsubscribeSync: (() => void) | undefined
 
 onMounted(() => {
+    petSync.value = refreshPetSyncStatus()
+    unsubscribeSync = onPetSyncStatusChange((next) => {
+        petSync.value = next
+    })
     unsubscribeReaction = onPetReaction((payload) => {
         if (payload.kind === 'vitals-updated') {
             petVitals.value = getPetVitals()
@@ -680,6 +733,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
     unsubscribeReaction?.()
+    unsubscribeSync?.()
     window.clearTimeout(petSaveTimer)
 })
 </script>
@@ -856,6 +910,7 @@ onUnmounted(() => {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 16px;
     padding-bottom: 16px;
 
@@ -871,6 +926,84 @@ onUnmounted(() => {
         color: var(--admin-muted, var(--gray6));
         font-size: 12px;
         line-height: 1.5;
+    }
+}
+
+.pet-card-badges {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.pet-sync-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 999px;
+    background: var(--bgColor2);
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+
+    .pet-sync-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    &.is-synced {
+        border-color: color-mix(in srgb, #1f8f63 26%, var(--admin-line, var(--gray1)));
+        background: color-mix(in srgb, #1f8f63 8%, var(--bgColor2));
+        color: #1f8f63;
+    }
+
+    &.is-syncing {
+        border-color: color-mix(in srgb, var(--pcolor) 24%, var(--admin-line, var(--gray1)));
+        background: var(--pcolor1);
+        color: var(--pcolor);
+
+        .pet-sync-dot {
+            animation: pet-sync-pulse 1s ease-in-out infinite;
+        }
+    }
+
+    &.is-pending {
+        border-color: color-mix(in srgb, #b3701a 28%, var(--admin-line, var(--gray1)));
+        background: color-mix(in srgb, #b3701a 9%, var(--bgColor2));
+        color: #b3701a;
+    }
+}
+
+.pet-sync-retry {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--pcolor);
+    font-size: 11px;
+    font-weight: 650;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.pet-card-head .pet-sync-note {
+    color: #b3701a;
+}
+
+@keyframes pet-sync-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.35;
     }
 }
 
@@ -1791,6 +1924,10 @@ onUnmounted(() => {
 
     .pet-card {
         padding: 18px 16px;
+    }
+
+    .pet-card-badges {
+        justify-content: flex-start;
     }
 
     .pet-name-row,
