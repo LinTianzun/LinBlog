@@ -88,6 +88,65 @@ async function findCollectionById(id, { publicOnly = false } = {}) {
     }
 }
 
+/**
+ * 查询一篇已发布文章所属的公开系列，并给出系列内位置与前后篇。
+ * 只返回同时满足「系列启用 + 文章已发布」的上下文，草稿不会出现在门户。
+ */
+async function findPublicCollectionsForArticle(articleId) {
+    const collections = await query(
+        `SELECT DISTINCT c.id, c.name, c.description, c.cover, c.sort,
+                c.updated_at AS updatedAt
+           FROM content_collection c
+           JOIN content_collection_article ca ON ca.collection_id = c.id
+           JOIN article a ON a.id = ca.article_id AND a.state = 'published'
+          WHERE ca.article_id = ? AND c.status = 1
+          ORDER BY c.sort DESC, c.id DESC`,
+        [articleId]
+    )
+    if (collections.length === 0) return []
+
+    const collectionIds = collections.map(collection => collection.id)
+    const placeholders = collectionIds.map(() => '?').join(', ')
+    const members = await query(
+        `SELECT ca.collection_id AS collectionId,
+                a.id,
+                a.title,
+                ca.sort AS memberSort
+           FROM content_collection_article ca
+           JOIN article a ON a.id = ca.article_id
+          WHERE ca.collection_id IN (${placeholders})
+            AND a.state = 'published'
+          ORDER BY ca.collection_id ASC, ca.sort ASC, ca.id ASC`,
+        collectionIds
+    )
+
+    const grouped = new Map()
+    for (const member of members) {
+        const key = Number(member.collectionId)
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key).push(member)
+    }
+
+    return collections.map(collection => {
+        const items = grouped.get(Number(collection.id)) || []
+        const index = items.findIndex(item => Number(item.id) === Number(articleId))
+        if (index < 0) return null
+
+        const previous = index > 0 ? items[index - 1] : null
+        const next = index < items.length - 1 ? items[index + 1] : null
+        return {
+            id: collection.id,
+            name: collection.name,
+            description: collection.description || '',
+            cover: collection.cover || '',
+            position: index + 1,
+            total: items.length,
+            previous: previous ? { id: previous.id, title: previous.title } : null,
+            next: next ? { id: next.id, title: next.title } : null
+        }
+    }).filter(Boolean)
+}
+
 async function insertCollection({ name, description = '', cover = '', sort = 0 }) {
     const result = await query(
         `INSERT INTO content_collection (name, description, cover, sort)
@@ -182,6 +241,7 @@ async function replaceCollectionArticles(collectionId, articleIds) {
 module.exports = {
     findCollections,
     findCollectionById,
+    findPublicCollectionsForArticle,
     insertCollection,
     updateCollection,
     softDeleteCollection,

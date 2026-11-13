@@ -1066,6 +1066,17 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 系列页与文章详情会主动读取公开系列；单个用例可注册更具体的 route 覆盖。
+    if (method === 'GET' && path === '/api/public/collection') {
+      await fulfill({ count: 0, list: [] })
+      return
+    }
+
+    if (method === 'GET' && path.startsWith('/api/public/collection/article/')) {
+      await fulfill({ count: 0, list: [] })
+      return
+    }
+
     if (method === 'GET' && path === '/api/public/subset') {
       await fulfill({
         count: 1,

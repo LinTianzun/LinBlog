@@ -53,6 +53,27 @@ export interface CollectionPayload {
   sort?: number;
 }
 
+export interface ArticleSeriesLink {
+  id: number;
+  title: string;
+}
+
+export interface ArticleSeriesContext {
+  id: number;
+  name: string;
+  description: string;
+  cover: string;
+  position: number;
+  total: number;
+  previous: ArticleSeriesLink | null;
+  next: ArticleSeriesLink | null;
+}
+
+export interface ArticleSeriesData {
+  count: number;
+  list: ArticleSeriesContext[];
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -65,6 +86,12 @@ export function getPublicCollections() {
 
 export function getPublicCollectionById(id: number) {
   return request.get<ApiResult<CollectionDetail>>(`/public/collection/${id}`);
+}
+
+export function getArticleSeries(articleId: number) {
+  return request.get<ApiResult<ArticleSeriesData>>(
+    `/public/collection/article/${articleId}`
+  );
 }
 
 export function getCollections() {

@@ -66,6 +66,44 @@
                 </nav>
             </div>
 
+            <!-- 所属系列：展示系列位置与前后篇，可直接进入系列页继续顺序阅读 -->
+            <section v-if="seriesLoading || articleSeries.length" class="article-series"
+                aria-labelledby="article-series-heading">
+                <header class="article-series-head">
+                    <h2 id="article-series-heading">所属系列</h2>
+                    <span>IN THIS COLLECTION</span>
+                </header>
+                <div v-if="seriesLoading" class="article-series-loading">
+                    <yk-spinner size="s" />
+                </div>
+                <div v-else class="article-series-list">
+                    <article v-for="context in articleSeries" :key="context.id" class="article-series-card">
+                        <div class="article-series-meta">
+                            <span>COLLECTION · {{ context.position }} / {{ context.total }}</span>
+                            <button type="button" class="article-series-name" @click="openSeries(context.id)">
+                                {{ context.name }}
+                            </button>
+                            <p v-if="context.description">{{ context.description }}</p>
+                        </div>
+                        <nav class="article-series-nav" :aria-label="`${context.name}系列导航`">
+                            <button v-if="context.previous" type="button" class="article-series-step"
+                                @click="openSeriesArticle(context.previous)">
+                                <span>上一篇</span>
+                                <strong>{{ context.previous.title }}</strong>
+                            </button>
+                            <span v-else class="article-series-step is-empty">已经是系列第一篇</span>
+
+                            <button v-if="context.next" type="button" class="article-series-step is-next"
+                                @click="openSeriesArticle(context.next)">
+                                <span>下一篇</span>
+                                <strong>{{ context.next.title }}</strong>
+                            </button>
+                            <span v-else class="article-series-step is-empty">已经是系列最后一篇</span>
+                        </nav>
+                    </article>
+                </div>
+            </section>
+
             <!-- 延伸阅读：按分类、标签与热度推荐，点击后原地切换文章 -->
             <section v-if="relatedArticles.length || relatedLoading" class="related-wrap"
                 aria-labelledby="related-heading">
@@ -143,6 +181,11 @@ import {
 import { prepareArticleContent } from '../../utils/articleReading'
 import { pickRelatedArticles } from '../../utils/relatedArticles'
 import { portalItemUrl } from '../../utils/portalSeo'
+import {
+    getArticleSeries,
+    type ArticleSeriesContext,
+    type ArticleSeriesLink,
+} from '../../api/collection'
 import PortalShareButton from './PortalShareButton.vue'
 
 const props = defineProps<{
@@ -173,6 +216,11 @@ const views = ref(0)
 const relatedArticles = ref<ArticleItem[]>([])
 const relatedLoading = ref(false)
 let relatedToken = 0
+
+// 所属系列：文章可能被收进多个系列，每个系列独立展示位置与前后篇
+const articleSeries = ref<ArticleSeriesContext[]>([])
+const seriesLoading = ref(false)
+let seriesToken = 0
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -383,6 +431,44 @@ watch(
     },
     { immediate: true }
 )
+
+const loadArticleSeries = async (articleId: number) => {
+    const token = ++seriesToken
+    seriesLoading.value = true
+    try {
+        const result = await getArticleSeries(articleId)
+        if (token !== seriesToken) return
+        articleSeries.value = result.code === 200 ? result.data?.list || [] : []
+    } catch {
+        if (token === seriesToken) articleSeries.value = []
+    } finally {
+        if (token === seriesToken) seriesLoading.value = false
+    }
+}
+
+watch(
+    [() => props.open, () => props.article?.id],
+    ([open]) => {
+        if (!open || !props.article?.id) {
+            seriesToken += 1
+            articleSeries.value = []
+            seriesLoading.value = false
+            return
+        }
+        void loadArticleSeries(props.article.id)
+    },
+    { immediate: true }
+)
+
+const openSeriesArticle = (link: ArticleSeriesLink | null): void => {
+    if (link) emit('open-related', link.id)
+}
+
+const openSeries = (collectionId: number): void => {
+    const query: Record<string, string> = { collection: String(collectionId) }
+    if (props.article?.id) query.open = String(props.article.id)
+    void router.push({ path: '/portal/series', query })
+}
 
 // 头部与后台文章详情共用同一组标签语义：分类、状态、发布日期
 const heroBadges = computed(() => {
@@ -935,6 +1021,165 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
+// 所属系列：与正文同宽，展示当前在系列中的位置与前后篇
+.article-series {
+    max-width: 720px;
+    margin: 44px auto 0;
+    padding-top: 24px;
+    border-top: 1px solid @line-color-s;
+}
+
+.article-series-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+
+    h2 {
+        margin: 0;
+        font-family: var(--portal-serif);
+        font-size: 19px;
+        font-weight: 600;
+        color: @font-color-l;
+    }
+
+    span {
+        color: @font-color-s;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+    }
+}
+
+.article-series-loading {
+    display: flex;
+    min-height: 72px;
+    align-items: center;
+    justify-content: center;
+}
+
+.article-series-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.article-series-card {
+    padding: 16px 17px;
+    border: 1px solid @line-color-s;
+    border-radius: 12px;
+    background:
+        linear-gradient(135deg, color-mix(in srgb, @pcolor 7%, transparent), transparent 62%),
+        color-mix(in srgb, @bg-color-l 88%, transparent);
+}
+
+.article-series-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+
+    > span {
+        color: @pcolor;
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.09em;
+    }
+
+    p {
+        margin: 2px 0 0;
+        color: @font-color-m;
+        font-size: 12px;
+        line-height: 1.65;
+    }
+}
+
+.article-series-name {
+    width: fit-content;
+    padding: 0;
+    border: 0;
+    color: @font-color-l;
+    background: transparent;
+    font-family: var(--portal-serif);
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        color: @pcolor;
+        outline: none;
+    }
+}
+
+.article-series-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-top: 14px;
+}
+
+.article-series-step {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid @line-color-s;
+    border-radius: 9px;
+    color: @font-color-l;
+    background: color-mix(in srgb, @bg-color-s 72%, transparent);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+
+    span {
+        color: @font-color-s;
+        font-size: 10px;
+        letter-spacing: 0.05em;
+    }
+
+    strong {
+        overflow: hidden;
+        color: @font-color-l;
+        font-size: 12px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &:hover,
+    &:focus-visible {
+        border-color: color-mix(in srgb, @pcolor 36%, @line-color-s);
+        background: color-mix(in srgb, @pcolor 6%, @bg-color-s);
+        outline: none;
+
+        strong {
+            color: @pcolor;
+        }
+    }
+
+    &.is-next {
+        text-align: right;
+        align-items: flex-end;
+    }
+
+    &.is-empty {
+        align-items: center;
+        justify-content: center;
+        color: @font-color-s;
+        cursor: default;
+        font-size: 11px;
+
+        &:hover {
+            border-color: @line-color-s;
+            background: color-mix(in srgb, @bg-color-s 72%, transparent);
+        }
+    }
+}
+
 // 延伸阅读：与正文同宽，三列卡片在窄屏退化为单列
 .related-wrap {
     max-width: 720px;
@@ -1106,6 +1351,20 @@ watch(loadKey, async (key, previousKey) => {
     .related-wrap {
         max-width: 100%;
         margin-top: 32px;
+    }
+
+    .article-series {
+        max-width: 100%;
+        margin-top: 32px;
+    }
+
+    .article-series-nav {
+        grid-template-columns: 1fr;
+    }
+
+    .article-series-step.is-next {
+        text-align: left;
+        align-items: flex-start;
     }
 
     .related-grid {

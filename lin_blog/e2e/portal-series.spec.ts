@@ -80,6 +80,42 @@ async function mockSeries(page: Parameters<typeof installApiMock>[0]): Promise<v
       })
     })
   }
+
+  const contexts = {
+    [firstArticle.id]: {
+      id: collection.id,
+      name: collection.name,
+      description: collection.description,
+      cover: '',
+      position: 1,
+      total: 2,
+      previous: null,
+      next: { id: secondArticle.id, title: secondArticle.title },
+    },
+    [secondArticle.id]: {
+      id: collection.id,
+      name: collection.name,
+      description: collection.description,
+      cover: '',
+      position: 2,
+      total: 2,
+      previous: { id: firstArticle.id, title: firstArticle.title },
+      next: null,
+    },
+  }
+  for (const [articleId, context] of Object.entries(contexts)) {
+    await page.route(new RegExp(`/api/public/collection/article/${articleId}$`), async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 200,
+          message: 'ok',
+          data: { count: 1, list: [context] },
+        }),
+      })
+    })
+  }
 }
 
 test('门户系列页按顺序展示文章并打开阅读', async ({ page }) => {
@@ -124,4 +160,25 @@ test('门户系列支持 collection 与 open 深链接', async ({ page }) => {
   const detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
   await expect(detail).toBeVisible()
   await expect(detail.getByRole('heading', { name: secondArticle.title })).toBeVisible()
+})
+
+test('文章详情显示所属系列与上一篇导航', async ({ page }) => {
+  await installApiMock(page)
+  await mockSeries(page)
+
+  await page.goto('/portal/series?collection=8&open=1202')
+
+  const detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
+  await expect(detail).toBeVisible()
+
+  const context = detail.locator('.article-series')
+  await expect(context.getByRole('heading', { name: '所属系列' })).toBeVisible()
+  await expect(context).toContainText(collection.name)
+  await expect(context).toContainText('2 / 2')
+  await expect(context).toContainText('已经是系列最后一篇')
+
+  await context.getByRole('button', { name: /上一篇/ }).click()
+  await expect(detail.getByRole('heading', { name: firstArticle.title })).toBeVisible()
+  await expect(context).toContainText('1 / 2')
+  await expect(context).toContainText('已经是系列第一篇')
 })

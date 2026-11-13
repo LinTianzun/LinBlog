@@ -140,6 +140,51 @@ test('public collection detail returns ordered published articles', async () => 
     }
 })
 
+test('article series context returns position and ordered neighbors', async () => {
+    const originalFind = collectionModel.findPublicCollectionsForArticle
+    collectionModel.findPublicCollectionsForArticle = async (articleId) => {
+        assert.equal(articleId, 12)
+        return [
+            {
+                id: 8,
+                name: '从零搭博客',
+                description: '系列说明',
+                cover: '',
+                position: 2,
+                total: 3,
+                previous: { id: 11, title: '第一篇' },
+                next: { id: 13, title: '第三篇' }
+            }
+        ]
+    }
+
+    try {
+        const res = createRes()
+        await collectionController.getPublicCollectionsForArticle(
+            { params: { articleId: '12' } },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.count, 1)
+        assert.equal(res.body.data.list[0].position, 2)
+        assert.deepEqual(res.body.data.list[0].next, { id: 13, title: '第三篇' })
+    } finally {
+        collectionModel.findPublicCollectionsForArticle = originalFind
+    }
+})
+
+test('article series context rejects invalid article IDs', async () => {
+    const res = createRes()
+    await collectionController.getPublicCollectionsForArticle(
+        { params: { articleId: 'abc' } },
+        res
+    )
+
+    assert.equal(res.statusCode, 400)
+    assert.equal(res.body.code, 400)
+})
+
 test('createCollection rejects non-manager users', async () => {
     const res = createRes()
     await collectionController.createCollection(

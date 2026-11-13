@@ -113,6 +113,24 @@ async function getPublicCollectionById(req, res) {
     }
 }
 
+async function getPublicCollectionsForArticle(req, res) {
+    try {
+        const articleId = parseCollectionId(req.params.articleId)
+        if (!articleId) {
+            return res.status(400).json({ code: 400, message: '请传入有效的文章ID' })
+        }
+
+        const list = await collectionModel.findPublicCollectionsForArticle(articleId)
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: { count: list.length, list }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '文章系列查询失败：' + err.message })
+    }
+}
+
 async function getCollections(req, res) {
     try {
         if (!canManageCollection(req.user)) {
@@ -337,6 +355,7 @@ async function setCollectionArticles(req, res) {
 module.exports = {
     getPublicCollections,
     getPublicCollectionById,
+    getPublicCollectionsForArticle,
     getCollections,
     getCollectionById,
     createCollection,
