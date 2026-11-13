@@ -55,6 +55,15 @@ const routes = [
                 },
             },
             {
+                path: 'contentHealth',
+                component: () => import('../views/ContentHealthView.vue'),
+                // 内容健康扫描会读取全站已发布内容，与总览使用同一管理权限
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['overview.viewAll'],
+                },
+            },
+            {
     path: 'userManagement',
     component: () => import('../views/UserManagement.vue'),
     meta: {
@@ -248,6 +257,7 @@ router.afterEach((to) => {
     if (to.path.startsWith('/portal')) return
     const privateTitles: Record<string, string> = {
         '/overView': '系统总览',
+        '/contentHealth': '内容健康',
         '/userManagement': '用户管理',
         '/permissionManagement': '权限管理',
         '/systemLog': '系统日志',

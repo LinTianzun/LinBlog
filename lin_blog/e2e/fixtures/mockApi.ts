@@ -1632,6 +1632,56 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === '/api/content/health') {
+      await fulfill({
+        generatedAt: '2026-11-13T06:30:00.000Z',
+        staleDays: Number(url.searchParams.get('staleDays')) || 180,
+        scanLimit: 2000,
+        summary: {
+          published: 3,
+          scanned: 3,
+          healthy: 2,
+          issueItems: 1,
+          issues: 2,
+          byIssue: {
+            missingCover: 1,
+            missingIntro: 0,
+            uncategorized: 0,
+            missingLabels: 0,
+            staleContent: 0,
+            shortContent: 0,
+            emptyGallery: 0,
+            brokenLinks: 1,
+          },
+        },
+        truncated: false,
+        items: [{
+          id: 1201,
+          title: '把日常写成一条慢速河流',
+          classify: 'article',
+          subsetId: 3,
+          subsetName: '生活随笔',
+          label: 'Vue,写作',
+          introduce: '在代码、光线与日常之间，记录那些值得被慢慢读完的片段。',
+          cover: '',
+          views: 97,
+          issues: ['missingCover', 'brokenLinks'],
+          brokenLinks: [{
+            href: '/portal/articles?open=999',
+            reason: '目标文章不存在或未发布',
+          }],
+          contentLength: 860,
+          imageCount: 0,
+          publishedAt: '2026-10-20T08:30:00.000Z',
+          updatedAt: '2026-10-20T08:30:00.000Z',
+          lastTouchedAt: '2026-10-20T08:30:00.000Z',
+          editPath: '/editarticle/1201',
+          publicPath: '/portal/articles?open=1201',
+        }],
+      })
+      return
+    }
+
     if (method === 'PATCH' && path === '/api/message/read') {
       const messageIds = Array.isArray(body?.messageIds) ? body.messageIds : []
       state.messages = state.messages.map(item =>

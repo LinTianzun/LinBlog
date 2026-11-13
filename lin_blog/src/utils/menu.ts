@@ -13,6 +13,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconHomepageFill'
     },
     {
+        path: 'contentHealth',
+        name: '内容健康',
+        icon: 'IconCircleCheckOutline'
+    },
+    {
         path: 'userManagement',
         name: '用户管理',
         icon: 'IconAvatarFill'
