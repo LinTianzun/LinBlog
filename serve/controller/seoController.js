@@ -1,6 +1,7 @@
 const config = require('../config/default')
 const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
+const collectionModel = require('../model/dbModel/collection/index')
 
 const SITE_NAME = '林知雨 · 个人刊物'
 const SITE_DESCRIPTION = '林知雨的个人博客，记录代码、摄影与日常。'
@@ -68,15 +69,28 @@ function resolveOrigin(req) {
     return `${protocol}://${host || 'localhost'}`
 }
 
-function renderSitemap({ origin, articles, diaries, now = new Date() }) {
+function renderSitemap({ origin, articles, diaries, collections, now = new Date() }) {
     const base = String(origin).replace(/\/+$/, '')
     const entries = [
         { loc: `${base}/portal`, lastmod: now.toISOString(), changefreq: 'daily', priority: '1.0' },
         { loc: `${base}/portal/articles`, lastmod: now.toISOString(), changefreq: 'daily', priority: '0.9' },
+        { loc: `${base}/portal/series`, lastmod: now.toISOString(), changefreq: 'weekly', priority: '0.7' },
         { loc: `${base}/portal/gallery`, lastmod: now.toISOString(), changefreq: 'weekly', priority: '0.8' },
         { loc: `${base}/portal/diary`, lastmod: now.toISOString(), changefreq: 'daily', priority: '0.8' },
         { loc: `${base}/portal/messages`, lastmod: now.toISOString(), changefreq: 'daily', priority: '0.5' }
     ]
+
+    for (const collection of collections || []) {
+        if (Number(collection.publishedCount) <= 0) continue
+        const url = new URL(`${base}/portal/series`)
+        url.searchParams.set('collection', String(collection.id))
+        entries.push({
+            loc: url.toString(),
+            lastmod: isoDate(collection.updatedAt || collection.createdAt) || now.toISOString(),
+            changefreq: 'weekly',
+            priority: '0.7'
+        })
+    }
 
     for (const article of articles || []) {
         entries.push({
@@ -170,6 +184,7 @@ Disallow: /reportedComments
 Disallow: /messages
 Disallow: /localfile
 Disallow: /article
+Disallow: /collectionManage
 Disallow: /gallery
 Disallow: /diary
 Disallow: /setting
@@ -184,15 +199,17 @@ Sitemap: ${base}/sitemap.xml
 
 async function getSitemap(req, res) {
     try {
-        const [articles, diaries] = await Promise.all([
+        const [articles, diaries, collections] = await Promise.all([
             articleModel.listPublishedContentForFeed(5000),
-            diaryModel.listPublicDiariesForFeed(5000)
+            diaryModel.listPublicDiariesForFeed(5000),
+            collectionModel.findCollections({ publicOnly: true })
         ])
         res.set('Cache-Control', 'public, max-age=300, s-maxage=600')
         res.type('application/xml').send(renderSitemap({
             origin: resolveOrigin(req),
             articles,
-            diaries
+            diaries,
+            collections
         }))
     } catch (err) {
         res.status(500).type('text/plain').send(`Sitemap generation failed: ${err.message}`)

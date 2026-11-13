@@ -135,6 +135,7 @@ const route = useRoute()
 const links = [
     { label: '首页', path: '/portal' },
     { label: '文章', path: '/portal/articles' },
+    { label: '系列', path: '/portal/series' },
     { label: '摄影', path: '/portal/gallery' },
     { label: '随笔', path: '/portal/diary' },
     { label: '留言', path: '/portal/messages' }

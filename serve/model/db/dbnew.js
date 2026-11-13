@@ -690,6 +690,34 @@ const tablesSql = {
     PRIMARY KEY (user_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户桌面宠物养成状态';`
+
+  ,content_collection: `CREATE TABLE IF NOT EXISTS content_collection(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '系列ID',
+    name VARCHAR(80) NOT NULL COMMENT '系列名称',
+    description VARCHAR(500) NULL COMMENT '系列说明',
+    cover VARCHAR(255) NULL COMMENT '系列封面',
+    sort INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序权重（越大越靠前）',
+    status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_content_collection_status_sort (status, sort),
+    INDEX idx_content_collection_created (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内容系列/合集';`
+
+  ,content_collection_article: `CREATE TABLE IF NOT EXISTS content_collection_article(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '关联ID',
+    collection_id BIGINT UNSIGNED NOT NULL COMMENT '系列ID',
+    article_id BIGINT UNSIGNED NOT NULL COMMENT '文章ID',
+    sort INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '系列内顺序（越小越靠前）',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_collection_article (collection_id, article_id),
+    INDEX idx_collection_sort (collection_id, sort, id),
+    INDEX idx_collection_article (article_id),
+    FOREIGN KEY (collection_id) REFERENCES content_collection(id) ON DELETE CASCADE,
+    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内容系列文章关系';`
 };
 
 // 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
@@ -1671,7 +1699,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2251,6 +2279,12 @@ async function ensurePetHomesteadSchema(exec = query) {
   });
 }
 
+// 内容系列/合集：系列与文章分离，避免把平铺分类当成有顺序的系列使用。
+async function ensureContentCollectionSchema(exec = query) {
+  await exec(tablesSql.content_collection);
+  await exec(tablesSql.content_collection_article);
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2637,6 +2671,10 @@ const migrations = [
   {
     version: ['2026', '1113_pet_homestead'].join(''),
     up: ensurePetHomesteadSchema
+  },
+  {
+    version: '20261113_content_collection',
+    up: ensureContentCollectionSchema
   }
 ];
 

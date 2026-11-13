@@ -38,10 +38,25 @@ test('sitemap 会收录门户归档、文章、图库和随笔详情', () => {
                 createdAt: '2026-10-27T08:00:00.000Z'
             }
         ],
+        collections: [
+            {
+                id: 8,
+                publishedCount: 2,
+                updatedAt: '2026-10-26T08:00:00.000Z'
+            },
+            {
+                id: 9,
+                publishedCount: 0,
+                updatedAt: '2026-10-25T08:00:00.000Z'
+            }
+        ],
         now: new Date('2026-10-29T12:00:00.000Z')
     })
 
     assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal<\/loc>/)
+    assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal\/series<\/loc>/)
+    assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal\/series\?collection=8<\/loc>/)
+    assert.doesNotMatch(xml, /collection=9/)
     assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal\/articles\?open=1<\/loc>/)
     assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal\/gallery\?open=2<\/loc>/)
     assert.match(xml, /<loc>https:\/\/blog\.example\.com\/portal\/diary\?open=3<\/loc>/)
@@ -92,6 +107,7 @@ test('robots 只开放门户与上传资源，并声明 sitemap 地址', () => {
     assert.match(robots, /Allow: \/portal/)
     assert.match(robots, /Allow: \/api\/uploads\//)
     assert.match(robots, /Disallow: \/overView/)
+    assert.match(robots, /Disallow: \/collectionManage/)
     assert.match(robots, /Sitemap: https:\/\/blog\.example\.com\/sitemap\.xml/)
 })
 

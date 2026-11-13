@@ -29,6 +29,8 @@ module.exports = (app) => {
     require('./ticket')(app)
     //  引入分类相关路由
     require('./subset')(app)
+    //  引入内容系列相关路由
+    require('./collection')(app)
     //  引入标签相关路由
     require('./label')(app)
     //  引入总览统计聚合路由

@@ -18,6 +18,11 @@ const routes = [
         meta: { requiresAuth: false, hideHeader: true },
     },
     {
+        path: '/portal/series',
+        component: () => import('../views/PortalSeries.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         path: '/portal/gallery',
         component: () => import('../views/PortalGallery.vue'),
         meta: { requiresAuth: false, hideHeader: true },
@@ -128,6 +133,14 @@ const routes = [
                 meta: {
                     requiresAuth: true,
                     permissions: ['article.publish', 'gallery.publish']
+                }
+            },
+            {
+                path: 'collectionManage',
+                component: () => import('../views/CollectionManageView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['category.manage']
                 }
             },
             {
