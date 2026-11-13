@@ -10,6 +10,7 @@ import {
   mergePetVitals,
   normalizePetVitals,
   recordDailyTask,
+  resetPetVitals,
   unlockEligibleAchievements,
   vitalsCompanionTitle,
   vitalsIntimacyLevel,
@@ -417,4 +418,77 @@ test('老存档的历史成就会静默标记为已庆祝', () => {
       .some((item) => item.isNew),
     false
   )
+})
+
+test('重新养一只会清空成长、成就与任务并提升版本', () => {
+  const now = new Date('2026-11-13T09:00:00').getTime()
+  const reset = resetPetVitals(
+    normalizePetVitals({
+      ...DEFAULT_PET_VITALS,
+      name: '团子',
+      mood: 90,
+      satiety: 90,
+      intimacy: 80,
+      streakDays: 30,
+      totalInteractions: 500,
+      firstVisitAt: 1,
+      unlockedAchievements: ['streak:3', 'streak:30'],
+      celebratedAchievements: ['streak:3'],
+      dailyTasks: {
+        date: '2026-11-13',
+        progress: { feed: 1, publish: 1, comment: 1 },
+        rewarded: ['feed', 'publish', 'comment'],
+      },
+      stateVersion: 5,
+      updatedAt: now,
+    }),
+    now
+  )
+
+  assert.equal(reset.name, '')
+  assert.equal(reset.mood, 70)
+  assert.equal(reset.satiety, 60)
+  assert.equal(reset.intimacy, 10)
+  assert.equal(reset.streakDays, 0)
+  assert.equal(reset.totalInteractions, 0)
+  assert.equal(reset.firstVisitAt, 0)
+  assert.deepEqual(reset.unlockedAchievements, [])
+  assert.deepEqual(reset.celebratedAchievements, [])
+  assert.deepEqual(reset.dailyTasks.progress, {
+    feed: 0,
+    publish: 0,
+    comment: 0,
+  })
+  assert.equal(reset.stateVersion, now)
+})
+
+test('高版本重置优先，低版本旧进度不能合并回来', () => {
+  const reset = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    name: '',
+    stateVersion: 10,
+    updatedAt: 2_000,
+  })
+  const stale = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    name: '旧设备',
+    mood: 100,
+    streakDays: 60,
+    totalInteractions: 500,
+    unlockedAchievements: ['streak:60', 'interaction:500'],
+    stateVersion: 5,
+    updatedAt: 3_000,
+  })
+
+  for (const merged of [
+    mergePetVitals(reset, stale, Date.now()),
+    mergePetVitals(stale, reset, Date.now()),
+  ]) {
+    assert.equal(merged.stateVersion, 10)
+    assert.equal(merged.name, '')
+    assert.equal(merged.mood, 70)
+    assert.equal(merged.streakDays, 0)
+    assert.equal(merged.totalInteractions, 0)
+    assert.deepEqual(merged.unlockedAchievements, [])
+  }
 })

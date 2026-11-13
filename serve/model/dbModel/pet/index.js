@@ -90,6 +90,7 @@ function normalizePetState(payload = {}) {
         unlockedAchievements: normalizeAchievements(payload.unlockedAchievements),
         celebratedAchievements: normalizeAchievements(payload.celebratedAchievements),
         dailyTasks: normalizeDailyTasks(payload.dailyTasks),
+        stateVersion: safeTimestamp(payload.stateVersion),
         updatedAt: safeTimestamp(payload.updatedAt)
     }
 }
@@ -114,6 +115,7 @@ const toCamelState = (row) => {
             progress: dailyTaskState?.progress,
             rewarded: dailyTaskState?.rewarded
         }),
+        stateVersion: Number(row.state_version || 0),
         updatedAt: Number(row.client_updated_at || 0)
     }
 }
@@ -125,7 +127,7 @@ const SELECT_FIELDS = `
     DATE_FORMAT(last_greeting_date, '%Y-%m-%d') AS last_greeting_date,
     first_visit_at, unlocked_achievements, celebrated_achievements,
     DATE_FORMAT(daily_task_date, '%Y-%m-%d') AS daily_task_date,
-    daily_task_state, client_updated_at
+    daily_task_state, state_version, client_updated_at
 `
 
 async function getPetState(userId) {
@@ -158,8 +160,11 @@ function mergePetStates(existing, incoming) {
     const next = normalizePetState(incoming)
     if (!existing) return next
     const current = normalizePetState(existing)
+    if (next.stateVersion < current.stateVersion) return current
+    if (next.stateVersion > current.stateVersion) return next
     return {
         ...next,
+        stateVersion: current.stateVersion,
         unlockedAchievements: [
             ...new Set([
                 ...current.unlockedAchievements,
@@ -193,8 +198,8 @@ async function savePetState(userId, payload) {
          (user_id, pet_name, mood, satiety, intimacy, streak_days, last_visit_date,
           total_interactions, last_fed_at, last_greeting_date, first_visit_at,
           unlocked_achievements, celebrated_achievements, daily_task_date,
-          daily_task_state, client_updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          daily_task_state, state_version, client_updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
             pet_name = VALUES(pet_name),
             mood = VALUES(mood),
@@ -210,6 +215,7 @@ async function savePetState(userId, payload) {
             celebrated_achievements = VALUES(celebrated_achievements),
             daily_task_date = VALUES(daily_task_date),
             daily_task_state = VALUES(daily_task_state),
+            state_version = VALUES(state_version),
             client_updated_at = VALUES(client_updated_at)`,
         [
             userId,
@@ -231,6 +237,7 @@ async function savePetState(userId, payload) {
                 : null,
             state.dailyTasks.date,
             dailyTaskState,
+            state.stateVersion,
             state.updatedAt
         ]
     )

@@ -5,6 +5,7 @@
                 v-if="visible"
                 ref="rootRef"
                 class="dsh-pet-root"
+                :class="{ 'is-auto-shifting': autoShifting }"
                 :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
                 :data-facing="facing"
             >
@@ -148,6 +149,11 @@ import {
     setDesktopPetSettings,
     type DesktopPetSettings,
 } from '../../utils/desktopPet'
+import {
+    findPetAvoidancePosition,
+    petBodyRect,
+    type PetRect,
+} from '../../utils/desktopPetAvoidance'
 import { getSiteSettings } from '../../api/site'
 import petFallback from '../../assets/svg/petFallback.svg'
 import { getIncomingCommentCursor } from '../../api/comment'
@@ -408,6 +414,7 @@ watch(
             fallbackNotified = false
             el.play().catch(() => {})
         }
+        schedulePetAvoidance(320)
     },
     { flush: 'post' }
 )
@@ -771,6 +778,7 @@ const tryWalk = (): boolean => {
     const el = elementOf(front.value)
     if (!el) return false
 
+    autoShifting.value = false
     playAnim(action.name, true)
     walkFrom = { x: pos.value.x, y: pos.value.y }
     walkTo = { x: targetX, y: pos.value.y }
@@ -800,6 +808,7 @@ const tryWalk = (): boolean => {
             walkRaf = 0
             walking.value = false
             persistPosition()
+            schedulePetAvoidance(140)
         }
     }
     walkRaf = requestAnimationFrame(step)
@@ -883,8 +892,166 @@ const clampPos = (p: { x: number; y: number }) => {
     }
 }
 
+// ===== 自动避让页面控件 =====
+// 命中区只覆盖身体还不够：宠物站在按钮/输入框上时，视觉和点击都会挡操作。
+// 这里在拖拽、走位、抛出落定后做一次几何检测，把宠物微移到最近的空位。
+// 个别区域若不需要避让，可给容器加 data-pet-avoid="off"。
+const PET_AVOID_SELECTOR = [
+    'button',
+    'a[href]',
+    'input:not([type="hidden"])',
+    'textarea',
+    'select',
+    'summary',
+    '[contenteditable="true"]',
+    '[role="button"]',
+    '[role="link"]',
+    '[role="switch"]',
+    '[role="checkbox"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="option"]',
+].join(',')
+const PET_AVOID_PADDING = 10
+const PET_AVOID_MAX_SHIFT = 280
+const PET_AVOID_NEAR_MARGIN = 48
+const PET_AVOID_MAX_OBSTACLE_AREA = 320_000
+const autoShifting = ref(false)
+let autoShiftTimer: number | undefined
+let avoidTimer: number | undefined
+let avoidRaf = 0
+let avoidObserver: MutationObserver | null = null
+
+const collectPetObstacles = (body: PetRect): PetRect[] => {
+    const result: PetRect[] = []
+    const viewportW = window.innerWidth
+    const viewportH = window.innerHeight
+    const nodes = document.querySelectorAll<HTMLElement>(PET_AVOID_SELECTOR)
+
+    for (const el of nodes) {
+        if (el.closest('.dsh-pet-layer')) continue
+        if (el.closest('[data-pet-avoid="off"]')) continue
+        if (el.closest('[inert]')) continue
+        if (el.getAttribute('aria-hidden') === 'true') continue
+        if (el.getAttribute('aria-disabled') === 'true') continue
+        if (el.matches(':disabled')) continue
+
+        const rect = el.getBoundingClientRect()
+        if (rect.width < 2 || rect.height < 2) continue
+        if (rect.width * rect.height > PET_AVOID_MAX_OBSTACLE_AREA) continue
+        if (
+            rect.right <= 0 ||
+            rect.bottom <= 0 ||
+            rect.left >= viewportW ||
+            rect.top >= viewportH
+        ) {
+            continue
+        }
+        if (
+            rect.right < body.left - PET_AVOID_NEAR_MARGIN ||
+            rect.left > body.right + PET_AVOID_NEAR_MARGIN ||
+            rect.bottom < body.top - PET_AVOID_NEAR_MARGIN ||
+            rect.top > body.bottom + PET_AVOID_NEAR_MARGIN
+        ) {
+            continue
+        }
+
+        const style = window.getComputedStyle(el)
+        if (
+            style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            style.pointerEvents === 'none'
+        ) {
+            continue
+        }
+
+        result.push({
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        })
+    }
+
+    return result
+}
+
+const runPetAvoidance = () => {
+    if (!visible.value || dragging.value || walking.value || flightRaf || menuOpen.value) {
+        return
+    }
+    if (document.hidden) return
+    if (inPetHomePage.value && !petHomeRect.value) return
+
+    const body = petBodyRect(pos.value, PET_W.value, PET_H.value)
+    const obstacles = collectPetObstacles(body)
+    if (!obstacles.length) return
+
+    const next = findPetAvoidancePosition({
+        position: pos.value,
+        width: PET_W.value,
+        height: PET_H.value,
+        obstacles,
+        bounds: movementBounds.value,
+        padding: PET_AVOID_PADDING,
+        maxShift: PET_AVOID_MAX_SHIFT,
+    })
+    if (!next.moved) return
+
+    pos.value = { x: next.x, y: next.y }
+    autoShifting.value = true
+    window.clearTimeout(autoShiftTimer)
+    autoShiftTimer = window.setTimeout(() => {
+        autoShifting.value = false
+    }, 320)
+    persistPosition()
+}
+
+const schedulePetAvoidance = (delay = 160) => {
+    window.clearTimeout(avoidTimer)
+    avoidTimer = window.setTimeout(() => {
+        avoidTimer = undefined
+        if (avoidRaf) cancelAnimationFrame(avoidRaf)
+        avoidRaf = requestAnimationFrame(() => {
+            avoidRaf = 0
+            runPetAvoidance()
+        })
+    }, delay)
+}
+
+const onAvoidViewportChange = () => schedulePetAvoidance(120)
+const onAvoidFocus = () => schedulePetAvoidance(40)
+
+const startAvoidanceWatch = () => {
+    window.addEventListener('scroll', onAvoidViewportChange, {
+        capture: true,
+        passive: true,
+    })
+    window.addEventListener('resize', onAvoidViewportChange, { passive: true })
+    document.addEventListener('focusin', onAvoidFocus)
+    if (typeof MutationObserver !== 'undefined') {
+        avoidObserver = new MutationObserver(() => schedulePetAvoidance(240))
+        avoidObserver.observe(document.body, { childList: true, subtree: true })
+    }
+    schedulePetAvoidance(500)
+}
+
+const stopAvoidanceWatch = () => {
+    window.clearTimeout(avoidTimer)
+    if (avoidRaf) cancelAnimationFrame(avoidRaf)
+    avoidRaf = 0
+    window.clearTimeout(autoShiftTimer)
+    avoidObserver?.disconnect()
+    avoidObserver = null
+    window.removeEventListener('scroll', onAvoidViewportChange, { capture: true })
+    window.removeEventListener('resize', onAvoidViewportChange)
+    document.removeEventListener('focusin', onAvoidFocus)
+}
+
 const onPointerDown = (event: PointerEvent) => {
     markInteraction()
+    autoShifting.value = false
+    window.clearTimeout(autoShiftTimer)
     if (menuOpen.value) {
         closeMenu()
         return
@@ -1027,9 +1194,11 @@ const onPointerUp = (event: PointerEvent) => {
 const settle = () => {
     persistPosition()
     playAnim(IDLE[0], true)
+    schedulePetAvoidance(100)
 }
 
 const startFlight = (vx: number, vy: number) => {
+    autoShifting.value = false
     let px = pos.value.x
     let py = pos.value.y
     let last = performance.now()
@@ -1207,6 +1376,7 @@ const closeMenu = () => {
         window.removeEventListener('pointerdown', onMenuOutside)
         menuOutsideBound = false
     }
+    schedulePetAvoidance(140)
 }
 
 const onMenuOutside = () => {
@@ -1362,6 +1532,7 @@ const onResize = () => {
     viewportWidth.value = window.innerWidth
     if (!inPetHomePage.value) {
         pos.value = clampPos(pos.value)
+        schedulePetAvoidance(120)
         return
     }
     schedulePetHomeBoundsSync()
@@ -1449,6 +1620,7 @@ const applyPetHomeMode = (resetPosition: boolean, attempt = 0) => {
             stopWalk()
             stopFlight()
             restorePosition()
+            schedulePetAvoidance(220)
         }
         return
     }
@@ -1474,6 +1646,7 @@ const applyPetHomeMode = (resetPosition: boolean, attempt = 0) => {
     } else {
         pos.value = clampPos(pos.value)
     }
+    schedulePetAvoidance(220)
 }
 
 const schedulePetHomeBoundsSync = () => {
@@ -2041,6 +2214,7 @@ onMounted(() => {
     window.addEventListener('resize', onResize)
     window.addEventListener('scroll', schedulePetHomeBoundsSync, { passive: true })
     void nextTick().then(() => applyPetHomeMode(true))
+    startAvoidanceWatch()
     startAutoSleepWatch()
     // 初始待机：呼吸动画循环播放
     const a = videoA.value
@@ -2117,6 +2291,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(authRefreshTimer)
     window.clearTimeout(milestoneTimer)
     window.clearTimeout(petHomeRetryTimer)
+    stopAvoidanceWatch()
     void syncPetVitalsToServer(vitals.value)
     window.clearInterval(sleepTalkTimer)
     if (petHomeSyncRaf) cancelAnimationFrame(petHomeSyncRaf)
@@ -2147,6 +2322,18 @@ onBeforeUnmount(() => {
     z-index: 9600;
     pointer-events: none;
     user-select: none;
+
+    &.is-auto-shifting {
+        transition:
+            left 280ms cubic-bezier(0.22, 1, 0.36, 1),
+            top 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dsh-pet-root.is-auto-shifting {
+        transition: none;
+    }
 }
 
 .dsh-pet-restore {

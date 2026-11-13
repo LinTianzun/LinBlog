@@ -104,6 +104,16 @@
                                 :style="{ width: `${petMilestonePercent(petMilestone.current, petMilestone.target)}%` }" />
                         </div>
                     </div>
+
+                    <div class="pet-reset-row">
+                        <div class="pet-reset-copy">
+                            <strong>重新养一只</strong>
+                            <span>清空名字、成长进度、成就和今日任务；其他设备会同步这次重置。</span>
+                        </div>
+                        <yk-button type="secondary" status="danger" @click="resetPetGrowth">
+                            重新养一只
+                        </yk-button>
+                    </div>
                 </section>
 
                 <section class="pet-card pet-tasks-card">
@@ -409,6 +419,7 @@ import {
     applyFeeding,
     getPetVitals,
     recordDailyTask,
+    resetPetVitals,
     setPetVitals,
     vitalsCompanionTitle,
     vitalsIntimacyLevel,
@@ -518,6 +529,24 @@ const feedFromSettings = () => {
     } else {
         proxy?.$message?.({ type: 'primary', message: '刚喂过，等 60 秒再试吧' })
     }
+}
+
+const resetPetGrowth = () => {
+    if (!window.confirm('重新养一只会清空名字、等级、成就和每日任务，并同步到其他设备。确认继续吗？')) {
+        return
+    }
+    const next = resetPetVitals(petVitals.value)
+    petVitals.value = next
+    petNameDraft.value = next.name
+    setPetVitals(next)
+    emitPetReaction('vitals-updated', {
+        message: '宠物成长已重置',
+    })
+    void syncPetVitalsToServer(next)
+    proxy?.$message?.({
+        type: 'success',
+        message: '已经重新开始，新的陪伴从今天算起',
+    })
 }
 
 const sizeOptions = [
@@ -1029,6 +1058,40 @@ onUnmounted(() => {
         border-radius: inherit;
         background: linear-gradient(90deg, var(--pcolor), var(--pcolor8));
         transition: width 0.24s ease;
+    }
+}
+
+.pet-reset-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 14px;
+    padding: 13px 15px;
+    border: 1px dashed color-mix(in srgb, #e05454 32%, var(--admin-line, var(--gray1)));
+    border-radius: 13px;
+    background: color-mix(in srgb, #e05454 4%, var(--bgColor2));
+
+    :deep(.yk-button) {
+        flex: none;
+    }
+}
+
+.pet-reset-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+    }
+
+    span {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 11px;
+        line-height: 1.5;
     }
 }
 
@@ -1732,7 +1795,8 @@ onUnmounted(() => {
 
     .pet-name-row,
     .pet-row,
-    .pet-next-row {
+    .pet-next-row,
+    .pet-reset-row {
         align-items: stretch;
         flex-direction: column;
         gap: 12px;

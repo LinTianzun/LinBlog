@@ -30,7 +30,8 @@ const query = async (sql, params = []) => {
             celebrated_achievements: values[12],
             daily_task_date: values[13],
             daily_task_state: values[14],
-            client_updated_at: values[15]
+            state_version: values[15],
+            client_updated_at: values[16]
         }]
         return { affectedRows: 1 }
     }
@@ -65,6 +66,7 @@ const makeRow = (overrides = {}) => ({
         progress: { feed: 1, publish: 0, comment: 0 },
         rewarded: ['feed']
     }),
+    state_version: 5,
     client_updated_at: 1_700_000_000_000,
     ...overrides
 })
@@ -93,6 +95,7 @@ test('保存宠物状态时写入成就与每日任务字段', async () => {
             progress: { feed: 1, publish: 0, comment: 0 },
             rewarded: ['feed']
         },
+        stateVersion: 7,
         updatedAt: 1_700_000_000_000
     })
 
@@ -109,16 +112,18 @@ test('保存宠物状态时写入成就与每日任务字段', async () => {
         progress: { feed: 1, publish: 0, comment: 0 },
         rewarded: ['feed']
     })
+    assert.equal(insert.params[15], 7)
 
     assert.deepEqual(saved.unlockedAchievements, ['streak:3', 'streak:7'])
     assert.equal(saved.dailyTasks.date, '2026-11-12')
     assert.equal(saved.dailyTasks.progress.feed, 1)
+    assert.equal(saved.stateVersion, 7)
 })
 
 test('旧客户端保存时不会清空已解锁成就和当天任务', async () => {
     storedRows = [makeRow()]
 
-    await petModel.savePetState(7, {
+    const saved = await petModel.savePetState(7, {
         name: '团子',
         mood: 80,
         satiety: 55,
@@ -129,6 +134,7 @@ test('旧客户端保存时不会清空已解锁成就和当天任务', async ()
         lastFedAt: 0,
         lastGreetingDate: '2026-11-12',
         firstVisitAt: 1_700_000_000_000,
+        stateVersion: 0,
         updatedAt: 1_700_000_100_000
     })
 
@@ -140,6 +146,9 @@ test('旧客户端保存时不会清空已解锁成就和当天任务', async ()
         progress: { feed: 1, publish: 0, comment: 0 },
         rewarded: ['feed']
     })
+    assert.equal(insert.params[15], 5)
+    assert.equal(saved.stateVersion, 5)
+    assert.equal(saved.mood, 60)
 })
 
 test('同一天的每日任务取较高进度并合并已领取记录', async () => {
@@ -162,6 +171,7 @@ test('同一天的每日任务取较高进度并合并已领取记录', async ()
             progress: { feed: 0, publish: 1, comment: 0 },
             rewarded: ['publish']
         },
+        stateVersion: 5,
         updatedAt: 1_700_000_100_000
     })
 
@@ -172,4 +182,74 @@ test('同一天的每日任务取较高进度并合并已领取记录', async ()
         comment: 0
     })
     assert.deepEqual(saved.dailyTasks.rewarded.sort(), ['feed', 'publish'])
+})
+
+test('更高版本的重置会清空旧进度并写回新版本', async () => {
+    storedRows = [makeRow()]
+
+    const saved = await petModel.savePetState(7, {
+        name: '',
+        mood: 70,
+        satiety: 60,
+        intimacy: 10,
+        streakDays: 0,
+        lastVisitDate: '',
+        totalInteractions: 0,
+        lastFedAt: 0,
+        lastGreetingDate: '',
+        firstVisitAt: 0,
+        unlockedAchievements: [],
+        celebratedAchievements: [],
+        dailyTasks: {
+            date: '2026-11-13',
+            progress: { feed: 0, publish: 0, comment: 0 },
+            rewarded: []
+        },
+        stateVersion: 10,
+        updatedAt: 1_700_000_200_000
+    })
+
+    assert.equal(saved.name, '')
+    assert.equal(saved.mood, 70)
+    assert.equal(saved.intimacy, 10)
+    assert.equal(saved.stateVersion, 10)
+    assert.deepEqual(saved.unlockedAchievements, [])
+    assert.deepEqual(saved.dailyTasks.progress, {
+        feed: 0,
+        publish: 0,
+        comment: 0
+    })
+})
+
+test('旧设备的高进度不能覆盖已经重置的新版本', async () => {
+    storedRows = [makeRow({
+        pet_name: '',
+        mood: 70,
+        satiety: 60,
+        intimacy: 10,
+        streak_days: 0,
+        total_interactions: 0,
+        unlocked_achievements: null,
+        celebrated_achievements: null,
+        daily_task_state: null,
+        state_version: 10
+    })]
+
+    const saved = await petModel.savePetState(7, {
+        name: '旧设备',
+        mood: 100,
+        satiety: 100,
+        intimacy: 100,
+        streakDays: 60,
+        totalInteractions: 500,
+        unlockedAchievements: ['streak:60', 'interaction:500'],
+        stateVersion: 5,
+        updatedAt: 1_700_000_300_000
+    })
+
+    assert.equal(saved.stateVersion, 10)
+    assert.equal(saved.name, '')
+    assert.equal(saved.mood, 70)
+    assert.equal(saved.totalInteractions, 0)
+    assert.deepEqual(saved.unlockedAchievements, [])
 })

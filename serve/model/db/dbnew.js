@@ -682,6 +682,7 @@ const tablesSql = {
     celebrated_achievements TEXT NULL COMMENT '已庆祝成就（JSON 数组）',
     daily_task_date DATE NULL COMMENT '每日任务日期',
     daily_task_state TEXT NULL COMMENT '每日任务进度（JSON）',
+    state_version BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '养成状态版本（重置后递增）',
     client_updated_at BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户端状态更新时间（毫秒）',
     server_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
@@ -2226,6 +2227,15 @@ async function ensurePetGrowthSchema(exec = query) {
   });
 }
 
+// 养成重置：高版本覆盖低版本，避免旧设备把重置前的进度合并回来。
+async function ensurePetResetSchema(exec = query) {
+  await exec(tablesSql.pet_state);
+  await ensureColumn(exec, 'pet_state', 'state_version', {
+    definition: 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+    comment: '养成状态版本（重置后递增）'
+  });
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2604,6 +2614,10 @@ const migrations = [
   {
     version: '2026' + '1113' + '_pet_' + 'growth',
     up: ensurePetGrowthSchema
+  },
+  {
+    version: ['2026', '1113_pet_reset'].join(''),
+    up: ensurePetResetSchema
   }
 ];
 

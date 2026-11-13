@@ -32,6 +32,7 @@ export interface PetVitals {
   unlockedAchievements: string[]
   celebratedAchievements: string[]
   dailyTasks: DailyPetTasks
+  stateVersion: number
   updatedAt: number
 }
 
@@ -214,6 +215,7 @@ export const DEFAULT_PET_VITALS: PetVitals = {
   unlockedAchievements: [],
   celebratedAchievements: [],
   dailyTasks: createEmptyDailyTasks(),
+  stateVersion: 0,
   updatedAt: 0
 }
 
@@ -318,6 +320,11 @@ export function normalizePetVitals(
       ACHIEVEMENT_KEY_PATTERN
     ),
     dailyTasks: normalizeDailyTasks(raw.dailyTasks),
+    stateVersion: intOr(
+      raw.stateVersion,
+      DEFAULT_PET_VITALS.stateVersion,
+      Number.MAX_SAFE_INTEGER
+    ),
     updatedAt: Number.isFinite(Number(raw.updatedAt))
       ? Math.max(0, Number(raw.updatedAt))
       : 0
@@ -530,6 +537,12 @@ export function mergePetVitals(
 ): PetVitals {
   const a = normalizePetVitals(local)
   const b = normalizePetVitals(remote)
+  if (a.stateVersion !== b.stateVersion) {
+    return finalizePetVitals(
+      a.stateVersion > b.stateVersion ? a : b,
+      now
+    )
+  }
   const newer = b.updatedAt >= a.updatedAt ? b : a
   const older = newer === a ? b : a
   return finalizePetVitals({
@@ -553,8 +566,25 @@ export function mergePetVitals(
       ...new Set([...a.celebratedAchievements, ...b.celebratedAchievements])
     ],
     dailyTasks: mergeDailyPetTasks(a.dailyTasks, b.dailyTasks),
+    stateVersion: a.stateVersion,
     updatedAt: Math.max(a.updatedAt, b.updatedAt)
   }, now)
+}
+
+/** 重新养一只：清空名字、成长、成就与任务，并用更高版本阻止旧设备回灌 */
+export function resetPetVitals(
+  vitals: PetVitals,
+  now = Date.now()
+): PetVitals {
+  const current = normalizePetVitals(vitals)
+  return finalizePetVitals(
+    {
+      ...DEFAULT_PET_VITALS,
+      stateVersion: Math.max(now, current.stateVersion + 1),
+      updatedAt: now
+    },
+    now
+  )
 }
 
 export function petDailyTaskDefinition(

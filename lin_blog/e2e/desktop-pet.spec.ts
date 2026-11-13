@@ -393,3 +393,196 @@ test('宠物管理页展示已解锁成就与新成就标记', async ({ page }) 
     '已解锁 3 个成就'
   )
 })
+
+test('重新养一只会清空成长并提升状态版本', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  await page.evaluate(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS:u7',
+      JSON.stringify({
+        name: '团子',
+        mood: 92,
+        satiety: 88,
+        intimacy: 76,
+        streakDays: 30,
+        lastVisitDate: today,
+        totalInteractions: 520,
+        lastFedAt: now.getTime(),
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 30 * 86_400_000,
+        unlockedAchievements: ['streak:3', 'streak:30', 'interaction:500'],
+        celebratedAchievements: ['streak:3'],
+        dailyTasks: {
+          date: today,
+          progress: { feed: 1, publish: 1, comment: 1 },
+          rewarded: ['feed', 'publish', 'comment'],
+        },
+        stateVersion: 5,
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+
+  await page.goto('/petManage')
+  const nameInput = page.locator('.pet-name-field input')
+  await expect(nameInput).toHaveValue('团子')
+  await expect(page.locator('.pet-task-count')).toHaveText('3/3')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.pet-reset-row').getByRole('button', {
+    name: /重新养一只/,
+  }).click()
+
+  await expect(nameInput).toHaveValue('')
+  await expect(page.locator('.pet-task-count')).toHaveText('0/3')
+  await expect(page.locator('.pet-hero')).toContainText('已连续陪伴 0 天')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_VITALS:u7')
+        const vitals = raw ? JSON.parse(raw) : null
+        return {
+          name: vitals?.name,
+          mood: vitals?.mood,
+          intimacy: vitals?.intimacy,
+          streakDays: vitals?.streakDays,
+          achievements: vitals?.unlockedAchievements,
+          stateVersion: vitals?.stateVersion,
+        }
+      })
+    )
+    .toMatchObject({
+      name: '',
+      mood: 70,
+      intimacy: 10,
+      streakDays: 0,
+      achievements: [],
+    })
+
+  const stateVersion = await page.evaluate(() => {
+    const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_VITALS:u7')
+    return raw ? JSON.parse(raw).stateVersion : 0
+  })
+  expect(stateVersion).toBeGreaterThan(5)
+})
+
+test('桌宠会自动避让身下的操作按钮', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_SETTINGS',
+      JSON.stringify({
+        petRoamingEnabled: false,
+        petActivity: 'quiet',
+        petBubbleEnabled: false,
+      })
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_SETTINGS')
+    const settings = raw ? JSON.parse(raw) : {}
+    const next = {
+      ...settings,
+      petRoamingEnabled: false,
+      petActivity: 'quiet',
+      petBubbleEnabled: false,
+    }
+    localStorage.setItem('LINBLOG_DESKTOP_PET_SETTINGS', JSON.stringify(next))
+    window.dispatchEvent(
+      new CustomEvent('desktop-pet:settings-change', { detail: next })
+    )
+  })
+  await page.waitForTimeout(150)
+
+  const stage = pet.locator('.dsh-pet-stage')
+  const before = await stage.boundingBox()
+  expect(before).not.toBeNull()
+
+  const hitBefore = await pet.locator('.dsh-pet-hit').boundingBox()
+  expect(hitBefore).not.toBeNull()
+  const target = {
+    x: hitBefore!.x + hitBefore!.width / 2 - 70,
+    y: hitBefore!.y + hitBefore!.height / 2 - 22,
+    width: 140,
+    height: 44,
+  }
+
+  await page.evaluate((rect) => {
+    const button = document.createElement('button')
+    button.id = 'pet-avoid-target'
+    button.type = 'button'
+    button.textContent = '测试按钮'
+    button.style.cssText = [
+      'position: fixed',
+      `left: ${rect.x}px`,
+      `top: ${rect.y}px`,
+      `width: ${rect.width}px`,
+      `height: ${rect.height}px`,
+      'z-index: 5',
+    ].join(';')
+    button.addEventListener('click', () => {
+      button.dataset.clicked = '1'
+    })
+    document.body.appendChild(button)
+  }, target)
+
+  const bodyOf = (box: { x: number; y: number; width: number; height: number }) => ({
+    left: box.x + box.width * 0.14,
+    top: box.y + box.height * 0.172,
+    right: box.x + box.width * 0.86,
+    bottom: box.y + box.height * 0.917,
+  })
+  const overlapArea = (
+    a: { left: number; top: number; right: number; bottom: number },
+    b: { left: number; top: number; right: number; bottom: number }
+  ) => {
+    const width = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+    const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+    return width > 0 && height > 0 ? width * height : 0
+  }
+  const targetRect = {
+    left: target.x,
+    top: target.y,
+    right: target.x + target.width,
+    bottom: target.y + target.height,
+  }
+
+  await expect
+    .poll(
+      async () => {
+        const box = await stage.boundingBox()
+        if (!box) return -1
+        return overlapArea(bodyOf(box), targetRect)
+      },
+      { timeout: 5_000 }
+    )
+    .toBe(0)
+
+  const after = await stage.boundingBox()
+  expect(after).not.toBeNull()
+  expect(
+    Math.abs(after!.x - before!.x) + Math.abs(after!.y - before!.y)
+  ).toBeGreaterThan(20)
+
+  await page.locator('#pet-avoid-target').dispatchEvent('click')
+  await expect(page.locator('#pet-avoid-target')).toHaveAttribute(
+    'data-clicked',
+    '1'
+  )
+})
