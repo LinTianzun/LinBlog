@@ -288,6 +288,93 @@ test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) 
   ).toContainText('已完成')
 })
 
+test('不同零食提供不同加成并共享冷却', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  await page.evaluate(() => {
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    localStorage.removeItem('LINBLOG_DESKTOP_PET_FOOD')
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_VITALS:u7',
+      JSON.stringify({
+        name: '团子',
+        mood: 50,
+        satiety: 40,
+        intimacy: 10,
+        streakDays: 1,
+        lastVisitDate: today,
+        totalInteractions: 5,
+        lastFedAt: 0,
+        lastGreetingDate: today,
+        firstVisitAt: now.getTime() - 86_400_000,
+        unlockedAchievements: [],
+        celebratedAchievements: [],
+        dailyTasks: {
+          date: today,
+          progress: { feed: 1, publish: 0, comment: 0 },
+          rewarded: ['feed'],
+        },
+        stateVersion: 1,
+        updatedAt: now.getTime(),
+      })
+    )
+  })
+
+  await page.goto('/petManage')
+  await expect(page.locator('.pet-snack-card')).toHaveCount(5)
+
+  const stat = (label: string) =>
+    page.locator('.pet-stat').filter({ hasText: label }).locator('strong')
+
+  const icecream = page.locator('.pet-snack-card').filter({
+    hasText: '冰淇淋',
+  })
+  await expect(icecream).toContainText('饱腹 +12')
+  await expect(icecream).toContainText('心情 +20')
+  await icecream.click()
+
+  await expect(stat('饱腹')).toHaveText('52')
+  await expect(stat('心情')).toHaveText('70')
+  await expect(stat('亲密度')).toHaveText('12')
+  await expect(icecream).toHaveClass(/is-selected/)
+  await expect(page.locator('.pet-snack-card:disabled')).toHaveCount(5)
+  await expect(page.locator('.pet-feed-cooldown')).toContainText('冷却中')
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem('LINBLOG_DESKTOP_PET_FOOD'))
+    )
+    .toBe('icecream')
+})
+
+test('桌宠菜单可以选择并投喂不同零食', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+
+  await pet.locator('.dsh-pet-hit').click({ button: 'right' })
+  await page.locator('.pet-menu button', { hasText: '换零食' }).click()
+  await expect(page.locator('.pet-snack-list button')).toHaveCount(5)
+
+  await page.locator('.pet-snack-list button', { hasText: '冰淇淋' }).click()
+  await expect(page.locator('.pet-bubble')).toContainText('冰淇淋好好吃')
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem('LINBLOG_DESKTOP_PET_FOOD'))
+    )
+    .toBe('icecream')
+})
+
 test('桌宠隐藏时发布事件仍会记录每日任务', async ({ page }) => {
   await page.addInitScript(() => {
     const now = new Date()

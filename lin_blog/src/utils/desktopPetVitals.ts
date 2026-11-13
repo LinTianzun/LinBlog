@@ -1,3 +1,10 @@
+import {
+  DEFAULT_PET_FOOD_ID,
+  getPetFood,
+  type PetFood,
+  type PetFoodId
+} from './desktopPetFood.ts'
+
 export type PetAchievementKind = 'streak' | 'interaction'
 export type DailyPetTaskKey = 'feed' | 'publish' | 'comment'
 
@@ -38,7 +45,7 @@ export interface PetVitals {
 
 const STORAGE_KEY = 'LINBLOG_DESKTOP_PET_VITALS'
 const LEGACY_OWNER_KEY = `${STORAGE_KEY}:legacy-owner`
-const FEED_COOLDOWN_MS = 60_000
+export const PET_FEED_COOLDOWN_MS = 60_000
 
 const readStorage = (key: string): string | null => {
   try {
@@ -411,30 +418,38 @@ export function setPetVitals(vitals: PetVitals): void {
 export interface FeedResult {
   vitals: PetVitals
   effect: 'ok' | 'full' | 'cooldown'
+  food: PetFood
 }
 
-export function applyFeeding(vitals: PetVitals, now = Date.now()): FeedResult {
+export function applyFeeding(
+  vitals: PetVitals,
+  now = Date.now(),
+  foodId: PetFoodId = DEFAULT_PET_FOOD_ID
+): FeedResult {
+  const food = getPetFood(foodId)
   const current = finalizePetVitals(vitals, now, true)
-  if (now - current.lastFedAt < FEED_COOLDOWN_MS) {
-    return { vitals: current, effect: 'cooldown' }
+  if (now - current.lastFedAt < PET_FEED_COOLDOWN_MS) {
+    return { vitals: current, effect: 'cooldown', food }
   }
   if (current.satiety >= 95) {
     return {
       vitals: { ...current, lastFedAt: now, updatedAt: now },
-      effect: 'full'
+      effect: 'full',
+      food
     }
   }
   return {
     vitals: {
       ...current,
-      satiety: roundStat(current.satiety + 30),
-      mood: roundStat(current.mood + 12),
-      intimacy: roundStat(current.intimacy + 2),
+      satiety: roundStat(current.satiety + food.satiety),
+      mood: roundStat(current.mood + food.mood),
+      intimacy: roundStat(current.intimacy + food.intimacy),
       totalInteractions: current.totalInteractions + 1,
       lastFedAt: now,
       updatedAt: now
     },
-    effect: 'ok'
+    effect: 'ok',
+    food
   }
 }
 

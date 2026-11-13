@@ -84,9 +84,23 @@
                     :style="menuAnchorStyle" @pointerdown.stop>
                     <div class="pet-menu-section">
                         <span class="pet-menu-label">互动</span>
-                        <button type="button" @click="feedPet">
-                            <span class="pet-menu-icon">🍚</span>喂一口
+                        <button type="button" @click="feedPet(selectedFoodId)">
+                            <span class="pet-menu-icon">{{ selectedFood.icon }}</span>喂一口
+                            <small class="pet-menu-hint">{{ selectedFood.name }}</small>
                         </button>
+                        <button type="button" :aria-expanded="snackPickerOpen"
+                            @click.stop="snackPickerOpen = !snackPickerOpen">
+                            <span class="pet-menu-icon">🍪</span>
+                            {{ snackPickerOpen ? '收起零食' : '换零食' }}
+                        </button>
+                        <div v-if="snackPickerOpen" class="pet-snack-list">
+                            <button v-for="food in PET_FOODS" :key="food.id" type="button"
+                                @click="feedPet(food.id)">
+                                <span class="pet-menu-icon">{{ food.icon }}</span>
+                                {{ food.name }}
+                                <small class="pet-menu-hint">饱腹 +{{ food.satiety }}</small>
+                            </button>
+                        </div>
                         <button type="button" @click="showStatus">
                             <span class="pet-menu-icon">💗</span>看看状态
                         </button>
@@ -173,6 +187,14 @@ import {
     timeOfDayGreeting,
     type VisitorPetPreferences,
 } from '../../utils/desktopPetVisitor'
+import {
+    PET_FOODS,
+    getPetFood,
+    getSelectedPetFoodId,
+    onSelectedPetFoodChange,
+    setSelectedPetFoodId,
+    type PetFoodId,
+} from '../../utils/desktopPetFood'
 import {
     applyDailyGreeting,
     applyFeeding,
@@ -317,6 +339,10 @@ const canRoam = computed(
 
 // ===== 养成状态（登录用户跨设备同步） =====
 const vitals = ref<PetVitals>(getPetVitals())
+const selectedFoodId = ref<PetFoodId>(getSelectedPetFoodId())
+const selectedFood = computed(() => getPetFood(selectedFoodId.value))
+const snackPickerOpen = ref(false)
+let unsubscribeFood: (() => void) | undefined
 const petName = computed(() => vitals.value.name.trim() || '小 Lin')
 let remoteSyncTimer: number | undefined
 let authRefreshTimer: number | undefined
@@ -1373,6 +1399,7 @@ const openMenu = () => {
 
 const closeMenu = () => {
     menuOpen.value = false
+    snackPickerOpen.value = false
     if (menuOutsideBound) {
         window.removeEventListener('pointerdown', onMenuOutside)
         menuOutsideBound = false
@@ -1403,12 +1430,15 @@ const playRandomAction = () => {
     playAnim(pickFrom(category.actions, currentAnim), true)
 }
 
-const feedPet = () => {
+const feedPet = (foodId: PetFoodId = selectedFoodId.value) => {
     markInteraction()
     closeMenu()
     if (sleepPhase) wake()
+    const food = getPetFood(foodId)
+    setSelectedPetFoodId(food.id)
+    selectedFoodId.value = food.id
     const previous = normalizePetVitals(vitals.value)
-    const result = applyFeeding(vitals.value)
+    const result = applyFeeding(vitals.value, Date.now(), food.id)
     if (result.effect === 'cooldown') {
         vitals.value = result.vitals
         setPetVitals(vitals.value)
@@ -1418,7 +1448,7 @@ const feedPet = () => {
     if (result.effect === 'full') {
         vitals.value = result.vitals
         setPetVitals(vitals.value)
-        showBubble('吃不下啦，肚子已经圆滚滚的。', 3000, '🍚', true)
+        showBubble(`吃不下啦，${food.name}先留着下次吃。`, 3000, food.icon, true)
         return
     }
     const task = recordDailyTask(result.vitals, 'feed')
@@ -1429,10 +1459,10 @@ const feedPet = () => {
     if (eatCategory) playAnim(pickFrom(eatCategory.actions, currentAnim), true)
     showBubble(
         task.completedNow
-            ? '好吃！今日任务也完成啦，心情 +8、亲密度 +1～'
-            : '好吃！谢谢你～',
+            ? `${food.name}好好吃！今日任务也完成啦，心情 +${task.task?.reward.mood ?? 8}、亲密度 +${task.task?.reward.intimacy ?? 1}～`
+            : `${food.name}好好吃！心情 +${food.mood}、饱腹 +${food.satiety}～`,
         3200,
-        '🍚'
+        food.icon
     )
 }
 
@@ -2201,6 +2231,9 @@ const onMotionChange = (event: MediaQueryListEvent) => {
 
 // ===== 生命周期 =====
 onMounted(() => {
+    unsubscribeFood = onSelectedPetFoodChange((id) => {
+        selectedFoodId.value = id
+    })
     // 以服务端配置为准：缓存只负责首屏不闪，接口回来后校正
     void getSiteSettings()
         .then((res) => {
@@ -2275,6 +2308,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    unsubscribeFood?.()
     unsubscribeSettings()
     unsubscribeVisitor()
     unsubscribeReaction()
@@ -2570,6 +2604,27 @@ onBeforeUnmount(() => {
 
 .pet-menu-icon {
     font-size: 14px;
+}
+
+.pet-menu-hint {
+    margin-left: auto;
+    color: var(--admin-muted, var(--portal-text-tertiary, rgba(0, 0, 0, 0.45)));
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.pet-snack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 1px 0 3px 8px;
+    padding-left: 6px;
+    border-left: 1px dashed var(--admin-line, var(--portal-surface-border, rgba(0, 0, 0, 0.12)));
+
+    button {
+        padding: 5px 8px;
+        font-size: 12px;
+    }
 }
 
 .pet-bubble-enter-active,

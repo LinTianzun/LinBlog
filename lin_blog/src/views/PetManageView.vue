@@ -28,10 +28,14 @@
                     </div>
 
                     <div class="pet-hero-actions">
-                        <yk-button type="primary" @click="feedFromSettings">
-                            🍚 喂一口
+                        <yk-button type="primary" :disabled="feedCooldownLeft > 0"
+                            @click="feedFromSettings()">
+                            {{ selectedFood.icon }} 喂一口
                         </yk-button>
-                        <span v-if="!canEditPet">站点展示与行为仅管理员可修改</span>
+                        <span v-if="feedCooldownLeft > 0" class="pet-feed-cooldown">
+                            冷却中 {{ feedCooldownSeconds }}s
+                        </span>
+                        <span v-else-if="!canEditPet">站点展示与行为仅管理员可修改</span>
                     </div>
                 </section>
 
@@ -97,6 +101,37 @@
                             <span class="pet-stat-track is-intimacy">
                                 <span :style="{ width: `${petVitals.intimacy}%` }" />
                             </span>
+                        </div>
+                    </div>
+
+                    <div class="pet-snack-shelf">
+                        <div class="pet-snack-head">
+                            <div>
+                                <strong>零食柜</strong>
+                                <span>不同零食的饱腹、心情和亲密度加成不同，每 60 秒可以喂一次。</span>
+                            </div>
+                            <span class="pet-snack-current">
+                                已选 {{ selectedFood.icon }} {{ selectedFood.name }}
+                            </span>
+                        </div>
+                        <div class="pet-snack-grid">
+                            <button v-for="food in PET_FOODS" :key="food.id" type="button"
+                                class="pet-snack-card"
+                                :class="{ 'is-selected': food.id === selectedFoodId }"
+                                :disabled="feedCooldownLeft > 0" @click="feedFromSettings(food.id)">
+                                <span class="pet-snack-icon" aria-hidden="true">{{ food.icon }}</span>
+                                <span class="pet-snack-copy">
+                                    <span class="pet-snack-title">
+                                        <strong>{{ food.name }}</strong>
+                                        <small>{{ food.tag }}</small>
+                                    </span>
+                                    <span class="pet-snack-desc">{{ food.description }}</span>
+                                    <span class="pet-snack-stats">
+                                        饱腹 +{{ food.satiety }} · 心情 +{{ food.mood }} · 亲密 +{{
+                                            food.intimacy }}
+                                    </span>
+                                </span>
+                            </button>
                         </div>
                     </div>
 
@@ -379,8 +414,10 @@
                     </div>
 
                     <div class="pet-home-actions">
-                        <button type="button" @click="feedFromSettings">
-                            <span>🍚</span>喂一口
+                        <button type="button" :disabled="feedCooldownLeft > 0"
+                            :title="feedCooldownLeft > 0 ? '刚喂过，稍后再试' : '喂一口'"
+                            @click="feedFromSettings()">
+                            <span>{{ selectedFood.icon }}</span>喂一口
                         </button>
                         <button type="button" :disabled="!petSettings.desktopPetEnabled"
                             @click="sendDesktopPetCommand('home')">
@@ -427,8 +464,17 @@ import {
     setDesktopPetSettings,
     type DesktopPetSettings,
 } from '../utils/desktopPet'
+import {
+    PET_FOODS,
+    getPetFood,
+    getSelectedPetFoodId,
+    onSelectedPetFoodChange,
+    setSelectedPetFoodId,
+    type PetFoodId,
+} from '../utils/desktopPetFood'
 import { emitPetReaction, onPetReaction } from '../utils/desktopPetScene'
 import {
+    PET_FEED_COOLDOWN_MS,
     PET_DAILY_TASK_DEFINITIONS,
     applyFeeding,
     getPetVitals,
@@ -462,6 +508,20 @@ const session = useSessionStore()
 const canEditPet = computed(() => session.can('permission.edit'))
 const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
 const petVitals = ref<PetVitals>(getPetVitals())
+const selectedFoodId = ref<PetFoodId>(getSelectedPetFoodId())
+const selectedFood = computed(() => getPetFood(selectedFoodId.value))
+const nowTick = ref(Date.now())
+const feedCooldownLeft = computed(() =>
+    Math.max(
+        0,
+        petVitals.value.lastFedAt + PET_FEED_COOLDOWN_MS - nowTick.value
+    )
+)
+const feedCooldownSeconds = computed(() =>
+    Math.ceil(feedCooldownLeft.value / 1000)
+)
+let feedClockTimer: number | undefined
+let unsubscribeFood: (() => void) | undefined
 const petSync = ref<PetSyncStatus>(getPetSyncStatus())
 const PET_SYNC_LABELS: Record<PetSyncState, string> = {
     local: '仅本机',
@@ -550,8 +610,11 @@ watch(
     }
 )
 
-const feedFromSettings = () => {
-    const result = applyFeeding(petVitals.value)
+const feedFromSettings = (foodId: PetFoodId = selectedFoodId.value) => {
+    const food = getPetFood(foodId)
+    setSelectedPetFoodId(food.id)
+    selectedFoodId.value = food.id
+    const result = applyFeeding(petVitals.value, Date.now(), food.id)
     let next = result.vitals
     let taskCompleted = false
     if (result.effect === 'ok') {
@@ -569,13 +632,19 @@ const feedFromSettings = () => {
         proxy?.$message?.({
             type: 'success',
             message: taskCompleted
-                ? '喂饱啦，今日任务完成，奖励已到账'
-                : '喂饱啦，心情也变好了',
+                ? `${food.name}喂饱啦，今日任务完成，奖励已到账`
+                : `${food.name}喂饱啦，心情也变好了`,
         })
     } else if (result.effect === 'full') {
-        proxy?.$message?.({ type: 'warning', message: '它已经吃得很饱了' })
+        proxy?.$message?.({
+            type: 'warning',
+            message: `它已经吃得很饱了，${food.name}先留着吧`,
+        })
     } else {
-        proxy?.$message?.({ type: 'primary', message: '刚喂过，等 60 秒再试吧' })
+        proxy?.$message?.({
+            type: 'primary',
+            message: `刚喂过，等 ${feedCooldownSeconds.value}s 再试吧`,
+        })
     }
 }
 
@@ -702,6 +771,12 @@ let unsubscribeReaction: (() => void) | undefined
 let unsubscribeSync: (() => void) | undefined
 
 onMounted(() => {
+    unsubscribeFood = onSelectedPetFoodChange((id) => {
+        selectedFoodId.value = id
+    })
+    feedClockTimer = window.setInterval(() => {
+        nowTick.value = Date.now()
+    }, 1000)
     petSync.value = refreshPetSyncStatus()
     unsubscribeSync = onPetSyncStatusChange((next) => {
         petSync.value = next
@@ -732,8 +807,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    unsubscribeFood?.()
     unsubscribeReaction?.()
     unsubscribeSync?.()
+    window.clearInterval(feedClockTimer)
     window.clearTimeout(petSaveTimer)
 })
 </script>
@@ -1137,6 +1214,143 @@ onUnmounted(() => {
     &.is-intimacy span {
         background: linear-gradient(90deg, #f06fa9, #ff9a7a);
     }
+}
+
+.pet-snack-shelf {
+    margin-top: 16px;
+    padding: 14px 15px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 14px;
+    background: var(--bgColor2);
+}
+
+.pet-snack-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+
+    > div {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 13px;
+    }
+
+    span {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 11px;
+        line-height: 1.5;
+    }
+}
+
+.pet-snack-head .pet-snack-current {
+    flex: none;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--pcolor1);
+    color: var(--pcolor);
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.pet-snack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.pet-snack-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background: var(--admin-surface, var(--bgColor1));
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+
+    &:hover:not(:disabled) {
+        border-color: color-mix(in srgb, var(--pcolor) 36%, var(--admin-line, var(--gray1)));
+        transform: translateY(-1px);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 2px;
+    }
+
+    &.is-selected {
+        border-color: var(--pcolor);
+        background: color-mix(in srgb, var(--pcolor) 6%, var(--admin-surface, var(--bgColor1)));
+        box-shadow: 0 0 0 2px var(--pcolor2);
+    }
+
+    &:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+}
+
+.pet-snack-icon {
+    font-size: 24px;
+    line-height: 1;
+}
+
+.pet-snack-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.pet-snack-title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+    }
+
+    small {
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: var(--pcolor1);
+        color: var(--pcolor);
+        font-size: 9px;
+    }
+}
+
+.pet-snack-desc {
+    color: var(--admin-muted, var(--gray6));
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.pet-snack-stats {
+    color: var(--pcolor);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pet-feed-cooldown {
+    color: #b3701a;
+    font-size: 11px;
 }
 
 .pet-next-row {
@@ -1928,6 +2142,15 @@ onUnmounted(() => {
 
     .pet-card-badges {
         justify-content: flex-start;
+    }
+
+    .pet-snack-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .pet-snack-grid {
+        grid-template-columns: 1fr;
     }
 
     .pet-name-row,
