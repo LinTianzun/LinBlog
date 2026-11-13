@@ -1,7 +1,7 @@
 <template>
     <div class="index-view">
         <MenuBar />
-        <main class="admin-workspace">
+        <main id="admin-main" class="admin-workspace" tabindex="-1">
             <router-view></router-view>
         </main>
     </div>
@@ -16,5 +16,9 @@
         position: relative;
         box-sizing: border-box;
         min-height: calc(100vh - 64px);
+    }
+
+    .admin-workspace:focus {
+        outline: none;
     }
 </style>

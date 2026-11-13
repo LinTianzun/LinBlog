@@ -9,6 +9,18 @@ body{
     padding-top: 64px;
 }
 
+// yk-modal 的关闭图标本身是 div，由 modalA11y 补上按钮语义与键盘操作
+.yk-modal__close:focus-visible {
+    outline: 2px solid var(--pcolor);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.yk-modal__main :where(button, a[href], [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--pcolor);
+    outline-offset: 2px;
+}
+
 strong,
 strong span{
     font-weight: bold;

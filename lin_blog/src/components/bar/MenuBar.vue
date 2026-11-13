@@ -12,7 +12,8 @@
             <nav class="menu-bar-nav-list">
                 <section v-for="group in menuGroups" :key="group.label" class="menu-bar-group">
                     <p class="menu-bar-group-label">{{ group.label }}</p>
-                    <router-link class="menu-bar-nav" :to="item.path" v-for="item in group.items" :key="item.path">
+                    <router-link class="menu-bar-nav" :to="item.path" v-for="item in group.items" :key="item.path"
+                        :aria-current="isActive(item.path) ? 'page' : undefined">
                         <span class="menu-bar-icon">
                             <component :is="item.icon" />
                         </span>
@@ -48,6 +49,11 @@ import { REPORT_STATE_EVENT } from '../../utils/commentReportWorkbench.ts'
 const session = useSessionStore()
 const route = useRoute()
 const pendingReportCount = ref(0)
+
+const isActive = (path: string): boolean => {
+    const target = `/${path}`
+    return route.path === target || route.path.startsWith(`${target}/`)
+}
 
 const pendingReportBadge = computed(() =>
     pendingReportCount.value > 99 ? '99+' : String(pendingReportCount.value)

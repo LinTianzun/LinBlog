@@ -1,6 +1,7 @@
 <template>
-    <div class="head-bar">
-        <button type="button" class="brand" title="返回系统总览" @click="backHome">
+    <a class="admin-skip-link" href="#admin-main">跳到正文</a>
+    <header class="head-bar" aria-label="后台顶栏">
+        <button type="button" class="brand" title="返回系统总览" aria-label="返回系统总览" @click="backHome">
             <span class="logo-wrap">
                 <img :src="isDark ? unityW : unity" class="logo" alt="">
             </span>
@@ -18,7 +19,8 @@
                 </yk-badge>
             </button>
 
-            <button type="button" class="user-chip" title="打开个人信息" @click="goSetting">
+            <button type="button" class="user-chip" title="打开个人信息"
+                :aria-label="`打开个人信息，当前用户 ${userInfo?.username || '用户'}`" @click="goSetting">
                 <yk-avatar :size="32" :img-url="userInfo?.imgurl || defaultAvatar" class="user-avatar" />
                 <span class="user-copy">
                     <strong class="user-name">{{ userInfo?.username || '用户' }}</strong>
@@ -28,10 +30,11 @@
 
             <!-- 主题切换：与前台门户同款自研下拉，复用同一套预设与 applyThemePreset -->
             <div ref="pickerRef" class="theme-picker">
-                <button type="button" class="theme-trigger" :class="{ open: themeOpen }"
+                <button ref="themeTriggerRef" type="button" class="theme-trigger" :class="{ open: themeOpen }"
                     :title="`当前主题：${activePresetName}`" aria-haspopup="listbox"
                     :aria-expanded="themeOpen" @click="toggleThemePanel"
-                    @keydown.down.prevent="openThemePanel" @keydown.up.prevent="openThemePanel">
+                    @keydown.down.prevent="openThemePanel('current')"
+                    @keydown.up.prevent="openThemePanel('last')">
                     <span class="theme-dot" :style="{ background: activePresetPrimary }" aria-hidden="true" />
                     <span class="theme-name">{{ activePresetName }}</span>
                     <span class="theme-caret" aria-hidden="true">
@@ -45,8 +48,8 @@
                             <span>主题</span>
                             <span class="theme-panel-hint">{{ themePresets.length }} 套</span>
                         </div>
-                        <ul class="theme-options">
-                            <li v-for="(preset, index) in themePresets" :key="preset.id">
+                        <ul ref="themeListRef" class="theme-options" @keydown="onThemeListKeydown">
+                            <li v-for="(preset, index) in themePresets" :key="preset.id" role="presentation">
                                 <button type="button" class="theme-option" role="option"
                                     :class="{ active: preset.id === activePresetId }"
                                     :aria-selected="preset.id === activePresetId"
@@ -74,13 +77,14 @@
             <yk-button class="exit-button" @click="quit">退出</yk-button>
         </div>
 
-        <information :active="active" @close="changeActive(false)" @read="fetchUnread" />
-    </div>
+    </header>
+
+    <information :active="active" @close="changeActive(false)" @read="fetchUnread" />
 
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
@@ -106,17 +110,79 @@ const activePresetId = ref(getStoredPresetId())
 const activePresetName = computed(() => findPreset(activePresetId.value).name)
 const activePresetPrimary = computed(() => findPreset(activePresetId.value).primary)
 const pickerRef = ref<HTMLElement | null>(null)
+const themeTriggerRef = ref<HTMLButtonElement | null>(null)
+const themeListRef = ref<HTMLElement | null>(null)
 const themeOpen = ref(false)
-const toggleThemePanel = () => { themeOpen.value = !themeOpen.value }
-const openThemePanel = () => { themeOpen.value = true }
+
+const themeOptions = (): HTMLButtonElement[] => {
+    return Array.from(themeListRef.value?.querySelectorAll<HTMLButtonElement>('.theme-option') ?? [])
+}
+
+const focusThemeOption = (index: number) => {
+    const options = themeOptions()
+    if (!options.length) return
+    options[Math.min(Math.max(index, 0), options.length - 1)]?.focus()
+}
+
+const openThemePanel = async (position: 'current' | 'first' | 'last' = 'current') => {
+    themeOpen.value = true
+    await nextTick()
+    const current = themePresets.findIndex(preset => preset.id === activePresetId.value)
+    if (position === 'first') {
+        focusThemeOption(0)
+        return
+    }
+    if (position === 'last') {
+        focusThemeOption(themePresets.length - 1)
+        return
+    }
+    focusThemeOption(current >= 0 ? current : 0)
+}
+
+const toggleThemePanel = () => {
+    if (themeOpen.value) {
+        themeOpen.value = false
+        return
+    }
+    void openThemePanel()
+}
+
 const selectPreset = (presetId: string) => {
     activePresetId.value = presetId
     applyThemePreset(presetId)
     themeOpen.value = false
+    void nextTick(() => themeTriggerRef.value?.focus())
 }
+
+const onThemeListKeydown = (event: KeyboardEvent) => {
+    const options = themeOptions()
+    const current = options.indexOf(document.activeElement as HTMLButtonElement)
+    if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        focusThemeOption(current < 0 ? 0 : (current + 1) % options.length)
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        focusThemeOption(current < 0 ? options.length - 1 : (current - 1 + options.length) % options.length)
+    } else if (event.key === 'Home') {
+        event.preventDefault()
+        focusThemeOption(0)
+    } else if (event.key === 'End') {
+        event.preventDefault()
+        focusThemeOption(options.length - 1)
+    } else if (event.key === 'Escape') {
+        event.preventDefault()
+        themeOpen.value = false
+        void nextTick(() => themeTriggerRef.value?.focus())
+    } else if (event.key === 'Tab') {
+        themeOpen.value = false
+    }
+}
+
 onClickOutside(pickerRef, () => { themeOpen.value = false })
 const onGlobalKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') themeOpen.value = false
+    if (event.key !== 'Escape' || !themeOpen.value) return
+    themeOpen.value = false
+    void nextTick(() => themeTriggerRef.value?.focus())
 }
 const onPresetChange = (event: Event) => {
     const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
@@ -342,6 +408,29 @@ watch(canUseMessages, value => {
 </script>
 
 <style lang="less" scoped>
+.admin-skip-link {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    z-index: 120;
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: var(--pcolor);
+    color: var(--bgColor1);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--admin-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.16));
+    transform: translate(-50%, -160%);
+    transition: transform @animatb;
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 3px;
+        transform: translate(-50%, 0);
+    }
+}
+
 .head-bar {
     position: fixed;
     top: 0;
@@ -654,9 +743,14 @@ watch(canUseMessages, value => {
         transition: background @animatb, color @animatb;
         animation: theme-option-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
 
-        &:hover, &:focus-visible {
+        &:hover {
             background: @gray-1;
-            outline: none;
+        }
+
+        &:focus-visible {
+            background: @gray-1;
+            outline: 2px solid var(--pcolor);
+            outline-offset: -2px;
         }
 
         &.active {

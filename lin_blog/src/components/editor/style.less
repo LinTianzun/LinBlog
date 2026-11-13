@@ -21,7 +21,6 @@
 .w-e-toolbar * {
   box-sizing: border-box;
   margin: 0;
-  outline: none;
   padding: 0;
 }
 .w-e-text-container blockquote,
@@ -49,6 +48,16 @@
   outline: 0;
   padding: 0 ;
   white-space: pre-wrap;
+}
+
+.w-e-toolbar :where(button, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid @pcolor;
+  outline-offset: 2px;
+}
+
+.w-e-text-container [data-slate-editor]:focus-visible {
+  outline: 2px solid @pcolor;
+  outline-offset: -2px;
 }
 .w-e-text-container [data-slate-editor] p {
   margin:  0;

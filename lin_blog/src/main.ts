@@ -16,6 +16,7 @@ import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
 import { ensureServerClock } from './utils/serverClock'
 import { registerServiceWorker } from './utils/pwa'
+import { installModalA11y } from './utils/modalA11y'
 
 // 启动时恢复用户选择的主题预设（设置 data-theme 与 data-theme-preset）
 initThemePreset()
@@ -48,7 +49,11 @@ app
     .use(router)
 
 // 等路由解析完成后再挂载，避免占位路由导致顶栏在匿名页短暂渲染并发出 401 请求
-router.isReady().then(() => app.mount('#app'))
+router.isReady().then(() => {
+    app.mount('#app')
+    // yk-modal 默认缺少对话框语义与焦点管理，挂载后统一增强
+    installModalA11y()
+})
 
 // 仅生产构建注册：避免 Vite HMR 请求被离线缓存接管
 registerServiceWorker()
