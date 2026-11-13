@@ -361,3 +361,101 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
   expect(saved?.coins).toBe(100)
   expect(saved?.claimedAchievements).toContain('first-harvest')
 })
+
+test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await page.addInitScript(() => {
+    const now = Date.now()
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_HOMESTEAD:u7',
+      JSON.stringify({
+        plots: [
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+        ],
+        plotCount: 4,
+        animals: {
+          chicken: { lastProduceAt: now, lastManureAt: now },
+          cow: { lastProduceAt: now, lastManureAt: now },
+        },
+        lastFishedAt: now,
+        inventory: { radish: 0, tomato: 0, corn: 0, strawberry: 0, egg: 0, milk: 0, fish: 0, fertilizer: 0 },
+        coins: 5_000,
+        seedStock: { radish: 0, tomato: 0, corn: 0, strawberry: 0 },
+        ordersDay: '',
+        orders: [],
+        claimedAchievements: [],
+        totals: { harvests: 0, eggs: 0, milk: 0, fish: 0, manure: 0 },
+        autoHelp: { enabled: true, lastAt: 0, day: '', count: 0, total: 0 },
+        barnLevel: 1,
+        pondLevel: 1,
+        decorations: [],
+        stateVersion: 0,
+        updatedAt: now,
+      }),
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  await expect(page.locator('.pet-home-plot')).toHaveCount(4, {
+    timeout: 30_000,
+  })
+  await page.locator('.pet-homestead-business-shop').click()
+  const modal = page.locator('.yk-modal__main:visible').last()
+  await modal.getByRole('tab', { name: /农场商店/ }).click()
+
+  const plotCard = modal.locator('.pet-farm-shop-card').filter({
+    hasText: '菜地 4/8 块',
+  })
+  await plotCard.getByRole('button', { name: '+1 块' }).click()
+  await expect(modal.locator('.pet-farm-shop-card').filter({
+    hasText: '菜地 5/8 块',
+  })).toBeVisible()
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('4850')
+
+  const barnCard = modal.locator('.pet-farm-shop-card').filter({
+    hasText: '畜棚 Lv.1/3',
+  })
+  await barnCard.getByRole('button', { name: '升级' }).click()
+  await expect(modal.locator('.pet-farm-shop-card').filter({
+    hasText: '畜棚 Lv.2/3',
+  })).toContainText('产物与粪便速度 +15%')
+
+  const pondCard = modal.locator('.pet-farm-shop-card').filter({
+    hasText: '鱼塘 Lv.1/3',
+  })
+  await pondCard.getByRole('button', { name: '升级' }).click()
+  await expect(modal.locator('.pet-farm-shop-card').filter({
+    hasText: '鱼塘 Lv.2/3',
+  })).toContainText('钓鱼冷却 2 分钟')
+
+  const lanternCard = modal.locator('.pet-farm-shop-card').filter({
+    hasText: '门前灯笼',
+  })
+  await lanternCard.getByRole('button', { name: '购买' }).click()
+  await expect(lanternCard).toContainText('已拥有')
+
+  await modal.locator('.yk-modal__close').click()
+  await expect(page.locator('.pet-home-plot')).toHaveCount(5)
+  await expect(page.locator('.pet-yard-decor.is-lantern')).toBeVisible()
+
+  const saved = await page.evaluate(() => {
+    const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
+    return raw
+      ? (JSON.parse(raw) as {
+          plotCount?: number
+          barnLevel?: number
+          pondLevel?: number
+          decorations?: string[]
+        })
+      : null
+  })
+  expect(saved?.plotCount).toBe(5)
+  expect(saved?.barnLevel).toBe(2)
+  expect(saved?.pondLevel).toBe(2)
+  expect(saved?.decorations).toContain('lantern')
+})

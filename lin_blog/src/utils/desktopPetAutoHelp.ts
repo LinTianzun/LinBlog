@@ -5,6 +5,7 @@ import {
   fishPond,
   getHomesteadCrop,
   harvestPlot,
+  homesteadBarnSpeedMultiplier,
   homesteadDayKey,
   isAnimalManureReady,
   isAnimalProduceReady,
@@ -95,9 +96,10 @@ export function findAutoHelpTask(
   for (const animalId of ['chicken', 'cow'] as const) {
     const definition = HOMESTEAD_ANIMALS[animalId]
     const animal = state.animals[animalId]
+    const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
     if (
-      isAnimalProduceReady(animal, definition, now) ||
-      isAnimalManureReady(animal, definition, now)
+      isAnimalProduceReady(animal, definition, now, speedMultiplier) ||
+      isAnimalManureReady(animal, definition, now, speedMultiplier)
     ) {
       return {
         action: 'collect',

@@ -404,239 +404,33 @@
                         </button>
                     </div>
 
-                    <div id="pet-home-panel" class="pet-home-room" :class="petHomeRoomClass"
-                        data-pet-home-zone role="tabpanel"
-                        :aria-labelledby="`pet-home-tab-${petHomeTab}`">
-                        <template v-if="petHomeTab === 'home'">
-                            <div class="pet-home-interior" aria-hidden="true">
-                                <span class="pet-home-window">
-                                    <span class="pet-home-moon" />
-                                    <span class="pet-home-star pet-home-star-a" />
-                                    <span class="pet-home-star pet-home-star-b" />
-                                </span>
-                                <span class="pet-home-curtain pet-home-curtain-left" />
-                                <span class="pet-home-curtain pet-home-curtain-right" />
-                                <span class="pet-home-shelf">
-                                    <i />
-                                    <i />
-                                    <i />
-                                </span>
-                                <span class="pet-home-picture">♥</span>
-                                <span class="pet-home-clock" />
-                                <span class="pet-home-door" />
-                                <span class="pet-home-plant">🪴</span>
-                                <span class="pet-home-table">
-                                    <i class="pet-home-table-top" />
-                                    <i class="pet-home-table-leg is-left" />
-                                    <i class="pet-home-table-leg is-right" />
-                                    <i class="pet-home-table-cup" />
-                                </span>
-                                <span class="pet-home-bed">
-                                    <i class="pet-home-bed-pillow" />
-                                    <i class="pet-home-bed-blanket" />
-                                </span>
-                                <span class="pet-home-rug" />
-                                <span class="pet-home-cushion" />
-                                <span class="pet-home-bowl">🥣</span>
-                            </div>
-                        </template>
-                        <template v-else>
-                            <div class="pet-pixel-backdrop" aria-hidden="true">
-                                <span class="pet-pixel-house" />
-                                <span v-if="petHomeTab !== 'fish'"
-                                    class="pet-pixel-path pet-pixel-path-top" />
-                                <span v-if="petHomeTab === 'grow'"
-                                    class="pet-pixel-path pet-pixel-path-branch" />
-                                <span class="pet-pixel-path pet-pixel-path-house" />
-                                <span v-if="petHomeTab === 'grow'"
-                                    class="pet-pixel-path pet-pixel-path-main" />
-                                <span class="pet-pixel-path pet-pixel-path-bottom" />
-                                <span class="pet-pixel-tree pet-pixel-tree-a" />
-                                <span class="pet-pixel-tree pet-pixel-tree-b" />
-                                <span class="pet-pixel-tree pet-pixel-tree-c" />
-                                <span class="pet-pixel-tree pet-pixel-tree-d" />
-                                <span class="pet-pixel-tree pet-pixel-tree-e" />
-                                <span class="pet-pixel-bush pet-pixel-bush-a" />
-                                <span class="pet-pixel-bush pet-pixel-bush-b" />
-                                <span class="pet-pixel-bush pet-pixel-bush-c" />
-                                <span class="pet-pixel-flower pet-pixel-flower-a" />
-                                <span class="pet-pixel-flower pet-pixel-flower-b" />
-                                <span class="pet-pixel-flower pet-pixel-flower-c" />
-                                <span class="pet-pixel-flower pet-pixel-flower-d" />
-                                <span class="pet-pixel-flower pet-pixel-flower-e" />
-                                <span class="pet-pixel-barrel" />
-                                <span class="pet-pixel-crate" />
-                                <span class="pet-pixel-hay" />
-                                <span v-if="petHomeTab === 'raise'"
-                                    class="pet-pixel-hay pet-pixel-hay-b" />
-                                <span class="pet-pixel-fence" />
-                                <span v-if="petHomeTab === 'grow'" class="pet-pixel-scarecrow" />
-                                <span class="pet-pixel-beehive" />
-                                <span v-if="petHomeTab === 'grow'" class="pet-pixel-watering-can" />
-                                <span class="pet-pixel-milk-can" />
-                                <span class="pet-pixel-rock pet-pixel-rock-a" />
-                                <span class="pet-pixel-rock pet-pixel-rock-b" />
-                                <span class="pet-pixel-chicken-free" />
-                            </div>
+                    <PetHomeRoom :tab="petHomeTab" :room-class="petHomeRoomClass"
+                        :plots="homesteadPlots" :plot-columns="homesteadPlotColumns"
+                        :chicken="chicken" :chicken-label="chickenLabel"
+                        :cow="cow" :cow-label="cowLabel"
+                        :pond-ready="pondReady" :pond-label="pondLabel"
+                        :owned-decorations="ownedDecorations"
+                        :streak-days="petVitals.streakDays" :note="petHomeNote"
+                        @plot-click="handlePlotClick" @collect-chicken="collectChicken"
+                        @collect-cow="collectCow" @pond-click="handlePondClick" />
 
-                            <button v-if="petHomeTab === 'raise'" type="button" class="pet-home-coop"
-                                :class="{ 'is-ready': chicken.eggReady || chicken.manureReady }"
-                                :aria-label="chickenLabel" :title="chickenLabel"
-                                data-homestead-target="coop" @click="collectChicken">
-                                <i class="pet-pixel-coop-run" aria-hidden="true" />
-                                <i class="pet-pixel-coop-wall" aria-hidden="true" />
-                                <i class="pet-pixel-coop-roof" aria-hidden="true" />
-                                <i class="pet-pixel-coop-door" aria-hidden="true" />
-                                <i class="pet-pixel-coop-loft" aria-hidden="true" />
-                                <b class="pet-pixel-chicken" aria-hidden="true" />
-                                <b v-if="chicken.eggReady" class="pet-home-yard-badge is-egg"
-                                    aria-hidden="true">🥚</b>
-                                <b v-if="chicken.manureReady" class="pet-home-yard-badge is-manure"
-                                    aria-hidden="true">💩</b>
-                            </button>
-
-                            <button v-if="petHomeTab === 'raise'" type="button" class="pet-home-pasture"
-                                :class="{ 'is-ready': cow.milkReady || cow.manureReady }"
-                                :aria-label="cowLabel" :title="cowLabel"
-                                data-homestead-target="cow" @click="collectCow">
-                                <i class="pet-pixel-pasture-fence" aria-hidden="true" />
-                                <i class="pet-pixel-pasture-gate" aria-hidden="true" />
-                                <b class="pet-pixel-cow" aria-hidden="true" />
-                                <b class="pet-pixel-sheep" aria-hidden="true" />
-                                <i class="pet-pixel-trough" aria-hidden="true" />
-                                <b v-if="cow.milkReady" class="pet-home-yard-badge is-milk"
-                                    aria-hidden="true">🥛</b>
-                                <b v-if="cow.manureReady" class="pet-home-yard-badge is-manure"
-                                    aria-hidden="true">💩</b>
-                            </button>
-
-                            <div v-if="petHomeTab === 'grow'" class="pet-home-plots">
-                                <button v-for="plot in homesteadPlots" :key="plot.index" type="button"
-                                    class="pet-home-plot"
-                                    :class="{ 'is-ready': plot.ripe, 'is-watered': plot.watered, 'is-empty': !plot.cropId }"
-                                    :aria-label="plot.label" :title="plot.label"
-                                    :data-homestead-target="`plot-${plot.index}`"
-                                    @click="handlePlotClick(plot.index)">
-                                    <b v-if="plot.cropId" class="pet-pixel-crop"
-                                        :class="pixelCropClass(plot)" aria-hidden="true" />
-                                    <i v-if="plot.watered && !plot.ripe && plot.cropId"
-                                        class="pet-pixel-water" aria-hidden="true" />
-                                    <span v-if="!plot.cropId" class="pet-home-plot-empty"
-                                        aria-hidden="true">+</span>
-                                </button>
-                            </div>
-
-                            <button v-if="petHomeTab === 'fish'" type="button" class="pet-home-pond"
-                                :class="{ 'is-ready': pondReady }" :aria-label="pondLabel"
-                                :title="pondLabel" data-homestead-target="pond"
-                                @click="handlePondClick">
-                                <i class="pet-pixel-pond-dock" aria-hidden="true" />
-                                <i class="pet-pixel-pond-ripple pet-pixel-pond-ripple-a" aria-hidden="true" />
-                                <i class="pet-pixel-pond-ripple pet-pixel-pond-ripple-b" aria-hidden="true" />
-                                <i class="pet-pixel-reeds pet-pixel-reeds-a" aria-hidden="true" />
-                                <i class="pet-pixel-reeds pet-pixel-reeds-b" aria-hidden="true" />
-                                <i class="pet-pixel-lily pet-pixel-lily-a" aria-hidden="true" />
-                                <i class="pet-pixel-lily pet-pixel-lily-b" aria-hidden="true" />
-                                <b class="pet-pixel-fish" aria-hidden="true" />
-                                <b v-if="pondReady" class="pet-home-yard-badge is-fish"
-                                    aria-hidden="true">🐟</b>
-                            </button>
-
-                            <span class="pet-home-sign" aria-hidden="true">
-                                <b>开心农场</b>
-                                <small>DAY {{ petVitals.streakDays + 1 }}</small>
-                            </span>
-                        </template>
-                        <span class="pet-home-room-note">{{ petHomeNote }}</span>
-                    </div>
-
-                    <div v-if="petHomeTab !== 'home'" class="pet-homestead-business">
-                        <span class="pet-homestead-coins" title="小院金币">
-                            <span aria-hidden="true">🪙</span><b>{{ homestead.coins }}</b>
-                        </span>
-                        <span class="pet-homestead-orders-progress">
-                            今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}
-                        </span>
-                        <div class="pet-homestead-business-actions">
-                            <button type="button" class="pet-homestead-business-orders"
-                                @click="openBusiness('orders')">
-                                <span aria-hidden="true">📋</span>订单
-                                <b v-if="claimableOrderCount">{{ claimableOrderCount }}</b>
-                            </button>
-                            <button type="button" class="pet-homestead-business-shop"
-                                @click="openBusiness('shop')">
-                                <span aria-hidden="true">🛒</span>商店
-                            </button>
-                            <button type="button" class="pet-homestead-business-achievements"
-                                @click="openBusiness('achievements')">
-                                <span aria-hidden="true">🏆</span>成就
-                                <b v-if="claimableHomesteadAchievementCount">
-                                    {{ claimableHomesteadAchievementCount }}
-                                </b>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div v-if="petHomeTab !== 'home'" class="pet-homestead-tools">
-                        <div v-if="petHomeTab === 'grow'" class="pet-homestead-seeds"
-                            role="group" aria-label="选择种子">
-                            <button v-for="crop in HOMESTEAD_CROPS" :key="crop.id" type="button"
-                                class="pet-homestead-seed"
-                                :class="{
-                                    'is-active': selectedSeedId === crop.id,
-                                    'is-sold-out': homestead.seedStock[crop.id] <= 0,
-                                }"
-                                :aria-pressed="selectedSeedId === crop.id"
-                                :title="`${crop.name}，库存 ${homestead.seedStock[crop.id]}，${formatHomesteadDuration(crop.growMs)}成熟`"
-                                @click="selectSeed(crop.id)">
-                                <span aria-hidden="true">{{ crop.icon }}</span>
-                                <small>{{ crop.name }} ×{{ homestead.seedStock[crop.id] }}</small>
-                            </button>
-                        </div>
-                        <span v-else class="pet-homestead-hint">
-                            {{ petHomeTab === 'raise'
-                                ? '动物产物会随时间刷新，记得来收'
-                                : '鱼塘有冷却，耐心等它上钩' }}
-                        </span>
-                        <button type="button" class="pet-homestead-tend" :disabled="homesteadTendCount === 0"
-                            :title="homesteadTendCount ? '浇水、收获、收取产物并钓鱼' : '小院暂时没有需要忙的'"
-                            @click="tendHomesteadNow">
-                            <span aria-hidden="true">🧺</span>一键照料
-                            <b v-if="homesteadTendCount" class="pet-homestead-tend-count">
-                                {{ homesteadTendCount }}
-                            </b>
-                        </button>
-                    </div>
-
-                    <div v-if="petHomeTab !== 'home'" class="pet-homestead-store"
-                        role="status" aria-live="polite">
-                        <span class="pet-homestead-store-label">仓库</span>
-                        <template v-if="inventoryChips.length">
-                            <span v-for="item in inventoryChips" :key="item.id" class="pet-homestead-item">
-                                <span aria-hidden="true">{{ item.icon }}</span>{{ item.name }} ×{{ item.count }}
-                            </span>
-                        </template>
-                        <span v-else class="pet-homestead-store-empty">
-                            空空如也，去对应的区域忙一轮吧
-                        </span>
-                    </div>
-
-                    <div v-if="petHomeTab !== 'home'" class="pet-homestead-auto">
-                        <div class="pet-homestead-auto-copy">
-                            <strong>自动帮忙</strong>
-                            <span>{{ autoHelpStatus }}</span>
-                        </div>
-                        <div class="pet-homestead-auto-actions">
-                            <button type="button" class="pet-homestead-auto-now"
-                                :disabled="!homestead.autoHelp.enabled"
-                                title="让它现在就去小院忙一轮"
-                                @click="requestAutoHelp">
-                                <span aria-hidden="true">🐾</span>去帮忙
-                            </button>
-                            <yk-switch v-model="autoHelpEnabled" :checked-value="true"
-                                :unchecked-value="false" aria-label="自动帮忙" />
-                        </div>
-                    </div>
+                    <PetHomestead v-if="petHomeTab !== 'home'" :tab="petHomeTab"
+                        :coins="homestead.coins"
+                        :completed-orders="completedOrderCount"
+                        :order-total="homestead.orders.length"
+                        :claimable-orders="claimableOrderCount"
+                        :claimable-achievements="claimableHomesteadAchievementCount"
+                        :crops="HOMESTEAD_CROPS"
+                        :seed-stock="homestead.seedStock"
+                        :selected-seed-id="selectedSeedId"
+                        :tend-count="homesteadTendCount"
+                        :inventory-chips="inventoryChips"
+                        :auto-help-enabled="homestead.autoHelp.enabled"
+                        :auto-help-status="autoHelpStatus"
+                        @open-business="openBusiness"
+                        @select-seed="selectSeed" @tend="tendHomesteadNow"
+                        @request-auto-help="requestAutoHelp"
+                        @update:auto-help-enabled="autoHelpEnabled = $event" />
 
                     <div class="pet-home-actions">
                         <button type="button" :disabled="feedCooldownLeft > 0"
@@ -674,165 +468,13 @@
             </aside>
         </div>
 
-        <yk-modal v-model="businessOpen"
-            :title="businessPanel === 'orders'
-                ? '今日订单'
-                : businessPanel === 'shop'
-                  ? '农场商店'
-                  : '小院成就'"
-            size="m" :show-footer="false">
-            <div class="pet-farm-business">
-                <div class="pet-farm-business-summary">
-                    <span class="pet-farm-business-coins">
-                        <span aria-hidden="true">🪙</span>{{ homestead.coins }} 金币
-                    </span>
-                    <span v-if="businessPanel === 'orders'">
-                        今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}
-                    </span>
-                    <span v-else-if="businessPanel === 'achievements'">
-                        已解锁 {{ unlockedHomesteadAchievementCount }}/{{ homesteadAchievementCards.length }}
-                        <template v-if="claimableHomesteadAchievementCount">
-                            · 可领取 {{ claimableHomesteadAchievementCount }}
-                        </template>
-                    </span>
-                    <span v-else>种子与农资补给</span>
-                </div>
-
-                <div class="pet-farm-business-tabs" role="tablist" aria-label="农场经营">
-                    <button type="button" role="tab" :aria-selected="businessPanel === 'orders'"
-                        :class="{ 'is-active': businessPanel === 'orders' }"
-                        @click="businessPanel = 'orders'">
-                        📋 今日订单
-                    </button>
-                    <button type="button" role="tab" :aria-selected="businessPanel === 'shop'"
-                        :class="{ 'is-active': businessPanel === 'shop' }"
-                        @click="businessPanel = 'shop'">
-                        🛒 农场商店
-                    </button>
-                    <button type="button" role="tab"
-                        :aria-selected="businessPanel === 'achievements'"
-                        :class="{ 'is-active': businessPanel === 'achievements' }"
-                        @click="businessPanel = 'achievements'">
-                        🏆 小院成就
-                    </button>
-                </div>
-
-                <div v-if="businessPanel === 'orders'" class="pet-farm-orders">
-                    <article v-for="order in orderCards" :key="order.id"
-                        class="pet-farm-order"
-                        :class="{
-                            'is-complete': order.completed,
-                            'is-ready': order.canComplete,
-                        }">
-                        <header class="pet-farm-order-head">
-                            <strong>订单 {{ order.index + 1 }}</strong>
-                            <span class="pet-farm-order-reward">+{{ order.reward }} 🪙</span>
-                        </header>
-                        <div class="pet-farm-order-items">
-                            <span v-for="item in order.items" :key="item.id"
-                                class="pet-farm-order-item"
-                                :class="{ 'is-missing': !item.enough && !order.completed }">
-                                <span aria-hidden="true">{{ item.icon }}</span>{{ item.name }}
-                                {{ item.have }}/{{ item.need }}
-                            </span>
-                        </div>
-                        <footer class="pet-farm-order-foot">
-                            <span>
-                                {{ order.completed
-                                    ? '已交付'
-                                    : order.canComplete
-                                      ? '材料齐了，可以交付'
-                                      : '材料还不够' }}
-                            </span>
-                            <button v-if="!order.completed" type="button"
-                                :disabled="!order.canComplete" @click="deliverOrder(order.id)">
-                                交付
-                            </button>
-                        </footer>
-                    </article>
-                    <p class="pet-farm-business-hint">
-                        每天 0 点刷新 3 个订单，交付后获得金币。
-                    </p>
-                </div>
-
-                <div v-else-if="businessPanel === 'achievements'"
-                    class="pet-farm-achievements">
-                    <article v-for="item in homesteadAchievementCards" :key="item.id"
-                        class="pet-farm-achievement"
-                        :class="{ 'is-unlocked': item.unlocked }">
-                        <span class="pet-farm-achievement-icon" aria-hidden="true">
-                            {{ item.icon }}
-                        </span>
-                        <div class="pet-farm-achievement-copy">
-                            <strong>{{ item.name }}</strong>
-                            <small>{{ item.description }}</small>
-                            <div class="pet-farm-achievement-progress" aria-hidden="true">
-                                <i :style="{ width: `${item.percent}%` }" />
-                            </div>
-                        </div>
-                        <div class="pet-farm-achievement-side">
-                            <span>+{{ item.reward }} 🪙</span>
-                            <button v-if="item.unlocked && !item.claimed" type="button"
-                                @click="claimAchievementReward(item.id)">
-                                领取
-                            </button>
-                            <b v-else-if="item.claimed">已领取</b>
-                            <b v-else>{{ item.current }}/{{ item.target }}</b>
-                        </div>
-                    </article>
-                    <p class="pet-farm-business-hint">
-                        成就解锁后可领取金币，领取记录会随小院存档跨设备同步。
-                    </p>
-                </div>
-
-                <div v-else class="pet-farm-shop">
-                    <section class="pet-farm-shop-section">
-                        <h4>种子</h4>
-                        <div class="pet-farm-shop-grid">
-                            <article v-for="item in seedShopItems" :key="item.id"
-                                class="pet-farm-shop-card">
-                                <span class="pet-farm-shop-icon" aria-hidden="true">{{ item.icon }}</span>
-                                <div class="pet-farm-shop-copy">
-                                    <strong>{{ item.name }}种子</strong>
-                                    <small>库存 {{ item.stock }}</small>
-                                </div>
-                                <div class="pet-farm-shop-buy">
-                                    <span>{{ item.price }} 🪙</span>
-                                    <button type="button"
-                                        :disabled="homestead.coins < item.price"
-                                        @click="buySeedNow(item.id)">
-                                        +{{ item.pack }}
-                                    </button>
-                                </div>
-                            </article>
-                        </div>
-                    </section>
-                    <section class="pet-farm-shop-section">
-                        <h4>农资</h4>
-                        <div class="pet-farm-shop-grid">
-                            <article class="pet-farm-shop-card">
-                                <span class="pet-farm-shop-icon" aria-hidden="true">🌱</span>
-                                <div class="pet-farm-shop-copy">
-                                    <strong>肥料</strong>
-                                    <small>库存 {{ homestead.inventory.fertilizer }}</small>
-                                </div>
-                                <div class="pet-farm-shop-buy">
-                                    <span>{{ HOMESTEAD_FERTILIZER_PACK.price }} 🪙</span>
-                                    <button type="button"
-                                        :disabled="homestead.coins < HOMESTEAD_FERTILIZER_PACK.price"
-                                        @click="buyFertilizerNow">
-                                        +{{ HOMESTEAD_FERTILIZER_PACK.count }}
-                                    </button>
-                                </div>
-                            </article>
-                        </div>
-                    </section>
-                    <p class="pet-farm-business-hint">
-                        种子按包出售；肥料可以缩短作物成熟时间。
-                    </p>
-                </div>
-            </div>
-        </yk-modal>
+        <PetFarmBusiness v-model="businessOpen" v-model:panel="businessPanel"
+            :homestead="homestead" @deliver-order="deliverOrder"
+            @claim-achievement="claimAchievementReward"
+            @buy-seed="buySeedNow" @buy-fertilizer="buyFertilizerNow"
+            @buy-plot="buyPlotExpansionNow" @upgrade-barn="upgradeBarnNow"
+            @upgrade-pond="upgradePondNow"
+            @buy-decoration="buyDecorationNow" />
     </yk-space>
 </template>
 
@@ -882,6 +524,8 @@ import {
     HOMESTEAD_SEED_PACKS,
     animalStatusText,
     buyFertilizerPack,
+    buyHomesteadDecoration,
+    buyHomesteadPlot,
     buySeedPack,
     canCompleteOrder,
     claimHomesteadAchievement,
@@ -891,10 +535,12 @@ import {
     fishPond,
     formatHomesteadDuration,
     getHomesteadCrop,
+    getHomesteadDecoration,
     getHomesteadItem,
     getHomesteadState,
     harvestPlot,
     homesteadAchievements,
+    homesteadBarnSpeedMultiplier,
     isAnimalManureReady,
     isAnimalProduceReady,
     isPlotRipe,
@@ -907,9 +553,12 @@ import {
     resetHomesteadState,
     setHomesteadState,
     tendHomestead,
+    upgradeHomesteadBarn,
+    upgradeHomesteadPond,
     waterPlot,
     type HomesteadAnimalId,
     type HomesteadCropId,
+    type HomesteadDecorationId,
     type HomesteadState,
 } from '../utils/desktopPetHomestead'
 import {
@@ -932,6 +581,9 @@ import {
 } from '../utils/desktopPetAutoHelp'
 import { useSessionStore } from '../store/session.ts'
 import { IconHeartFill } from '@yike-design/ui/es/components/svg-icon'
+import PetFarmBusiness from '../components/pet/PetFarmBusiness.vue'
+import PetHomeRoom from '../components/pet/PetHomeRoom.vue'
+import PetHomestead from '../components/pet/PetHomestead.vue'
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -1096,6 +748,11 @@ const homesteadPlots = computed(() =>
                 !isPlotRipe(plot, nowTick.value) &&
                 homestead.value.inventory.fertilizer > 0,
             progress: plotProgress(plot, nowTick.value),
+            visualClass: pixelCropClass({
+                cropId: plot.cropId,
+                progress: plotProgress(plot, nowTick.value),
+                ripe: isPlotRipe(plot, nowTick.value),
+            }),
             label: `第 ${index + 1} 块菜地：${plotStatusText(
                 plot,
                 nowTick.value
@@ -1135,20 +792,46 @@ const pixelCropClass = (plot: {
 const chicken = computed(() => {
     const definition = HOMESTEAD_ANIMALS.chicken
     const animal = homestead.value.animals.chicken
+    const speedMultiplier = homesteadBarnSpeedMultiplier(
+        homestead.value.barnLevel
+    )
     return {
         ...definition,
-        eggReady: isAnimalProduceReady(animal, definition, nowTick.value),
-        manureReady: isAnimalManureReady(animal, definition, nowTick.value),
+        eggReady: isAnimalProduceReady(
+            animal,
+            definition,
+            nowTick.value,
+            speedMultiplier
+        ),
+        manureReady: isAnimalManureReady(
+            animal,
+            definition,
+            nowTick.value,
+            speedMultiplier
+        ),
     }
 })
 
 const cow = computed(() => {
     const definition = HOMESTEAD_ANIMALS.cow
     const animal = homestead.value.animals.cow
+    const speedMultiplier = homesteadBarnSpeedMultiplier(
+        homestead.value.barnLevel
+    )
     return {
         ...definition,
-        milkReady: isAnimalProduceReady(animal, definition, nowTick.value),
-        manureReady: isAnimalManureReady(animal, definition, nowTick.value),
+        milkReady: isAnimalProduceReady(
+            animal,
+            definition,
+            nowTick.value,
+            speedMultiplier
+        ),
+        manureReady: isAnimalManureReady(
+            animal,
+            definition,
+            nowTick.value,
+            speedMultiplier
+        ),
     }
 })
 
@@ -1199,19 +882,16 @@ const completedOrderCount = computed(
 const claimableOrderCount = computed(
     () => orderCards.value.filter((order) => order.canComplete).length
 )
-const seedShopItems = computed(() =>
-    HOMESTEAD_CROPS.map((crop) => ({
-        ...crop,
-        price: HOMESTEAD_SEED_PACKS[crop.id].price,
-        pack: HOMESTEAD_SEED_PACKS[crop.id].count,
-        stock: homestead.value.seedStock[crop.id],
-    }))
+const homesteadPlotColumns = computed(() =>
+    homestead.value.plotCount > 6 ? 4 : homestead.value.plotCount > 4 ? 3 : 2
+)
+const ownedDecorations = computed(() =>
+    homestead.value.decorations
+        .map((id) => getHomesteadDecoration(id))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
 )
 const homesteadAchievementCards = computed(() =>
     homesteadAchievements(homestead.value)
-)
-const unlockedHomesteadAchievementCount = computed(
-    () => homesteadAchievementCards.value.filter((item) => item.unlocked).length
 )
 const claimableHomesteadAchievementCount = computed(
     () =>
@@ -1229,11 +909,32 @@ const homesteadTendCount = computed(() => {
         else if (plot.cropId && !plot.fertilizedAt) fertilizable++
     }
     count += Math.min(fertilizable, homestead.value.inventory.fertilizer)
+    const speedMultiplier = homesteadBarnSpeedMultiplier(
+        homestead.value.barnLevel
+    )
     for (const id of HOMESTEAD_ANIMAL_IDS) {
         const definition = HOMESTEAD_ANIMALS[id]
         const animal = homestead.value.animals[id]
-        if (isAnimalProduceReady(animal, definition, nowTick.value)) count++
-        if (isAnimalManureReady(animal, definition, nowTick.value)) count++
+        if (
+            isAnimalProduceReady(
+                animal,
+                definition,
+                nowTick.value,
+                speedMultiplier
+            )
+        ) {
+            count++
+        }
+        if (
+            isAnimalManureReady(
+                animal,
+                definition,
+                nowTick.value,
+                speedMultiplier
+            )
+        ) {
+            count++
+        }
     }
     if (isPondReady(homestead.value, nowTick.value)) count++
     return count
@@ -1379,6 +1080,84 @@ const buyFertilizerNow = () => {
     proxy?.$message?.({
         type: 'success',
         message: `买了 ${HOMESTEAD_FERTILIZER_PACK.count} 份肥料`,
+    })
+}
+
+const purchaseMessage = (
+    reason: 'ok' | 'max' | 'coins' | 'owned' | 'unknown'
+): string => {
+    if (reason === 'max') return '这里已经扩建到最高等级了'
+    if (reason === 'coins') return '金币不够，先完成几个订单吧'
+    if (reason === 'owned') return '这个装饰已经摆在院子里了'
+    return '暂时没法购买，稍后再试试'
+}
+
+const buyPlotExpansionNow = () => {
+    const result = buyHomesteadPlot(homestead.value, Date.now())
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'warning',
+            message: purchaseMessage(result.reason),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `菜地扩建到 ${result.state.plotCount} 块，可以多种一点了`,
+    })
+}
+
+const upgradeBarnNow = () => {
+    const result = upgradeHomesteadBarn(homestead.value, Date.now())
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'warning',
+            message: purchaseMessage(result.reason),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `畜棚升到 Lv.${result.state.barnLevel}，动物产出更快了`,
+    })
+}
+
+const upgradePondNow = () => {
+    const result = upgradeHomesteadPond(homestead.value, Date.now())
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'warning',
+            message: purchaseMessage(result.reason),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `鱼塘升到 Lv.${result.state.pondLevel}，钓鱼冷却缩短了`,
+    })
+}
+
+const buyDecorationNow = (decorationId: HomesteadDecorationId) => {
+    const decoration = getHomesteadDecoration(decorationId)
+    const result = buyHomesteadDecoration(
+        homestead.value,
+        decorationId,
+        Date.now()
+    )
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'warning',
+            message: purchaseMessage(result.reason),
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `把${decoration?.name || '新装饰'}摆进了小院`,
     })
 }
 
@@ -1774,7 +1553,8 @@ onUnmounted(() => {
 })
 </script>
 
-<style lang="less" scoped>
+<!-- 场景与经营样式统一使用 pet- 前缀，设为全局样式供拆分后的子组件复用 -->
+<style lang="less">
 .pet-manage-page {
     width: 100%;
 }
@@ -2379,7 +2159,7 @@ onUnmounted(() => {
     border-radius: 13px;
     background: color-mix(in srgb, #e05454 4%, var(--bgColor2));
 
-    :deep(.yk-button) {
+    .yk-button {
         flex: none;
     }
 }
@@ -3208,7 +2988,7 @@ onUnmounted(() => {
     display: grid;
     width: 46%;
     height: 20%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--plot-columns, 2), minmax(0, 1fr));
     gap: 6%;
 }
 
@@ -4936,412 +4716,6 @@ onUnmounted(() => {
     }
 }
 
-.pet-farm-business {
-    display: flex;
-    flex-direction: column;
-    gap: 13px;
-    min-width: min(520px, 78vw);
-    max-height: min(68vh, 640px);
-    overflow-y: auto;
-    padding-right: 2px;
-}
-
-.pet-farm-business-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    color: var(--admin-muted, var(--gray6));
-    font-size: 12px;
-}
-
-.pet-farm-business-coins {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: #9a6500;
-    font-size: 14px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-
-    span {
-        font-size: 17px;
-        line-height: 1;
-    }
-}
-
-.pet-farm-business-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-    padding: 4px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: 12px;
-    background: var(--bgColor2);
-
-    button {
-        min-height: 34px;
-        border: 0;
-        border-radius: 9px;
-        background: transparent;
-        color: var(--admin-muted, var(--gray6));
-        font: inherit;
-        font-size: 12px;
-        font-weight: 650;
-        cursor: pointer;
-
-        &.is-active {
-            background: var(--pcolor);
-            color: #fff;
-            box-shadow: 0 4px 10px color-mix(in srgb, var(--pcolor) 26%, transparent);
-        }
-
-        &:focus-visible {
-            outline: 2px solid var(--pcolor);
-            outline-offset: 2px;
-        }
-    }
-}
-
-.pet-farm-orders {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-}
-
-.pet-farm-order {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-    padding: 12px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: 14px;
-    background: var(--admin-surface, var(--bgColor1));
-    transition:
-        border-color 0.18s ease,
-        box-shadow 0.18s ease,
-        opacity 0.18s ease;
-
-    &.is-ready {
-        border-color: color-mix(in srgb, #e8a93b 42%, var(--admin-line, var(--gray1)));
-        box-shadow: 0 6px 18px rgba(208, 151, 44, 0.12);
-    }
-
-    &.is-complete {
-        opacity: 0.62;
-        background: var(--bgColor2);
-    }
-}
-
-.pet-farm-order-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-
-    strong {
-        color: var(--admin-text, var(--gray));
-        font-size: 13px;
-    }
-}
-
-.pet-farm-order-reward {
-    color: #9a6500;
-    font-size: 13px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-
-.pet-farm-order-items {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.pet-farm-order-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--pcolor) 7%, var(--bgColor2));
-    color: var(--admin-text, var(--gray));
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-
-    &.is-missing {
-        background: color-mix(in srgb, #d9534f 8%, var(--bgColor2));
-        color: #b64440;
-    }
-}
-
-.pet-farm-order-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    color: var(--admin-muted, var(--gray6));
-    font-size: 11px;
-
-    button {
-        min-height: 30px;
-        padding: 0 14px;
-        border: 0;
-        border-radius: 9px;
-        background: linear-gradient(135deg, #f0ad3d, #e49722);
-        color: #fff;
-        font: inherit;
-        font-size: 11px;
-        font-weight: 700;
-        cursor: pointer;
-        box-shadow: 0 5px 12px rgba(210, 146, 29, 0.24);
-
-        &:disabled {
-            cursor: not-allowed;
-            opacity: 0.42;
-            box-shadow: none;
-        }
-
-        &:focus-visible {
-            outline: 2px solid #e8a93b;
-            outline-offset: 2px;
-        }
-    }
-}
-
-.pet-farm-achievements {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.pet-farm-achievement {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 11px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: 13px;
-    background: var(--admin-surface, var(--bgColor1));
-
-    &.is-unlocked {
-        border-color: color-mix(in srgb, #e8a93b 44%, var(--admin-line, var(--gray1)));
-        background:
-            linear-gradient(135deg,
-                color-mix(in srgb, #f2b94c 12%, transparent),
-                transparent 62%),
-            var(--admin-surface, var(--bgColor1));
-    }
-
-}
-
-.pet-farm-achievement-icon {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    flex: none;
-    place-items: center;
-    border-radius: 11px;
-    background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
-    font-size: 20px;
-}
-
-.pet-farm-achievement-copy {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-    gap: 3px;
-
-    strong {
-        color: var(--admin-text, var(--gray));
-        font-size: 12px;
-    }
-
-    small {
-        overflow: hidden;
-        color: var(--admin-muted, var(--gray6));
-        font-size: 10px;
-        line-height: 1.45;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-}
-
-.pet-farm-achievement-progress {
-    height: 5px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--bgColor2);
-
-    i {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, #e8a93b, #f4ca72);
-        transition: width 0.24s ease;
-    }
-}
-
-.pet-farm-achievement-side {
-    display: flex;
-    min-width: 62px;
-    flex: none;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-
-    > span {
-        color: #9a6500;
-        font-size: 10px;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-    }
-
-    > b {
-        color: var(--admin-muted, var(--gray6));
-        font-size: 10px;
-        font-variant-numeric: tabular-nums;
-    }
-
-    button {
-        min-width: 48px;
-        min-height: 27px;
-        padding: 0 10px;
-        border: 0;
-        border-radius: 8px;
-        background: linear-gradient(135deg, #f0ad3d, #e49722);
-        color: #fff;
-        font: inherit;
-        font-size: 10px;
-        font-weight: 700;
-        cursor: pointer;
-        box-shadow: 0 4px 10px rgba(210, 146, 29, 0.2);
-
-        &:focus-visible {
-            outline: 2px solid #e8a93b;
-            outline-offset: 2px;
-        }
-    }
-}
-
-.pet-farm-shop {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.pet-farm-shop-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-
-    h4 {
-        margin: 0;
-        color: var(--admin-text, var(--gray));
-        font-size: 12px;
-        font-weight: 700;
-    }
-}
-
-.pet-farm-shop-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-}
-
-.pet-farm-shop-card {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
-    padding: 10px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: 12px;
-    background: var(--admin-surface, var(--bgColor1));
-}
-
-.pet-farm-shop-icon {
-    display: grid;
-    width: 34px;
-    height: 34px;
-    flex: none;
-    place-items: center;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
-    font-size: 19px;
-}
-
-.pet-farm-shop-copy {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-    gap: 2px;
-
-    strong {
-        overflow: hidden;
-        color: var(--admin-text, var(--gray));
-        font-size: 11px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    small {
-        color: var(--admin-muted, var(--gray6));
-        font-size: 10px;
-        font-variant-numeric: tabular-nums;
-    }
-}
-
-.pet-farm-shop-buy {
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-
-    span {
-        color: #9a6500;
-        font-size: 10px;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-    }
-
-    button {
-        min-width: 42px;
-        min-height: 26px;
-        border: 0;
-        border-radius: 8px;
-        background: var(--pcolor);
-        color: #fff;
-        font: inherit;
-        font-size: 11px;
-        font-weight: 700;
-        cursor: pointer;
-
-        &:disabled {
-            cursor: not-allowed;
-            opacity: 0.42;
-        }
-
-        &:focus-visible {
-            outline: 2px solid var(--pcolor);
-            outline-offset: 2px;
-        }
-    }
-}
-
-.pet-farm-business-hint {
-    margin: 0;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: var(--bgColor2);
-    color: var(--admin-muted, var(--gray6));
-    font-size: 10px;
-    line-height: 1.6;
-}
-
 .pet-homestead-seed.is-sold-out {
     opacity: 0.5;
 
@@ -5613,6 +4987,12 @@ onUnmounted(() => {
             cursor: not-allowed;
             opacity: 0.45;
         }
+    }
+
+    b {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+        font-weight: 600;
     }
 }
 
@@ -5961,6 +5341,278 @@ onUnmounted(() => {
     filter: drop-shadow(3px 3px 0 rgba(60, 43, 47, 0.18));
 }
 
+.pet-yard-decorations {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pet-yard-decor {
+    position: absolute;
+    image-rendering: pixelated;
+    filter: drop-shadow(3px 3px 0 rgba(60, 43, 47, 0.18));
+    pointer-events: none;
+}
+
+.pet-yard-decor.is-lantern {
+    bottom: 31%;
+    left: 2%;
+    width: 4.6%;
+    aspect-ratio: 0.72;
+    border: 3px solid #3c2b2f;
+    border-radius: 38% 38% 30% 30%;
+    background: linear-gradient(180deg, #ef6b55 0 48%, #c23a37 48% 100%);
+    box-shadow:
+        inset 0 -6px 0 #8f222c,
+        0 0 12px rgba(255, 210, 120, 0.7);
+
+    &::before {
+        position: absolute;
+        top: -24%;
+        left: 38%;
+        width: 24%;
+        height: 24%;
+        content: '';
+        background: #3c2b2f;
+    }
+
+    &::after {
+        position: absolute;
+        bottom: -30%;
+        left: 40%;
+        width: 20%;
+        height: 30%;
+        content: '';
+        background: #f2c14e;
+        box-shadow: 0 4px 0 #c23a37;
+    }
+}
+
+.pet-yard-decor.is-birdhouse {
+    top: 4%;
+    right: 30%;
+    width: 5%;
+    height: 9%;
+    background:
+        linear-gradient(90deg,
+            transparent 44%,
+            #6f4531 44% 56%,
+            transparent 56%) center bottom / 100% 100% no-repeat;
+
+    &::before {
+        position: absolute;
+        top: 0;
+        left: 10%;
+        width: 80%;
+        height: 52%;
+        content: '';
+        border: 3px solid #3c2b2f;
+        background: linear-gradient(180deg, #c58750, #8f5c3c);
+        box-shadow: inset 0 -5px 0 #7a4a32;
+    }
+
+    &::after {
+        position: absolute;
+        top: -26%;
+        left: -14%;
+        width: 128%;
+        height: 34%;
+        content: '';
+        background: #b0523c;
+        clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    }
+}
+
+.pet-yard-decor.is-bench {
+    bottom: 3%;
+    left: 2%;
+    width: 9%;
+    height: 5.5%;
+    background:
+        repeating-linear-gradient(90deg,
+            #c58750 0 18%,
+            #815033 18% 21%) center bottom / 100% 42% no-repeat;
+
+    &::before {
+        position: absolute;
+        top: -55%;
+        left: 5%;
+        width: 90%;
+        height: 60%;
+        content: '';
+        border: 2px solid #3c2b2f;
+        background:
+            repeating-linear-gradient(90deg,
+                #c58750 0 18%,
+                #815033 18% 21%);
+    }
+
+    &::after {
+        position: absolute;
+        bottom: -55%;
+        left: 2%;
+        width: 96%;
+        height: 60%;
+        content: '';
+        background:
+            linear-gradient(90deg,
+                #6f4531 0 12%,
+                transparent 12% 88%,
+                #6f4531 88%);
+    }
+}
+
+.pet-yard-decor.is-fountain {
+    right: 2%;
+    bottom: 37%;
+    width: 8%;
+    height: 8%;
+    border: 3px solid #3c2b2f;
+    border-radius: 50% 50% 35% 35% / 30% 30% 70% 70%;
+    background:
+        radial-gradient(ellipse at 50% 55%,
+            #8fe3f1 0 38%,
+            #b8c5cf 40% 58%,
+            #6f7a83 60% 100%);
+    box-shadow: inset 0 6px 0 #d8e1e6;
+
+    &::before {
+        position: absolute;
+        top: -85%;
+        left: 46%;
+        width: 8%;
+        height: 90%;
+        content: '';
+        background:
+            linear-gradient(180deg,
+                transparent 0 8%,
+                #9fe7f4 8% 100%);
+        animation: pet-fountain-jet 1.4s steps(2, end) infinite;
+    }
+
+    &::after {
+        position: absolute;
+        top: -22%;
+        left: 20%;
+        width: 60%;
+        height: 20%;
+        content: '';
+        border: 3px solid #3c2b2f;
+        border-radius: 50%;
+        background: #b8c5cf;
+    }
+}
+
+.pet-yard-decor.is-pumpkin {
+    bottom: 2%;
+    left: 26%;
+    width: 6%;
+    height: 4.5%;
+    border: 3px solid #3c2b2f;
+    border-radius: 45% 45% 38% 38%;
+    background:
+        repeating-linear-gradient(90deg,
+            #f39a3e 0 22%,
+            #d96b22 22% 34%,
+            #f39a3e 34% 56%,
+            #c45f1f 56% 68%,
+            #f39a3e 68% 90%,
+            #d96b22 90% 100%);
+
+    &::before {
+        position: absolute;
+        top: -28%;
+        left: 44%;
+        width: 12%;
+        height: 30%;
+        content: '';
+        background: #5f7a34;
+    }
+
+    &::after {
+        position: absolute;
+        top: -16%;
+        left: 56%;
+        width: 24%;
+        height: 12%;
+        content: '';
+        background: #6f9a3d;
+        transform: rotate(-18deg);
+    }
+}
+
+.pet-yard-decor.is-kite {
+    top: 4%;
+    left: 58%;
+    width: 4.2%;
+    height: 5.4%;
+    background:
+        conic-gradient(from 45deg,
+            #f0574d 0 25%,
+            #f4c14f 0 50%,
+            #65b7e8 0 75%,
+            #f0574d 0);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    animation: pet-kite-float 3.2s steps(2, end) infinite;
+
+    &::before {
+        position: absolute;
+        top: 92%;
+        left: 47%;
+        width: 6%;
+        height: 90%;
+        content: '';
+        background:
+            repeating-linear-gradient(180deg,
+                #f4c14f 0 18%,
+                #f0574d 18% 36%);
+    }
+
+    &::after {
+        position: absolute;
+        top: 140%;
+        left: 20%;
+        width: 60%;
+        height: 14%;
+        content: '';
+        background: #f4c14f;
+    }
+}
+
+.pet-home-room.is-tab-raise .pet-yard-decor.is-bench {
+    right: 2%;
+    left: auto;
+}
+
+.pet-home-room.is-tab-raise .pet-yard-decor.is-pumpkin {
+    left: 53%;
+}
+
+.pet-home-room.is-tab-raise .pet-yard-decor.is-birdhouse {
+    right: 32%;
+    top: 3%;
+}
+
+.pet-home-room.is-tab-fish .pet-yard-decor.is-bench {
+    bottom: 37%;
+    left: 2%;
+    right: auto;
+}
+
+.pet-home-room.is-tab-fish .pet-yard-decor.is-pumpkin {
+    left: 47%;
+}
+
+.pet-home-room.is-tab-fish .pet-yard-decor.is-fountain {
+    right: 2%;
+    bottom: 39%;
+}
+
+.pet-home-room.is-tab-fish .pet-yard-decor.is-lantern {
+    bottom: 35%;
+}
+
 .pet-pixel-rock {
     width: 6%;
     aspect-ratio: 1;
@@ -6260,6 +5912,7 @@ onUnmounted(() => {
     left: 35%;
     width: 37%;
     height: 32%;
+    grid-template-columns: repeat(var(--plot-columns, 2), minmax(0, 1fr));
     gap: 3.2%;
     filter: none;
 }
@@ -6737,6 +6390,32 @@ onUnmounted(() => {
     }
 }
 
+@keyframes pet-kite-float {
+    0%,
+    100% {
+        transform: translateY(0) rotate(-2deg);
+    }
+
+    50% {
+        transform: translateY(-6px) rotate(2deg);
+    }
+}
+
+@keyframes pet-fountain-jet {
+    0%,
+    100% {
+        opacity: 0.72;
+        transform: scaleY(0.86);
+        transform-origin: bottom center;
+    }
+
+    50% {
+        opacity: 1;
+        transform: scaleY(1);
+        transform-origin: bottom center;
+    }
+}
+
 /* ===== 分区场景 ===== */
 .pet-home-room.is-tab-grow .pet-home-plots {
     top: 35%;
@@ -7110,15 +6789,6 @@ onUnmounted(() => {
             flex: 1;
             justify-content: center;
         }
-    }
-
-    .pet-farm-business {
-        min-width: auto;
-        max-height: 66vh;
-    }
-
-    .pet-farm-shop-grid {
-        grid-template-columns: 1fr;
     }
 
     .pet-homestead-tend {

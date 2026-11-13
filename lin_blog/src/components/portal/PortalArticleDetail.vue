@@ -5,6 +5,10 @@
             <div v-if="detailLoading" class="detail-loading" aria-live="polite">
                 <yk-spinner size="m" />
             </div>
+            <!-- 阅读进度：跟随 yk-modal 内部滚动容器，不依赖 window -->
+            <div class="reading-progress" aria-hidden="true">
+                <span :style="{ width: `${readingProgress}%` }"></span>
+            </div>
             <!-- 与后台文章详情共用头部：标题、导语、封面 -->
             <ContentDetailHero :title="article.title" :introduce="article.introduce || ''"
                 :cover="article.cover || ''" :badges="heroBadges" :labels="labels"
@@ -31,10 +35,69 @@
                         :text="article?.introduce || ''" />
                 </template>
             </ContentStatBar>
-            <!-- 正文：独立阅读区，行宽收窄，图片改为居中卡片 -->
-            <article class="detail-reader">
-                <div class="detail-html" v-html="optimizedContent"></div>
-            </article>
+            <!-- 正文：独立阅读区，桌面端右侧目录，窄屏折叠到正文顶部 -->
+            <div class="detail-layout">
+                <article class="detail-reader">
+                    <details v-if="hasOutline" class="reader-outline reader-outline--mobile">
+                        <summary>本文目录 · {{ outline.length }} 节</summary>
+                        <nav aria-label="文章目录">
+                            <ol>
+                                <li v-for="item in outline" :key="item.id"
+                                    :class="[`level-${item.level}`, { active: activeHeadingId === item.id }]">
+                                    <button type="button" @click="scrollToHeading(item.id)">
+                                        {{ item.text }}
+                                    </button>
+                                </li>
+                            </ol>
+                        </nav>
+                    </details>
+                    <div ref="articleBodyRef" class="detail-html" v-html="articleHtml"></div>
+                </article>
+                <nav v-if="hasOutline" class="reader-outline reader-outline--desktop" aria-label="文章目录">
+                    <p class="reader-outline__title">本文目录</p>
+                    <ol>
+                        <li v-for="item in outline" :key="item.id"
+                            :class="[`level-${item.level}`, { active: activeHeadingId === item.id }]">
+                            <button type="button" @click="scrollToHeading(item.id)">
+                                {{ item.text }}
+                            </button>
+                        </li>
+                    </ol>
+                </nav>
+            </div>
+
+            <!-- 延伸阅读：按分类、标签与热度推荐，点击后原地切换文章 -->
+            <section v-if="relatedArticles.length || relatedLoading" class="related-wrap"
+                aria-labelledby="related-heading">
+                <header class="related-head">
+                    <h2 id="related-heading">延伸阅读</h2>
+                    <span>RELATED NOTES</span>
+                </header>
+                <div v-if="relatedLoading" class="related-loading">
+                    <yk-spinner size="s" />
+                </div>
+                <div v-else class="related-grid">
+                    <button v-for="item in relatedArticles" :key="item.id" type="button"
+                        class="related-card" @click="emit('open-related', item.id)">
+                        <span class="related-cover" :class="{ 'is-empty': !relatedCover(item) }">
+                            <img v-if="relatedCover(item)"
+                                v-bind="responsiveImageAttrs(relatedCover(item), {
+                                    widths: IMAGE_WIDTHS.card,
+                                    sizes: '(max-width: 640px) 100vw, 220px'
+                                })"
+                                :alt="item.title" />
+                            <span v-else class="related-glyph">
+                                {{ (item.title || '文').trim().charAt(0) }}
+                            </span>
+                        </span>
+                        <span class="related-body">
+                            <span class="related-meta">{{ item.subsetName || '文章' }}</span>
+                            <strong class="related-title">{{ item.title }}</strong>
+                            <span class="related-intro">{{ item.introduce || '点击继续阅读' }}</span>
+                        </span>
+                    </button>
+                </div>
+            </section>
 
             <!-- 评论区：与图库/随笔详情共用同一套两级评论组件 -->
             <div class="comment-wrap">
@@ -52,14 +115,16 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+    extractArticleCover,
     formatArticleDate,
     parseArticleLabels,
     type ArticleItem,
 } from '../../api/article'
 import {
+    getPublicArticles,
     getLikeState,
     toggleLike,
     recordView,
@@ -70,7 +135,13 @@ import { useSessionStore } from '../../store/session.ts'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentLightbox from '../content/ContentLightbox.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
-import { optimizeRichContentImages } from '../../utils/imageOptimization'
+import {
+    IMAGE_WIDTHS,
+    optimizeRichContentImages,
+    responsiveImageAttrs,
+} from '../../utils/imageOptimization'
+import { prepareArticleContent } from '../../utils/articleReading'
+import { pickRelatedArticles } from '../../utils/relatedArticles'
 import { portalItemUrl } from '../../utils/portalSeo'
 import PortalShareButton from './PortalShareButton.vue'
 
@@ -81,6 +152,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'close'): void
+    (e: 'open-related', id: number): void
     (e: 'interaction-change', payload: { likes: number; comments: number }): void
     (e: 'view-counted', payload: { views: number }): void
 }>()
@@ -96,6 +168,11 @@ const likePending = ref(false)
 
 // 浏览量本地副本：接口回读后立即刷新，避免列表与弹窗数字不一致
 const views = ref(0)
+
+// 延伸阅读：详情内原地加载，切换文章时旧请求会被 token 丢弃
+const relatedArticles = ref<ArticleItem[]>([])
+const relatedLoading = ref(false)
+let relatedToken = 0
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -122,8 +199,189 @@ const labels = computed(() => parseArticleLabels(props.article?.label))
 const shareUrl = computed(() =>
     props.article?.id ? portalItemUrl('article', props.article.id) : ''
 )
-const optimizedContent = computed(() =>
-    optimizeRichContentImages(props.article?.content || '')
+const relatedCover = (item: ArticleItem): string => extractArticleCover(item)
+const preparedContent = computed(() =>
+    prepareArticleContent(optimizeRichContentImages(props.article?.content || ''))
+)
+const articleHtml = computed(() => preparedContent.value.html)
+const outline = computed(() => preparedContent.value.outline)
+const hasOutline = computed(() => outline.value.length > 1)
+
+// 阅读进度与目录高亮：滚动节点是 yk-modal 内部的 yk-scrollbar__wrap
+const articleBodyRef = ref<HTMLElement | null>(null)
+const readingProgress = ref(0)
+const activeHeadingId = ref('')
+let readerScrollEl: HTMLElement | null = null
+let headingElements: HTMLElement[] = []
+let readingFrame = 0
+let readerSetupToken = 0
+let copyResetTimers: number[] = []
+
+const findScrollContainer = (el: HTMLElement | null): HTMLElement | null => {
+    let node = el?.parentElement ?? null
+    while (node) {
+        if (node.classList.contains('yk-scrollbar__wrap')) return node
+        node = node.parentElement
+    }
+    return null
+}
+
+const updateReadingState = () => {
+    const wrap = readerScrollEl
+    const body = articleBodyRef.value
+    if (!wrap || !body) return
+
+    const wrapRect = wrap.getBoundingClientRect()
+    const bodyRect = body.getBoundingClientRect()
+    const scrollable = bodyRect.height - wrap.clientHeight
+    if (scrollable > 80) {
+        const passed = Math.min(Math.max(-(bodyRect.top - wrapRect.top), 0), scrollable)
+        readingProgress.value = Math.round((passed / scrollable) * 100)
+    } else {
+        readingProgress.value = 0
+    }
+
+    let current = ''
+    for (const heading of headingElements) {
+        if (heading.getBoundingClientRect().top - wrapRect.top <= 96) {
+            current = heading.id
+        } else {
+            break
+        }
+    }
+    activeHeadingId.value = current
+}
+
+const scheduleReadingUpdate = () => {
+    if (readingFrame) return
+    readingFrame = window.requestAnimationFrame(() => {
+        readingFrame = 0
+        updateReadingState()
+    })
+}
+
+const scrollToHeading = (id: string) => {
+    const target = document.getElementById(id)
+    const wrap = readerScrollEl
+    if (!target || !wrap) return
+
+    const wrapRect = wrap.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const reducedMotion =
+        window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+    activeHeadingId.value = id
+    wrap.scrollTo({
+        top: Math.max(wrap.scrollTop + targetRect.top - wrapRect.top - 56, 0),
+        behavior: reducedMotion ? 'auto' : 'smooth'
+    })
+}
+
+const copyCodeBlock = async (pre: HTMLElement, button: HTMLButtonElement) => {
+    const text = (
+        pre.querySelector('code')?.textContent ??
+        pre.dataset.codeText ??
+        ''
+    ).replace(/\n$/, '')
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text)
+        } else {
+            const textarea = document.createElement('textarea')
+            textarea.value = text
+            textarea.setAttribute('readonly', '')
+            textarea.style.position = 'fixed'
+            textarea.style.opacity = '0'
+            document.body.appendChild(textarea)
+            textarea.select()
+            const copied = document.execCommand('copy')
+            document.body.removeChild(textarea)
+            if (!copied) throw new Error('copy failed')
+        }
+        button.textContent = '已复制'
+        button.classList.add('copied')
+    } catch {
+        button.textContent = '复制失败'
+    }
+    copyResetTimers.push(window.setTimeout(() => {
+        button.textContent = '复制'
+        button.classList.remove('copied')
+    }, 1600))
+}
+
+const enhanceCodeBlocks = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('pre').forEach((pre) => {
+        if (pre.querySelector(':scope > .code-copy')) return
+        const codeText = pre.querySelector('code')?.textContent ?? pre.textContent ?? ''
+        pre.dataset.codeText = codeText
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'code-copy'
+        button.textContent = '复制'
+        button.setAttribute('aria-label', '复制代码')
+        button.addEventListener('click', () => {
+            void copyCodeBlock(pre, button)
+        })
+        pre.appendChild(button)
+    })
+}
+
+const teardownReader = () => {
+    readerSetupToken += 1
+    if (readerScrollEl) {
+        readerScrollEl.removeEventListener('scroll', scheduleReadingUpdate)
+    }
+    if (readingFrame) window.cancelAnimationFrame(readingFrame)
+    readingFrame = 0
+    copyResetTimers.forEach((timer) => window.clearTimeout(timer))
+    copyResetTimers = []
+    readerScrollEl = null
+    headingElements = []
+    readingProgress.value = 0
+    activeHeadingId.value = ''
+}
+
+const setupReader = async () => {
+    teardownReader()
+    const token = readerSetupToken
+    await nextTick()
+    if (token !== readerSetupToken) return
+
+    const body = articleBodyRef.value
+    if (!body) return
+    readerScrollEl = findScrollContainer(body)
+    if (readerScrollEl) readerScrollEl.scrollTop = 0
+    headingElements = Array.from(body.querySelectorAll<HTMLElement>('h2[id], h3[id]'))
+    enhanceCodeBlocks(body)
+    readerScrollEl?.addEventListener('scroll', scheduleReadingUpdate, { passive: true })
+    scheduleReadingUpdate()
+}
+
+watch(
+    [() => props.open, () => props.article?.id, () => articleHtml.value],
+    ([open]) => {
+        if (open && props.article) {
+            void setupReader()
+        } else {
+            teardownReader()
+        }
+    },
+    { immediate: true, flush: 'post' }
+)
+
+onBeforeUnmount(teardownReader)
+
+watch(
+    [() => props.open, () => props.article?.id],
+    ([open]) => {
+        if (!open || !props.article) {
+            relatedToken += 1
+            relatedArticles.value = []
+            relatedLoading.value = false
+            return
+        }
+        void loadRelatedArticles(props.article)
+    },
+    { immediate: true }
 )
 
 // 头部与后台文章详情共用同一组标签语义：分类、状态、发布日期
@@ -162,6 +420,57 @@ const countView = async (articleId: number) => {
         }
     } catch {
         // 浏览计数失败时保持列表原有数字
+    }
+}
+
+const loadRelatedArticles = async (current: ArticleItem) => {
+    const token = ++relatedToken
+    relatedLoading.value = true
+    relatedArticles.value = []
+
+    // 同时取「最新」「同分类」「同标签」三路候选，合并后按相关度排序。
+    // 任何一路失败都不影响其余结果，最差也会退化成最新文章推荐。
+    const requests = [
+        getPublicArticles({ page: 1, pageSize: 8, sort: 'hot' }),
+    ]
+    if (current.subsetId) {
+        requests.push(
+            getPublicArticles({
+                page: 1,
+                pageSize: 8,
+                subsetId: current.subsetId,
+                sort: 'hot',
+            })
+        )
+    }
+    const firstLabel = parseArticleLabels(current.label)[0]
+    if (firstLabel) {
+        requests.push(
+            getPublicArticles({
+                page: 1,
+                pageSize: 8,
+                label: firstLabel,
+                sort: 'hot',
+            })
+        )
+    }
+
+    try {
+        const results = await Promise.allSettled(requests)
+        if (token !== relatedToken) return
+
+        const pool = new Map<number, ArticleItem>()
+        for (const result of results) {
+            if (result.status !== 'fulfilled' || result.value.code !== 200) continue
+            for (const item of result.value.data?.list || []) {
+                if (item.id !== current.id) pool.set(item.id, item)
+            }
+        }
+        relatedArticles.value = pickRelatedArticles(current, [...pool.values()], 3)
+    } catch {
+        if (token === relatedToken) relatedArticles.value = []
+    } finally {
+        if (token === relatedToken) relatedLoading.value = false
     }
 }
 
@@ -316,6 +625,156 @@ watch(loadKey, async (key, previousKey) => {
     margin: 0 auto;
 }
 
+// 阅读进度条：吸附在弹窗滚动容器顶部
+.reading-progress {
+    position: sticky;
+    top: -4px;
+    z-index: 6;
+    height: 3px;
+    margin: -4px -4px 12px;
+    background: transparent;
+    pointer-events: none;
+
+    span {
+        display: block;
+        width: 0;
+        height: 100%;
+        border-radius: 0 2px 2px 0;
+        background: @pcolor;
+        transition: width 0.12s linear;
+    }
+}
+
+// 正文与右侧目录：目录列宽为 0，靠溢出贴在正文右侧，正文仍保持居中
+.detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 720px) 0;
+    justify-content: center;
+    align-items: start;
+}
+
+.reader-outline {
+    ol {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    li {
+        margin: 0;
+    }
+
+    button {
+        display: block;
+        width: 100%;
+        padding: 5px 8px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: @font-color-m;
+        font-size: 12.5px;
+        line-height: 1.5;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+        transition: color 0.15s ease, background-color 0.15s ease;
+
+        &:hover,
+        &:focus-visible {
+            color: @pcolor;
+            background: var(--pcolor1);
+            outline: none;
+        }
+    }
+
+    li.level-3 button {
+        padding-left: 20px;
+        color: @font-color-s;
+        font-size: 12px;
+    }
+
+    li.active button {
+        color: @pcolor;
+        background: var(--pcolor1);
+        font-weight: 500;
+    }
+}
+
+.reader-outline__title {
+    margin: 0 0 8px;
+    padding: 0 8px;
+    color: @font-color-s;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+}
+
+.reader-outline--desktop {
+    display: none;
+    grid-column: 2;
+    align-self: start;
+    position: sticky;
+    top: 16px;
+    width: 178px;
+    max-height: min(62vh, 520px);
+    margin-left: 28px;
+    padding-left: 14px;
+    overflow: auto;
+    border-left: 1px solid @line-color-s;
+}
+
+.reader-outline--mobile {
+    margin: 0 0 18px;
+    padding: 10px 14px;
+    border: 1px solid @line-color-s;
+    border-radius: 10px;
+    background: @bg-color-s;
+
+    summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: @font-color-m;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        list-style: none;
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+
+        &::before {
+            content: '▸';
+            color: @font-color-s;
+            transition: transform 0.2s ease;
+        }
+    }
+
+    &[open] summary::before {
+        transform: rotate(90deg);
+    }
+
+    nav {
+        margin-top: 10px;
+    }
+}
+
+// 桌面端有足够侧边空间时才展示悬浮目录
+@media (min-width: 1200px) {
+    .reader-outline--desktop {
+        display: block;
+    }
+
+    .reader-outline--mobile {
+        display: none;
+    }
+}
+
 .detail-html {
     font-size: 15.5px;
     line-height: 1.95;
@@ -437,7 +896,9 @@ watch(loadKey, async (key, previousKey) => {
     }
 
     :deep(pre) {
+        position: relative;
         padding: 12px;
+        padding-top: 36px;
         border-radius: 8px;
         background: @bg-color-s;
         overflow-x: auto;
@@ -446,7 +907,175 @@ watch(loadKey, async (key, previousKey) => {
             padding: 0;
             background: transparent;
         }
+
+        .code-copy {
+            position: absolute;
+            top: 7px;
+            right: 8px;
+            padding: 2px 9px;
+            border: 1px solid @line-color-s;
+            border-radius: 999px;
+            background: color-mix(in srgb, @bg-color-l 82%, transparent);
+            color: @font-color-s;
+            font-size: 11px;
+            line-height: 1.6;
+            cursor: pointer;
+            opacity: 0.62;
+            transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+            &:hover,
+            &:focus-visible,
+            &.copied {
+                opacity: 1;
+                border-color: @pcolor;
+                color: @pcolor;
+                outline: none;
+            }
+        }
     }
+}
+
+// 延伸阅读：与正文同宽，三列卡片在窄屏退化为单列
+.related-wrap {
+    max-width: 720px;
+    margin: 44px auto 0;
+    padding-top: 24px;
+    border-top: 1px solid @line-color-s;
+}
+
+.related-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+
+    h2 {
+        margin: 0;
+        font-family: var(--portal-serif);
+        font-size: 19px;
+        font-weight: 600;
+        color: @font-color-l;
+    }
+
+    span {
+        color: @font-color-s;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+    }
+}
+
+.related-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 86px;
+}
+
+.related-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.related-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 0;
+    border: 1px solid @line-color-s;
+    border-radius: 12px;
+    overflow: hidden;
+    background: @bg-color-l;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover,
+    &:focus-visible {
+        transform: translateY(-2px);
+        border-color: color-mix(in srgb, @pcolor 36%, @line-color-s);
+        box-shadow: @shadow-s;
+        outline: none;
+    }
+}
+
+.related-cover {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 24% 18%, color-mix(in srgb, @pcolor 22%, transparent), transparent 58%),
+        @bg-color-s;
+
+    img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.35s ease;
+    }
+
+    &.is-empty {
+        background:
+            linear-gradient(135deg, color-mix(in srgb, @pcolor 16%, transparent), transparent 60%),
+            @bg-color-s;
+    }
+}
+
+.related-card:hover .related-cover img {
+    transform: scale(1.04);
+}
+
+.related-glyph {
+    font-family: var(--portal-serif);
+    font-size: 32px;
+    font-weight: 600;
+    color: @pcolor;
+    opacity: 0.62;
+}
+
+.related-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+    padding: 12px 13px 14px;
+}
+
+.related-meta {
+    color: @pcolor;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.related-title {
+    color: @font-color-l;
+    font-family: var(--portal-serif);
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.related-intro {
+    color: @font-color-s;
+    font-size: 12px;
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 // 评论区：与正文阅读区同宽居中
@@ -472,6 +1101,15 @@ watch(loadKey, async (key, previousKey) => {
     .detail-html {
         font-size: 15px;
         line-height: 1.85;
+    }
+
+    .related-wrap {
+        max-width: 100%;
+        margin-top: 32px;
+    }
+
+    .related-grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>

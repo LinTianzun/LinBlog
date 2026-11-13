@@ -255,6 +255,7 @@
             </div>
         </section>
         <PortalArticleDetail :open="articleVisible" :article="activeArticle" @close="closeArticle"
+            @open-related="openArticle"
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
         <PortalDiaryDetail :open="diaryVisible" :item="activeDiary" @close="closeDiary"
             @view-counted="handleDiaryViewCounted" @interaction-change="handleDiaryInteractionChange" />

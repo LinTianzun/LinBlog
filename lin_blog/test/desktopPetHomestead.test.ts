@@ -2,13 +2,19 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   HOMESTEAD_ANIMALS,
+  HOMESTEAD_BARN_UPGRADES,
+  HOMESTEAD_DECORATIONS,
   HOMESTEAD_FISH_COOLDOWN_MS,
   HOMESTEAD_FERTILIZER_PACK,
+  HOMESTEAD_MAX_PLOT_COUNT,
+  HOMESTEAD_PLOT_EXPANSIONS,
   HOMESTEAD_SEED_PACKS,
   HOMESTEAD_ORDER_COUNT,
   HOMESTEAD_STARTING_COINS,
   animalStatusText,
   buyFertilizerPack,
+  buyHomesteadDecoration,
+  buyHomesteadPlot,
   buySeedPack,
   canCompleteOrder,
   claimHomesteadAchievement,
@@ -23,6 +29,8 @@ import {
   harvestPlot,
   homesteadAchievementCurrent,
   homesteadAchievements,
+  homesteadBarnSpeedMultiplier,
+  homesteadPondCooldownMs,
   isAnimalManureReady,
   isAnimalProduceReady,
   isPlotRipe,
@@ -37,6 +45,8 @@ import {
   resetHomesteadState,
   setHomesteadState,
   tendHomestead,
+  upgradeHomesteadBarn,
+  upgradeHomesteadPond,
   waterPlot,
   type HomesteadState,
 } from '../src/utils/desktopPetHomestead.ts'
@@ -195,6 +205,112 @@ test('商店购买会扣金币并增加种子或肥料库存', () => {
   )
 })
 
+test('菜地扩建会扣金币并增加空地，最高 8 块', () => {
+  let state = createDefaultHomestead(NOW)
+  state = { ...state, coins: 5_000 }
+  const coinsBefore = state.coins
+
+  const first = buyHomesteadPlot(state, NOW)
+  assert.equal(first.changed, true)
+  assert.equal(first.state.plotCount, 5)
+  assert.equal(first.state.plots.length, 5)
+  assert.equal(first.state.plots[4].cropId, null)
+  assert.equal(first.state.coins, coinsBefore - HOMESTEAD_PLOT_EXPANSIONS[0].price)
+
+  let expanded = first.state
+  for (const expansion of HOMESTEAD_PLOT_EXPANSIONS.slice(1)) {
+    const result = buyHomesteadPlot(expanded, NOW)
+    assert.equal(result.changed, true)
+    assert.equal(result.state.plotCount, expansion.plotCount)
+    expanded = result.state
+  }
+  assert.equal(expanded.plotCount, HOMESTEAD_MAX_PLOT_COUNT)
+  assert.equal(expanded.plots.length, HOMESTEAD_MAX_PLOT_COUNT)
+  assert.equal(buyHomesteadPlot(expanded, NOW).reason, 'max')
+
+  const poor = { ...state, coins: 0 }
+  assert.equal(buyHomesteadPlot(poor, NOW).reason, 'coins')
+})
+
+test('畜棚升级会加快动物产出，鱼塘升级会缩短钓鱼冷却', () => {
+  const base = createDefaultHomestead(NOW)
+  const withCoins: HomesteadState = { ...base, coins: 2_000 }
+  const chicken = {
+    lastProduceAt: NOW,
+    lastManureAt: NOW
+  }
+  const waiting: HomesteadState = {
+    ...withCoins,
+    animals: {
+      ...withCoins.animals,
+      chicken
+    }
+  }
+  const almostReady = NOW + HOMESTEAD_ANIMALS.chicken.produceMs * 0.9
+  assert.equal(
+    isAnimalProduceReady(
+      chicken,
+      HOMESTEAD_ANIMALS.chicken,
+      almostReady
+    ),
+    false
+  )
+
+  const barn = upgradeHomesteadBarn(waiting, NOW)
+  assert.equal(barn.changed, true)
+  assert.equal(barn.state.barnLevel, 2)
+  assert.equal(
+    barn.state.coins,
+    withCoins.coins - HOMESTEAD_BARN_UPGRADES[0].price
+  )
+  assert.ok(homesteadBarnSpeedMultiplier(barn.state.barnLevel) < 1)
+  assert.equal(
+    isAnimalProduceReady(
+      chicken,
+      HOMESTEAD_ANIMALS.chicken,
+      almostReady,
+      homesteadBarnSpeedMultiplier(barn.state.barnLevel)
+    ),
+    true
+  )
+
+  const pond = upgradeHomesteadPond(withCoins, NOW)
+  assert.equal(pond.changed, true)
+  assert.equal(pond.state.pondLevel, 2)
+  assert.ok(homesteadPondCooldownMs(pond.state) < HOMESTEAD_FISH_COOLDOWN_MS)
+  const fished = fishPond(pond.state, NOW)
+  assert.equal(
+    isPondReady(fished.state, NOW + homesteadPondCooldownMs(pond.state) - 1),
+    false
+  )
+  assert.equal(
+    isPondReady(fished.state, NOW + homesteadPondCooldownMs(pond.state)),
+    true
+  )
+})
+
+test('装饰购买会去重、校验金币和未知装饰', () => {
+  const state = createDefaultHomestead(NOW)
+  const rich: HomesteadState = { ...state, coins: 1_000 }
+  const lantern = HOMESTEAD_DECORATIONS[0]
+  const bought = buyHomesteadDecoration(rich, lantern.id, NOW)
+  assert.equal(bought.changed, true)
+  assert.deepEqual(bought.state.decorations, [lantern.id])
+  assert.equal(bought.state.coins, rich.coins - lantern.price)
+  assert.equal(
+    buyHomesteadDecoration(bought.state, lantern.id, NOW).reason,
+    'owned'
+  )
+  assert.equal(
+    buyHomesteadDecoration(rich, 'unknown', NOW).reason,
+    'unknown'
+  )
+  assert.equal(
+    buyHomesteadDecoration({ ...rich, coins: 0 }, lantern.id, NOW).reason,
+    'coins'
+  )
+})
+
 test('交付订单会消耗仓库材料并发放金币', () => {
   const state = createDefaultHomestead(NOW)
   const order = {
@@ -266,6 +382,44 @@ test('非法存档会修正菜地、时间戳和仓库数量', () => {
       Number.isFinite(value)
     )
   )
+})
+
+test('旧存档默认四块地，新存档保留扩建等级与装饰', () => {
+  const defaults = createDefaultHomestead(NOW)
+  const legacy = normalizeHomestead(
+    {
+      ...defaults,
+      plotCount: undefined,
+      plots: defaults.plots
+    },
+    NOW
+  )
+  assert.equal(legacy.plotCount, 4)
+  assert.equal(legacy.plots.length, 4)
+  assert.equal(legacy.barnLevel, 1)
+  assert.equal(legacy.pondLevel, 1)
+
+  const expanded = normalizeHomestead(
+    {
+      ...legacy,
+      plotCount: 6,
+      plots: [...legacy.plots, ...Array.from({ length: 2 }, () => ({
+        cropId: null,
+        plantedAt: 0,
+        wateredAt: 0,
+        fertilizedAt: 0
+      }))],
+      barnLevel: 9,
+      pondLevel: 2,
+      decorations: ['lantern', 'bad', 'lantern', 'bench']
+    },
+    NOW
+  )
+  assert.equal(expanded.plotCount, 6)
+  assert.equal(expanded.plots.length, 6)
+  assert.equal(expanded.barnLevel, 3)
+  assert.equal(expanded.pondLevel, 2)
+  assert.deepEqual(expanded.decorations, ['lantern', 'bench'])
 })
 
 test('播种、浇水和收获构成完整生长链', () => {
@@ -427,12 +581,26 @@ test('重置小院返回新的默认状态', () => {
   const changed: HomesteadState = {
     ...state,
     lastFishedAt: NOW,
-    inventory: { ...state.inventory, fish: 9 }
+    inventory: { ...state.inventory, fish: 9 },
+    plotCount: 6,
+    plots: [
+      ...state.plots,
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+      { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 }
+    ],
+    barnLevel: 2,
+    pondLevel: 2,
+    decorations: ['lantern']
   }
   setHomesteadState(changed, NOW)
   assert.equal(getHomesteadState(NOW).inventory.fish, 9)
   const reset = resetHomesteadState(NOW)
   assert.equal(reset.inventory.fish, 0)
+  assert.equal(reset.plotCount, 4)
+  assert.equal(reset.plots.length, 4)
+  assert.equal(reset.barnLevel, 1)
+  assert.equal(reset.pondLevel, 1)
+  assert.deepEqual(reset.decorations, [])
   assert.equal(getHomesteadState(NOW).inventory.fish, 0)
 })
 
@@ -465,6 +633,46 @@ test('同版本小院合并会保留两端资源、产物与订单进度', () =>
   assert.equal(merged.inventory.egg, 2)
   assert.equal(merged.seedStock.tomato, remote.seedStock.tomato)
   assert.equal(merged.orders[0].completedAt, NOW)
+})
+
+test('同版本合并会取较高扩建等级并合并装饰', () => {
+  const local = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      plotCount: 5,
+      plots: [
+        ...createDefaultHomestead(NOW).plots,
+        { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 }
+      ],
+      barnLevel: 2,
+      decorations: ['lantern']
+    },
+    NOW
+  )
+  const remote = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      plotCount: 6,
+      plots: Array.from({ length: 6 }, () => ({
+        cropId: null,
+        plantedAt: 0,
+        wateredAt: 0,
+        fertilizedAt: 0
+      })),
+      barnLevel: 1,
+      pondLevel: 2,
+      decorations: ['bench', 'lantern'],
+      updatedAt: NOW + 10_000
+    },
+    NOW + 10_000
+  )
+  const merged = mergeHomesteads(local, remote, NOW + 20_000)
+
+  assert.equal(merged.plotCount, 6)
+  assert.equal(merged.plots.length, 6)
+  assert.equal(merged.barnLevel, 2)
+  assert.equal(merged.pondLevel, 2)
+  assert.deepEqual(merged.decorations.sort(), ['bench', 'lantern'])
 })
 
 test('小院重置版本会优先于旧设备的高进度', () => {

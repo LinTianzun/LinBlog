@@ -154,6 +154,7 @@
         </section>
 
         <PortalArticleDetail :open="detailVisible" :article="activeArticle" @close="closeArticle"
+            @open-related="openArticle"
             @interaction-change="handleInteractionChange" @view-counted="handleViewCounted" />
     </PortalLayout>
 </template>

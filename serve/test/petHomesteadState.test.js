@@ -185,6 +185,40 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
     ])
 })
 
+test('合并小院会取较高扩建等级并合并装饰', async () => {
+    const emptyPlot = () => ({
+        cropId: null,
+        plantedAt: 0,
+        wateredAt: 0,
+        fertilizedAt: 0
+    })
+    storedRows = [{
+        homestead_state: JSON.stringify(makeState({
+            plotCount: 5,
+            plots: [...makeState().plots, emptyPlot()],
+            barnLevel: 2,
+            decorations: ['lantern'],
+            updatedAt: 1_700_000_100_000
+        })),
+        homestead_version: 0
+    }]
+
+    const saved = await petModel.saveHomesteadState(7, makeState({
+        plotCount: 6,
+        plots: Array.from({ length: 6 }, emptyPlot),
+        barnLevel: 1,
+        pondLevel: 2,
+        decorations: ['bench', 'lantern'],
+        updatedAt: 1_700_000_300_000
+    }))
+
+    assert.equal(saved.plotCount, 6)
+    assert.equal(saved.plots.length, 6)
+    assert.equal(saved.barnLevel, 2)
+    assert.equal(saved.pondLevel, 2)
+    assert.deepEqual(saved.decorations.sort(), ['bench', 'lantern'])
+})
+
 test('更高版本的重置会覆盖旧小院，旧版本不能回灌', async () => {
     storedRows = [{
         homestead_state: JSON.stringify(makeState({
@@ -262,9 +296,13 @@ test('新设备的空白默认小院不会覆盖云端作物与库存', () => {
 test('非法小院存档会被拒绝或修正', async () => {
     assert.equal(petModel.normalizeHomesteadState('{bad json'), null)
     const normalized = petModel.normalizeHomesteadState({
+        plotCount: 99,
         plots: [{ cropId: 'unknown', plantedAt: 'bad' }],
         inventory: { radish: -10, egg: 3.7 },
         coins: -1,
+        barnLevel: 99,
+        pondLevel: -3,
+        decorations: ['lantern', 'bad', 'lantern'],
         orders: [{
             id: 'bad order id',
             requirements: [{ itemId: 'radish', count: 2 }],
@@ -272,11 +310,15 @@ test('非法小院存档会被拒绝或修正', async () => {
         }],
         stateVersion: 2
     })
-    assert.equal(normalized.plots.length, 4)
+    assert.equal(normalized.plotCount, 8)
+    assert.equal(normalized.plots.length, 8)
     assert.equal(normalized.plots[0].cropId, null)
     assert.equal(normalized.inventory.radish, 0)
     assert.equal(normalized.inventory.egg, 4)
     assert.equal(normalized.coins, 0)
+    assert.equal(normalized.barnLevel, 3)
+    assert.equal(normalized.pondLevel, 1)
+    assert.deepEqual(normalized.decorations, ['lantern'])
     assert.deepEqual(normalized.orders, [])
     assert.deepEqual(normalized.claimedAchievements, [])
 })

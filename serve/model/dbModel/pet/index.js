@@ -15,6 +15,17 @@ const HOMESTEAD_ORDER_ITEM_IDS = HOMESTEAD_ITEM_IDS
     .filter((id) => id !== 'fertilizer')
 const HOMESTEAD_ANIMAL_IDS = ['chicken', 'cow']
 const HOMESTEAD_PLOT_COUNT = 4
+const HOMESTEAD_MAX_PLOT_COUNT = 8
+const HOMESTEAD_BARN_MAX_LEVEL = 3
+const HOMESTEAD_POND_MAX_LEVEL = 3
+const HOMESTEAD_DECORATION_IDS = [
+    'lantern',
+    'birdhouse',
+    'bench',
+    'fountain',
+    'pumpkin',
+    'kite'
+]
 const HOMESTEAD_ORDER_COUNT = 3
 const HOMESTEAD_ORDER_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/
 const HOMESTEAD_ACHIEVEMENT_IDS = [
@@ -170,6 +181,14 @@ const normalizeClaimedAchievements = (value) => {
     ))]
 }
 
+const normalizeHomesteadDecorations = (value) => {
+    if (!Array.isArray(value)) return []
+    return [...new Set(value.filter(
+        (item) => typeof item === 'string' &&
+            HOMESTEAD_DECORATION_IDS.includes(item)
+    ))]
+}
+
 function normalizeHomesteadState(payload) {
     const raw = typeof payload === 'string'
         ? parseJson(payload, null)
@@ -177,7 +196,20 @@ function normalizeHomesteadState(payload) {
     if (!raw || typeof raw !== 'object') return null
 
     const rawPlots = Array.isArray(raw.plots) ? raw.plots : []
-    const plots = Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+    const plotCount = Math.min(
+        HOMESTEAD_MAX_PLOT_COUNT,
+        Math.max(
+            HOMESTEAD_PLOT_COUNT,
+            clampInt(
+                raw.plotCount,
+                HOMESTEAD_PLOT_COUNT,
+                HOMESTEAD_MAX_PLOT_COUNT,
+                Math.max(HOMESTEAD_PLOT_COUNT, rawPlots.length)
+            ),
+            rawPlots.length
+        )
+    )
+    const plots = Array.from({ length: plotCount }, (_, index) => {
         const item = rawPlots[index]
         if (!item || typeof item !== 'object') return emptyHomesteadPlot()
         const cropId = HOMESTEAD_CROP_IDS.includes(item.cropId)
@@ -229,6 +261,7 @@ function normalizeHomesteadState(payload) {
         : {}
     return {
         plots,
+        plotCount,
         animals,
         lastFishedAt: safeTimestamp(raw.lastFishedAt),
         inventory,
@@ -256,6 +289,9 @@ function normalizeHomesteadState(payload) {
             count: clampInt(rawAutoHelp.count, 0, 99, 0),
             total: clampInt(rawAutoHelp.total, 0, 1_000_000_000, 0)
         },
+        barnLevel: clampInt(raw.barnLevel, 1, HOMESTEAD_BARN_MAX_LEVEL, 1),
+        pondLevel: clampInt(raw.pondLevel, 1, HOMESTEAD_POND_MAX_LEVEL, 1),
+        decorations: normalizeHomesteadDecorations(raw.decorations),
         stateVersion: safeTimestamp(raw.stateVersion),
         updatedAt: safeTimestamp(raw.updatedAt)
     }
@@ -354,7 +390,17 @@ const homesteadPlotEventAt = (plot) =>
     Math.max(plot.plantedAt, plot.wateredAt, plot.fertilizedAt)
 
 function mergeHomesteadPlots(local, remote) {
-    return Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+    const plotCount = Math.min(
+        HOMESTEAD_MAX_PLOT_COUNT,
+        Math.max(
+            HOMESTEAD_PLOT_COUNT,
+            local.plotCount,
+            remote.plotCount,
+            local.plots.length,
+            remote.plots.length
+        )
+    )
+    return Array.from({ length: plotCount }, (_, index) => {
         const a = local.plots[index] || emptyHomesteadPlot()
         const b = remote.plots[index] || emptyHomesteadPlot()
         if (!a.cropId && !b.cropId) return emptyHomesteadPlot()
@@ -414,7 +460,11 @@ const isFreshHomesteadState = (state) =>
     state.seedStock.strawberry === 1 &&
     state.coins === 80 &&
     Object.values(state.totals).every((value) => value === 0) &&
-    state.autoHelp.total === 0
+    state.autoHelp.total === 0 &&
+    state.plotCount === HOMESTEAD_PLOT_COUNT &&
+    state.barnLevel === 1 &&
+    state.pondLevel === 1 &&
+    state.decorations.length === 0
 
 /** 小院快照合并：版本优先，同版本保留两端更高的资源进度 */
 function mergeHomesteadStates(existing, incoming) {
@@ -470,6 +520,7 @@ function mergeHomesteadStates(existing, incoming) {
     }
     return {
         plots: mergeHomesteadPlots(a, b),
+        plotCount: Math.max(a.plotCount, b.plotCount),
         animals,
         lastFishedAt: Math.max(a.lastFishedAt, b.lastFishedAt),
         inventory,
@@ -502,6 +553,11 @@ function mergeHomesteadStates(existing, incoming) {
                     : autoHelpSource.count,
             total: Math.max(a.autoHelp.total, b.autoHelp.total)
         },
+        barnLevel: Math.max(a.barnLevel, b.barnLevel),
+        pondLevel: Math.max(a.pondLevel, b.pondLevel),
+        decorations: [
+            ...new Set([...a.decorations, ...b.decorations])
+        ],
         stateVersion: a.stateVersion,
         updatedAt: Math.max(a.updatedAt, b.updatedAt)
     }

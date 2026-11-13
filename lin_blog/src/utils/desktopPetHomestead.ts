@@ -94,8 +94,30 @@ export interface HomesteadOrderState {
   completedAt: number
 }
 
+export type HomesteadDecorationId =
+  | 'lantern'
+  | 'birdhouse'
+  | 'bench'
+  | 'fountain'
+  | 'pumpkin'
+  | 'kite'
+
+export interface HomesteadDecorationDefinition {
+  id: HomesteadDecorationId
+  name: string
+  icon: string
+  price: number
+  description: string
+}
+
+export interface HomesteadUpgradeDefinition {
+  level: number
+  price: number
+}
+
 export interface HomesteadState {
   plots: HomesteadPlotState[]
+  plotCount: number
   animals: Record<HomesteadAnimalId, HomesteadAnimalState>
   lastFishedAt: number
   inventory: Record<HomesteadItemId, number>
@@ -106,12 +128,18 @@ export interface HomesteadState {
   claimedAchievements: string[]
   totals: HomesteadTotals
   autoHelp: HomesteadAutoHelpState
+  barnLevel: number
+  pondLevel: number
+  decorations: HomesteadDecorationId[]
   /** 小院独立版本号，重置后递增，阻止旧设备把进度合回来 */
   stateVersion: number
   updatedAt: number
 }
 
 export const HOMESTEAD_PLOT_COUNT = 4
+export const HOMESTEAD_MAX_PLOT_COUNT = 8
+export const HOMESTEAD_BARN_MAX_LEVEL = 3
+export const HOMESTEAD_POND_MAX_LEVEL = 3
 export const HOMESTEAD_FISH_COOLDOWN_MS = 3 * 60_000
 export const HOMESTEAD_WATER_BONUS_RATE = 0.2
 export const HOMESTEAD_FERTILIZER_BONUS_RATE = 0.2
@@ -127,6 +155,88 @@ export const HOMESTEAD_SEED_PACKS: Record<
   strawberry: { price: 45, count: 3 }
 }
 export const HOMESTEAD_FERTILIZER_PACK = { price: 24, count: 2 } as const
+export const HOMESTEAD_PLOT_EXPANSIONS: readonly {
+  plotCount: number
+  price: number
+}[] = [
+  { plotCount: 5, price: 150 },
+  { plotCount: 6, price: 260 },
+  { plotCount: 7, price: 420 },
+  { plotCount: 8, price: 640 }
+]
+export const HOMESTEAD_BARN_UPGRADES: readonly HomesteadUpgradeDefinition[] = [
+  { level: 2, price: 300 },
+  { level: 3, price: 720 }
+]
+export const HOMESTEAD_POND_UPGRADES: readonly HomesteadUpgradeDefinition[] = [
+  { level: 2, price: 260 },
+  { level: 3, price: 600 }
+]
+export const HOMESTEAD_DECORATIONS: readonly HomesteadDecorationDefinition[] =
+  [
+    {
+      id: 'lantern',
+      name: '门前灯笼',
+      icon: '🏮',
+      price: 90,
+      description: '在院子里挂一盏暖光灯笼。'
+    },
+    {
+      id: 'birdhouse',
+      name: '小鸟屋',
+      icon: '🐦',
+      price: 140,
+      description: '给路过的小鸟准备一个落脚点。'
+    },
+    {
+      id: 'bench',
+      name: '木长椅',
+      icon: '🪑',
+      price: 180,
+      description: '忙完农活，坐下来歇一会儿。'
+    },
+    {
+      id: 'fountain',
+      name: '石艺喷泉',
+      icon: '⛲',
+      price: 320,
+      description: '让院子多一点清凉的水声。'
+    },
+    {
+      id: 'pumpkin',
+      name: '南瓜角',
+      icon: '🎃',
+      price: 120,
+      description: '一小片金灿灿的南瓜装饰。'
+    },
+    {
+      id: 'kite',
+      name: '风筝',
+      icon: '🪁',
+      price: 100,
+      description: '天气好的时候，它会在院子上空飘。'
+    }
+  ]
+
+export function homesteadBarnSpeedMultiplier(level: number): number {
+  const normalized = Math.min(
+    HOMESTEAD_BARN_MAX_LEVEL,
+    Math.max(1, Math.round(Number(level) || 1))
+  )
+  return 1 - (normalized - 1) * 0.15
+}
+
+export function homesteadPondCooldownMs(
+  state: Pick<HomesteadState, 'pondLevel'>
+): number {
+  const normalized = Math.min(
+    HOMESTEAD_POND_MAX_LEVEL,
+    Math.max(1, Math.round(Number(state.pondLevel) || 1))
+  )
+  return Math.round(
+    HOMESTEAD_FISH_COOLDOWN_MS * (1 - (normalized - 1) * 0.2)
+  )
+}
 
 export const HOMESTEAD_ACHIEVEMENTS: readonly HomesteadAchievementDefinition[] =
   [
@@ -361,6 +471,10 @@ const HOMESTEAD_ACHIEVEMENT_IDS = new Set(
   HOMESTEAD_ACHIEVEMENTS.map((achievement) => achievement.id)
 )
 
+const HOMESTEAD_DECORATION_IDS = new Set(
+  HOMESTEAD_DECORATIONS.map((decoration) => decoration.id)
+)
+
 const DEFAULT_SEED_STOCK: Record<HomesteadCropId, number> = {
   radish: 4,
   tomato: 3,
@@ -541,6 +655,23 @@ const normalizeClaimedAchievements = (value: unknown): string[] => {
   return result
 }
 
+const normalizeDecorations = (
+  value: unknown
+): HomesteadDecorationId[] => {
+  if (!Array.isArray(value)) return []
+  const result: HomesteadDecorationId[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string' || !HOMESTEAD_DECORATION_IDS.has(item as HomesteadDecorationId)) {
+      continue
+    }
+    if (seen.has(item)) continue
+    seen.add(item)
+    result.push(item as HomesteadDecorationId)
+  }
+  return result
+}
+
 const normalizeDailyOrders = (
   value: unknown,
   now: number
@@ -605,6 +736,7 @@ export function createDefaultHomestead(
   const day = homesteadDayKey(now)
   return {
     plots: Array.from({ length: HOMESTEAD_PLOT_COUNT }, emptyPlot),
+    plotCount: HOMESTEAD_PLOT_COUNT,
     animals: {
       chicken: {
         lastProduceAt: now - HOMESTEAD_ANIMALS.chicken.produceMs,
@@ -624,6 +756,9 @@ export function createDefaultHomestead(
     claimedAchievements: [],
     totals: emptyTotals(),
     autoHelp: defaultAutoHelp(now),
+    barnLevel: 1,
+    pondLevel: 1,
+    decorations: [],
     stateVersion: intOr(stateVersion, 0, Number.MAX_SAFE_INTEGER),
     updatedAt: now
   }
@@ -639,7 +774,11 @@ const isFreshHomestead = (state: HomesteadState): boolean =>
   state.coins === HOMESTEAD_STARTING_COINS &&
   state.claimedAchievements.length === 0 &&
   Object.values(state.totals).every((value) => value === 0) &&
-  state.autoHelp.total === 0
+  state.autoHelp.total === 0 &&
+  state.plotCount === HOMESTEAD_PLOT_COUNT &&
+  state.barnLevel === 1 &&
+  state.pondLevel === 1 &&
+  state.decorations.length === 0
 
 export function normalizeHomestead(
   value?: Partial<HomesteadState> | null,
@@ -647,7 +786,15 @@ export function normalizeHomestead(
 ): HomesteadState {
   const raw = (value && typeof value === 'object' ? value : {}) as Partial<HomesteadState>
   const rawPlots = Array.isArray(raw.plots) ? raw.plots : []
-  const plots = Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+  const plotCount = Math.min(
+    HOMESTEAD_MAX_PLOT_COUNT,
+    Math.max(
+      HOMESTEAD_PLOT_COUNT,
+      intOr(raw.plotCount, rawPlots.length || HOMESTEAD_PLOT_COUNT, HOMESTEAD_MAX_PLOT_COUNT),
+      rawPlots.length
+    )
+  )
+  const plots = Array.from({ length: plotCount }, (_, index) => {
     const item = rawPlots[index]
     const crop = getHomesteadCrop(item?.cropId)
     if (!crop) return emptyPlot()
@@ -725,6 +872,7 @@ export function normalizeHomestead(
       : createDailyOrders(today)
   return {
     plots,
+    plotCount,
     animals,
     lastFishedAt: Math.min(
       now,
@@ -756,6 +904,15 @@ export function normalizeHomestead(
           : 0,
       total: intOr(rawAutoHelp.total, 0)
     },
+    barnLevel: Math.min(
+      HOMESTEAD_BARN_MAX_LEVEL,
+      Math.max(1, intOr(raw.barnLevel, 1, HOMESTEAD_BARN_MAX_LEVEL))
+    ),
+    pondLevel: Math.min(
+      HOMESTEAD_POND_MAX_LEVEL,
+      Math.max(1, intOr(raw.pondLevel, 1, HOMESTEAD_POND_MAX_LEVEL))
+    ),
+    decorations: normalizeDecorations(raw.decorations),
     stateVersion: intOr(raw.stateVersion, 0, Number.MAX_SAFE_INTEGER),
     updatedAt: Math.min(now, safeTimestamp(raw.updatedAt, now))
   }
@@ -803,7 +960,20 @@ const mergeHomesteadPlots = (
   local: HomesteadState,
   remote: HomesteadState
 ): HomesteadPlotState[] =>
-  Array.from({ length: HOMESTEAD_PLOT_COUNT }, (_, index) => {
+  Array.from(
+    {
+      length: Math.min(
+        HOMESTEAD_MAX_PLOT_COUNT,
+        Math.max(
+          HOMESTEAD_PLOT_COUNT,
+          local.plotCount,
+          remote.plotCount,
+          local.plots.length,
+          remote.plots.length
+        )
+      )
+    },
+    (_, index) => {
     const a = local.plots[index] || emptyPlot()
     const b = remote.plots[index] || emptyPlot()
     if (!a.cropId && !b.cropId) return emptyPlot()
@@ -825,7 +995,8 @@ const mergeHomesteadPlots = (
       wateredAt: Math.max(a.wateredAt, b.wateredAt),
       fertilizedAt: Math.max(a.fertilizedAt, b.fertilizedAt)
     }
-  })
+    }
+  )
 
 const mergeHomesteadOrders = (
   local: HomesteadState,
@@ -901,6 +1072,7 @@ export function mergeHomesteads(
   return normalizeHomestead(
     {
       plots: mergeHomesteadPlots(a, b),
+      plotCount: Math.max(a.plotCount, b.plotCount),
       animals: {
         chicken: {
           lastProduceAt: Math.max(
@@ -955,6 +1127,11 @@ export function mergeHomesteads(
             : autoHelpSource.count,
         total: Math.max(a.autoHelp.total, b.autoHelp.total)
       },
+      barnLevel: Math.max(a.barnLevel, b.barnLevel),
+      pondLevel: Math.max(a.pondLevel, b.pondLevel),
+      decorations: [
+        ...new Set([...a.decorations, ...b.decorations])
+      ],
       stateVersion: a.stateVersion,
       updatedAt: Math.max(a.updatedAt, b.updatedAt)
     },
@@ -1000,40 +1177,57 @@ export function isPlotRipe(
 export function animalProduceRemainingMs(
   animal: HomesteadAnimalState,
   definition: HomesteadAnimalDefinition,
-  now = Date.now()
+  now = Date.now(),
+  speedMultiplier = 1
 ): number {
-  return Math.max(0, animal.lastProduceAt + definition.produceMs - now)
+  const duration = Math.round(
+    definition.produceMs * Math.min(1, Math.max(0.4, speedMultiplier))
+  )
+  return Math.max(0, animal.lastProduceAt + duration - now)
 }
 
 export function animalManureRemainingMs(
   animal: HomesteadAnimalState,
   definition: HomesteadAnimalDefinition,
-  now = Date.now()
+  now = Date.now(),
+  speedMultiplier = 1
 ): number {
-  return Math.max(0, animal.lastManureAt + definition.manureMs - now)
+  const duration = Math.round(
+    definition.manureMs * Math.min(1, Math.max(0.4, speedMultiplier))
+  )
+  return Math.max(0, animal.lastManureAt + duration - now)
 }
 
 export function isAnimalProduceReady(
   animal: HomesteadAnimalState,
   definition: HomesteadAnimalDefinition,
-  now = Date.now()
+  now = Date.now(),
+  speedMultiplier = 1
 ): boolean {
-  return animalProduceRemainingMs(animal, definition, now) <= 0
+  return (
+    animalProduceRemainingMs(animal, definition, now, speedMultiplier) <= 0
+  )
 }
 
 export function isAnimalManureReady(
   animal: HomesteadAnimalState,
   definition: HomesteadAnimalDefinition,
-  now = Date.now()
+  now = Date.now(),
+  speedMultiplier = 1
 ): boolean {
-  return animalManureRemainingMs(animal, definition, now) <= 0
+  return (
+    animalManureRemainingMs(animal, definition, now, speedMultiplier) <= 0
+  )
 }
 
 export function pondRemainingMs(
   state: HomesteadState,
   now = Date.now()
 ): number {
-  return Math.max(0, state.lastFishedAt + HOMESTEAD_FISH_COOLDOWN_MS - now)
+  return Math.max(
+    0,
+    state.lastFishedAt + homesteadPondCooldownMs(state) - now
+  )
 }
 
 export function isPondReady(
@@ -1112,6 +1306,157 @@ export function buyFertilizerPack(
       fertilizer: state.inventory.fertilizer + HOMESTEAD_FERTILIZER_PACK.count
     },
     updatedAt: now
+  }
+}
+
+export type HomesteadPurchaseReason =
+  | 'ok'
+  | 'max'
+  | 'coins'
+  | 'owned'
+  | 'unknown'
+
+export interface HomesteadPurchaseResult {
+  state: HomesteadState
+  changed: boolean
+  reason: HomesteadPurchaseReason
+}
+
+export function nextHomesteadPlotExpansion(
+  state: HomesteadState
+): { plotCount: number; price: number } | null {
+  return (
+    HOMESTEAD_PLOT_EXPANSIONS.find(
+      (expansion) => expansion.plotCount > state.plotCount
+    ) || null
+  )
+}
+
+export function buyHomesteadPlot(
+  state: HomesteadState,
+  now = Date.now()
+): HomesteadPurchaseResult {
+  const expansion = nextHomesteadPlotExpansion(state)
+  if (!expansion) return { state, changed: false, reason: 'max' }
+  if (state.coins < expansion.price) {
+    return { state, changed: false, reason: 'coins' }
+  }
+  const missingPlots = Math.max(
+    0,
+    expansion.plotCount - state.plots.length
+  )
+  return {
+    state: {
+      ...state,
+      plotCount: expansion.plotCount,
+      plots: [
+        ...state.plots,
+        ...Array.from({ length: missingPlots }, emptyPlot)
+      ],
+      coins: state.coins - expansion.price,
+      updatedAt: now
+    },
+    changed: true,
+    reason: 'ok'
+  }
+}
+
+export function nextHomesteadBarnUpgrade(
+  state: HomesteadState
+): HomesteadUpgradeDefinition | null {
+  return (
+    HOMESTEAD_BARN_UPGRADES.find(
+      (upgrade) => upgrade.level > state.barnLevel
+    ) || null
+  )
+}
+
+export function upgradeHomesteadBarn(
+  state: HomesteadState,
+  now = Date.now()
+): HomesteadPurchaseResult {
+  const upgrade = nextHomesteadBarnUpgrade(state)
+  if (!upgrade) return { state, changed: false, reason: 'max' }
+  if (state.coins < upgrade.price) {
+    return { state, changed: false, reason: 'coins' }
+  }
+  return {
+    state: {
+      ...state,
+      barnLevel: upgrade.level,
+      coins: state.coins - upgrade.price,
+      updatedAt: now
+    },
+    changed: true,
+    reason: 'ok'
+  }
+}
+
+export function nextHomesteadPondUpgrade(
+  state: HomesteadState
+): HomesteadUpgradeDefinition | null {
+  return (
+    HOMESTEAD_POND_UPGRADES.find(
+      (upgrade) => upgrade.level > state.pondLevel
+    ) || null
+  )
+}
+
+export function upgradeHomesteadPond(
+  state: HomesteadState,
+  now = Date.now()
+): HomesteadPurchaseResult {
+  const upgrade = nextHomesteadPondUpgrade(state)
+  if (!upgrade) return { state, changed: false, reason: 'max' }
+  if (state.coins < upgrade.price) {
+    return { state, changed: false, reason: 'coins' }
+  }
+  return {
+    state: {
+      ...state,
+      pondLevel: upgrade.level,
+      coins: state.coins - upgrade.price,
+      updatedAt: now
+    },
+    changed: true,
+    reason: 'ok'
+  }
+}
+
+export function getHomesteadDecoration(
+  decorationId: string
+): HomesteadDecorationDefinition | null {
+  return (
+    HOMESTEAD_DECORATIONS.find(
+      (decoration) => decoration.id === decorationId
+    ) || null
+  )
+}
+
+export function buyHomesteadDecoration(
+  state: HomesteadState,
+  decorationId: string,
+  now = Date.now()
+): HomesteadPurchaseResult {
+  const decoration = getHomesteadDecoration(decorationId)
+  if (!decoration) {
+    return { state, changed: false, reason: 'unknown' }
+  }
+  if (state.decorations.includes(decoration.id)) {
+    return { state, changed: false, reason: 'owned' }
+  }
+  if (state.coins < decoration.price) {
+    return { state, changed: false, reason: 'coins' }
+  }
+  return {
+    state: {
+      ...state,
+      coins: state.coins - decoration.price,
+      decorations: [...state.decorations, decoration.id],
+      updatedAt: now
+    },
+    changed: true,
+    reason: 'ok'
   }
 }
 
@@ -1267,9 +1612,10 @@ export function collectAnimal(
   const inventory = { ...state.inventory }
   const totals = { ...state.totals }
   const nextAnimal = { ...animal }
+  const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
   let changed = false
 
-  if (isAnimalProduceReady(animal, definition, now)) {
+  if (isAnimalProduceReady(animal, definition, now, speedMultiplier)) {
     inventory[definition.produceItem] += 1
     totals[definition.produceItem === 'egg' ? 'eggs' : 'milk'] += 1
     nextAnimal.lastProduceAt = now
@@ -1279,7 +1625,7 @@ export function collectAnimal(
     })
     changed = true
   }
-  if (isAnimalManureReady(animal, definition, now)) {
+  if (isAnimalManureReady(animal, definition, now, speedMultiplier)) {
     inventory.fertilizer += 1
     totals.manure += 1
     nextAnimal.lastManureAt = now
@@ -1439,15 +1785,26 @@ export function animalStatusText(
 ): string {
   const definition = HOMESTEAD_ANIMALS[animalId]
   const animal = state.animals[animalId]
-  const produce = isAnimalProduceReady(animal, definition, now)
+  const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
+  const produce = isAnimalProduceReady(
+    animal,
+    definition,
+    now,
+    speedMultiplier
+  )
     ? `${definition.produceName}可以收了`
     : `${definition.produceName}还要 ${formatHomesteadDuration(
-        animalProduceRemainingMs(animal, definition, now)
+        animalProduceRemainingMs(animal, definition, now, speedMultiplier)
       )}`
-  const manure = isAnimalManureReady(animal, definition, now)
+  const manure = isAnimalManureReady(
+    animal,
+    definition,
+    now,
+    speedMultiplier
+  )
     ? '可以清理粪便'
     : `粪便还要 ${formatHomesteadDuration(
-        animalManureRemainingMs(animal, definition, now)
+        animalManureRemainingMs(animal, definition, now, speedMultiplier)
       )}`
   return `${definition.name}：${produce}，${manure}`
 }
