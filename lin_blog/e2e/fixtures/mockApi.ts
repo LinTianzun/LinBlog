@@ -1070,6 +1070,16 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === `/api/public/article/${galleryItem.id}`) {
+      await fulfill(galleryItem)
+      return
+    }
+
+    if (method === 'GET' && path === `/api/public/diary/${diaryItem.id}`) {
+      await fulfill(diaryItem)
+      return
+    }
+
     // 系列页与文章详情会主动读取公开系列；单个用例可注册更具体的 route 覆盖。
     if (method === 'GET' && path === '/api/public/collection') {
       await fulfill({ count: 0, list: [] })
@@ -1515,6 +1525,27 @@ export async function installApiMock(page: Page): Promise<MockState> {
 
     if (method === 'GET' && path === `/api/public/praise/${article.id}`) {
       await fulfill({ liked: false, likes: article.likes })
+      return
+    }
+
+    if (method === 'GET' && path === `/api/public/praise/${galleryItem.id}`) {
+      await fulfill({ liked: false, likes: galleryItem.likes })
+      return
+    }
+
+    if (method === 'GET' && path === `/api/public/diary/praise/${diaryItem.id}`) {
+      await fulfill({ liked: false, likes: diaryItem.likes })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/public/diary/comment') {
+      await fulfill({
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        totalPage: 1,
+        list: [reportedComment],
+      })
       return
     }
 

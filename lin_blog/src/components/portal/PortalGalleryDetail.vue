@@ -157,10 +157,10 @@ const closeLightbox = () => {
 }
 
 // 打开图库即计一次浏览；后端按访客去重，失败不影响图片展示
-const countView = async (galleryId: number) => {
+const countView = async (galleryId: number, token: number) => {
     try {
         const result = await recordView('image', galleryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             views.value = result.data.views
             emit('view-counted', { id: galleryId, views: result.data.views })
         }
@@ -169,10 +169,10 @@ const countView = async (galleryId: number) => {
     }
 }
 
-const loadLikeState = async (galleryId: number) => {
+const loadLikeState = async (galleryId: number, token: number) => {
     try {
         const result = await getLikeState(galleryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
         }
     } catch {
@@ -192,6 +192,7 @@ const onCommentsChange = (total: number) => {
 
 const handleLike = async () => {
     const galleryId = props.item?.id
+    const token = detailToken
     if (!galleryId || likeBusy.value) return
 
     if (!canInteract.value) {
@@ -202,7 +203,7 @@ const handleLike = async () => {
     likeBusy.value = true
     try {
         const result = await toggleLike(galleryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
             emit('interaction-change', {
                 id: galleryId,
@@ -222,10 +223,13 @@ const handleLike = async () => {
 // 监听稳定的字符串键而非 [open, id] 数组
 const loadKey = computed(() => (props.open && props.item?.id ? `${props.item.id}` : ''))
 
+let detailToken = 0
+
 watch(loadKey, async (key, previousKey) => {
     if (key === previousKey) return
 
     if (!key) {
+        detailToken += 1
         commentTotal.value = 0
         detailLoading.value = false
         likePending.value = false
@@ -236,14 +240,15 @@ watch(loadKey, async (key, previousKey) => {
     const galleryId = Number(key)
     if (!Number.isFinite(galleryId)) return
 
+    const token = ++detailToken
     detailLoading.value = true
     likePending.value = true
     likeState.value = { liked: false, likes: props.item?.likes ?? 0 }
     views.value = props.item?.views ?? 0
-    await loadLikeState(galleryId)
-    likePending.value = false
-    await countView(galleryId)
-    detailLoading.value = false
+    await loadLikeState(galleryId, token)
+    if (token === detailToken) likePending.value = false
+    await countView(galleryId, token)
+    if (token === detailToken) detailLoading.value = false
 }, { immediate: true })
 </script>
 

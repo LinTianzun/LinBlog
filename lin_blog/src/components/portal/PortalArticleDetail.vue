@@ -485,10 +485,10 @@ const handleVisibleChange = (value: boolean) => {
     if (!value) emit('close')
 }
 
-const loadLikeState = async (articleId: number) => {
+const loadLikeState = async (articleId: number, token: number) => {
     try {
         const result = await getLikeState(articleId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
         }
     } catch {
@@ -497,10 +497,10 @@ const loadLikeState = async (articleId: number) => {
 }
 
 // 打开详情即计一次浏览；后端按访客去重，失败不影响正文展示
-const countView = async (articleId: number) => {
+const countView = async (articleId: number, token: number) => {
     try {
         const result = await recordView('article', articleId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             views.value = result.data.views
             emit('view-counted', { views: result.data.views })
         }
@@ -571,6 +571,7 @@ const openCover = (): void => {
 
 const handleLike = async () => {
     const articleId = props.article?.id
+    const token = detailToken
     if (!articleId || likeBusy.value) return
 
     if (!canInteract.value) {
@@ -581,7 +582,7 @@ const handleLike = async () => {
     likeBusy.value = true
     try {
         const result = await toggleLike(articleId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
             emit('interaction-change', {
                 likes: result.data.likes,
@@ -599,11 +600,14 @@ const handleLike = async () => {
 
 const loadKey = computed(() => (props.open && props.article?.id ? `${props.article.id}` : ''))
 
+let detailToken = 0
+
 watch(loadKey, async (key, previousKey) => {
     // 同一个 key 不再重复加载，避免父组件更新引起的抖动
     if (key === previousKey) return
 
     if (!key) {
+        detailToken += 1
         commentTotal.value = 0
         detailLoading.value = false
         likePending.value = false
@@ -614,6 +618,7 @@ watch(loadKey, async (key, previousKey) => {
     const articleId = Number(key)
     if (!Number.isFinite(articleId)) return
 
+    const token = ++detailToken
     {
         // modal 打开期间加载点赞态，用遮罩盖住加载中的跳变
         // 评论由 PortalCommentSection 自己按 targetId 加载
@@ -626,10 +631,10 @@ watch(loadKey, async (key, previousKey) => {
             likes: props.article?.likes ?? 0
         }
         views.value = props.article?.views ?? 0
-        await loadLikeState(articleId)
-        likePending.value = false
-        await countView(articleId)
-        detailLoading.value = false
+        await loadLikeState(articleId, token)
+        if (token === detailToken) likePending.value = false
+        await countView(articleId, token)
+        if (token === detailToken) detailLoading.value = false
     }
 }, { immediate: true })
 </script>

@@ -142,10 +142,10 @@ const handleVisibleChange = (value: boolean) => {
 }
 
 // 打开随笔即计一次浏览；后端按访客去重，失败不影响正文展示
-const countView = async (diaryId: number) => {
+const countView = async (diaryId: number, token: number) => {
     try {
         const result = await recordView('diary', diaryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             views.value = result.data.views
             emit('view-counted', { id: diaryId, views: result.data.views })
         }
@@ -154,10 +154,10 @@ const countView = async (diaryId: number) => {
     }
 }
 
-const loadLikeState = async (diaryId: number) => {
+const loadLikeState = async (diaryId: number, token: number) => {
     try {
         const result = await getDiaryLikeState(diaryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
         }
     } catch {
@@ -177,6 +177,7 @@ const onCommentsChange = (total: number) => {
 
 const handleLike = async () => {
     const diaryId = props.item?.id
+    const token = detailToken
     if (!diaryId || likeBusy.value) return
 
     if (!canInteract.value) {
@@ -187,7 +188,7 @@ const handleLike = async () => {
     likeBusy.value = true
     try {
         const result = await toggleDiaryLike(diaryId)
-        if (result.code === 200 && result.data) {
+        if (token === detailToken && result.code === 200 && result.data) {
             likeState.value = result.data
             emit('interaction-change', {
                 id: diaryId,
@@ -208,10 +209,13 @@ const handleLike = async () => {
 // 父组件任何一次重渲染（如浏览量回写）都会误触发整套加载流程，导致图标反复重建闪烁
 const loadKey = computed(() => (props.open && props.item?.id ? `${props.item.id}` : ''))
 
+let detailToken = 0
+
 watch(loadKey, async (key, previousKey) => {
     if (key === previousKey) return
 
     if (!key) {
+        detailToken += 1
         commentTotal.value = 0
         detailLoading.value = false
         likePending.value = false
@@ -221,16 +225,17 @@ watch(loadKey, async (key, previousKey) => {
     const diaryId = Number(key)
     if (!Number.isFinite(diaryId)) return
 
+    const token = ++detailToken
     detailLoading.value = true
     // 计数先用列表数据兜底避免闪成 0；图标等真实状态返回后再渲染
     likePending.value = true
     likeState.value = { liked: false, likes: props.item?.likes ?? 0 }
     views.value = props.item?.views ?? 0
     // 评论由 PortalCommentSection 自己按 targetId 加载
-    await loadLikeState(diaryId)
-    likePending.value = false
-    await countView(diaryId)
-    detailLoading.value = false
+    await loadLikeState(diaryId, token)
+    if (token === detailToken) likePending.value = false
+    await countView(diaryId, token)
+    if (token === detailToken) detailLoading.value = false
 }, { immediate: true })
 
 const formatDate = (value: string) => {
