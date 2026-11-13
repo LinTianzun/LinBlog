@@ -3,9 +3,9 @@ import { installApiMock, seedSession } from './fixtures/mockApi'
 
 const seedHomestead = async (
   page: Page,
-  options: { cooldown?: boolean } = {}
+  options: { cooldown?: boolean; animalsOnly?: boolean } = {}
 ) => {
-  await page.addInitScript(({ cooldown }) => {
+  await page.addInitScript(({ cooldown, animalsOnly }) => {
     const now = Date.now()
     const day = [
       new Date(now).getFullYear(),
@@ -15,20 +15,33 @@ const seedHomestead = async (
     localStorage.setItem(
       'LINBLOG_DESKTOP_PET_HOMESTEAD:u7',
       JSON.stringify({
-        plots: [
-          {
-            cropId: 'radish',
-            plantedAt: now - 10 * 60_000,
-            wateredAt: now - 9 * 60_000,
-            fertilizedAt: 0,
-          },
-          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
-          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
-          { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
-        ],
+        plots: animalsOnly
+          ? Array.from({ length: 4 }, () => ({
+              cropId: null,
+              plantedAt: 0,
+              wateredAt: 0,
+              fertilizedAt: 0,
+            }))
+          : [
+              {
+                cropId: 'radish',
+                plantedAt: now - 10 * 60_000,
+                wateredAt: now - 9 * 60_000,
+                fertilizedAt: 0,
+              },
+              { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+              { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+              { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
+            ],
         animals: {
-          chicken: { lastProduceAt: now, lastManureAt: now },
-          cow: { lastProduceAt: now, lastManureAt: now },
+          chicken: {
+            lastProduceAt: animalsOnly ? now - 10 * 60_000 : now,
+            lastManureAt: animalsOnly ? now - 10 * 60_000 : now,
+          },
+          cow: {
+            lastProduceAt: animalsOnly ? now - 10 * 60_000 : now,
+            lastManureAt: animalsOnly ? now - 10 * 60_000 : now,
+          },
         },
         lastFishedAt: now,
         inventory: {
@@ -114,4 +127,38 @@ test('手动去帮忙会尊重冷却并给出提示', async ({ page }) => {
     timeout: 5_000,
   })
   await expect(page.locator('.pet-homestead-auto')).toContainText('下次帮忙还要')
+})
+
+test('自动帮忙会先切到对应分区再干活', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await seedHomestead(page, { animalsOnly: true })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  await expect(page.locator('.pet-homestead-auto-now')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByRole('tab', { name: '种植' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await page.locator('.pet-homestead-auto-now').click()
+
+  await expect(page.getByRole('tab', { name: '养殖' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+    { timeout: 8_000 }
+  )
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
+          const state = raw ? JSON.parse(raw) : null
+          return state?.inventory?.egg
+        }),
+      { timeout: 12_000 }
+    )
+    .toBeGreaterThan(0)
 })

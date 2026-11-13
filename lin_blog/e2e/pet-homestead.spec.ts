@@ -55,6 +55,7 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
   await plots.nth(2).click()
   await expect(plots.nth(2)).toHaveAttribute('aria-label', /胡萝卜已浇水/)
 
+  await page.getByRole('tab', { name: '养殖' }).click()
   await page.locator('.pet-home-coop').click()
   await expect(store).toContainText('鸡蛋 ×3')
   await expect(store).toContainText('肥料 ×3')
@@ -69,4 +70,37 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
     return raw ? (JSON.parse(raw) as { inventory?: { radish?: number } }) : null
   })
   expect(saved?.inventory?.radish).toBe(5)
+})
+
+test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  const room = page.locator('[data-pet-home-zone]')
+  await expect(room).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.pet-home-plot')).toHaveCount(4)
+  await expect(page.getByRole('tab', { name: '种植' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+
+  await page.getByRole('tab', { name: '小屋' }).click()
+  await expect(page.locator('.pet-home-interior')).toBeVisible()
+  await expect(page.locator('.pet-home-plot')).toHaveCount(0)
+  await expect(page.locator('.pet-home-room-note')).toContainText('它的小屋')
+
+  await page.getByRole('tab', { name: '养殖' }).click()
+  await expect(page.locator('.pet-home-coop')).toBeVisible()
+  await expect(page.locator('.pet-home-pasture')).toBeVisible()
+  await expect(page.locator('.pet-home-plot')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: '钓鱼' }).click()
+  await expect(page.locator('.pet-home-pond')).toBeVisible()
+  await expect(page.locator('.pet-home-coop')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: '种植' }).click()
+  await expect(page.locator('.pet-home-plot')).toHaveCount(4)
+  await expect(page.locator('.pet-home-pond')).toHaveCount(0)
 })

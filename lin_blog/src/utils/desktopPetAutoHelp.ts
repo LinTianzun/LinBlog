@@ -18,6 +18,9 @@ import {
 export const HOMESTEAD_AUTO_HELP_COOLDOWN_MS = 60_000
 export const HOMESTEAD_AUTO_HELP_DAILY_LIMIT = 6
 export const HOMESTEAD_AUTO_HELP_EVENT = 'linblog:homestead-auto-help'
+export const HOMESTEAD_TAB_EVENT = 'linblog:homestead-tab'
+
+export type HomesteadTabId = 'home' | 'grow' | 'raise' | 'fish'
 
 export type HomesteadAutoHelpAction =
   | 'harvest'

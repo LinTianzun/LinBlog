@@ -246,6 +246,7 @@ import {
 } from '../../utils/desktopPetVitals'
 import {
     HOMESTEAD_AUTO_HELP_DAILY_LIMIT,
+    HOMESTEAD_TAB_EVENT,
     canAutoHelp,
     findAutoHelpTask,
     notifyHomesteadAutoHelp,
@@ -327,16 +328,39 @@ const PET_W = computed(() => {
     return Math.max(120, Math.round(Math.min(scaled * mobile, max)))
 })
 const PET_H = computed(() => (PET_W.value * 9) / 16)
+/**
+ * 16:9 素材里角色实际占据的可见比例（与避让检测、气泡锚点保持一致）。
+ * 活动范围按这个轮廓计算，而不是按整个视频框，否则四周会空出一圈。
+ */
+const PET_BODY_LEFT = 0.14
+const PET_BODY_RIGHT = 0.86
+const PET_BODY_TOP = 0.172
+const PET_BODY_BOTTOM_INSET = 0.083
 const movementBounds = computed(() => {
     const home = inPetHomePage.value ? petHomeRect.value : null
     if (home) {
+        const visibleLeft = PET_W.value * PET_BODY_LEFT
+        const visibleRight = PET_W.value * (1 - PET_BODY_RIGHT)
+        const visibleTop = PET_H.value * PET_BODY_TOP
+        const visibleBottom = PET_H.value * PET_BODY_BOTTOM_INSET
+        // 小院比视口高时，宠物不能落到首屏之外；取小院与视口的可见交集。
+        const left = Math.max(home.left + 8 - visibleLeft, 8)
+        const right = Math.min(
+            home.right - 8 + visibleRight,
+            window.innerWidth - 8
+        )
+        const top = Math.max(home.top + 8 - visibleTop, 8)
+        const bottom = Math.min(
+            home.bottom - 8 + visibleBottom,
+            window.innerHeight - 8
+        )
         return {
-            left: home.left + 20,
-            top: home.top + 20,
-            right: home.right - 20,
-            bottom: home.bottom - 24,
-            maxX: Math.max(home.left + 20, home.right - PET_W.value - 20),
-            maxY: Math.max(home.top + 20, home.bottom - PET_H.value - 24),
+            left,
+            top,
+            right,
+            bottom,
+            maxX: Math.max(left, right - PET_W.value),
+            maxY: Math.max(top, bottom - PET_H.value),
         }
     }
     return {
@@ -546,8 +570,8 @@ const hitStyle = computed(() => ({
 // ===== 气泡 =====
 // 素材是 320×180，角色实际只占中间一块；按 alpha 阈值实测的可见边界定位，
 // 避免气泡按整个视频盒上沿计算而离头顶很远。
-const PET_VISIBLE_TOP = 0.172
-const PET_VISIBLE_BOTTOM = 0.083
+const PET_VISIBLE_TOP = PET_BODY_TOP
+const PET_VISIBLE_BOTTOM = PET_BODY_BOTTOM_INSET
 const BUBBLE_MAX_WIDTH = 240
 const MENU_MAX_WIDTH = 148
 const MENU_MAX_HEIGHT = 400
@@ -2024,6 +2048,16 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
     }
     const task = findAutoHelpTask(state, now)
     if (!task) return false
+    const targetTab =
+        task.target.kind === 'pond'
+            ? 'fish'
+            : task.target.kind === 'animal'
+              ? 'raise'
+              : 'grow'
+    window.dispatchEvent(
+        new CustomEvent(HOMESTEAD_TAB_EVENT, { detail: targetTab })
+    )
+    await nextTick()
     const targetEl = document.querySelector<HTMLElement>(
         `[data-homestead-target="${task.anchor}"]`
     )
@@ -2034,7 +2068,7 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
         const rect = targetEl.getBoundingClientRect()
         const arrived = await walkToPosition({
             x: rect.left + rect.width / 2 - PET_W.value / 2,
-            y: rect.bottom - PET_H.value * 0.917,
+            y: rect.bottom - PET_H.value * (1 - PET_BODY_BOTTOM_INSET),
         })
         if (!arrived) {
             if (manual) showBubble('路被挡住了，这次没走过去～', 2800, '😵', true)

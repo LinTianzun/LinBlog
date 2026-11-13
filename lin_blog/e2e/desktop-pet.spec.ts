@@ -180,7 +180,7 @@ test('宠物管理页修改桌宠名字后状态气泡立即使用新名字', as
   await expect(page.locator('.pet-bubble')).toContainText('我叫团子')
 })
 
-test('宠物管理页桌宠活动范围限制在宠物之家内', async ({ page }) => {
+test('宠物管理页桌宠可见身体活动范围限制在宠物之家内', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await seedSession(page, { id: 7, permissions: [] })
   await installApiMock(page)
@@ -191,22 +191,26 @@ test('宠物管理页桌宠活动范围限制在宠物之家内', async ({ page 
   await expect(pet).toBeVisible({ timeout: 30_000 })
   await expect(home).toBeVisible()
 
-  const assertInsideHome = async () => {
+  const assertBodyInsideHome = async () => {
     const homeBox = await home.boundingBox()
     const petBox = await pet.boundingBox()
     expect(homeBox).not.toBeNull()
     expect(petBox).not.toBeNull()
-    expect(petBox!.x).toBeGreaterThanOrEqual(homeBox!.x - 12)
-    expect(petBox!.y).toBeGreaterThanOrEqual(homeBox!.y - 12)
-    expect(petBox!.x + petBox!.width).toBeLessThanOrEqual(
-      homeBox!.x + homeBox!.width + 12
-    )
-    expect(petBox!.y + petBox!.height).toBeLessThanOrEqual(
+    const bodyBox = {
+      x: petBox!.x + petBox!.width * 0.14,
+      y: petBox!.y + petBox!.height * 0.172,
+      right: petBox!.x + petBox!.width * 0.86,
+      bottom: petBox!.y + petBox!.height * 0.917,
+    }
+    expect(bodyBox.x).toBeGreaterThanOrEqual(homeBox!.x - 12)
+    expect(bodyBox.y).toBeGreaterThanOrEqual(homeBox!.y - 12)
+    expect(bodyBox.right).toBeLessThanOrEqual(homeBox!.x + homeBox!.width + 12)
+    expect(bodyBox.bottom).toBeLessThanOrEqual(
       homeBox!.y + homeBox!.height + 12
     )
   }
 
-  await assertInsideHome()
+  await assertBodyInsideHome()
 
   const hitBox = await pet.locator('.dsh-pet-hit').boundingBox()
   expect(hitBox).not.toBeNull()
@@ -216,7 +220,26 @@ test('宠物管理页桌宠活动范围限制在宠物之家内', async ({ page 
   await page.mouse.up()
   await page.waitForTimeout(700)
 
-  await assertInsideHome()
+  await assertBodyInsideHome()
+
+  const homeBox = await home.boundingBox()
+  const nextHitBox = await pet.locator('.dsh-pet-hit').boundingBox()
+  expect(homeBox).not.toBeNull()
+  expect(nextHitBox).not.toBeNull()
+  await page.mouse.move(
+    nextHitBox!.x + nextHitBox!.width / 2,
+    nextHitBox!.y + nextHitBox!.height / 2
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    homeBox!.x + homeBox!.width + 120,
+    homeBox!.y + homeBox!.height + 120,
+    { steps: 8 }
+  )
+  await page.mouse.up()
+  await page.waitForTimeout(700)
+
+  await assertBodyInsideHome()
 })
 
 test('系统设置只保留本机宠物偏好，不再承载完整宠物配置', async ({ page }) => {
