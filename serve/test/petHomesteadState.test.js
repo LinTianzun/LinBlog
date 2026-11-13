@@ -79,6 +79,7 @@ const makeState = (overrides = {}) => ({
             completedAt: 0
         }
     ],
+    claimedAchievements: [],
     totals: { harvests: 0, eggs: 0, milk: 0, fish: 0, manure: 0 },
     autoHelp: {
         enabled: true,
@@ -140,6 +141,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
             orders: makeState().orders.map((order, index) =>
                 index === 0 ? { ...order, completedAt: 1_700_000_100_000 } : order
             ),
+            claimedAchievements: ['egg-basket'],
             updatedAt: 1_700_000_100_000
         })),
         homestead_version: 0
@@ -166,6 +168,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
         orders: makeState().orders.map((order, index) =>
             index === 1 ? { ...order, completedAt: 1_700_000_300_000 } : order
         ),
+        claimedAchievements: ['first-harvest'],
         updatedAt: 1_700_000_300_000
     }))
 
@@ -176,6 +179,10 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
     assert.equal(saved.plots[0].cropId, 'tomato')
     assert.equal(saved.orders[0].completedAt, 1_700_000_100_000)
     assert.equal(saved.orders[1].completedAt, 1_700_000_300_000)
+    assert.deepEqual(saved.claimedAchievements.sort(), [
+        'egg-basket',
+        'first-harvest'
+    ])
 })
 
 test('更高版本的重置会覆盖旧小院，旧版本不能回灌', async () => {
@@ -271,4 +278,5 @@ test('非法小院存档会被拒绝或修正', async () => {
     assert.equal(normalized.inventory.egg, 4)
     assert.equal(normalized.coins, 0)
     assert.deepEqual(normalized.orders, [])
+    assert.deepEqual(normalized.claimedAchievements, [])
 })

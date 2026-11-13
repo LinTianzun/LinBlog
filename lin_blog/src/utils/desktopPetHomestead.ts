@@ -52,6 +52,26 @@ export interface HomesteadTotals {
   manure: number
 }
 
+export type HomesteadAchievementMetric = keyof HomesteadTotals | 'products'
+
+export interface HomesteadAchievementDefinition {
+  id: string
+  name: string
+  description: string
+  icon: string
+  metric: HomesteadAchievementMetric
+  target: number
+  reward: number
+}
+
+export interface HomesteadAchievementProgress
+  extends HomesteadAchievementDefinition {
+  current: number
+  unlocked: boolean
+  claimed: boolean
+  percent: number
+}
+
 export interface HomesteadAutoHelpState {
   enabled: boolean
   lastAt: number
@@ -83,6 +103,7 @@ export interface HomesteadState {
   seedStock: Record<HomesteadCropId, number>
   ordersDay: string
   orders: HomesteadOrderState[]
+  claimedAchievements: string[]
   totals: HomesteadTotals
   autoHelp: HomesteadAutoHelpState
   /** 小院独立版本号，重置后递增，阻止旧设备把进度合回来 */
@@ -106,6 +127,151 @@ export const HOMESTEAD_SEED_PACKS: Record<
   strawberry: { price: 45, count: 3 }
 }
 export const HOMESTEAD_FERTILIZER_PACK = { price: 24, count: 2 } as const
+
+export const HOMESTEAD_ACHIEVEMENTS: readonly HomesteadAchievementDefinition[] =
+  [
+    {
+      id: 'first-harvest',
+      name: '第一捧收成',
+      description: '从菜地里收获 1 次作物。',
+      icon: '🌱',
+      metric: 'harvests',
+      target: 1,
+      reward: 20
+    },
+    {
+      id: 'diligent-farmer',
+      name: '勤劳农夫',
+      description: '累计收获 25 次作物。',
+      icon: '🌾',
+      metric: 'harvests',
+      target: 25,
+      reward: 80
+    },
+    {
+      id: 'egg-basket',
+      name: '鸡蛋满筐',
+      description: '累计捡到 20 个鸡蛋。',
+      icon: '🥚',
+      metric: 'eggs',
+      target: 20,
+      reward: 50
+    },
+    {
+      id: 'milk-free',
+      name: '牛奶自由',
+      description: '累计挤取 20 份牛奶。',
+      icon: '🥛',
+      metric: 'milk',
+      target: 20,
+      reward: 50
+    },
+    {
+      id: 'fishing-expert',
+      name: '钓鱼达人',
+      description: '累计钓到 20 条鱼。',
+      icon: '🎣',
+      metric: 'fish',
+      target: 20,
+      reward: 50
+    },
+    {
+      id: 'clean-yard',
+      name: '清洁能手',
+      description: '累计清理 15 份粪便。',
+      icon: '🧹',
+      metric: 'manure',
+      target: 15,
+      reward: 40
+    },
+    {
+      id: 'all-round-farmer',
+      name: '全能农场主',
+      description: '小院累计产出 100 份劳动成果。',
+      icon: '🏆',
+      metric: 'products',
+      target: 100,
+      reward: 150
+    }
+  ]
+
+export function homesteadAchievementCurrent(
+  state: HomesteadState,
+  metric: HomesteadAchievementMetric
+): number {
+  if (metric === 'products') {
+    return (
+      state.totals.harvests +
+      state.totals.eggs +
+      state.totals.milk +
+      state.totals.fish +
+      state.totals.manure
+    )
+  }
+  return state.totals[metric]
+}
+
+export function homesteadAchievements(
+  state: HomesteadState
+): HomesteadAchievementProgress[] {
+  const claimed = new Set(state.claimedAchievements)
+  return HOMESTEAD_ACHIEVEMENTS.map((achievement) => {
+    const current = homesteadAchievementCurrent(state, achievement.metric)
+    return {
+      ...achievement,
+      current,
+      unlocked: current >= achievement.target,
+      claimed: claimed.has(achievement.id),
+      percent: Math.min(
+        100,
+        Math.round((current / Math.max(1, achievement.target)) * 100)
+      )
+    }
+  })
+}
+
+export type HomesteadAchievementClaimReason =
+  | 'ok'
+  | 'unknown'
+  | 'locked'
+  | 'claimed'
+
+export interface HomesteadAchievementClaimResult {
+  state: HomesteadState
+  achievement: HomesteadAchievementProgress | null
+  changed: boolean
+  reason: HomesteadAchievementClaimReason
+}
+
+export function claimHomesteadAchievement(
+  state: HomesteadState,
+  achievementId: string,
+  now = Date.now()
+): HomesteadAchievementClaimResult {
+  const achievement =
+    homesteadAchievements(state).find((item) => item.id === achievementId) ||
+    null
+  if (!achievement) {
+    return { state, achievement: null, changed: false, reason: 'unknown' }
+  }
+  if (!achievement.unlocked) {
+    return { state, achievement, changed: false, reason: 'locked' }
+  }
+  if (achievement.claimed) {
+    return { state, achievement, changed: false, reason: 'claimed' }
+  }
+  return {
+    state: {
+      ...state,
+      coins: state.coins + achievement.reward,
+      claimedAchievements: [...state.claimedAchievements, achievement.id],
+      updatedAt: now
+    },
+    achievement: { ...achievement, claimed: true },
+    changed: true,
+    reason: 'ok'
+  }
+}
 
 export const HOMESTEAD_CROPS: readonly HomesteadCropDefinition[] = [
   {
@@ -190,6 +356,10 @@ const HOMESTEAD_ORDER_ITEM_VALUES: Record<HomesteadOrderItemId, number> = {
   milk: 12,
   fish: 10
 }
+
+const HOMESTEAD_ACHIEVEMENT_IDS = new Set(
+  HOMESTEAD_ACHIEVEMENTS.map((achievement) => achievement.id)
+)
 
 const DEFAULT_SEED_STOCK: Record<HomesteadCropId, number> = {
   radish: 4,
@@ -356,6 +526,21 @@ export function createDailyOrders(
   return orders
 }
 
+const normalizeClaimedAchievements = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string' || !HOMESTEAD_ACHIEVEMENT_IDS.has(item)) {
+      continue
+    }
+    if (seen.has(item)) continue
+    seen.add(item)
+    result.push(item)
+  }
+  return result
+}
+
 const normalizeDailyOrders = (
   value: unknown,
   now: number
@@ -436,6 +621,7 @@ export function createDefaultHomestead(
     seedStock: { ...DEFAULT_SEED_STOCK },
     ordersDay: day,
     orders: createDailyOrders(day),
+    claimedAchievements: [],
     totals: emptyTotals(),
     autoHelp: defaultAutoHelp(now),
     stateVersion: intOr(stateVersion, 0, Number.MAX_SAFE_INTEGER),
@@ -451,6 +637,7 @@ const isFreshHomestead = (state: HomesteadState): boolean =>
       state.seedStock[crop.id] === DEFAULT_SEED_STOCK[crop.id]
   ) &&
   state.coins === HOMESTEAD_STARTING_COINS &&
+  state.claimedAchievements.length === 0 &&
   Object.values(state.totals).every((value) => value === 0) &&
   state.autoHelp.total === 0
 
@@ -548,6 +735,9 @@ export function normalizeHomestead(
     seedStock,
     ordersDay: today,
     orders,
+    claimedAchievements: normalizeClaimedAchievements(
+      raw.claimedAchievements
+    ),
     totals: {
       harvests: intOr(rawTotals.harvests, 0),
       eggs: intOr(rawTotals.eggs, 0),
@@ -742,6 +932,12 @@ export function mergeHomesteads(
       seedStock,
       ordersDay: orderState.ordersDay,
       orders: orderState.orders,
+      claimedAchievements: [
+        ...new Set([
+          ...a.claimedAchievements,
+          ...b.claimedAchievements
+        ])
+      ],
       totals: {
         harvests: Math.max(a.totals.harvests, b.totals.harvests),
         eggs: Math.max(a.totals.eggs, b.totals.eggs),

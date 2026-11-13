@@ -17,6 +17,15 @@ const HOMESTEAD_ANIMAL_IDS = ['chicken', 'cow']
 const HOMESTEAD_PLOT_COUNT = 4
 const HOMESTEAD_ORDER_COUNT = 3
 const HOMESTEAD_ORDER_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/
+const HOMESTEAD_ACHIEVEMENT_IDS = [
+    'first-harvest',
+    'diligent-farmer',
+    'egg-basket',
+    'milk-free',
+    'fishing-expert',
+    'clean-yard',
+    'all-round-farmer'
+]
 
 const clampInt = (value, min, max, fallback) => {
     const number = Number(value)
@@ -153,6 +162,14 @@ function normalizeHomesteadOrders(value) {
     return orders
 }
 
+const normalizeClaimedAchievements = (value) => {
+    if (!Array.isArray(value)) return []
+    return [...new Set(value.filter(
+        (item) => typeof item === 'string' &&
+            HOMESTEAD_ACHIEVEMENT_IDS.includes(item)
+    ))]
+}
+
 function normalizeHomesteadState(payload) {
     const raw = typeof payload === 'string'
         ? parseJson(payload, null)
@@ -219,6 +236,9 @@ function normalizeHomesteadState(payload) {
         seedStock,
         ordersDay: normalizeDate(raw.ordersDay) || '',
         orders: normalizeHomesteadOrders(raw.orders),
+        claimedAchievements: normalizeClaimedAchievements(
+            raw.claimedAchievements
+        ),
         totals: {
             harvests: clampInt(rawTotals.harvests, 0, 1_000_000_000, 0),
             eggs: clampInt(rawTotals.eggs, 0, 1_000_000_000, 0),
@@ -459,6 +479,12 @@ function mergeHomesteadStates(existing, incoming) {
         seedStock,
         ordersDay: orderState.ordersDay,
         orders: orderState.orders,
+        claimedAchievements: [
+            ...new Set([
+                ...a.claimedAchievements,
+                ...b.claimedAchievements
+            ])
+        ],
         totals: {
             harvests: Math.max(a.totals.harvests, b.totals.harvests),
             eggs: Math.max(a.totals.eggs, b.totals.eggs),

@@ -297,3 +297,67 @@ test('小院存档会从云端合并并在改动后自动回传', async ({ page 
   )
   await expect(page.locator('.pet-homestead-coins')).toContainText('210')
 })
+
+test('小院成就展示累计进度并标记已达成项目', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await seedSession(page, { id: 7, permissions: [] })
+  await page.addInitScript(() => {
+    const now = Date.now()
+    localStorage.setItem(
+      'LINBLOG_DESKTOP_PET_HOMESTEAD:u7',
+      JSON.stringify({
+        plots: [],
+        inventory: { radish: 0, egg: 0, milk: 0, fish: 0, fertilizer: 0 },
+        totals: {
+          harvests: 25,
+          eggs: 20,
+          milk: 19,
+          fish: 3,
+          manure: 15,
+        },
+        stateVersion: 0,
+        updatedAt: now,
+      }),
+    )
+  })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  await expect(page.locator('.pet-home-plot')).toHaveCount(4, {
+    timeout: 30_000,
+  })
+  await page.locator('.pet-homestead-business-achievements').click()
+  const modal = page.locator('.yk-modal__main:visible').last()
+  await modal.getByRole('tab', { name: /小院成就/ }).click()
+
+  const cards = modal.locator('.pet-farm-achievement')
+  await expect(cards).toHaveCount(7)
+  await expect(cards.filter({ hasText: '第一捧收成' })).toHaveClass(
+    /is-unlocked/,
+  )
+  await expect(cards.filter({ hasText: '鸡蛋满筐' })).toHaveClass(
+    /is-unlocked/,
+  )
+  const milk = cards.filter({ hasText: '牛奶自由' })
+  await expect(milk).not.toHaveClass(/is-unlocked/)
+  await expect(milk).toContainText('19/20')
+  await expect(cards.filter({ hasText: '钓鱼达人' })).toContainText('3/20')
+  await expect(modal).toContainText('已解锁 4/7')
+
+  const firstHarvest = cards.filter({ hasText: '第一捧收成' })
+  await firstHarvest.getByRole('button', { name: '领取' }).click()
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('100')
+  await expect(firstHarvest).toContainText('已领取')
+
+  const saved = await page.evaluate(() => {
+    const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
+    return raw
+      ? (JSON.parse(raw) as {
+          coins?: number
+          claimedAchievements?: string[]
+        })
+      : null
+  })
+  expect(saved?.coins).toBe(100)
+  expect(saved?.claimedAchievements).toContain('first-harvest')
+})

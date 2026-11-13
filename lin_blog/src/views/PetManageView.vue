@@ -567,6 +567,13 @@
                                 @click="openBusiness('shop')">
                                 <span aria-hidden="true">🛒</span>商店
                             </button>
+                            <button type="button" class="pet-homestead-business-achievements"
+                                @click="openBusiness('achievements')">
+                                <span aria-hidden="true">🏆</span>成就
+                                <b v-if="claimableHomesteadAchievementCount">
+                                    {{ claimableHomesteadAchievementCount }}
+                                </b>
+                            </button>
                         </div>
                     </div>
 
@@ -668,14 +675,27 @@
         </div>
 
         <yk-modal v-model="businessOpen"
-            :title="businessPanel === 'orders' ? '今日订单' : '农场商店'"
+            :title="businessPanel === 'orders'
+                ? '今日订单'
+                : businessPanel === 'shop'
+                  ? '农场商店'
+                  : '小院成就'"
             size="m" :show-footer="false">
             <div class="pet-farm-business">
                 <div class="pet-farm-business-summary">
                     <span class="pet-farm-business-coins">
                         <span aria-hidden="true">🪙</span>{{ homestead.coins }} 金币
                     </span>
-                    <span>今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}</span>
+                    <span v-if="businessPanel === 'orders'">
+                        今日订单 {{ completedOrderCount }}/{{ homestead.orders.length }}
+                    </span>
+                    <span v-else-if="businessPanel === 'achievements'">
+                        已解锁 {{ unlockedHomesteadAchievementCount }}/{{ homesteadAchievementCards.length }}
+                        <template v-if="claimableHomesteadAchievementCount">
+                            · 可领取 {{ claimableHomesteadAchievementCount }}
+                        </template>
+                    </span>
+                    <span v-else>种子与农资补给</span>
                 </div>
 
                 <div class="pet-farm-business-tabs" role="tablist" aria-label="农场经营">
@@ -688,6 +708,12 @@
                         :class="{ 'is-active': businessPanel === 'shop' }"
                         @click="businessPanel = 'shop'">
                         🛒 农场商店
+                    </button>
+                    <button type="button" role="tab"
+                        :aria-selected="businessPanel === 'achievements'"
+                        :class="{ 'is-active': businessPanel === 'achievements' }"
+                        @click="businessPanel = 'achievements'">
+                        🏆 小院成就
                     </button>
                 </div>
 
@@ -726,6 +752,36 @@
                     </article>
                     <p class="pet-farm-business-hint">
                         每天 0 点刷新 3 个订单，交付后获得金币。
+                    </p>
+                </div>
+
+                <div v-else-if="businessPanel === 'achievements'"
+                    class="pet-farm-achievements">
+                    <article v-for="item in homesteadAchievementCards" :key="item.id"
+                        class="pet-farm-achievement"
+                        :class="{ 'is-unlocked': item.unlocked }">
+                        <span class="pet-farm-achievement-icon" aria-hidden="true">
+                            {{ item.icon }}
+                        </span>
+                        <div class="pet-farm-achievement-copy">
+                            <strong>{{ item.name }}</strong>
+                            <small>{{ item.description }}</small>
+                            <div class="pet-farm-achievement-progress" aria-hidden="true">
+                                <i :style="{ width: `${item.percent}%` }" />
+                            </div>
+                        </div>
+                        <div class="pet-farm-achievement-side">
+                            <span>+{{ item.reward }} 🪙</span>
+                            <button v-if="item.unlocked && !item.claimed" type="button"
+                                @click="claimAchievementReward(item.id)">
+                                领取
+                            </button>
+                            <b v-else-if="item.claimed">已领取</b>
+                            <b v-else>{{ item.current }}/{{ item.target }}</b>
+                        </div>
+                    </article>
+                    <p class="pet-farm-business-hint">
+                        成就解锁后可领取金币，领取记录会随小院存档跨设备同步。
                     </p>
                 </div>
 
@@ -828,6 +884,7 @@ import {
     buyFertilizerPack,
     buySeedPack,
     canCompleteOrder,
+    claimHomesteadAchievement,
     collectAnimal,
     completeOrder,
     fertilizePlot,
@@ -837,6 +894,7 @@ import {
     getHomesteadItem,
     getHomesteadState,
     harvestPlot,
+    homesteadAchievements,
     isAnimalManureReady,
     isAnimalProduceReady,
     isPlotRipe,
@@ -888,7 +946,8 @@ const selectedSeed = computed(
     () => getHomesteadCrop(selectedSeedId.value) || HOMESTEAD_CROPS[0]
 )
 const businessOpen = ref(false)
-const businessPanel = ref<'orders' | 'shop'>('orders')
+type HomesteadBusinessPanel = 'orders' | 'shop' | 'achievements'
+const businessPanel = ref<HomesteadBusinessPanel>('orders')
 const selectedFoodId = ref<PetFoodId>(getSelectedPetFoodId())
 const selectedFood = computed(() => getPetFood(selectedFoodId.value))
 const PET_HOME_TABS = [
@@ -1148,6 +1207,18 @@ const seedShopItems = computed(() =>
         stock: homestead.value.seedStock[crop.id],
     }))
 )
+const homesteadAchievementCards = computed(() =>
+    homesteadAchievements(homestead.value)
+)
+const unlockedHomesteadAchievementCount = computed(
+    () => homesteadAchievementCards.value.filter((item) => item.unlocked).length
+)
+const claimableHomesteadAchievementCount = computed(
+    () =>
+        homesteadAchievementCards.value.filter(
+            (item) => item.unlocked && !item.claimed
+        ).length
+)
 
 const homesteadTendCount = computed(() => {
     let count = 0
@@ -1253,7 +1324,7 @@ const selectSeed = (id: HomesteadCropId) => {
     selectedSeedId.value = id
 }
 
-const openBusiness = (panel: 'orders' | 'shop') => {
+const openBusiness = (panel: HomesteadBusinessPanel) => {
     businessPanel.value = panel
     businessOpen.value = true
 }
@@ -1308,6 +1379,29 @@ const buyFertilizerNow = () => {
     proxy?.$message?.({
         type: 'success',
         message: `买了 ${HOMESTEAD_FERTILIZER_PACK.count} 份肥料`,
+    })
+}
+
+const claimAchievementReward = (achievementId: string) => {
+    const result = claimHomesteadAchievement(
+        homestead.value,
+        achievementId,
+        Date.now()
+    )
+    if (!result.changed) {
+        proxy?.$message?.({
+            type: 'primary',
+            message:
+                result.reason === 'claimed'
+                    ? '这个成就奖励已经领过了'
+                    : '先完成成就目标，再来领取奖励',
+        })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `领取「${result.achievement?.name}」奖励，获得 ${result.achievement?.reward} 金币`,
     })
 }
 
@@ -4878,7 +4972,7 @@ onUnmounted(() => {
 
 .pet-farm-business-tabs {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     padding: 4px;
     border: 1px solid var(--admin-line, var(--gray1));
@@ -5007,6 +5101,122 @@ onUnmounted(() => {
             opacity: 0.42;
             box-shadow: none;
         }
+
+        &:focus-visible {
+            outline: 2px solid #e8a93b;
+            outline-offset: 2px;
+        }
+    }
+}
+
+.pet-farm-achievements {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pet-farm-achievement {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 11px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 13px;
+    background: var(--admin-surface, var(--bgColor1));
+
+    &.is-unlocked {
+        border-color: color-mix(in srgb, #e8a93b 44%, var(--admin-line, var(--gray1)));
+        background:
+            linear-gradient(135deg,
+                color-mix(in srgb, #f2b94c 12%, transparent),
+                transparent 62%),
+            var(--admin-surface, var(--bgColor1));
+    }
+
+}
+
+.pet-farm-achievement-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    place-items: center;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--pcolor) 8%, var(--bgColor2));
+    font-size: 20px;
+}
+
+.pet-farm-achievement-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+    }
+
+    small {
+        overflow: hidden;
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+        line-height: 1.45;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+.pet-farm-achievement-progress {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--bgColor2);
+
+    i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #e8a93b, #f4ca72);
+        transition: width 0.24s ease;
+    }
+}
+
+.pet-farm-achievement-side {
+    display: flex;
+    min-width: 62px;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+
+    > span {
+        color: #9a6500;
+        font-size: 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    > b {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    button {
+        min-width: 48px;
+        min-height: 27px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #f0ad3d, #e49722);
+        color: #fff;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(210, 146, 29, 0.2);
 
         &:focus-visible {
             outline: 2px solid #e8a93b;

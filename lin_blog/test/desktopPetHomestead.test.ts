@@ -11,6 +11,7 @@ import {
   buyFertilizerPack,
   buySeedPack,
   canCompleteOrder,
+  claimHomesteadAchievement,
   collectAnimal,
   completeOrder,
   createDefaultHomestead,
@@ -20,6 +21,8 @@ import {
   formatHomesteadDuration,
   getHomesteadState,
   harvestPlot,
+  homesteadAchievementCurrent,
+  homesteadAchievements,
   isAnimalManureReady,
   isAnimalProduceReady,
   isPlotRipe,
@@ -511,4 +514,71 @@ test('新设备首次同步不会用空白默认存档覆盖云端作物', () =>
   assert.equal(merged.plots[0].cropId, 'radish')
   assert.equal(merged.coins, 120)
   assert.equal(merged.seedStock.radish, 1)
+})
+
+test('小院成就会按累计产出计算进度并自动解锁', () => {
+  const state = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      totals: {
+        harvests: 25,
+        eggs: 20,
+        milk: 19,
+        fish: 3,
+        manure: 15
+      }
+    },
+    NOW
+  )
+  const achievements = homesteadAchievements(state)
+  const byId = new Map(achievements.map((item) => [item.id, item]))
+
+  assert.equal(homesteadAchievementCurrent(state, 'products'), 82)
+  assert.equal(byId.get('first-harvest')?.unlocked, true)
+  assert.equal(byId.get('first-harvest')?.claimed, false)
+  assert.equal(byId.get('diligent-farmer')?.unlocked, true)
+  assert.equal(byId.get('egg-basket')?.unlocked, true)
+  assert.equal(byId.get('milk-free')?.unlocked, false)
+  assert.equal(byId.get('milk-free')?.percent, 95)
+  assert.equal(byId.get('fishing-expert')?.current, 3)
+  assert.equal(byId.get('all-round-farmer')?.unlocked, false)
+  assert.equal(byId.get('all-round-farmer')?.percent, 82)
+})
+
+test('成就奖励只能领取一次并增加小院金币', () => {
+  const state = normalizeHomestead(
+    {
+      ...createDefaultHomestead(NOW),
+      totals: {
+        harvests: 1,
+        eggs: 0,
+        milk: 0,
+        fish: 0,
+        manure: 0
+      }
+    },
+    NOW
+  )
+
+  const claimed = claimHomesteadAchievement(state, 'first-harvest', NOW)
+  assert.equal(claimed.changed, true)
+  assert.equal(claimed.reason, 'ok')
+  assert.equal(claimed.state.coins, HOMESTEAD_STARTING_COINS + 20)
+  assert.deepEqual(claimed.state.claimedAchievements, ['first-harvest'])
+
+  const again = claimHomesteadAchievement(
+    claimed.state,
+    'first-harvest',
+    NOW + 1
+  )
+  assert.equal(again.changed, false)
+  assert.equal(again.reason, 'claimed')
+  assert.equal(
+    claimHomesteadAchievement(claimed.state, 'fishing-expert', NOW).reason,
+    'locked'
+  )
+  assert.equal(
+    claimHomesteadAchievement(claimed.state, 'unknown', NOW).reason,
+    'unknown'
+  )
 })
