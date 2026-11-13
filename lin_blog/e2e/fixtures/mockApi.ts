@@ -1682,6 +1682,55 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === '/api/overview/siteEvents') {
+      const days = Number(url.searchParams.get('days')) || 7
+      await fulfill({
+        generatedAt: '2026-11-13T07:10:00.000Z',
+        days,
+        limit: 20,
+        summary: {
+          searches: 42,
+          uniqueSearchTerms: 12,
+          zeroResultSearches: 5,
+          standardSearches: 30,
+          semanticSearches: 12,
+          notFound: 8,
+          uniqueNotFoundPaths: 3,
+        },
+        searchTerms: [
+          {
+            keyword: 'Vue 响应式',
+            searches: 9,
+            zeroResults: 2,
+            lastAt: '2026-11-13T06:20:00.000Z',
+          },
+          {
+            keyword: '慢速河流',
+            searches: 6,
+            zeroResults: 0,
+            lastAt: '2026-11-12T09:30:00.000Z',
+          },
+        ],
+        notFoundPaths: [
+          {
+            path: '/portal/articles/1201',
+            hits: 4,
+            lastAt: '2026-11-13T05:10:00.000Z',
+          },
+          {
+            path: '/portal/old-gallery',
+            hits: 3,
+            lastAt: '2026-11-12T12:00:00.000Z',
+          },
+        ],
+        trend: [
+          { date: '11-12', searches: 12, notFound: 3 },
+          { date: '11-13', searches: 30, notFound: 5 },
+        ],
+      })
+      return
+    }
+
     if (method === 'PATCH' && path === '/api/message/read') {
       const messageIds = Array.isArray(body?.messageIds) ? body.messageIds : []
       state.messages = state.messages.map(item =>

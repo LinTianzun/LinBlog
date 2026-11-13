@@ -18,6 +18,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconCircleCheckOutline'
     },
     {
+        path: 'siteInsights',
+        name: '站点洞察',
+        icon: 'IconSearchOutline'
+    },
+    {
         path: 'userManagement',
         name: '用户管理',
         icon: 'IconAvatarFill'

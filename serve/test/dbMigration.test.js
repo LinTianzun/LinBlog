@@ -9,6 +9,7 @@ const PET_GROWTH_MIGRATION = ['2026', '1113_pet_growth'].join('')
 const PET_RESET_MIGRATION = ['2026', '1113_pet_reset'].join('')
 const PET_HOMESTEAD_MIGRATION = ['2026', '1113_pet_homestead'].join('')
 const CONTENT_COLLECTION_MIGRATION = ['2026', '1113_content_collection'].join('')
+const SITE_EVENT_MIGRATION = ['2026', '1113_site_event'].join('')
 
 // 已应用列表：用例通过「除目标迁移外全部已应用」来隔离单个迁移。
 // 新增迁移后同步补进这里，否则待执行迁移会多出一个导致 appliedCount 断言失败。
@@ -56,7 +57,8 @@ const ALL_MIGRATIONS = [
     PET_GROWTH_MIGRATION,
     PET_RESET_MIGRATION,
     PET_HOMESTEAD_MIGRATION,
-    CONTENT_COLLECTION_MIGRATION
+    CONTENT_COLLECTION_MIGRATION,
+    SITE_EVENT_MIGRATION
 ]
 
 // 除 exclude 外全部视为已应用
@@ -956,5 +958,30 @@ test('content collection migration creates collection and membership tables', as
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === CONTENT_COLLECTION_MIGRATION
+    ))
+})
+
+test('site event migration creates the search and 404 event table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(SITE_EVENT_MIGRATION)
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS site_event')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql.includes('idx_site_event_type_created')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === SITE_EVENT_MIGRATION
     ))
 })

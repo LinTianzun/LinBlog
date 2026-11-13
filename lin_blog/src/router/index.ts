@@ -38,6 +38,12 @@ const routes = [
         meta: { requiresAuth: false, hideHeader: true },
     },
     {
+        // 未知门户路径对访客可见，不能把 404 访客再送去登录页
+        path: '/portal/:pathMatch(.*)*',
+        component: NotFound,
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         path: '/',
         redirect: '/loginRegister',
         component: IndexView,
@@ -58,6 +64,15 @@ const routes = [
                 path: 'contentHealth',
                 component: () => import('../views/ContentHealthView.vue'),
                 // 内容健康扫描会读取全站已发布内容，与总览使用同一管理权限
+                meta: {
+                    requiresAuth: true,
+                    permissions: ['overview.viewAll'],
+                },
+            },
+            {
+                path: 'siteInsights',
+                component: () => import('../views/SiteInsightsView.vue'),
+                // 搜索词与 404 属于全站运营数据，沿用总览权限
                 meta: {
                     requiresAuth: true,
                     permissions: ['overview.viewAll'],
@@ -258,6 +273,7 @@ router.afterEach((to) => {
     const privateTitles: Record<string, string> = {
         '/overView': '系统总览',
         '/contentHealth': '内容健康',
+        '/siteInsights': '站点洞察',
         '/userManagement': '用户管理',
         '/permissionManagement': '权限管理',
         '/systemLog': '系统日志',

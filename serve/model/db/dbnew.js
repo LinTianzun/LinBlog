@@ -465,6 +465,20 @@ const tablesSql = {
     INDEX idx_path (path)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='访问记录表';`
 
+  ,site_event: `CREATE TABLE IF NOT EXISTS site_event(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '站点事件ID',
+    event_type ENUM('search', 'not_found') NOT NULL COMMENT '事件类型：站内搜索/页面不存在',
+    keyword VARCHAR(100) NOT NULL DEFAULT '' COMMENT '搜索词',
+    path VARCHAR(255) NOT NULL DEFAULT '' COMMENT '访问路径',
+    source VARCHAR(20) NOT NULL DEFAULT 'standard' COMMENT '搜索方式：standard/semantic',
+    result_count INT UNSIGNED NULL COMMENT '搜索结果数',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '事件时间',
+    PRIMARY KEY (id),
+    INDEX idx_site_event_type_created (event_type, created_at),
+    INDEX idx_site_event_keyword (keyword),
+    INDEX idx_site_event_path (path)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站点搜索与404事件表';`
+
   ,view_log: `CREATE TABLE IF NOT EXISTS view_log(
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '浏览记录ID',
     target_type VARCHAR(20) NOT NULL COMMENT '目标类型（article/image/diary）',
@@ -1699,7 +1713,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2285,6 +2299,11 @@ async function ensureContentCollectionSchema(exec = query) {
   await exec(tablesSql.content_collection_article);
 }
 
+// 站点洞察：单独记录站内搜索与门户 404，不与访问路径统计混在一张表里。
+async function ensureSiteEventSchema(exec = query) {
+  await exec(tablesSql.site_event);
+}
+
 // 内容创作工作流：工作稿字段 + 版本快照表。
 // 已发布正文仍保存在 article.content，自动保存只写 draft_content，避免线上内容被未完成稿覆盖。
 async function ensureArticleWorkflowSchema(exec = query) {
@@ -2675,6 +2694,10 @@ const migrations = [
   {
     version: '20261113_content_collection',
     up: ensureContentCollectionSchema
+  },
+  {
+    version: '20261113_site_event',
+    up: ensureSiteEventSchema
   }
 ];
 

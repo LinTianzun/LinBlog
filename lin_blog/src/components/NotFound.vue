@@ -22,9 +22,23 @@
 </template>
 
 <script lang="ts" setup>
-import { useRouter } from 'vue-router'
+import { watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { recordPortalNotFound } from '../api/siteAnalytics'
 
+const route = useRoute()
 const router = useRouter()
+
+// 只记录前端真实渲染出的 404 路径，不把查询串或来源页写进统计。
+watch(
+    () => route.path,
+    path => {
+        void recordPortalNotFound(path).catch(() => {
+            // 404 统计失败不影响页面本身的兜底展示
+        })
+    },
+    { immediate: true }
+)
 
 const goBack = () => {
     if (window.history.length > 1) {

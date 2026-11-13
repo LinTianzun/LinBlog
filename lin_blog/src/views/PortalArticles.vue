@@ -177,6 +177,7 @@ import {
     type PortalSemanticSearchResult
 } from '../api/portal'
 import { extractArticleCover, parseArticleLabels, type ArticleItem } from '../api/article'
+import { recordPortalSearch } from '../api/siteAnalytics'
 import AdminPager from '../components/common/AdminPager.vue'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
 import {
@@ -240,7 +241,8 @@ const formatDate = (value: string): string => {
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
 }
 
-const loadArticles = async () => {
+const loadArticles = async (options: { recordSearch?: boolean } = {}) => {
+    const searchedKeyword = options.recordSearch ? filters.keyword.trim() : ''
     loading.value = true
     try {
         const result = await getPublicArticles({
@@ -254,6 +256,15 @@ const loadArticles = async () => {
         if (result.code === 200) {
             articles.value = result.data?.list || []
             total.value = result.data?.total || 0
+            if (searchedKeyword) {
+                void recordPortalSearch({
+                    keyword: searchedKeyword,
+                    source: 'standard',
+                    resultCount: total.value
+                }).catch(() => {
+                    // 统计上报失败不影响门户搜索
+                })
+            }
         }
     } catch {
         articles.value = []
@@ -354,7 +365,7 @@ const applySearch = () => {
         void runSemanticSearch()
         return
     }
-    void loadArticles()
+    void loadArticles({ recordSearch: true })
 }
 
 const toggleSemantic = () => {
@@ -380,13 +391,20 @@ const runSemanticSearch = async () => {
         const result = await semanticSearchPortal(query)
         if (result.code === 200 && result.data) {
             semanticResult.value = result.data
+            void recordPortalSearch({
+                keyword: query,
+                source: 'semantic',
+                resultCount: result.data.total
+            }).catch(() => {
+                // 统计上报失败不影响语义搜索结果
+            })
         } else {
             semanticResult.value = null
         }
     } catch {
         // 语义搜索失败时退回普通关键词检索，避免归档页空白
         semanticResult.value = null
-        await loadArticles()
+        await loadArticles({ recordSearch: true })
     } finally {
         semanticLoading.value = false
         loading.value = false

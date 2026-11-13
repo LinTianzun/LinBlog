@@ -1,4 +1,5 @@
 const recordModel = require('../model/dbModel/record/index')
+const siteAnalyticsModel = require('../model/dbModel/siteAnalytics/index')
 
 /**
  * 访问记录保留期清理任务。
@@ -20,16 +21,31 @@ function readRetentionDays() {
 
 async function pruneOnce() {
     const days = readRetentionDays()
-    try {
-        const result = await recordModel.pruneRecords(days)
-        if (result.deleted > 0) {
-            console.log(`[Record] 已清理 ${result.deleted} 条超过 ${days} 天的访问记录`)
-        }
-        return result
-    } catch (err) {
-        console.error('[Record] 清理访问记录失败：', err.message)
-        return { deleted: 0, batches: 0 }
+    const [recordResult, eventResult] = await Promise.allSettled([
+        recordModel.pruneRecords(days),
+        siteAnalyticsModel.pruneEvents(days)
+    ])
+
+    const records = recordResult.status === 'fulfilled'
+        ? recordResult.value
+        : { deleted: 0, batches: 0 }
+    const events = eventResult.status === 'fulfilled'
+        ? eventResult.value
+        : { deleted: 0, batches: 0 }
+
+    if (recordResult.status === 'rejected') {
+        console.error('[Record] 清理访问记录失败：', recordResult.reason?.message || recordResult.reason)
+    } else if (records.deleted > 0) {
+        console.log(`[Record] 已清理 ${records.deleted} 条超过 ${days} 天的访问记录`)
     }
+
+    if (eventResult.status === 'rejected') {
+        console.error('[Record] 清理站点事件失败：', eventResult.reason?.message || eventResult.reason)
+    } else if (events.deleted > 0) {
+        console.log(`[Record] 已清理 ${events.deleted} 条超过 ${days} 天的站点搜索/404 记录`)
+    }
+
+    return { ...records, siteEventsDeleted: events.deleted }
 }
 
 /**

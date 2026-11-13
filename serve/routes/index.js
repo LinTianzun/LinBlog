@@ -37,6 +37,8 @@ module.exports = (app) => {
     require('./overview')(app)
     //  引入内容健康检查路由
     require('./contentHealth')(app)
+    //  引入站点搜索与 404 洞察路由
+    require('./siteAnalytics')(app)
     //  引入门户浏览计数路由
     require('./view')(app)
     //  引入系统日志路由

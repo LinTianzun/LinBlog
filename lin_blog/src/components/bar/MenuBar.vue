@@ -58,6 +58,7 @@ const pendingReportBadge = computed(() =>
 const MENU_PERMISSIONS: Record<string, string[]> = {
     overView: ['overview.viewAll'],
     contentHealth: ['overview.viewAll'],
+    siteInsights: ['overview.viewAll'],
     userManagement: ['user.view'],
     permissionManagement: ['permission.view'],
     systemLog: ['systemLog.view'],
@@ -91,7 +92,7 @@ const menuGroups = computed(() => {
         {
             label: '运营',
             // 权限管理紧跟用户管理：同一入口组，超级管理员改完矩阵能立刻回用户列表看成员
-            paths: ['overView', 'contentHealth', 'userManagement', 'permissionManagement', 'reportedComments', 'messages', 'systemLog', 'aiManage', 'aiPrompt'],
+            paths: ['overView', 'contentHealth', 'siteInsights', 'userManagement', 'permissionManagement', 'reportedComments', 'messages', 'systemLog', 'aiManage', 'aiPrompt'],
         },
         {
             label: '内容',
