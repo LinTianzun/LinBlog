@@ -217,7 +217,7 @@
                     <div class="set-subhead">
                         <span class="set-label">我的宠物</span>
                         <yk-text type="tertiary">
-                            仅本机生效；养成状态、展示与行为请前往「宠物管理」
+                            仅本机生效；静态模式可在桌宠菜单中开启，养成状态与展示行为请前往「宠物管理」
                         </yk-text>
                     </div>
 

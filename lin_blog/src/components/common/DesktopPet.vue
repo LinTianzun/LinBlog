@@ -5,7 +5,7 @@
                 v-if="visible"
                 ref="rootRef"
                 class="dsh-pet-root"
-                :class="{ 'is-auto-shifting': autoShifting }"
+                :class="{ 'is-auto-shifting': autoShifting, 'is-static': staticMode }"
                 :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
                 :data-facing="facing"
             >
@@ -48,16 +48,23 @@
 
             <!-- 命中区：只盖住身体，透明区域不挡页面内容 -->
             <div
+                ref="petHitRef"
                 class="dsh-pet-hit"
                 :class="{ dragging }"
                 :style="hitStyle"
                 role="button"
                 tabindex="0"
+                aria-haspopup="menu"
+                :aria-expanded="menuOpen"
+                aria-keyshortcuts="Shift+F10 ArrowDown"
                 :aria-label="petAriaLabel"
                 @pointerdown="onPointerDown"
                 @contextmenu.prevent="openMenu"
                 @keydown.enter.prevent="poke"
                 @keydown.space.prevent="poke"
+                @keydown.arrow-down.prevent="openMenu"
+                @keydown.shift.f10.prevent="openMenu"
+                @keydown.esc.prevent="menuOpen && closeMenu()"
             />
 
             <!-- 对话气泡：锚定到角色头部，而不是视频盒边缘 -->
@@ -81,56 +88,67 @@
             <!-- 右键菜单 -->
             <Transition name="pet-menu">
                 <div v-if="menuOpen" class="pet-menu" :class="{ 'is-below': menuBelow }"
-                    :style="menuAnchorStyle" @pointerdown.stop>
-                    <div class="pet-menu-section">
-                        <span class="pet-menu-label">互动</span>
-                        <button type="button" @click="feedPet(selectedFoodId)">
+                    ref="menuRef" role="menu" aria-label="桌宠操作菜单" tabindex="-1"
+                    :style="menuAnchorStyle" @pointerdown.stop @keydown="onMenuKeydown">
+                    <div class="pet-menu-section" role="group" aria-label="互动">
+                        <span class="pet-menu-label" aria-hidden="true">互动</span>
+                        <button type="button" role="menuitem" @click="feedPet(selectedFoodId)">
                             <span class="pet-menu-icon">{{ selectedFood.icon }}</span>喂一口
                             <small class="pet-menu-hint">{{ selectedFood.name }}</small>
                         </button>
-                        <button type="button" :aria-expanded="snackPickerOpen"
+                        <button type="button" role="menuitem" :aria-expanded="snackPickerOpen"
                             @click.stop="snackPickerOpen = !snackPickerOpen">
                             <span class="pet-menu-icon">🍪</span>
                             {{ snackPickerOpen ? '收起零食' : '换零食' }}
                         </button>
-                        <div v-if="snackPickerOpen" class="pet-snack-list">
+                        <div v-if="snackPickerOpen" class="pet-snack-list" role="group"
+                            aria-label="选择零食">
                             <button v-for="food in PET_FOODS" :key="food.id" type="button"
+                                role="menuitem"
                                 @click="feedPet(food.id)">
                                 <span class="pet-menu-icon">{{ food.icon }}</span>
                                 {{ food.name }}
                                 <small class="pet-menu-hint">饱腹 +{{ food.satiety }}</small>
                             </button>
                         </div>
-                        <button type="button" @click="showStatus">
+                        <button type="button" role="menuitem" @click="showStatus">
                             <span class="pet-menu-icon">💗</span>看看状态
                         </button>
-                        <button type="button" @click="speakNow">
+                        <button type="button" role="menuitem" @click="speakNow">
                             <span class="pet-menu-icon">💬</span>说句话
                         </button>
-                        <button type="button" @click="playRandomAction">
+                        <button type="button" role="menuitem" :disabled="staticMode"
+                            @click="playRandomAction">
                             <span class="pet-menu-icon">🎲</span>随便演一个
                         </button>
                     </div>
-                    <div class="pet-menu-section">
-                        <span class="pet-menu-label">行为</span>
-                        <button type="button" @click="goHome">
+                    <div class="pet-menu-section" role="group" aria-label="行为">
+                        <span class="pet-menu-label" aria-hidden="true">行为</span>
+                        <button type="button" role="menuitem" @click="goHome">
                             <span class="pet-menu-icon">🏠</span>回到原位
                         </button>
-                        <button type="button" @click="toggleSleep">
+                        <button type="button" role="menuitem" :disabled="staticMode"
+                            @click="toggleSleep">
                             <span class="pet-menu-icon">{{ sleepPhase ? '☀️' : '🌙' }}</span>
                             {{ sleepPhase ? '叫醒它' : '睡一觉' }}
                         </button>
                     </div>
-                    <div class="pet-menu-section">
-                        <span class="pet-menu-label">本机偏好</span>
-                        <button type="button" @click="toggleQuietHours">
+                    <div class="pet-menu-section" role="group" aria-label="本机偏好">
+                        <span class="pet-menu-label" aria-hidden="true">本机偏好</span>
+                        <button type="button" role="menuitemcheckbox"
+                            :aria-checked="visitorPrefs.quietHoursEnabled" @click="toggleQuietHours">
                             <span class="pet-menu-icon">{{ visitorPrefs.quietHoursEnabled ? '☀️' : '🌙' }}</span>
                             {{ visitorPrefs.quietHoursEnabled ? '关闭安静时段' : '开启安静时段' }}
                         </button>
-                        <button type="button" @click="hidePet">
+                        <button type="button" role="menuitemcheckbox"
+                            :aria-checked="staticMode" @click="toggleStaticMode">
+                            <span class="pet-menu-icon">{{ staticMode ? '⏸️' : '🎞️' }}</span>
+                            {{ staticMode ? '关闭静态模式' : '开启静态模式' }}
+                        </button>
+                        <button type="button" role="menuitem" @click="hidePet">
                             <span class="pet-menu-icon">🙈</span>仅本机隐藏
                         </button>
-                        <button type="button" @click="resetLocalPrefs">
+                        <button type="button" role="menuitem" @click="resetLocalPrefs">
                             <span class="pet-menu-icon">🔄</span>重置本机偏好
                         </button>
                     </div>
@@ -140,6 +158,7 @@
 
             <button
                 v-else-if="restoreVisible"
+                ref="restoreRef"
                 type="button"
                 class="dsh-pet-restore"
                 aria-label="显示桌面宠物"
@@ -235,6 +254,7 @@ const scopeMatches = computed(() => {
     return true
 })
 const visitorPrefs = ref<VisitorPetPreferences>(getVisitorPetPreferences())
+const staticMode = computed(() => visitorPrefs.value.staticMode)
 const visible = computed(
     () =>
         petSettings.value.desktopPetEnabled &&
@@ -334,7 +354,8 @@ const canRoam = computed(
         petSettings.value.petRoamingEnabled &&
         !quietNow.value &&
         !focusMode.value &&
-        !reducedMotion.value
+        !reducedMotion.value &&
+        !staticMode.value
 )
 
 // ===== 养成状态（登录用户跨设备同步） =====
@@ -361,7 +382,7 @@ watch(
 )
 const petAriaLabel = computed(
     () =>
-        `${petName.value}，${vitalsCompanionTitle(vitals.value)}，点击互动，右键打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
+        `${petName.value}，${vitalsCompanionTitle(vitals.value)}${staticMode.value ? '，静态模式' : ''}，点击互动，右键或 Shift+F10 打开菜单。心情${vitalsMoodLabel(vitals.value)}，` +
         `饱腹 ${vitals.value.satiety}，亲密度 Lv.${vitalsIntimacyLevel(vitals.value)}`
 )
 
@@ -425,6 +446,9 @@ const MAX_THROW_SPEED = 3600
 const SQ_DURATION_MS = 220
 
 const rootRef = ref<HTMLElement | null>(null)
+const petHitRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
+const restoreRef = ref<HTMLElement | null>(null)
 const videoA = ref<HTMLVideoElement | null>(null)
 const videoB = ref<HTMLVideoElement | null>(null)
 
@@ -439,7 +463,13 @@ watch(
             el.loop = false
             videoFailed.value = false
             fallbackNotified = false
+            if (staticMode.value) {
+                el.addEventListener('loadeddata', () => el.pause(), { once: true })
+            }
             el.play().catch(() => {})
+        }
+        if (staticMode.value) {
+            ensureStaticFrame()
         }
         schedulePetAvoidance(320)
     },
@@ -653,6 +683,22 @@ let sleepSetActive = { ...SLEEP_SET }
 
 const elementOf = (index: 0 | 1) => (index === 0 ? videoA.value : videoB.value)
 
+const pauseVideos = () => {
+    videoA.value?.pause()
+    videoB.value?.pause()
+}
+
+/** 静态模式只保留当前帧；首次进入时先加载一帧待机画面再暂停 */
+const ensureStaticFrame = () => {
+    const el = elementOf(front.value)
+    if (!el) return
+    if (!el.getAttribute('src')) {
+        el.src = animUrl(IDLE[0])
+        el.loop = false
+    }
+    el.pause()
+}
+
 /** 视频加载失败：当前前台也不可用时切换到静态形象，避免透明空场 */
 const onVideoError = (event: Event) => {
     const target = event.target as HTMLVideoElement | null
@@ -668,6 +714,10 @@ const onVideoError = (event: Event) => {
 
 /** 换源：后台槽加载新动画，就绪后再交换前台，避免黑帧 */
 const playAnim = (name: string, once: boolean) => {
+    if (staticMode.value) {
+        pauseVideos()
+        return
+    }
     const back = elementOf(front.value === 0 ? 1 : 0)
     if (!back) return
     const gen = ++switchGen
@@ -676,6 +726,7 @@ const playAnim = (name: string, once: boolean) => {
     back.loop = !once
     const swap = () => {
         if (gen !== switchGen) return
+        if (staticMode.value) return
         const next = front.value === 0 ? 1 : 0
         // 旧前台暂停：否则它播完会触发 ended，造成动画链双跳
         elementOf(front.value)?.pause()
@@ -723,6 +774,7 @@ const pickFrom = (pool: readonly string[], exclude?: string) => {
 
 /** 随机链：选下一段自播动画 */
 const pickNext = () => {
+    if (staticMode.value) return
     if (!visible.value || dragging.value || sleeping.value || document.hidden) return
     if (quietNow.value) {
         playAnim(
@@ -749,6 +801,7 @@ const pickNext = () => {
 
 /** 播完判定（移植 dsh-pet decideEndedCue + 睡觉状态机） */
 const onEnded = () => {
+    if (staticMode.value) return
     if (sleepPhase === 'start') {
         sleepPhase = 'loop'
         playAnim(sleepSetActive.loop, false)
@@ -1213,7 +1266,7 @@ const onPointerUp = (event: PointerEvent) => {
         return
     }
     const velocity = estimateRelease()
-    if (velocity && !reducedMotion.value) startFlight(velocity.vx, velocity.vy)
+    if (velocity && !reducedMotion.value && !staticMode.value) startFlight(velocity.vx, velocity.vy)
     else settle()
 }
 
@@ -1293,13 +1346,13 @@ const poke = () => {
     vitals.value = applyPetting(vitals.value)
     setPetVitals(vitals.value)
     celebrateMilestones(previous, vitals.value, 1400)
-    startSquash()
+    if (!staticMode.value) startSquash()
     const line =
         vitals.value.satiety < 20 && Math.random() < 0.5
             ? '肚子空空的……右键喂我一口吧'
             : randomFrom(POKE_LINES)
     showBubble(line)
-    playAnim(pickFrom(CLICKS, currentAnim), true)
+    if (!staticMode.value) playAnim(pickFrom(CLICKS, currentAnim), true)
 }
 
 // ===== 睡觉 =====
@@ -1314,6 +1367,10 @@ const toggleSleep = () => {
 
 const sleep = () => {
     if (sleepPhase) return
+    if (staticMode.value) {
+        showBubble('静态模式下不播放睡觉动画，我安静待着就好。', 3200, '⏸️', true)
+        return
+    }
     markInteraction()
     stopWalk()
     stopFlight()
@@ -1366,12 +1423,21 @@ const speakNow = () => {
 
 const scheduleWhisper = () => {
     window.clearTimeout(whisperTimer)
+    if (staticMode.value) return
     if (!petSettings.value.petBubbleEnabled) return
     if (quietNow.value) return
     const [minDelay, maxDelay] =
         WHISPER_DELAYS[effectiveActivity.value] ?? WHISPER_DELAYS.normal
     whisperTimer = window.setTimeout(() => {
-        if (visible.value && !dragging.value && !sleepPhase && !document.hidden && bubble.value === '' && !quietNow.value) {
+        if (
+            !staticMode.value &&
+            visible.value &&
+            !dragging.value &&
+            !sleepPhase &&
+            !document.hidden &&
+            bubble.value === '' &&
+            !quietNow.value
+        ) {
             playAnim(pickFrom(WHISPER, currentAnim), true)
             const hungry = vitals.value.satiety < 20
             showBubble(
@@ -1384,11 +1450,65 @@ const scheduleWhisper = () => {
     }, minDelay + Math.random() * (maxDelay - minDelay))
 }
 
+const applyStaticMode = (enabled: boolean) => {
+    if (enabled) {
+        stopWalk()
+        stopFlight()
+        pauseVideos()
+        if (squashRaf) cancelAnimationFrame(squashRaf)
+        squashRaf = 0
+        squashY.value = 1
+        window.clearTimeout(whisperTimer)
+        window.clearInterval(sleepTalkTimer)
+        if (sleepPhase) {
+            sleepPhase = ''
+            sleeping.value = false
+        }
+        ensureStaticFrame()
+        closeMenu()
+        showBubble('已切换到静态模式，我只安静待着。', 3600, '⏸️', true)
+        return
+    }
+    playAnim(IDLE[0], true)
+    scheduleWhisper()
+    showBubble('动画回来啦～', 2600, '✨')
+}
+
+watch(staticMode, (enabled, was) => {
+    if (enabled !== was) applyStaticMode(enabled)
+})
+
+const toggleStaticMode = () => {
+    markInteraction()
+    visitorPrefs.value = setVisitorPetPreferences({
+        staticMode: !visitorPrefs.value.staticMode,
+    })
+}
+
 // ===== 菜单 =====
 let menuOutsideBound = false
 
+const menuItems = (): HTMLElement[] =>
+    Array.from(
+        menuRef.value?.querySelectorAll<HTMLElement>('[role^="menuitem"]') || []
+    ).filter((item) => !item.hasAttribute('disabled'))
+
+const focusMenuItem = (index: number) => {
+    const items = menuItems()
+    if (!items.length) return
+    const normalized = ((index % items.length) + items.length) % items.length
+    items[normalized]?.focus({ preventScroll: true })
+}
+
+const focusPet = () => {
+    petHitRef.value?.focus({ preventScroll: true })
+}
+
 const openMenu = () => {
+    if (!visible.value) return
     menuOpen.value = true
+    snackPickerOpen.value = false
+    void nextTick(() => focusMenuItem(0))
     if (!menuOutsideBound) {
         window.setTimeout(() => {
             window.addEventListener('pointerdown', onMenuOutside)
@@ -1397,18 +1517,60 @@ const openMenu = () => {
     }
 }
 
-const closeMenu = () => {
+const closeMenu = (restoreFocus = true) => {
+    const hadMenuFocus = Boolean(
+        menuRef.value?.contains(document.activeElement)
+    )
     menuOpen.value = false
     snackPickerOpen.value = false
     if (menuOutsideBound) {
         window.removeEventListener('pointerdown', onMenuOutside)
         menuOutsideBound = false
     }
+    if (restoreFocus && hadMenuFocus) {
+        void nextTick(focusPet)
+    }
     schedulePetAvoidance(140)
 }
 
 const onMenuOutside = () => {
-    closeMenu()
+    closeMenu(false)
+}
+
+const onMenuKeydown = (event: KeyboardEvent) => {
+    const items = menuItems()
+    if (!items.length) return
+    const current = items.indexOf(document.activeElement as HTMLElement)
+
+    if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMenu(true)
+        return
+    }
+    if (event.key === 'Tab') {
+        event.preventDefault()
+        focusMenuItem(current + (event.shiftKey ? -1 : 1))
+        return
+    }
+    if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        focusMenuItem(current + 1)
+        return
+    }
+    if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        focusMenuItem(current - 1)
+        return
+    }
+    if (event.key === 'Home') {
+        event.preventDefault()
+        focusMenuItem(0)
+        return
+    }
+    if (event.key === 'End') {
+        event.preventDefault()
+        focusMenuItem(items.length - 1)
+    }
 }
 
 const goHome = () => {
@@ -1425,6 +1587,7 @@ const goHome = () => {
 const playRandomAction = () => {
     markInteraction()
     closeMenu()
+    if (staticMode.value) return
     if (sleepPhase) wake()
     const category = pickWeightedCategory()
     playAnim(pickFrom(category.actions, currentAnim), true)
@@ -1515,6 +1678,7 @@ const hidePet = () => {
     markInteraction()
     closeMenu()
     setVisitorPetPreferences({ hidden: true })
+    void nextTick(() => restoreRef.value?.focus({ preventScroll: true }))
 }
 
 const resetLocalPrefs = () => {
@@ -1527,6 +1691,7 @@ const resetLocalPrefs = () => {
 const restorePet = () => {
     markInteraction()
     setVisitorPetPreferences({ hidden: false })
+    void nextTick(() => petHitRef.value?.focus({ preventScroll: true }))
     window.setTimeout(() => {
         showBubble(`${petName.value}回来啦～`, 2600)
         window.setTimeout(() => announcePendingAchievements(), 2800)
@@ -1731,7 +1896,7 @@ watch(quietNow, (quiet, wasQuiet) => {
     if (quiet) {
         window.clearTimeout(whisperTimer)
         stopWalk()
-        if (!sleepPhase) sleep()
+        if (!sleepPhase && !staticMode.value) sleep()
         if (!bubble.value) {
             showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
         }
@@ -1861,6 +2026,7 @@ const startAutoSleepWatch = () => {
     window.clearInterval(autoSleepTimer)
     autoSleepTimer = window.setInterval(() => {
         if (!petSettings.value.petAutoSleepEnabled) return
+        if (staticMode.value) return
         if (!visible.value || sleepPhase || sleeping.value) return
         if (dragging.value || menuOpen.value || document.hidden) return
         if (Date.now() - lastInteractionAt < AUTO_SLEEP_IDLE_MS) return
@@ -2149,6 +2315,7 @@ const PREFETCH_ANIMS = [
 ]
 
 const prefetchAnimations = () => {
+    if (staticMode.value) return
     const connection = (
         navigator as Navigator & {
             connection?: { saveData?: boolean; effectiveType?: string }
@@ -2178,8 +2345,8 @@ const onVisibilityChange = () => {
         return
     }
     const el = elementOf(front.value)
-    if (el?.paused) el.play().catch(() => {})
-    scheduleWhisper()
+    if (el?.paused && !staticMode.value) el.play().catch(() => {})
+    if (!staticMode.value) scheduleWhisper()
     startCommentPolling()
     announcePendingAchievements()
 }
@@ -2255,6 +2422,9 @@ onMounted(() => {
     if (a) {
         a.src = animUrl(IDLE[0])
         a.loop = false
+        if (staticMode.value) {
+            a.addEventListener('loadeddata', () => a.pause(), { once: true })
+        }
         a.play().catch(() => {
             // 自动播放被拦截时，等首次点击交互再恢复
         })
@@ -2285,7 +2455,7 @@ onMounted(() => {
     // 登录用户先合并远端养成进度，再做每日问候；匿名访客只读本机
     void settleVitals(true)
     if (quietNow.value) {
-        sleep()
+        if (!staticMode.value) sleep()
         showBubble('夜深了，我安静陪你。', 3600, '🌙', true)
     }
 
@@ -2301,7 +2471,7 @@ onMounted(() => {
     // 某些浏览器会拦截静音自动播放：首次任意交互后补一次播放
     const resume = () => {
         const el = elementOf(front.value)
-        if (el && el.paused) el.play().catch(() => {})
+        if (el && el.paused && !staticMode.value) el.play().catch(() => {})
         document.removeEventListener('pointerdown', resume)
     }
     document.addEventListener('pointerdown', resume)
@@ -2363,10 +2533,28 @@ onBeforeUnmount(() => {
             left 280ms cubic-bezier(0.22, 1, 0.36, 1),
             top 280ms cubic-bezier(0.22, 1, 0.36, 1);
     }
+
+    &.is-static {
+        transition: none;
+
+        .pet-bubble-enter-active,
+        .pet-bubble-leave-active,
+        .pet-menu-enter-active,
+        .pet-menu-leave-active {
+            transition: none;
+        }
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .dsh-pet-root.is-auto-shifting {
+        transition: none;
+    }
+
+    .pet-bubble-enter-active,
+    .pet-bubble-leave-active,
+    .pet-menu-enter-active,
+    .pet-menu-leave-active {
         transition: none;
     }
 }
@@ -2598,6 +2786,11 @@ onBeforeUnmount(() => {
 
         &:hover {
             background: var(--admin-accent-soft, var(--portal-accent-soft, rgba(0, 0, 0, 0.06)));
+        }
+
+        &:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
         }
     }
 }

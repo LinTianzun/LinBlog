@@ -375,6 +375,98 @@ test('桌宠菜单可以选择并投喂不同零食', async ({ page }) => {
     .toBe('icecream')
 })
 
+test('键盘可以打开菜单、切换焦点并用 Esc 关闭', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+
+  const hit = pet.locator('.dsh-pet-hit')
+  await hit.focus()
+  await page.keyboard.press('ArrowDown')
+
+  const menu = page.locator('.pet-menu')
+  await expect(menu).toBeVisible()
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.activeElement?.textContent?.includes('喂一口')
+      )
+    )
+    .toBe(true)
+
+  await page.keyboard.press('ArrowDown')
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.activeElement?.textContent?.includes('换零食')
+      )
+    )
+    .toBe(true)
+
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.activeElement?.classList.contains('dsh-pet-hit')
+      )
+    )
+    .toBe(true)
+})
+
+test('静态模式暂停动画并记住本机偏好', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/loginRegister')
+
+  const pet = page.locator('.dsh-pet-root')
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+  const hit = pet.locator('.dsh-pet-hit')
+
+  await hit.click({ button: 'right' })
+  await page.locator('.pet-menu button', { hasText: '开启静态模式' }).click()
+  await expect(page.locator('.pet-bubble')).toContainText('静态模式')
+
+  const readStaticState = () =>
+    page.evaluate(() => {
+      const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_VISITOR_PREFS')
+      const prefs = raw ? JSON.parse(raw) : {}
+      const video = document.querySelector<HTMLVideoElement>(
+        '.dsh-pet-video.is-front'
+      )
+      return {
+        staticMode: prefs.staticMode,
+        paused: Boolean(video?.paused),
+      }
+    })
+
+  await expect.poll(readStaticState).toMatchObject({
+    staticMode: true,
+    paused: true,
+  })
+
+  await page.reload()
+  await expect(pet).toBeVisible({ timeout: 30_000 })
+  await expect.poll(readStaticState).toMatchObject({
+    staticMode: true,
+    paused: true,
+  })
+
+  await hit.click({ button: 'right' })
+  const toggle = page.locator('.pet-menu button', {
+    hasText: '关闭静态模式',
+  })
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await toggle.click()
+  await expect(page.locator('.pet-bubble')).toContainText('动画回来啦')
+
+  await expect.poll(readStaticState).toMatchObject({
+    staticMode: false,
+    paused: false,
+  })
+})
+
 test('桌宠隐藏时发布事件仍会记录每日任务', async ({ page }) => {
   await page.addInitScript(() => {
     const now = new Date()

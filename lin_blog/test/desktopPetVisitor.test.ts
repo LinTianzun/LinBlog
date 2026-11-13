@@ -41,14 +41,25 @@ test('普通时段与关闭状态不触发安静模式', () => {
 test('本机偏好归一化会修正非法时间与类型', () => {
   const normalized = normalizeVisitorPetPreferences({
     hidden: true,
+    staticMode: 'yes' as unknown as boolean,
     quietStart: '25:99',
     quietEnd: '07:30',
     quietHoursEnabled: 'yes' as unknown as boolean,
   })
   assert.equal(normalized.hidden, true)
+  assert.equal(normalized.staticMode, false)
   assert.equal(normalized.quietStart, DEFAULT_VISITOR_PET_PREFERENCES.quietStart)
   assert.equal(normalized.quietEnd, '07:30')
   assert.equal(normalized.quietHoursEnabled, false)
+})
+
+test('静态模式是合法的本机偏好', () => {
+  const normalized = normalizeVisitorPetPreferences({ staticMode: true })
+  assert.equal(normalized.staticMode, true)
+  assert.equal(
+    normalizeVisitorPetPreferences({ staticMode: false }).staticMode,
+    false
+  )
 })
 
 test('时段问候随时钟变化', () => {

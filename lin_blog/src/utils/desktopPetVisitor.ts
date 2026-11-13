@@ -1,5 +1,6 @@
 export interface VisitorPetPreferences {
   hidden: boolean
+  staticMode: boolean
   quietHoursEnabled: boolean
   quietStart: string
   quietEnd: string
@@ -7,6 +8,7 @@ export interface VisitorPetPreferences {
 
 export const DEFAULT_VISITOR_PET_PREFERENCES: VisitorPetPreferences = {
   hidden: false,
+  staticMode: false,
   quietHoursEnabled: false,
   quietStart: '23:00',
   quietEnd: '07:00'
@@ -28,6 +30,10 @@ export function normalizeVisitorPetPreferences(
       typeof raw.hidden === 'boolean'
         ? raw.hidden
         : DEFAULT_VISITOR_PET_PREFERENCES.hidden,
+    staticMode:
+      typeof raw.staticMode === 'boolean'
+        ? raw.staticMode
+        : DEFAULT_VISITOR_PET_PREFERENCES.staticMode,
     quietHoursEnabled:
       typeof raw.quietHoursEnabled === 'boolean'
         ? raw.quietHoursEnabled
