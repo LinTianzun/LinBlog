@@ -40,6 +40,7 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
   let collections = [
     { ...existingCollection },
   ]
+  let lastCreatePayload: Record<string, unknown> = {}
   const members: Record<number, typeof memberArticle[]> = {
     8: [{ ...memberArticle }],
     12: [],
@@ -48,6 +49,7 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
   await page.route(/\/api\/collection(?:\?.*)?$/, async (route) => {
     if (route.request().method() === 'POST') {
       const payload = route.request().postDataJSON() as { name?: string }
+      lastCreatePayload = payload
       collections = [
         {
           ...createdCollection,
@@ -125,7 +127,13 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
 
   await page.getByRole('button', { name: '+ 新建系列' }).click()
   await page.getByPlaceholder('例如：从零搭一个个人博客').fill(createdCollection.name)
+  await page.getByRole('button', { name: '从素材库选择' }).click()
+  const picker = page.locator('.yk-modal__main:visible').last()
+  await picker.locator('.media-picker-item').first().click()
+  await picker.getByRole('button', { name: '确定' }).click()
+  await expect(page.locator('.collection-cover-card img')).toHaveCount(1)
   await page.getByRole('button', { name: '创建系列' }).click()
+  await expect.poll(() => lastCreatePayload.cover).toBe('/api/file/501/raw')
 
   await expect(page.locator('.collection-item').filter({ hasText: createdCollection.name })).toBeVisible()
   await expect(page.getByRole('heading', { name: createdCollection.name })).toBeVisible()

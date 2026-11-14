@@ -12,8 +12,11 @@
         <div class="collection-shell">
             <aside class="collection-sidebar" aria-label="系列列表">
                 <header class="collection-sidebar-head">
-                    <span>全部系列</span>
-                    <strong>{{ collections.length }}</strong>
+                    <div>
+                        <span class="collection-sidebar-kicker">专题书架</span>
+                        <strong>全部系列</strong>
+                    </div>
+                    <b>{{ collections.length }}</b>
                 </header>
 
                 <div v-if="loadingList" class="collection-sidebar-state">
@@ -55,10 +58,14 @@
 
                 <template v-else>
                     <header class="collection-editor-head">
-                        <div>
+                        <div class="collection-editor-title">
                             <span class="collection-kicker">{{ isCreating ? 'NEW COLLECTION' : 'COLLECTION EDITOR' }}</span>
                             <h2>{{ isCreating ? '新建系列' : form.name || '未命名系列' }}</h2>
                             <p>系列会出现在门户“系列”页，访客可按顺序连续阅读。</p>
+                            <div class="collection-editor-meta">
+                                <span>{{ selectedIds.length }} 篇文章</span>
+                                <span>{{ isCreating ? '等待创建' : `${activeCollection?.publishedCount || 0} 篇已发布` }}</span>
+                            </div>
                         </div>
                         <div class="collection-editor-actions">
                             <a v-if="!isCreating && activeId" class="collection-preview-link"
@@ -72,33 +79,65 @@
                         </div>
                     </header>
 
-                    <div class="collection-form-grid">
-                        <label class="collection-field collection-field--wide">
-                            <span>系列名称 <i>*</i></span>
-                            <input v-model="form.name" class="collection-input" type="text" maxlength="80"
-                                placeholder="例如：从零搭一个个人博客" />
-                        </label>
-                        <label class="collection-field">
-                            <span>排序权重</span>
-                            <input v-model.number="form.sort" class="collection-input" type="number" min="0"
-                                step="1" placeholder="越大越靠前" />
-                        </label>
-                        <label class="collection-field collection-field--wide">
-                            <span>封面地址</span>
-                            <input v-model="form.cover" class="collection-input" type="text" maxlength="255"
-                                placeholder="/uploads/cover.png 或 https://..." />
-                        </label>
-                        <label class="collection-field collection-field--full">
-                            <span>系列说明</span>
-                            <textarea v-model="form.description" class="collection-textarea" rows="3"
-                                maxlength="500" placeholder="这段说明会展示在门户系列卡片和详情页" />
-                        </label>
-                    </div>
+                    <div class="collection-editor-body">
+                        <section class="collection-details-card" aria-label="系列基本信息">
+                            <header class="collection-section-head">
+                                <div>
+                                    <span class="collection-section-label">基本信息</span>
+                                    <p>名称和说明会直接展示在门户的系列卡片中。</p>
+                                </div>
+                            </header>
 
-                    <div class="collection-cover-preview" :class="{ 'is-empty': !form.cover }">
-                        <img v-if="form.cover" :src="form.cover" :alt="form.name || '系列封面'" />
-                        <span v-else>{{ (form.name || '系').trim().charAt(0) }}</span>
-                        <small>{{ form.cover ? '封面预览' : '还没有封面，会使用系列名称首字占位' }}</small>
+                            <div class="collection-form-grid">
+                                <label class="collection-field">
+                                    <span>系列名称 <i>*</i></span>
+                                    <input v-model="form.name" class="collection-input" type="text" maxlength="80"
+                                        placeholder="例如：从零搭一个个人博客" />
+                                </label>
+                                <label class="collection-field">
+                                    <span>排序权重</span>
+                                    <input v-model.number="form.sort" class="collection-input" type="number" min="0"
+                                        step="1" placeholder="越大越靠前" />
+                                </label>
+                                <label class="collection-field collection-field--full">
+                                    <span>系列说明</span>
+                                    <textarea v-model="form.description" class="collection-textarea" rows="4"
+                                        maxlength="500" placeholder="这段说明会展示在门户系列卡片和详情页" />
+                                </label>
+                            </div>
+                        </section>
+
+                        <aside class="collection-cover-card" aria-label="系列封面">
+                            <header class="collection-section-head">
+                                <div>
+                                    <span class="collection-section-label">系列封面</span>
+                                    <p>从本地选择，或直接使用素材库图片。</p>
+                                </div>
+                            </header>
+
+                            <div class="collection-cover-upload">
+                                <yk-upload :file-list="coverFileList"
+                                    :upload-url="uploadUrl" :limit="1" :multiple="false"
+                                    accept="image/jpeg,image/png,image/webp,image/gif"
+                                    :max-size="8 * 1024 * 1024" desc="上传本地图片"
+                                    @handle-success="handleCoverSuccess"
+                                    @handle-error="handleCoverError"
+                                    @handle-delete="handleCoverDelete" />
+                            </div>
+
+                            <button type="button" class="collection-media-button"
+                                @click="mediaPickerOpen = true">
+                                <IconFolderOpenOutline />
+                                从素材库选择
+                            </button>
+
+                            <p class="collection-cover-hint">
+                                推荐 16:10 横图，支持 JPG、PNG、WebP 和 GIF，最大 8MB。
+                            </p>
+                            <p v-if="coverUploadError" class="collection-cover-error">
+                                {{ coverUploadError }}
+                            </p>
+                        </aside>
                     </div>
 
                     <div class="collection-members">
@@ -118,6 +157,11 @@
                                 <li v-for="(article, index) in selectedArticles" :key="article.id"
                                     class="collection-selected-item">
                                     <span class="collection-order">{{ String(index + 1).padStart(2, '0') }}</span>
+                                    <span class="collection-article-cover" :class="{ 'is-empty': !article.cover }">
+                                        <img v-if="article.cover" :src="article.cover" :alt="article.title"
+                                            loading="lazy" />
+                                        <span v-else>{{ article.title.trim().charAt(0) || '文' }}</span>
+                                    </span>
                                     <span class="collection-selected-copy">
                                         <strong>{{ article.title }}</strong>
                                         <small>
@@ -144,6 +188,10 @@
                                     <h3>添加文章</h3>
                                     <p>只列出博客文章，草稿也可以先加入系列。</p>
                                 </div>
+                                <RouterLink class="collection-new-article" to="/editarticle"
+                                    target="_blank" rel="noopener">
+                                    + 新建文章
+                                </RouterLink>
                             </header>
 
                             <input v-model="articleKeyword" class="collection-input collection-search"
@@ -158,6 +206,11 @@
                             <div v-else class="collection-available-list">
                                 <button v-for="article in availableArticles" :key="article.id" type="button"
                                     class="collection-available-item" @click="addArticle(article.id)">
+                                    <span class="collection-article-cover" :class="{ 'is-empty': !article.cover }">
+                                        <img v-if="article.cover" :src="article.cover" :alt="article.title"
+                                            loading="lazy" />
+                                        <span v-else>{{ article.title.trim().charAt(0) || '文' }}</span>
+                                    </span>
                                     <span class="collection-selected-copy">
                                         <strong>{{ article.title }}</strong>
                                         <small>
@@ -186,13 +239,17 @@
                 </template>
             </section>
         </div>
+
+        <MediaPickerDialog v-model:open="mediaPickerOpen" @select="handleMediaSelect" />
     </yk-space>
 </template>
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
+import MediaPickerDialog from '../components/common/MediaPickerDialog.vue'
 import { getArticles, type ArticleItem } from '../api/article'
+import { getRequestErrorMessage } from '../api/file'
 import {
     createCollection,
     deleteCollection,
@@ -202,8 +259,14 @@ import {
     updateCollection,
     type CollectionSummary,
 } from '../api/collection'
+import { buildImageUploadUrl } from '../utils/uploadUrl'
 
 type PickableArticle = Pick<ArticleItem, 'id' | 'title' | 'state' | 'cover' | 'introduce' | 'subsetName'>
+type CoverFile = { name: string; url: string }
+type UploadResponse = {
+    data?: { url?: string }
+    url?: string
+}
 
 const proxy = getCurrentInstance()?.proxy as {
     $message?: (options: { type: 'primary' | 'warning' | 'error'; message: string }) => void
@@ -223,6 +286,11 @@ const loadingArticles = ref(false)
 const saving = ref(false)
 const errorMessage = ref('')
 const noticeMessage = ref('')
+const coverFileList = ref<CoverFile[]>([])
+const coverUploadError = ref('')
+const mediaPickerOpen = ref(false)
+const uploadUrl = ref('')
+const uploadTicketBusy = ref(false)
 
 const form = reactive({
     name: '',
@@ -271,6 +339,61 @@ const resetForm = (): void => {
     form.description = ''
     form.cover = ''
     form.sort = 0
+    syncCoverFileList()
+}
+
+const syncCoverFileList = (): void => {
+    coverFileList.value = form.cover
+        ? [{ name: '系列封面', url: form.cover }]
+        : []
+}
+
+const refreshUploadUrl = async (): Promise<void> => {
+    if (uploadTicketBusy.value) return
+    uploadTicketBusy.value = true
+    try {
+        uploadUrl.value = await buildImageUploadUrl()
+        coverUploadError.value = ''
+    } catch (error) {
+        coverUploadError.value = getRequestErrorMessage(error)
+    } finally {
+        uploadTicketBusy.value = false
+    }
+}
+
+const handleCoverSuccess = (response: UploadResponse): void => {
+    const url = response.data?.url || response.url
+    if (!url) return
+
+    coverUploadError.value = ''
+    form.cover = url
+    syncCoverFileList()
+    void refreshUploadUrl()
+}
+
+const handleCoverError = (error: unknown): void => {
+    const message = typeof error === 'string' && error.trim()
+        ? error
+        : getRequestErrorMessage(error, '封面上传失败，请稍后重试')
+    coverUploadError.value = message
+    showToast('error', message)
+    void refreshUploadUrl()
+}
+
+const handleCoverDelete = (): void => {
+    coverUploadError.value = ''
+    form.cover = ''
+    syncCoverFileList()
+    void refreshUploadUrl()
+}
+
+const handleMediaSelect = (urls: string[]): void => {
+    const url = urls[0]
+    if (!url) return
+
+    coverUploadError.value = ''
+    form.cover = url
+    syncCoverFileList()
 }
 
 const startCreate = (): void => {
@@ -299,7 +422,7 @@ const loadCollections = async (): Promise<void> => {
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '系列列表加载失败')
         }
-        collections.value = result.data.list
+        collections.value = Array.isArray(result.data.list) ? result.data.list : []
     } catch (error) {
         errorMessage.value = getErrorMessage(error, '系列列表加载失败')
     } finally {
@@ -323,6 +446,7 @@ const selectCollection = async (id: number): Promise<void> => {
         form.description = detail.description
         form.cover = detail.cover
         form.sort = detail.sort
+        syncCoverFileList()
         selectedIds.value = detail.articles.map(article => article.id)
         detail.articles.forEach(rememberArticle)
     } catch (error) {
@@ -339,8 +463,8 @@ const loadPickerArticles = async (): Promise<void> => {
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '文章列表加载失败')
         }
-        pickerArticles.value = result.data.list
-        result.data.list.forEach(rememberArticle)
+        pickerArticles.value = Array.isArray(result.data.list) ? result.data.list : []
+        pickerArticles.value.forEach(rememberArticle)
     } catch (error) {
         errorMessage.value = getErrorMessage(error, '文章列表加载失败')
     } finally {
@@ -470,6 +594,7 @@ const handleDelete = async (): Promise<void> => {
 }
 
 onMounted(async () => {
+    void refreshUploadUrl()
     await Promise.all([loadCollections(), loadPickerArticles()])
     if (collections.value[0]) {
         await selectCollection(collections.value[0].id)
@@ -479,8 +604,12 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .collection-page {
+    --red: #d84a3a;
+    --green: #239b67;
     --collection-line: color-mix(in srgb, var(--gray1) 84%, transparent);
     --collection-soft: color-mix(in srgb, var(--pcolor1) 42%, var(--bgColor1));
+    --collection-card: color-mix(in srgb, var(--bgColor1) 92%, var(--pcolor1));
+    --collection-shadow: 0 16px 38px color-mix(in srgb, #1c2540 7%, transparent);
 }
 
 .collection-banner {
@@ -503,46 +632,71 @@ onMounted(async () => {
 }
 
 .collection-shell {
+    width: 100%;
     display: grid;
-    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: minmax(220px, 264px) minmax(0, 1fr);
+    gap: 18px;
     align-items: start;
 }
 
 .collection-sidebar,
 .collection-editor {
     border: 1px solid var(--collection-line);
-    border-radius: 14px;
-    background: var(--bgColor1);
+    border-radius: 18px;
+    background: var(--collection-card);
+    box-shadow: var(--collection-shadow);
 }
 
 .collection-sidebar {
     position: sticky;
     top: 92px;
     overflow: hidden;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--pcolor) 7%, transparent),
+            transparent 170px),
+        var(--bgColor1);
 }
 
 .collection-sidebar-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 15px;
+    gap: 12px;
+    padding: 17px 16px 15px;
     border-bottom: 1px solid var(--collection-line);
-    color: var(--gray6);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+
+    > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
 
     strong {
+        color: var(--gray);
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    b {
         display: grid;
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         place-items: center;
-        border-radius: 7px;
+        border-radius: 9px;
         color: var(--pcolor);
         background: var(--pcolor1);
-        font-size: 11px;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
     }
+}
+
+.collection-sidebar-kicker {
+    color: var(--pcolor);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.14em;
 }
 
 .collection-sidebar-state,
@@ -580,42 +734,52 @@ onMounted(async () => {
 .collection-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 8px;
+    gap: 6px;
+    padding: 10px;
 }
 
 .collection-item {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 11px;
     width: 100%;
-    padding: 9px;
+    padding: 10px;
     border: 1px solid transparent;
-    border-radius: 10px;
+    border-radius: 12px;
     color: inherit;
     background: transparent;
     text-align: left;
     cursor: pointer;
-    transition: background 0.18s ease, border-color 0.18s ease;
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease,
+        transform 0.18s ease;
 
     &:hover {
         background: var(--collection-soft);
+        transform: translateX(2px);
     }
 
     &.is-active {
         border-color: color-mix(in srgb, var(--pcolor) 30%, transparent);
-        background: var(--pcolor1);
+        background:
+            linear-gradient(90deg,
+                color-mix(in srgb, var(--pcolor) 10%, transparent),
+                transparent 88%),
+            var(--bgColor1);
+        box-shadow: inset 3px 0 0 var(--pcolor);
     }
 }
 
 .collection-item-cover {
     display: grid;
-    width: 42px;
-    height: 42px;
+    width: 48px;
+    height: 48px;
     flex: none;
     place-items: center;
     overflow: hidden;
-    border-radius: 9px;
+    border-radius: 11px;
     background: var(--gray2);
     color: var(--pcolor);
     font-family: var(--portal-serif, serif);
@@ -657,6 +821,11 @@ onMounted(async () => {
 .collection-editor {
     min-width: 0;
     overflow: hidden;
+    background:
+        linear-gradient(145deg,
+            color-mix(in srgb, var(--pcolor) 4%, transparent),
+            transparent 320px),
+        var(--bgColor1);
 }
 
 .collection-editor-head {
@@ -664,19 +833,43 @@ onMounted(async () => {
     align-items: flex-start;
     justify-content: space-between;
     gap: 18px;
-    padding: 20px 22px 16px;
+    padding: 24px 26px 20px;
     border-bottom: 1px solid var(--collection-line);
+    background:
+        radial-gradient(circle at 0 0, color-mix(in srgb, var(--pcolor) 10%, transparent), transparent 38%),
+        linear-gradient(120deg, var(--pcolor1), transparent 62%);
 
     h2 {
         margin: 4px 0 5px;
         color: var(--gray);
-        font-size: 21px;
+        font-size: 24px;
+        line-height: 1.25;
     }
 
     p {
         margin: 0;
         color: var(--gray6);
         font-size: 12px;
+    }
+}
+
+.collection-editor-title {
+    min-width: 0;
+}
+
+.collection-editor-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+
+    span {
+        padding: 4px 9px;
+        border: 1px solid color-mix(in srgb, var(--pcolor) 16%, var(--collection-line));
+        border-radius: 999px;
+        color: var(--gray6);
+        background: color-mix(in srgb, var(--bgColor1) 82%, transparent);
+        font-size: 10px;
     }
 }
 
@@ -704,11 +897,144 @@ onMounted(async () => {
     }
 }
 
+.collection-editor-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 310px);
+    gap: 16px;
+    padding: 20px 26px 18px;
+    align-items: start;
+}
+
+.collection-details-card,
+.collection-cover-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--collection-line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bgColor1) 86%, var(--bgColor2));
+}
+
+.collection-cover-card {
+    background:
+        linear-gradient(160deg,
+            color-mix(in srgb, var(--pcolor) 7%, transparent),
+            transparent 54%),
+        var(--bgColor1);
+}
+
+.collection-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--collection-line);
+
+    p {
+        margin: 4px 0 0;
+        color: var(--gray6);
+        font-size: 11px;
+        line-height: 1.55;
+    }
+}
+
+.collection-section-label {
+    color: var(--gray);
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .collection-form-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 140px;
+    grid-template-columns: minmax(0, 1fr) 132px;
     gap: 13px;
-    padding: 18px 22px;
+}
+
+.collection-cover-upload {
+    display: block;
+    width: 100%;
+
+    :deep(.yk-upload) {
+        width: 100%;
+    }
+
+    :deep(.yk-space) {
+        width: 100%;
+    }
+
+    :deep(.yk-upload__picture),
+    :deep(.yk-upload-picture),
+    :deep(.yk-upload__picture-button) {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 10;
+        border-radius: 12px;
+    }
+
+    :deep(.yk-upload__picture-button) {
+        border: 1px dashed color-mix(in srgb, var(--pcolor) 28%, var(--collection-line));
+        background:
+            radial-gradient(circle at 50% 32%, var(--pcolor1), transparent 46%),
+            var(--bgColor2);
+    }
+
+    :deep(.picture-desc) {
+        gap: 4px;
+    }
+}
+
+.collection-media-button {
+    display: inline-flex;
+    width: 100%;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 10px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 24%, var(--collection-line));
+    border-radius: 10px;
+    color: var(--pcolor);
+    background: color-mix(in srgb, var(--pcolor) 5%, var(--bgColor1));
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease;
+
+    svg {
+        font-size: 15px;
+    }
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--pcolor) 46%, var(--collection-line));
+        background: color-mix(in srgb, var(--pcolor) 10%, var(--bgColor1));
+        transform: translateY(-1px);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--pcolor);
+        outline-offset: 2px;
+    }
+}
+
+.collection-cover-hint,
+.collection-cover-error {
+    margin: 9px 0 0;
+    font-size: 10px;
+    line-height: 1.55;
+}
+
+.collection-cover-hint {
+    color: var(--gray6);
+}
+
+.collection-cover-error {
+    color: var(--red);
+    overflow-wrap: anywhere;
 }
 
 .collection-field {
@@ -765,51 +1091,22 @@ onMounted(async () => {
     line-height: 1.65;
 }
 
-.collection-cover-preview {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 0 22px 18px;
-    padding: 10px;
-    border: 1px dashed var(--collection-line);
-    border-radius: 10px;
-    background: var(--collection-soft);
-
-    img,
-    > span {
-        display: grid;
-        width: 54px;
-        height: 54px;
-        flex: none;
-        place-items: center;
-        overflow: hidden;
-        border-radius: 9px;
-        color: var(--pcolor);
-        background: var(--bgColor1);
-        font-family: var(--portal-serif, serif);
-        font-size: 22px;
-        object-fit: cover;
-    }
-
-    small {
-        color: var(--gray6);
-        font-size: 12px;
-    }
-}
-
 .collection-members {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    padding: 0 22px 20px;
+    gap: 16px;
+    padding: 0 26px 22px;
 }
 
 .collection-member-panel {
     min-width: 0;
-    padding: 14px;
+    padding: 16px;
     border: 1px solid var(--collection-line);
-    border-radius: 12px;
-    background: var(--bgColor2);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--bgColor2) 78%, transparent),
+            var(--bgColor1));
 }
 
 .collection-panel-head {
@@ -830,6 +1127,25 @@ onMounted(async () => {
         color: var(--gray6);
         font-size: 11px;
         line-height: 1.55;
+    }
+}
+
+.collection-new-article {
+    flex: none;
+    padding: 5px 8px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 20%, var(--collection-line));
+    border-radius: 8px;
+    color: var(--pcolor);
+    background: color-mix(in srgb, var(--pcolor) 4%, var(--bgColor1));
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.3;
+    text-decoration: none;
+    transition: background 0.18s ease, border-color 0.18s ease;
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--pcolor) 38%, var(--collection-line));
+        background: color-mix(in srgb, var(--pcolor) 9%, var(--bgColor1));
     }
 }
 
@@ -861,10 +1177,14 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 8px;
+    padding: 9px;
     border: 1px solid var(--collection-line);
-    border-radius: 9px;
+    border-radius: 10px;
     background: var(--bgColor1);
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease;
 }
 
 .collection-available-item {
@@ -875,6 +1195,8 @@ onMounted(async () => {
 
     &:hover {
         border-color: color-mix(in srgb, var(--pcolor) 30%, var(--collection-line));
+        background: color-mix(in srgb, var(--pcolor) 3%, var(--bgColor1));
+        transform: translateY(-1px);
     }
 }
 
@@ -889,6 +1211,34 @@ onMounted(async () => {
     background: var(--pcolor1);
     font-size: 10px;
     font-weight: 700;
+}
+
+.collection-article-cover {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 8px;
+    color: var(--pcolor);
+    background:
+        linear-gradient(145deg,
+            color-mix(in srgb, var(--pcolor) 12%, transparent),
+            transparent),
+        var(--bgColor2);
+    font-family: var(--portal-serif, serif);
+    font-size: 13px;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    &.is-empty {
+        border: 1px dashed color-mix(in srgb, var(--pcolor) 18%, var(--collection-line));
+    }
 }
 
 .collection-selected-copy {
@@ -964,9 +1314,11 @@ onMounted(async () => {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 14px 22px;
+    padding: 15px 26px;
     border-top: 1px solid var(--collection-line);
-    background: var(--collection-soft);
+    background:
+        linear-gradient(90deg, var(--collection-soft), transparent 70%),
+        var(--bgColor1);
 }
 
 .collection-foot-note {
@@ -978,6 +1330,33 @@ onMounted(async () => {
     display: flex;
     flex: none;
     gap: 8px;
+}
+
+@media (max-width: 1320px) {
+    .collection-editor-body {
+        grid-template-columns: 1fr;
+    }
+
+    .collection-cover-card {
+        display: grid;
+        grid-template-columns: minmax(190px, 250px) minmax(0, 1fr);
+        gap: 0 16px;
+        align-items: start;
+    }
+
+    .collection-cover-card .collection-section-head {
+        grid-column: 1 / -1;
+    }
+
+    .collection-cover-card .collection-media-button {
+        grid-column: 2;
+        margin-top: 0;
+    }
+
+    .collection-cover-card .collection-cover-hint,
+    .collection-cover-card .collection-cover-error {
+        grid-column: 2;
+    }
 }
 
 @media (max-width: 1100px) {
@@ -1002,6 +1381,21 @@ onMounted(async () => {
 
     .collection-form-grid {
         grid-template-columns: 1fr;
+    }
+
+    .collection-editor-head,
+    .collection-editor-body,
+    .collection-members {
+        padding-right: 16px;
+        padding-left: 16px;
+    }
+
+    .collection-cover-card {
+        display: block;
+    }
+
+    .collection-cover-card .collection-media-button {
+        margin-top: 10px;
     }
 
     .collection-editor-head,

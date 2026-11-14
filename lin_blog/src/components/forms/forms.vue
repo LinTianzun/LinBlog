@@ -113,14 +113,20 @@
             </div>
 
             <div class="forms-cover" v-if="props.classify == 0">
-                <span class="forms-cover-label">文章封面</span>
+                <div class="forms-cover-head">
+                    <span class="forms-cover-label">文章封面</span>
+                    <small>本地上传 / 素材库 / AI</small>
+                </div>
                 <yk-upload :file-list="coverFileList" :upload-url="uploadUrl" :limit="1" :multiple="false"
                     accept="image/jpeg,image/png,image/webp,image/gif" :max-size="8 * 1024 * 1024"
-                    desc="上传封面" @handle-success="handleCoverSuccess"
+                    desc="上传本地图片" @handle-success="handleCoverSuccess"
                     @handle-error="handleCoverError" @handle-delete="handleCoverDelete" />
                 <ImageSourceActions ai-label="AI 生成封面"
                     :title="formData.title" :introduce="formData.introduce" :content="props.aiContent || ''"
                     @pick="mediaPickerOpen = true" @adopt="applyAiCover" />
+                <p class="forms-cover-hint">
+                    支持 JPG、PNG、WebP 和 GIF，最大 8MB。
+                </p>
                 <p v-if="coverUploadError" class="forms-cover-error">
                     {{ coverUploadError }}
                 </p>
@@ -801,19 +807,51 @@ onMounted(() => {
         }
 
         &-cover {
-            flex: 0 0 160px;
+            flex: 0 0 196px;
             display: flex;
             flex-direction: column;
             gap: @space-s;
+            align-self: flex-start;
+            padding: @space-m;
+            border: 1px solid var(--admin-line, @line-color-s);
+            border-radius: 12px;
+            background:
+                linear-gradient(155deg,
+                    color-mix(in srgb, var(--pcolor, #2b5aed) 6%, transparent),
+                    transparent 58%),
+                var(--admin-surface, @bg-color-l);
+
+            &-head {
+                display: flex;
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 2px;
+                padding-bottom: @space-s;
+                border-bottom: 1px dashed var(--admin-line, @line-color-s);
+
+                small {
+                    color: @font-color-s;
+                    font-size: @size-ss;
+                    line-height: 1.4;
+                }
+            }
 
             &-label {
                 color: @font-color-m;
                 font-size: @size-s;
+                font-weight: 650;
                 line-height: 20px;
             }
 
+            &-hint {
+                margin: 0;
+                color: @font-color-s;
+                font-size: @size-ss;
+                line-height: 1.55;
+            }
+
             &-error {
-                max-width: 160px;
+                max-width: 100%;
                 color: #d84a3a;
                 font-size: @size-s;
                 line-height: 1.5;
@@ -953,8 +991,9 @@ onMounted(() => {
             .yk-upload__picture,
             .yk-upload-picture,
             .yk-upload__picture-button {
-                width: 160px;
+                width: 100%;
                 height: 120px;
+                border-radius: 9px;
             }
 
         }
@@ -972,7 +1011,7 @@ onMounted(() => {
             .forms-cover .yk-upload__picture,
             .forms-cover .yk-upload-picture,
             .forms-cover .yk-upload__picture-button {
-                width: 160px;
+                width: 100%;
                 height: 120px;
             }
         }

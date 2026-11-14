@@ -17,7 +17,8 @@
 
         <template v-else-if="report">
             <section class="health-hero" aria-label="内容健康概览">
-                <div class="health-score" :class="scoreTone">
+                <div class="health-score" :class="scoreTone"
+                    :style="{ '--health-score': `${healthScore}%` }">
                     <strong>{{ healthScore }}</strong>
                     <span>健康度</span>
                 </div>
@@ -37,18 +38,22 @@
                     <div class="health-fact">
                         <span>已发布</span>
                         <strong>{{ report.summary.published }}</strong>
+                        <small>{{ report.summary.scanned }} 篇参与扫描</small>
                     </div>
                     <div class="health-fact is-success">
                         <span>健康</span>
                         <strong>{{ report.summary.healthy }}</strong>
+                        <small>没有发现问题</small>
                     </div>
                     <div class="health-fact is-warning">
                         <span>待处理</span>
                         <strong>{{ report.summary.issueItems }}</strong>
+                        <small>至少有一项问题</small>
                     </div>
                     <div class="health-fact is-danger">
                         <span>失效链接</span>
                         <strong>{{ report.summary.byIssue.brokenLinks }}</strong>
+                        <small>门户内部链接</small>
                     </div>
                 </div>
             </section>
@@ -87,7 +92,7 @@
             </div>
 
             <section v-if="filteredItems.length" class="health-list" aria-label="需要整理的内容">
-                <article v-for="item in filteredItems" :key="item.id" class="health-card">
+                <article v-for="item in pagedItems" :key="item.id" class="health-card">
                     <header class="health-card-head">
                         <div class="health-card-title">
                             <span class="health-kind" :class="{ 'is-image': item.classify === 'image' }">
@@ -126,6 +131,12 @@
                         <span v-else>{{ item.contentLength }} 字</span>
                     </footer>
                 </article>
+
+                <div class="health-pagination">
+                    <AdminPager v-model:page="page" v-model:page-size="pageSize"
+                        :total="filteredItems.length" :page-size-options="[10, 20, 50]"
+                        :show-page-size="true" :show-total="true" :disabled="loading" />
+                </div>
             </section>
 
             <div v-else class="health-empty">
@@ -141,8 +152,9 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
+import AdminPager from '../components/common/AdminPager.vue'
 import {
     getContentHealth,
     type ContentHealthItem,
@@ -177,6 +189,8 @@ const report = ref<ContentHealthReport | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
 const issueFilter = ref<'all' | ContentIssueKey>('all')
+const page = ref(1)
+const pageSize = ref(10)
 
 const healthScore = computed(() => {
     if (!report.value || report.value.summary.scanned === 0) return 100
@@ -198,6 +212,14 @@ const filteredItems = computed<ContentHealthItem[]>(() => {
     if (!report.value) return []
     if (issueFilter.value === 'all') return report.value.items
     return report.value.items.filter(item => item.issues.includes(issueFilter.value as ContentIssueKey))
+})
+
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredItems.value.length / pageSize.value)))
+
+const pagedItems = computed<ContentHealthItem[]>(() => {
+    const currentPage = Math.min(Math.max(1, page.value), pageCount.value)
+    const start = (currentPage - 1) * pageSize.value
+    return filteredItems.value.slice(start, start + pageSize.value)
 })
 
 const getErrorMessage = (error: unknown): string => {
@@ -232,6 +254,7 @@ const loadHealth = async (): Promise<void> => {
         if (issueFilter.value !== 'all' && result.data.summary.byIssue[issueFilter.value] === 0) {
             issueFilter.value = 'all'
         }
+        page.value = 1
     } catch (error) {
         errorMessage.value = getErrorMessage(error)
     } finally {
@@ -248,15 +271,24 @@ const changeStaleDays = async (days: number): Promise<void> => {
 onMounted(() => {
     void loadHealth()
 })
+
+watch(issueFilter, () => {
+    page.value = 1
+})
 </script>
 
 <style lang="less" scoped>
 .health-page {
+    --red: #d84a3a;
+    --green: #239b67;
+    --orange: #d18412;
     --health-line: color-mix(in srgb, var(--gray1) 84%, transparent);
     --health-soft: color-mix(in srgb, var(--pcolor1) 44%, var(--bgColor1));
+    --health-card-shadow: 0 14px 34px color-mix(in srgb, #1c2540 6%, transparent);
 }
 
 .health-banner {
+    width: 100%;
     padding: 10px 14px;
     border: 1px solid var(--health-line);
     border-radius: 10px;
@@ -288,57 +320,117 @@ onMounted(() => {
 }
 
 .health-hero {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 22px;
     align-items: center;
-    padding: 22px;
+    overflow: hidden;
+    padding: 26px;
     border: 1px solid var(--health-line);
-    border-radius: 16px;
+    border-radius: 20px;
     background:
+        radial-gradient(circle at 4% 0%, color-mix(in srgb, var(--pcolor) 14%, transparent), transparent 34%),
         linear-gradient(135deg, var(--pcolor1), transparent 58%),
         var(--bgColor1);
+    box-shadow: var(--health-card-shadow);
+
+    &::before {
+        position: absolute;
+        z-index: -1;
+        inset: 0;
+        content: '';
+        opacity: 0.34;
+        background-image:
+            linear-gradient(color-mix(in srgb, var(--pcolor) 12%, transparent) 1px, transparent 1px),
+            linear-gradient(90deg, color-mix(in srgb, var(--pcolor) 12%, transparent) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: linear-gradient(100deg, #000, transparent 64%);
+        pointer-events: none;
+    }
 }
 
 .health-score {
+    position: relative;
+    isolation: isolate;
     display: grid;
-    width: 104px;
-    height: 104px;
+    width: 116px;
+    height: 116px;
     flex: none;
     place-items: center;
     align-content: center;
     gap: 2px;
-    border: 1px solid color-mix(in srgb, var(--green) 28%, var(--health-line));
     border-radius: 50%;
-    background: color-mix(in srgb, var(--green) 8%, var(--bgColor1));
+    background:
+        conic-gradient(var(--green) var(--health-score, 0%), color-mix(in srgb, var(--green) 12%, var(--gray2)) 0);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--green) 20%, var(--health-line)),
+        0 14px 30px color-mix(in srgb, var(--green) 11%, transparent);
+
+    &::before {
+        position: absolute;
+        z-index: -1;
+        inset: 7px;
+        content: '';
+        border-radius: 50%;
+        background:
+            radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--green) 10%, transparent), transparent 58%),
+            var(--bgColor1);
+        box-shadow: inset 0 0 0 1px var(--health-line);
+    }
 
     strong {
+        position: relative;
+        z-index: 1;
         color: var(--green);
-        font-size: 34px;
+        font-size: 38px;
         font-weight: 750;
         line-height: 1;
+        font-variant-numeric: tabular-nums;
     }
 
     span {
+        position: relative;
+        z-index: 1;
         color: var(--gray6);
         font-size: 10px;
     }
 
     &.is-warning {
-        border-color: color-mix(in srgb, var(--orange) 30%, var(--health-line));
-        background: color-mix(in srgb, var(--orange) 8%, var(--bgColor1));
+        background:
+            conic-gradient(var(--orange) var(--health-score, 0%), color-mix(in srgb, var(--orange) 12%, var(--gray2)) 0);
+        box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--orange) 24%, var(--health-line)),
+            0 14px 30px color-mix(in srgb, var(--orange) 11%, transparent);
 
         strong {
             color: var(--orange);
         }
+
+        &::before {
+            background:
+                radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--orange) 10%, transparent), transparent 58%),
+                var(--bgColor1);
+        }
     }
 
     &.is-danger {
-        border-color: color-mix(in srgb, var(--red) 30%, var(--health-line));
-        background: color-mix(in srgb, var(--red) 8%, var(--bgColor1));
+        background:
+            conic-gradient(var(--red) var(--health-score, 0%), color-mix(in srgb, var(--red) 12%, var(--gray2)) 0);
+        box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--red) 24%, var(--health-line)),
+            0 14px 30px color-mix(in srgb, var(--red) 11%, transparent);
 
         strong {
             color: var(--red);
+        }
+
+        &::before {
+            background:
+                radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--red) 10%, transparent), transparent 58%),
+                var(--bgColor1);
         }
     }
 }
@@ -377,12 +469,14 @@ onMounted(() => {
 
 .health-fact {
     min-width: 78px;
-    padding: 9px 11px;
+    padding: 10px 12px;
     border: 1px solid var(--health-line);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--bgColor2) 72%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bgColor2) 68%, var(--bgColor1));
+    backdrop-filter: blur(6px);
 
-    span {
+    span,
+    small {
         display: block;
         color: var(--gray6);
         font-size: 10px;
@@ -394,6 +488,12 @@ onMounted(() => {
         color: var(--gray);
         font-size: 20px;
         line-height: 1;
+    }
+
+    small {
+        margin-top: 5px;
+        font-size: 9px;
+        line-height: 1.35;
     }
 
     &.is-success strong {
@@ -410,14 +510,19 @@ onMounted(() => {
 }
 
 .health-toolbar {
+    width: 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 14px 24px;
     align-items: flex-end;
-    padding: 15px 17px;
+    padding: 17px 19px;
     border: 1px solid var(--health-line);
-    border-radius: 13px;
-    background: var(--bgColor1);
+    border-radius: 16px;
+    background:
+        linear-gradient(90deg,
+            color-mix(in srgb, var(--bgColor2) 62%, transparent),
+            transparent 72%),
+        var(--bgColor1);
 }
 
 .health-toolbar-group {
@@ -450,15 +555,20 @@ onMounted(() => {
     border: 1px solid var(--health-line);
     border-radius: 999px;
     color: var(--gray6);
-    background: var(--bgColor2);
+    background: color-mix(in srgb, var(--bgColor2) 74%, var(--bgColor1));
     font: inherit;
     font-size: 11px;
     cursor: pointer;
-    transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    transition:
+        color 0.18s ease,
+        background 0.18s ease,
+        border-color 0.18s ease,
+        transform 0.18s ease;
 
     &:hover:not(:disabled) {
         color: var(--pcolor);
         border-color: color-mix(in srgb, var(--pcolor) 30%, var(--health-line));
+        transform: translateY(-1px);
     }
 
     &:disabled {
@@ -469,7 +579,8 @@ onMounted(() => {
     &.is-active {
         border-color: var(--pcolor);
         color: var(--pcolor);
-        background: var(--pcolor1);
+        background: color-mix(in srgb, var(--pcolor) 9%, var(--bgColor1));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pcolor) 10%, transparent);
     }
 }
 
@@ -495,21 +606,44 @@ onMounted(() => {
 }
 
 .health-list {
+    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+}
+
+.health-pagination {
+    padding: 4px 2px 0;
 }
 
 .health-card {
-    padding: 15px 17px;
+    position: relative;
+    overflow: hidden;
+    padding: 17px 19px 15px;
     border: 1px solid var(--health-line);
-    border-radius: 12px;
+    border-radius: 15px;
     background: var(--bgColor1);
-    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 24%, transparent);
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+
+    &::before {
+        position: absolute;
+        top: 16px;
+        bottom: 16px;
+        left: 0;
+        width: 3px;
+        content: '';
+        border-radius: 0 3px 3px 0;
+        background: color-mix(in srgb, var(--pcolor) 48%, transparent);
+    }
 
     &:hover {
         border-color: color-mix(in srgb, var(--pcolor) 24%, var(--health-line));
-        box-shadow: var(--shadow-s);
+        box-shadow: var(--health-card-shadow);
+        transform: translateY(-1px);
     }
 }
 
@@ -588,7 +722,7 @@ onMounted(() => {
 }
 
 .health-issue {
-    padding: 2px 7px;
+    padding: 3px 8px;
     border: 1px solid var(--health-line);
     border-radius: 999px;
     color: var(--gray6);
@@ -613,7 +747,7 @@ onMounted(() => {
     flex-direction: column;
     gap: 5px;
     margin-top: 10px;
-    padding: 9px 10px;
+    padding: 10px 11px;
     border: 1px solid color-mix(in srgb, var(--red) 18%, var(--health-line));
     border-radius: 8px;
     background: color-mix(in srgb, var(--red) 4%, var(--bgColor1));
@@ -650,8 +784,8 @@ onMounted(() => {
     display: flex;
     flex-wrap: wrap;
     gap: 6px 14px;
-    margin-top: 11px;
-    padding-top: 9px;
+    margin-top: 12px;
+    padding-top: 10px;
     border-top: 1px dashed var(--health-line);
     color: var(--gray6);
     font-size: 10px;

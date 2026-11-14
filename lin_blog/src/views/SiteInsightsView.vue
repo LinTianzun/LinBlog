@@ -24,8 +24,15 @@
                         搜索与 404 只记录关键词和页面路径，不关联访客身份。
                         数据保留最近 {{ stats.days }} 天，适合用来补内容、修链接和调整导航。
                     </p>
+                    <div class="insight-signal">
+                        <span class="insight-signal-track" aria-hidden="true">
+                            <i :style="{ width: `${semanticPercent}%` }" />
+                        </span>
+                        <span>语义搜索占 {{ semanticPercent }}%</span>
+                    </div>
                 </div>
                 <div class="insight-periods" role="group" aria-label="统计周期">
+                    <span class="insight-periods-label">统计周期</span>
                     <button v-for="item in periodOptions" :key="item" type="button" class="insight-period"
                         :class="{ 'is-active': days === item }" :disabled="loading" @click="changeDays(item)">
                         {{ item }} 天
@@ -69,7 +76,8 @@
                 </header>
                 <div class="insight-trend-scroll">
                     <div class="insight-trend" :style="{ '--trend-columns': stats.trend.length }">
-                        <div v-for="point in stats.trend" :key="point.date" class="trend-column"
+                        <div v-for="(point, index) in stats.trend" :key="point.date" class="trend-column"
+                            :class="{ 'is-latest': index === stats.trend.length - 1 }"
                             :title="`${point.date}：搜索 ${point.searches} 次，404 ${point.notFound} 次`">
                             <div class="trend-bars">
                                 <span class="trend-bar is-search"
@@ -108,6 +116,9 @@
                                         · {{ item.zeroResults }} 次无结果
                                     </template>
                                 </span>
+                                <span class="rank-meter" aria-hidden="true">
+                                    <i :style="{ width: `${meterWidth(item.searches, maxSearchCount)}%` }" />
+                                </span>
                             </div>
                             <strong class="rank-value">{{ item.searches }}</strong>
                         </li>
@@ -135,6 +146,9 @@
                                     {{ item.path }}
                                 </a>
                                 <span class="rank-meta">最近 {{ formatDate(item.lastAt) }}</span>
+                                <span class="rank-meter is-danger" aria-hidden="true">
+                                    <i :style="{ width: `${meterWidth(item.hits, maxNotFoundHits)}%` }" />
+                                </span>
                             </div>
                             <strong class="rank-value is-danger">{{ item.hits }}</strong>
                         </li>
@@ -184,6 +198,21 @@ const maxTrendValue = computed(() => {
     const points = stats.value?.trend || []
     return Math.max(1, ...points.map(point => Math.max(point.searches, point.notFound)))
 })
+
+const maxSearchCount = computed(() => {
+    const terms = stats.value?.searchTerms || []
+    return Math.max(1, ...terms.map(item => item.searches))
+})
+
+const maxNotFoundHits = computed(() => {
+    const paths = stats.value?.notFoundPaths || []
+    return Math.max(1, ...paths.map(item => item.hits))
+})
+
+const meterWidth = (value: number, max: number): number => {
+    if (value <= 0) return 0
+    return Math.max(5, Math.round((value / Math.max(1, max)) * 100))
+}
 
 const trendHeight = (value: number): string => {
     if (value <= 0) return '2px'
@@ -240,11 +269,16 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .insight-page {
+    --red: #d84a3a;
+    --green: #239b67;
+    --orange: #d18412;
     --insight-line: color-mix(in srgb, var(--gray1) 84%, transparent);
     --insight-soft: color-mix(in srgb, var(--bgColor2) 76%, transparent);
+    --insight-shadow: 0 16px 38px color-mix(in srgb, #1c2540 6%, transparent);
 }
 
 .insight-banner {
+    width: 100%;
     padding: 10px 14px;
     border: 1px solid color-mix(in srgb, var(--red) 28%, var(--insight-line));
     border-radius: 10px;
@@ -266,17 +300,38 @@ onMounted(() => {
 }
 
 .insight-hero {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 22px;
+    overflow: hidden;
+    padding: 26px;
     border: 1px solid var(--insight-line);
-    border-radius: 16px;
+    border-radius: 20px;
     background:
-        radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--pcolor) 12%, transparent), transparent 38%),
+        radial-gradient(circle at 7% 0%, color-mix(in srgb, var(--pcolor) 14%, transparent), transparent 36%),
         linear-gradient(135deg, var(--pcolor1), transparent 62%),
         var(--bgColor1);
+    box-shadow: var(--insight-shadow);
+
+    &::after {
+        position: absolute;
+        z-index: -1;
+        right: -4%;
+        bottom: -52%;
+        width: 42%;
+        aspect-ratio: 1;
+        content: '';
+        border: 1px solid color-mix(in srgb, var(--pcolor) 16%, transparent);
+        border-radius: 50%;
+        box-shadow:
+            0 0 0 26px color-mix(in srgb, var(--pcolor) 4%, transparent),
+            0 0 0 58px color-mix(in srgb, var(--pcolor) 3%, transparent);
+        pointer-events: none;
+    }
 }
 
 .insight-hero-copy {
@@ -285,7 +340,7 @@ onMounted(() => {
     h2 {
         margin: 6px 0 8px;
         color: var(--gray);
-        font-size: 22px;
+        font-size: 25px;
         line-height: 1.35;
     }
 
@@ -295,6 +350,34 @@ onMounted(() => {
         color: var(--gray6);
         font-size: 12px;
         line-height: 1.75;
+    }
+}
+
+.insight-signal {
+    display: flex;
+    max-width: 430px;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    color: var(--gray6);
+    font-size: 10px;
+}
+
+.insight-signal-track {
+    position: relative;
+    display: block;
+    width: 132px;
+    height: 5px;
+    flex: none;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pcolor) 10%, var(--gray2));
+
+    i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--pcolor), color-mix(in srgb, var(--pcolor) 54%, var(--scolor, #1fb4a2)));
     }
 }
 
@@ -309,11 +392,21 @@ onMounted(() => {
 .insight-periods {
     display: flex;
     flex: none;
+    align-items: center;
     gap: 5px;
     padding: 4px;
     border: 1px solid var(--insight-line);
     border-radius: 999px;
-    background: var(--insight-soft);
+    background: color-mix(in srgb, var(--bgColor1) 72%, transparent);
+    box-shadow: 0 8px 22px color-mix(in srgb, #1c2540 6%, transparent);
+    backdrop-filter: blur(8px);
+}
+
+.insight-periods-label {
+    padding: 0 7px 0 6px;
+    color: var(--gray6);
+    font-size: 9px;
+    font-weight: 650;
 }
 
 .insight-period {
@@ -339,16 +432,35 @@ onMounted(() => {
 }
 
 .insight-facts {
+    width: 100%;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
 }
 
 .insight-fact {
-    padding: 15px 16px;
+    position: relative;
+    overflow: hidden;
+    padding: 16px 17px;
     border: 1px solid var(--insight-line);
-    border-radius: 12px;
-    background: var(--bgColor1);
+    border-radius: 15px;
+    background:
+        linear-gradient(150deg,
+            color-mix(in srgb, var(--bgColor2) 58%, transparent),
+            transparent 58%),
+        var(--bgColor1);
+    box-shadow: 0 8px 24px color-mix(in srgb, #1c2540 4%, transparent);
+
+    &::before {
+        position: absolute;
+        top: 0;
+        right: 17px;
+        left: 17px;
+        height: 2px;
+        content: '';
+        border-radius: 0 0 2px 2px;
+        background: color-mix(in srgb, var(--pcolor) 34%, transparent);
+    }
 
     span,
     small {
@@ -370,8 +482,16 @@ onMounted(() => {
         color: var(--orange);
     }
 
+    &.is-warning::before {
+        background: color-mix(in srgb, var(--orange) 50%, transparent);
+    }
+
     &.is-danger strong {
         color: var(--red);
+    }
+
+    &.is-danger::before {
+        background: color-mix(in srgb, var(--red) 50%, transparent);
     }
 
     &.is-neutral strong {
@@ -380,11 +500,23 @@ onMounted(() => {
 }
 
 .insight-card {
+    width: 100%;
     min-width: 0;
-    padding: 18px;
+    padding: 20px;
     border: 1px solid var(--insight-line);
-    border-radius: 14px;
-    background: var(--bgColor1);
+    border-radius: 17px;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--bgColor2) 38%, transparent),
+            transparent 180px),
+        var(--bgColor1);
+    box-shadow: var(--insight-shadow);
+}
+
+.insight-trend-card {
+    background:
+        radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--pcolor) 7%, transparent), transparent 34%),
+        var(--bgColor1);
 }
 
 .insight-card-head {
@@ -446,10 +578,10 @@ onMounted(() => {
 .insight-trend {
     display: grid;
     grid-template-columns: repeat(var(--trend-columns), minmax(18px, 1fr));
-    gap: 5px;
+    gap: 7px;
     min-width: max(100%, calc(var(--trend-columns) * 22px));
-    height: 174px;
-    padding-top: 8px;
+    height: 184px;
+    padding: 8px 4px 0;
 }
 
 .trend-column {
@@ -462,23 +594,37 @@ onMounted(() => {
 
 .trend-bars {
     display: flex;
-    height: 136px;
+    width: 100%;
+    height: 142px;
     align-items: flex-end;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
+    border-bottom: 1px solid var(--insight-line);
 }
 
 .trend-bar {
     display: block;
-    width: 5px;
+    width: 6px;
     min-height: 2px;
-    border-radius: 4px 4px 1px 1px;
-    background: var(--pcolor);
+    border-radius: 5px 5px 1px 1px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--pcolor) 62%, #fff), var(--pcolor));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pcolor) 8%, transparent);
     transition: height 0.25s ease;
 
     &.is-lost {
-        background: var(--red);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--red) 54%, #fff), var(--red));
         opacity: 0.82;
+    }
+}
+
+.trend-column.is-latest {
+    .trend-bars {
+        border-bottom-color: color-mix(in srgb, var(--pcolor) 42%, var(--insight-line));
+    }
+
+    .trend-date {
+        color: var(--pcolor);
+        font-weight: 700;
     }
 }
 
@@ -494,6 +640,7 @@ onMounted(() => {
 }
 
 .insight-grid {
+    width: 100%;
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
     gap: 12px;
@@ -512,11 +659,15 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 46px;
-    padding: 8px 10px;
+    min-height: 54px;
+    padding: 9px 11px;
     border: 1px solid transparent;
-    border-radius: 10px;
-    background: var(--insight-soft);
+    border-radius: 12px;
+    background:
+        linear-gradient(90deg,
+            color-mix(in srgb, var(--pcolor) 3%, transparent),
+            transparent 72%),
+        var(--insight-soft);
     transition: border-color 0.18s ease, background 0.18s ease;
 
     &:hover {
@@ -548,7 +699,7 @@ onMounted(() => {
     min-width: 0;
     flex: 1;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
 }
 
 .rank-name {
@@ -577,6 +728,31 @@ onMounted(() => {
     font-size: 9px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.rank-meter {
+    display: block;
+    width: 100%;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pcolor) 8%, var(--gray2));
+
+    i {
+        display: block;
+        height: 100%;
+        min-width: 5px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, color-mix(in srgb, var(--pcolor) 58%, transparent), var(--pcolor));
+    }
+
+    &.is-danger {
+        background: color-mix(in srgb, var(--red) 8%, var(--gray2));
+
+        i {
+            background: linear-gradient(90deg, color-mix(in srgb, var(--red) 52%, transparent), var(--red));
+        }
+    }
 }
 
 .rank-value {
@@ -628,10 +804,21 @@ onMounted(() => {
     .insight-hero {
         flex-direction: column;
         align-items: flex-start;
+
+        &::after {
+            display: none;
+        }
     }
 
     .insight-periods {
         width: 100%;
+        flex-wrap: wrap;
+        border-radius: 14px;
+    }
+
+    .insight-periods-label {
+        width: 100%;
+        padding: 2px 6px 4px;
     }
 
     .insight-period {
