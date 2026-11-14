@@ -31,6 +31,11 @@ export interface SystemLogRiskSummary {
   recent: SystemLogItem[];
 }
 
+export interface SystemLogPruneResult {
+  deleted: number;
+  retentionDays: number;
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -74,6 +79,12 @@ export function getSystemLogs(
 export function getSystemLogRiskSummary(days = 7) {
   return request.get<ApiResult<SystemLogRiskSummary>>("/systemLog/risk-summary", {
     params: { days },
+  });
+}
+
+export function pruneSystemLogs(days: number) {
+  return request.post<ApiResult<SystemLogPruneResult>>("/systemLog/prune", {
+    days,
   });
 }
 

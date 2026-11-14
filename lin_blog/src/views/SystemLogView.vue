@@ -174,6 +174,45 @@
                     :disabled="loading" @change="handlePagerChange" />
             </div>
 
+            <section v-if="canPruneLogs" class="system-log-maintenance">
+                <div class="maintenance-copy">
+                    <span class="maintenance-kicker">日志维护</span>
+                    <div>
+                        <strong>默认保留 365 天</strong>
+                        <span>清理后不可恢复，操作本身也会写入系统日志。</span>
+                    </div>
+                    <span v-if="pruneResult" class="maintenance-result">
+                        上次清理删除 {{ pruneResult.deleted }} 条（保留 {{ pruneResult.retentionDays }} 天）
+                    </span>
+                </div>
+                <div class="maintenance-actions">
+                    <label class="maintenance-days">
+                        保留最近
+                        <input v-model.number="pruneDays" type="number" min="30" max="3650" step="30"
+                            aria-label="日志保留天数" />
+                        天
+                    </label>
+                    <yk-button type="secondary" :disabled="pruning" @click="openPrune">清理旧日志</yk-button>
+                </div>
+            </section>
+
+            <yk-modal :model-value="pruneVisible" title="清理系统日志" size="s" :closeable="!pruning"
+                @update:model-value="handlePruneVisibleChange">
+                <div class="log-prune">
+                    <p>
+                        将永久删除早于 <strong>{{ clampedPruneDays }}</strong> 天的系统日志，此操作不可恢复。
+                        清理完成后会写入一条系统日志，方便后续追溯。
+                    </p>
+                    <p v-if="pruneError" class="log-prune-error">{{ pruneError }}</p>
+                    <div class="log-prune-actions">
+                        <yk-button size="s" :disabled="pruning" @click="closePrune">取消</yk-button>
+                        <yk-button size="s" type="primary" status="danger" :loading="pruning" @click="confirmPrune">
+                            确认清理
+                        </yk-button>
+                    </div>
+                </div>
+            </yk-modal>
+
             <yk-drawer :show="detailVisible" title="日志详情" placement="right" size="m" :scrollable="true"
                 @close="closeDetail">
                 <div v-if="selectedLog" class="log-detail">
@@ -228,12 +267,15 @@
     import {
         getSystemLogs,
         getSystemLogRiskSummary,
+        pruneSystemLogs,
         exportSystemLogs,
         getRequestErrorMessage,
         type SystemLogItem,
+        type SystemLogPruneResult,
         type SystemLogRiskSummary,
         type SystemLogSortOrder,
     } from '../api/systemLog'
+    import { useSessionStore } from '../store/session'
     import {
         REPORT_RANGE_OPTIONS,
         resolveReportRange,
@@ -291,6 +333,13 @@
     const riskFilter = ref<'' | 'high'>('')
     const detailVisible = ref(false)
     const selectedLog = ref<SystemLogItem | null>(null)
+    const session = useSessionStore()
+    const canPruneLogs = computed(() => session.can('backup.manage'))
+    const pruneVisible = ref(false)
+    const pruneDays = ref(365)
+    const pruning = ref(false)
+    const pruneError = ref('')
+    const pruneResult = ref<SystemLogPruneResult | null>(null)
 
     const actionOptions = [
         { value: 'login', label: '登录' },
@@ -346,6 +395,11 @@
     const targetIdValue = computed(() => {
         const value = Number.parseInt(targetIdFilter.value, 10)
         return Number.isSafeInteger(value) && value > 0 ? value : null
+    })
+
+    const clampedPruneDays = computed(() => {
+        const value = Number(pruneDays.value)
+        return Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 30), 3650) : 365
     })
 
     const advancedFilterCount = computed(() =>
@@ -456,6 +510,40 @@
 
     const closeDetail = (): void => {
         detailVisible.value = false
+    }
+
+    const openPrune = (): void => {
+        pruneError.value = ''
+        pruneVisible.value = true
+    }
+
+    const closePrune = (): void => {
+        if (pruning.value) return
+        pruneVisible.value = false
+        pruneError.value = ''
+    }
+
+    const handlePruneVisibleChange = (value: boolean): void => {
+        if (!value) closePrune()
+    }
+
+    const confirmPrune = async (): Promise<void> => {
+        pruning.value = true
+        pruneError.value = ''
+        try {
+            const result = await pruneSystemLogs(clampedPruneDays.value)
+            if (result.code !== 200 || !result.data) {
+                throw new Error(result.message || '清理失败')
+            }
+            pruneResult.value = result.data
+            pruneVisible.value = false
+            page.value = 1
+            await Promise.all([fetchLogs(), fetchRiskSummary()])
+        } catch (error) {
+            pruneError.value = getRequestErrorMessage(error, '清理系统日志失败，请稍后重试')
+        } finally {
+            pruning.value = false
+        }
     }
 
     // 页码和每页条数已由 v-model 同步；切换条数时组件会把页码重置为 1
@@ -1079,6 +1167,115 @@
             justify-content: flex-end;
             padding-top: @space-m;
             width: 100%;
+        }
+
+        &-maintenance {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px 20px;
+            flex-wrap: wrap;
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px dashed var(--admin-line, var(--gray1));
+            border-radius: @radius-s;
+            background: var(--admin-surface-soft, var(--bgColor2));
+        }
+
+        .maintenance-copy {
+            display: flex;
+            align-items: center;
+            gap: 8px 12px;
+            flex-wrap: wrap;
+            min-width: 0;
+
+            > div {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
+            strong {
+                color: var(--gray8);
+                font-size: 13px;
+            }
+
+            span {
+                color: var(--gray6);
+                font-size: 12px;
+            }
+        }
+
+        .maintenance-kicker {
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: var(--pcolor1);
+            color: var(--pcolor) !important;
+            font-size: 11px !important;
+            font-weight: 700;
+        }
+
+        .maintenance-result {
+            color: @wcolor !important;
+        }
+
+        .maintenance-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .maintenance-days {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--gray7);
+            font-size: 12px;
+
+            input {
+                width: 76px;
+                height: 32px;
+                padding: 0 8px;
+                border: 1px solid var(--admin-line, var(--gray1));
+                border-radius: @radius-s;
+                background: var(--admin-surface, var(--bgColor1));
+                color: var(--gray8);
+                font-size: 12px;
+                font-variant-numeric: tabular-nums;
+
+                &:focus {
+                    outline: none;
+                    border-color: var(--pcolor);
+                    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+                }
+            }
+        }
+
+        .log-prune {
+            p {
+                margin: 0;
+                color: var(--gray7);
+                font-size: 13px;
+                line-height: 1.8;
+
+                strong {
+                    color: var(--gray8);
+                }
+            }
+
+            .log-prune-error {
+                margin-top: 10px;
+                color: @ecolor;
+            }
+        }
+
+        .log-prune-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 18px;
         }
 
         @media (max-width: 1100px) {

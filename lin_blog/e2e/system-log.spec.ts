@@ -61,6 +61,7 @@ test('系统日志支持风险筛选、高级筛选与详情抽屉', async ({ pa
   await installApiMock(page)
 
   const requests: URLSearchParams[] = []
+  const pruneRequests: Array<{ days?: number }> = []
   await page.route(
     url => url.pathname === '/api/systemLog',
     async route => {
@@ -92,6 +93,17 @@ test('系统日志支持风险筛选、高级筛选与详情抽屉', async ({ pa
         recent: [logs[0]],
       },
     })
+  )
+  await page.route(
+    url => url.pathname === '/api/systemLog/prune',
+    async route => {
+      pruneRequests.push(route.request().postDataJSON() ?? {})
+      await fulfillJson(route, {
+        code: 200,
+        message: '已清理 12 条系统日志',
+        data: { deleted: 12, retentionDays: 180 },
+      })
+    }
   )
 
   await page.goto('/systemLog')
@@ -129,4 +141,11 @@ test('系统日志支持风险筛选、高级筛选与详情抽屉', async ({ pa
   await page.getByRole('button', { name: '清除条件' }).click()
   await expect.poll(() => requests.at(-1)?.get('operator')).toBeNull()
   await expect.poll(() => requests.at(-1)?.get('ip')).toBeNull()
+
+  await page.getByLabel('日志保留天数').fill('180')
+  await page.getByRole('button', { name: '清理旧日志' }).click()
+  await expect(page.locator('.log-prune')).toContainText('180')
+  await page.getByRole('button', { name: '确认清理' }).click()
+  await expect.poll(() => pruneRequests.at(-1)?.days).toBe(180)
+  await expect(page.locator('.maintenance-result')).toContainText('12')
 })
