@@ -194,14 +194,55 @@
                                 </RouterLink>
                             </header>
 
-                            <input v-model="articleKeyword" class="collection-input collection-search"
-                                type="search" placeholder="搜索标题或简介" />
+                            <div class="collection-picker-search">
+                                <input v-model="articleKeyword" class="collection-input" type="search"
+                                    placeholder="搜索标题、简介或正文关键词" @input="scheduleArticleSearch" />
+                                <button v-if="articleKeyword" type="button" class="collection-picker-clear"
+                                    @click="clearArticleSearch">
+                                    清空
+                                </button>
+                            </div>
 
-                            <div v-if="loadingArticles" class="collection-panel-empty">
+                            <div class="collection-picker-filters">
+                                <div class="collection-state-tabs" role="group" aria-label="文章状态">
+                                    <button v-for="item in articleStateTabs" :key="item.value" type="button"
+                                        class="collection-state-tab"
+                                        :class="{ 'is-active': articleState === item.value }"
+                                        :aria-pressed="articleState === item.value"
+                                        @click="setArticleState(item.value)">
+                                        {{ item.label }}
+                                    </button>
+                                </div>
+                                <select v-model="articleSubsetId" class="collection-input collection-select"
+                                    aria-label="按分类筛选" @change="applyArticleFilters">
+                                    <option :value="null">全部分类</option>
+                                    <option v-for="subset in subsetOptions" :key="subset.id" :value="subset.id">
+                                        {{ subset.name }}
+                                    </option>
+                                </select>
+                            </div>
+
+                            <p class="collection-picker-meta">
+                                <span>共 {{ pickerTotal }} 篇匹配文章</span>
+                                <span v-if="pickerArticles.length > 0">
+                                    已显示 {{ pickerArticles.length }} 篇
+                                </span>
+                            </p>
+
+                            <div v-if="articleLoadError" class="collection-picker-error">
+                                {{ articleLoadError }}
+                                <button type="button" @click="loadPickerArticles(true)">重试</button>
+                            </div>
+                            <div v-else-if="loadingArticles" class="collection-panel-empty">
                                 <yk-spinner size="s" />
                             </div>
                             <div v-else-if="availableArticles.length === 0" class="collection-panel-empty">
-                                暂无可添加的文章。
+                                <template v-if="hasArticleFilter">
+                                    没有匹配的文章，换个关键词或清空筛选试试。
+                                </template>
+                                <template v-else>
+                                    所有文章都已经加入当前系列。
+                                </template>
                             </div>
                             <div v-else class="collection-available-list">
                                 <button v-for="article in availableArticles" :key="article.id" type="button"
@@ -219,6 +260,13 @@
                                         </small>
                                     </span>
                                     <span class="collection-add-mark">+</span>
+                                </button>
+                            </div>
+
+                            <div v-if="hasMoreArticles && !loadingArticles" class="collection-picker-more">
+                                <button type="button" :disabled="loadingMoreArticles"
+                                    @click="loadMoreArticles">
+                                    {{ loadingMoreArticles ? '正在加载...' : `加载更多（剩余 ${remainingArticleCount} 篇）` }}
                                 </button>
                             </div>
                         </section>
@@ -245,11 +293,12 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import MediaPickerDialog from '../components/common/MediaPickerDialog.vue'
 import { getArticles, type ArticleItem } from '../api/article'
 import { getRequestErrorMessage } from '../api/file'
+import { getSubsets } from '../api/subset'
 import {
     createCollection,
     deleteCollection,
@@ -278,6 +327,13 @@ const selectedIds = ref<number[]>([])
 const articleMap = ref(new Map<number, PickableArticle>())
 const pickerArticles = ref<ArticleItem[]>([])
 const articleKeyword = ref('')
+const articleState = ref<'all' | 'published' | 'draft'>('all')
+const articleSubsetId = ref<number | null>(null)
+const subsetOptions = ref<{ id: number; name: string }[]>([])
+const pickerTotal = ref(0)
+const pickerPage = ref(1)
+const loadingMoreArticles = ref(false)
+const articleLoadError = ref('')
 const activeId = ref<number | null>(null)
 const isCreating = ref(false)
 const loadingList = ref(false)
@@ -291,6 +347,9 @@ const coverUploadError = ref('')
 const mediaPickerOpen = ref(false)
 const uploadUrl = ref('')
 const uploadTicketBusy = ref(false)
+const PICKER_PAGE_SIZE = 20
+let articleSearchTimer: ReturnType<typeof setTimeout> | null = null
+let articleRequestSeq = 0
 
 const form = reactive({
     name: '',
@@ -318,15 +377,22 @@ const selectedArticles = computed(() => selectedIds.value
     .map(id => articleMap.value.get(id))
     .filter((article): article is PickableArticle => Boolean(article)))
 
-const availableArticles = computed(() => {
-    const keyword = articleKeyword.value.trim().toLowerCase()
-    return pickerArticles.value
-        .filter(article => !selectedIds.value.includes(article.id))
-        .filter(article => {
-            if (!keyword) return true
-            return `${article.title} ${article.introduce || ''}`.toLowerCase().includes(keyword)
-        })
-})
+const articleStateTabs = [
+    { label: '全部', value: 'all' as const },
+    { label: '已发布', value: 'published' as const },
+    { label: '草稿', value: 'draft' as const },
+]
+
+const availableArticles = computed(() => pickerArticles.value
+    .filter(article => !selectedIds.value.includes(article.id)))
+
+const hasArticleFilter = computed(() => Boolean(articleKeyword.value.trim())
+    || articleState.value !== 'all'
+    || articleSubsetId.value !== null)
+
+const hasMoreArticles = computed(() => pickerArticles.value.length < pickerTotal.value)
+const remainingArticleCount = computed(() =>
+    Math.max(0, pickerTotal.value - pickerArticles.value.length))
 
 const rememberArticle = (article: PickableArticle): void => {
     const next = new Map(articleMap.value)
@@ -456,20 +522,96 @@ const selectCollection = async (id: number): Promise<void> => {
     }
 }
 
-const loadPickerArticles = async (): Promise<void> => {
-    loadingArticles.value = true
+const loadSubsetOptions = async (): Promise<void> => {
     try {
-        const result = await getArticles({ page: 1, pageSize: 100, classify: 'article' })
+        const result = await getSubsets('article')
+        if (result.code !== 200 || !result.data) return
+        subsetOptions.value = (result.data.list || []).map(item => ({
+            id: item.id,
+            name: item.name,
+        }))
+    } catch {
+        // 分类筛选是辅助能力，加载失败时保留「全部分类」，不影响文章搜索
+        subsetOptions.value = []
+    }
+}
+
+// 搜索走后端：不受列表页数限制，筛选条件变化时从第一页重新拉取
+const loadPickerArticles = async (reset = true): Promise<void> => {
+    if (reset) {
+        pickerPage.value = 1
+        pickerArticles.value = []
+        loadingArticles.value = true
+        loadingMoreArticles.value = false
+    } else {
+        loadingMoreArticles.value = true
+    }
+    articleLoadError.value = ''
+    const requestSeq = ++articleRequestSeq
+    const page = reset ? 1 : pickerPage.value + 1
+
+    try {
+        const result = await getArticles({
+            page,
+            pageSize: PICKER_PAGE_SIZE,
+            classify: 'article',
+            keyword: articleKeyword.value.trim() || undefined,
+            state: articleState.value === 'all' ? undefined : articleState.value,
+            subsetId: articleSubsetId.value ?? undefined,
+        })
+        if (requestSeq !== articleRequestSeq) return
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '文章列表加载失败')
         }
-        pickerArticles.value = Array.isArray(result.data.list) ? result.data.list : []
+
+        const list = Array.isArray(result.data.list) ? result.data.list : []
+        const next = reset ? list : [...pickerArticles.value, ...list]
+        const seen = new Set<number>()
+        pickerArticles.value = next.filter(article => {
+            if (seen.has(article.id)) return false
+            seen.add(article.id)
+            return true
+        })
         pickerArticles.value.forEach(rememberArticle)
+        pickerTotal.value = Number(result.data.total) || pickerArticles.value.length
+        pickerPage.value = page
     } catch (error) {
-        errorMessage.value = getErrorMessage(error, '文章列表加载失败')
+        if (requestSeq !== articleRequestSeq) return
+        articleLoadError.value = getErrorMessage(error, '文章列表加载失败')
     } finally {
-        loadingArticles.value = false
+        if (requestSeq === articleRequestSeq) {
+            loadingArticles.value = false
+            loadingMoreArticles.value = false
+        }
     }
+}
+
+const scheduleArticleSearch = (): void => {
+    if (articleSearchTimer) clearTimeout(articleSearchTimer)
+    articleSearchTimer = setTimeout(() => {
+        articleSearchTimer = null
+        void loadPickerArticles(true)
+    }, 300)
+}
+
+const clearArticleSearch = (): void => {
+    articleKeyword.value = ''
+    void loadPickerArticles(true)
+}
+
+const setArticleState = (value: 'all' | 'published' | 'draft'): void => {
+    if (articleState.value === value) return
+    articleState.value = value
+    void loadPickerArticles(true)
+}
+
+const applyArticleFilters = (): void => {
+    void loadPickerArticles(true)
+}
+
+const loadMoreArticles = (): void => {
+    if (loadingMoreArticles.value || !hasMoreArticles.value) return
+    void loadPickerArticles(false)
 }
 
 const addArticle = (id: number): void => {
@@ -595,9 +737,16 @@ const handleDelete = async (): Promise<void> => {
 
 onMounted(async () => {
     void refreshUploadUrl()
-    await Promise.all([loadCollections(), loadPickerArticles()])
+    await Promise.all([loadCollections(), loadPickerArticles(), loadSubsetOptions()])
     if (collections.value[0]) {
         await selectCollection(collections.value[0].id)
+    }
+})
+
+onUnmounted(() => {
+    if (articleSearchTimer) {
+        clearTimeout(articleSearchTimer)
+        articleSearchTimer = null
     }
 })
 </script>
@@ -1149,8 +1298,146 @@ onMounted(async () => {
     }
 }
 
-.collection-search {
-    margin-bottom: 9px;
+.collection-picker-search {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+
+    .collection-input {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.collection-picker-clear {
+    flex: none;
+    padding: 0 10px;
+    border: 1px solid var(--collection-line);
+    border-radius: 9px;
+    background: var(--bgColor1);
+    color: var(--gray6);
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 0.18s ease, border-color 0.18s ease;
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--pcolor) 30%, var(--collection-line));
+        color: var(--pcolor);
+    }
+}
+
+.collection-picker-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.collection-state-tabs {
+    display: inline-flex;
+    flex: none;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--collection-line);
+    border-radius: 9px;
+    background: var(--bgColor2);
+}
+
+.collection-state-tab {
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--gray6);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+
+    &:hover:not(.is-active) {
+        color: var(--gray);
+    }
+
+    &.is-active {
+        background: var(--bgColor1);
+        color: var(--pcolor);
+        box-shadow: 0 1px 3px color-mix(in srgb, var(--gray9) 10%, transparent);
+    }
+
+    &:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--pcolor1);
+    }
+}
+
+.collection-select {
+    flex: 1;
+    min-width: 0;
+    padding-right: 8px;
+    cursor: pointer;
+}
+
+.collection-picker-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 8px;
+    color: var(--gray6);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.collection-picker-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--red) 9%, transparent);
+    color: var(--red);
+    font-size: 11px;
+    line-height: 1.5;
+
+    button {
+        flex: none;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+        border-radius: 6px;
+        background: var(--bgColor1);
+        color: var(--red);
+        font-size: 10px;
+        cursor: pointer;
+    }
+}
+
+.collection-picker-more {
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+
+    button {
+        padding: 6px 16px;
+        border: 1px solid var(--collection-line);
+        border-radius: 8px;
+        background: var(--bgColor1);
+        color: var(--gray6);
+        font-size: 11px;
+        cursor: pointer;
+        transition: color 0.18s ease, border-color 0.18s ease;
+
+        &:hover:not(:disabled) {
+            border-color: color-mix(in srgb, var(--pcolor) 30%, var(--collection-line));
+            color: var(--pcolor);
+        }
+
+        &:disabled {
+            cursor: wait;
+            opacity: 0.6;
+        }
+    }
 }
 
 .collection-panel-empty {

@@ -1107,11 +1107,22 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === '/api/subset') {
+      const classify = url.searchParams.get('classify')
+      const subsets = [
+        { id: 3, name: '生活随笔', classify: 'article', sort: 1, value: 1, moment: '2026-10-20T08:30:00.000Z' },
+        { id: 4, name: '技术笔记', classify: 'article', sort: 2, value: 0, moment: '2026-10-21T08:30:00.000Z' },
+      ].filter(item => !classify || item.classify === classify)
+      await fulfill({ count: subsets.length, list: subsets })
+      return
+    }
+
     // ─── 后台内容列表 ──────────────────────────────────────────────
     if (method === 'GET' && path === '/api/article') {
       const classify = url.searchParams.get('classify')
       const keyword = (url.searchParams.get('keyword') || '').trim()
       const stateFilter = url.searchParams.get('state')
+      const subsetFilter = url.searchParams.get('subsetId')
       const requestedPage = Math.max(1, Number(url.searchParams.get('page') || 1))
       const requestedPageSize = Math.max(1, Number(url.searchParams.get('pageSize') || 10))
       const source = classify === 'image'
@@ -1136,7 +1147,9 @@ export async function installApiMock(page: Page): Promise<MockState> {
       const filtered = (keyword
         ? source.filter(item => item.title.includes(keyword))
         : source
-      ).filter(item => !stateFilter || item.state === stateFilter)
+      )
+        .filter(item => !stateFilter || item.state === stateFilter)
+        .filter(item => !subsetFilter || String(item.subsetId) === subsetFilter)
       const list = filtered.slice(
         (requestedPage - 1) * requestedPageSize,
         requestedPage * requestedPageSize

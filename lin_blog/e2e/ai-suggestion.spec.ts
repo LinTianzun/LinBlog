@@ -207,6 +207,42 @@ test('随笔 AI 配图在作者确认后加入配图列表', async ({ page }) =>
     .toHaveAttribute('src', '/api/uploads/ai-e2e-cover.png')
 })
 
+test('随笔配图区支持从素材库多选、设封面和删除', async ({ page }) => {
+  await seedSession(page, {
+    id: 1,
+    isSuperAdmin: true,
+    username: '林知雨',
+    mail: 'admin@linlog.com',
+    permissions: ['diary.create', 'diary.manageAll', 'diary.viewAll', 'ai.use', 'file.view'],
+  })
+  await installApiMock(page)
+
+  await page.goto('/diary')
+  await expect(page.locator('.diary-editor-top-title')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.diary-photo-empty')).toContainText('还没有配图')
+
+  await page.getByRole('button', { name: '素材库' }).click()
+  const picker = page.locator('.yk-modal__main:visible').last()
+  await expect(picker.locator('.media-picker-item')).toHaveCount(2)
+  await picker.locator('.media-picker-item').nth(0).click()
+  await picker.locator('.media-picker-item').nth(1).click()
+  await picker.getByRole('button', { name: '确定' }).click()
+
+  const photos = page.locator('.diary-editor-top-photo')
+  await expect(photos).toHaveCount(2)
+  await expect(page.locator('.diary-photo-count')).toContainText('2 / 6')
+  await expect(photos.first().locator('img')).toHaveAttribute('src', '/api/file/501/raw')
+
+  // 第二张可一键设为封面，顺序立即变化
+  await photos.nth(1).getByTitle('设为封面').click()
+  await expect(photos.first().locator('img')).toHaveAttribute('src', '/api/file/502/raw')
+
+  // 删除按钮和缩略图在同一个卡片里，不会误删别的图片
+  await photos.first().getByTitle('删除这张配图').click()
+  await expect(photos).toHaveCount(1)
+  await expect(photos.first().locator('img')).toHaveAttribute('src', '/api/file/501/raw')
+})
+
 test('随笔 AI 描述配图采用后追加到正文', async ({ page }) => {
   await seedSession(page, {
     id: 1,

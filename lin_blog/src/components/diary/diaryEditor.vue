@@ -65,24 +65,68 @@
                 </div>
             </div>
 
-            <div class="diary-editor-top-picture">
-                <!-- 已有图片瀑布流（编辑模式可单张删除） -->
-                <div class="diary-editor-top-existing" v-if="photos.length > 0">
-                    <div class="diary-editor-top-photo" v-for="url in photos" :key="url">
-                        <img :src="url" alt="">
-                        <IconDeleteOutline class="diary-editor-top-photo-delete" @click="removePhoto(url)" />
+            <section class="diary-editor-top-picture" aria-label="随笔配图">
+                <header class="diary-photo-head">
+                    <div>
+                        <strong>配图</strong>
+                        <span>第一张会作为封面，最多 {{ maxPhotoCount }} 张，单张不超过 8MB。</span>
+                    </div>
+                    <span class="diary-photo-count">
+                        {{ photos.length }} / {{ maxPhotoCount }}
+                        <template v-if="pendingPhotos.length > 0"> · 上传中</template>
+                    </span>
+                </header>
+
+                <div class="diary-editor-top-existing" v-if="photos.length > 0 || pendingPhotos.length > 0">
+                    <div class="diary-editor-top-photo" v-for="(url, index) in photos" :key="url">
+                        <img :src="url" alt="" loading="lazy">
+                        <span class="diary-editor-top-photo-index">{{ index + 1 }}</span>
+                        <button type="button" class="diary-editor-top-photo-delete" title="删除这张配图"
+                            @click="removePhoto(url)">
+                            <IconDeleteOutline />
+                        </button>
+                        <div class="diary-editor-top-photo-actions">
+                            <button v-if="index > 0" type="button" title="设为封面"
+                                @click="setPhotoCover(index)">封</button>
+                            <button type="button" title="前移" :disabled="index === 0"
+                                @click="movePhoto(index, -1)">←</button>
+                            <button type="button" title="后移" :disabled="index === photos.length - 1"
+                                @click="movePhoto(index, 1)">→</button>
+                        </div>
+                    </div>
+
+                    <div v-for="pending in pendingPhotos" :key="pending.id" class="diary-photo-pending">
+                        <span class="diary-photo-pending-name">{{ pending.name }}</span>
+                        <strong>{{ pending.progress }}%</strong>
+                        <span class="diary-photo-pending-bar">
+                            <i :style="{ width: `${pending.progress}%` }" />
+                        </span>
                     </div>
                 </div>
 
-                <yk-upload v-if="uploaderVisible && photos.length < maxPhotoCount" :limit="maxPhotoCount" :max-size="8 * 1024 * 1024" :upload-url="uploadUrl"
-                    accept="image/*" multiple
-                    @handle-success="handleUploadSuccess" @handle-error="handleUploadError"
-                    @handle-delete="handleUploadDelete"></yk-upload>
+                <div v-else class="diary-photo-empty">
+                    <IconPlusOutline />
+                    <strong>还没有配图</strong>
+                    <span>上传本地图片、从素材库选择，或让 AI 生成一张。</span>
+                </div>
 
-                <ImageSourceActions v-if="photos.length < maxPhotoCount" ai-label="AI 生成配图"
-                    :title="diaryForm.title || ''" :content="diaryForm.content || ''"
-                    @pick="mediaPickerOpen = true" @adopt="handleAiPhoto" />
-            </div>
+                <div class="diary-photo-tools">
+                    <button type="button" class="diary-photo-upload" :disabled="!canAddPhoto"
+                        @click="openFilePicker">
+                        <IconPlusOutline />
+                        上传本地图片
+                    </button>
+                    <ImageSourceActions v-if="canAddPhoto" library-label="素材库" ai-label="AI 生成配图"
+                        :title="diaryForm.title || ''" :content="diaryForm.content || ''"
+                        @pick="openMediaPicker" @adopt="handleAiPhoto" />
+                    <span v-else class="diary-photo-limit">已达配图上限，删除一张后可继续添加。</span>
+                </div>
+
+                <p v-if="photoUploadError" class="diary-photo-error">{{ photoUploadError }}</p>
+
+                <input ref="fileInputRef" class="diary-photo-file-input" type="file" accept="image/*" multiple
+                    @change="handleFilePick" />
+            </section>
         </div>
 
 
@@ -95,12 +139,12 @@
         </div>
     </div>
 
-    <MediaPickerDialog v-model:open="mediaPickerOpen" multiple :max-count="maxPhotoCount"
+    <MediaPickerDialog v-model:open="mediaPickerOpen" multiple :max-count="remainingPhotoSlots"
         @select="handleMediaSelect" />
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, nextTick, onMounted, getCurrentInstance } from 'vue'
+import { computed, ref, onMounted, getCurrentInstance } from 'vue'
 import { weathers } from '../../utils/weather'
 import { createDiary, updateDiary, getRequestErrorMessage } from '../../api/diary'
 import {
@@ -137,6 +181,12 @@ type UploadResponse = {
     message?: string
     data?: { url?: string }
     url?: string
+}
+
+type PendingPhoto = {
+    id: number
+    name: string
+    progress: number
 }
 
 type MessageOptions = {
@@ -183,10 +233,24 @@ const selectWeather = (item: WeatherItem): void => {
     diaryForm.value.weatherId = item.id
 }
 
-// 图片上传（photos 为唯一数据源，不把 fileList 回传给 yk-upload，
-// 否则其内部会整体重建列表导致 uid 失配、删除一张时数据错乱）
+// 图片上传（photos 为唯一数据源，自定义面板统一管理缩略图、进度和排序）
 const photos = ref<string[]>([])
 const mediaPickerOpen = ref(false)
+const pendingPhotos = ref<PendingPhoto[]>([])
+const photoUploadError = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const maxPhotoCount = 6
+let photoUploadSeq = 0
+// 重置/切换随笔时递增，旧请求完成后不再往新表单里追加图片
+let photoUploadEpoch = 0
+
+const remainingPhotoSlots = computed(() =>
+    Math.max(0, maxPhotoCount - photos.value.length - pendingPhotos.value.length))
+const canAddPhoto = computed(() => remainingPhotoSlots.value > 0)
+
+const syncPhotos = (): void => {
+    diaryForm.value.picture = [...photos.value]
+}
 
 // 编辑中的日记 ID：为空表示新建模式
 const editingId = ref<number | null>(null)
@@ -194,90 +258,198 @@ const editingId = ref<number | null>(null)
 // 删除已有图片（新建/编辑模式通用）
 const removePhoto = (url: string): void => {
     photos.value = photos.value.filter(item => item !== url)
-    diaryForm.value.picture = [...photos.value]
-    // 已有图片变化后重挂载上传组件，保持内部列表一致
-    uploaderVisible.value = false
-    void nextTick(() => {
-        uploaderVisible.value = true
-    })
-    void refreshUploadUrl()
+    photoUploadError.value = ''
+    syncPhotos()
 }
-// 上传地址改用短期票据：yk-upload 只能把凭证拼在 URL 上，
+
+const movePhoto = (index: number, delta: number): void => {
+    const target = index + delta
+    if (target < 0 || target >= photos.value.length) return
+    const next = [...photos.value]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    photos.value = next
+    syncPhotos()
+}
+
+const setPhotoCover = (index: number): void => {
+    if (index <= 0 || index >= photos.value.length) return
+    const next = [...photos.value]
+    const [picked] = next.splice(index, 1)
+    next.unshift(picked)
+    photos.value = next
+    syncPhotos()
+}
+
+// 上传地址改用短期票据：上传组件只能把凭证拼在 URL 上，
 // 用一次性票据代替长期 JWT，避免凭证进入访问日志与浏览器历史
 const uploadUrl = ref('')
-const ticketBusy = ref(false)
+let uploadTicketPromise: Promise<string> | null = null
 
-const refreshUploadUrl = async (): Promise<void> => {
-    if (ticketBusy.value) return
-    ticketBusy.value = true
-    try {
-        uploadUrl.value = await buildImageUploadUrl()
-    } catch (error) {
-        proxy?.$message?.({
-            type: 'error',
-            message: getRequestErrorMessage(error, '上传凭证获取失败，请重新登录后再试')
-        })
-    } finally {
-        ticketBusy.value = false
-    }
+const refreshUploadUrl = async (): Promise<string> => {
+    if (uploadTicketPromise) return uploadTicketPromise
+    uploadTicketPromise = (async () => {
+        try {
+            const url = await buildImageUploadUrl()
+            uploadUrl.value = url
+            return url
+        } catch (error) {
+            photoUploadError.value = getRequestErrorMessage(error, '上传凭证获取失败，请重新登录后再试')
+            return ''
+        } finally {
+            uploadTicketPromise = null
+        }
+    })()
+    return uploadTicketPromise
 }
 
-const handleUploadSuccess = (response: UploadResponse): void => {
-    const url = response.data?.url || response.url
-    if (!url) {
-        proxy?.$message?.({ type: 'error', message: '上传成功但未返回图片地址' })
+const openFilePicker = (): void => {
+    if (!canAddPhoto.value) {
+        proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请先删除部分图片` })
+        return
+    }
+    photoUploadError.value = ''
+    fileInputRef.value?.click()
+}
+
+const openMediaPicker = (): void => {
+    if (!canAddPhoto.value) {
+        proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请先删除部分图片` })
+        return
+    }
+    mediaPickerOpen.value = true
+}
+
+const uploadErrorMessage = (error: unknown): string => {
+    if (error instanceof Error && error.message.trim()) return error.message
+    return getRequestErrorMessage(error, '图片上传失败，请确认后端服务已启动并重新登录后再试')
+}
+
+const uploadSinglePhoto = (file: File): Promise<void> => {
+    const pending: PendingPhoto = {
+        id: ++photoUploadSeq,
+        name: file.name,
+        progress: 0,
+    }
+    pendingPhotos.value = [...pendingPhotos.value, pending]
+    const epoch = photoUploadEpoch
+
+    return new Promise(resolve => {
+        const finish = (): void => {
+            pendingPhotos.value = pendingPhotos.value.filter(item => item.id !== pending.id)
+            resolve()
+        }
+
+        void (async () => {
+            try {
+                const url = uploadUrl.value || await refreshUploadUrl()
+                if (!url) throw new Error('上传凭证获取失败，请重新登录后再试')
+
+                const response = await new Promise<UploadResponse>((resolveUpload, rejectUpload) => {
+                    const xhr = new XMLHttpRequest()
+                    xhr.open('POST', url, true)
+                    xhr.timeout = 60_000
+                    xhr.upload.onprogress = (event) => {
+                        if (!event.lengthComputable) return
+                        const progress = Math.max(1, Math.round((event.loaded / event.total) * 100))
+                        pendingPhotos.value = pendingPhotos.value.map(item =>
+                            item.id === pending.id ? { ...item, progress } : item)
+                    }
+                    xhr.onload = () => {
+                        let payload: UploadResponse = {}
+                        try {
+                            payload = JSON.parse(xhr.responseText || '{}') as UploadResponse
+                        } catch {
+                            rejectUpload(new Error('上传返回格式异常，请稍后重试'))
+                            return
+                        }
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            resolveUpload(payload)
+                            return
+                        }
+                        rejectUpload(new Error(payload.message || payload.error || `图片上传失败（${xhr.status}）`))
+                    }
+                    xhr.onerror = () => rejectUpload(new Error('网络异常，图片上传失败'))
+                    xhr.ontimeout = () => rejectUpload(new Error('上传超时，请压缩图片后重试'))
+                    const formData = new FormData()
+                    formData.append('file', file)
+                    xhr.send(formData)
+                })
+
+                const uploadedUrl = response.data?.url || response.url
+                if (!uploadedUrl) throw new Error('上传成功但未返回图片地址')
+                if (epoch !== photoUploadEpoch) return
+                if (!photos.value.includes(uploadedUrl)) {
+                    photos.value = [...photos.value, uploadedUrl]
+                    syncPhotos()
+                }
+                pending.progress = 100
+                // 票据会被消费，下一张必须等新票据就绪后再上传
+                uploadUrl.value = ''
+                await refreshUploadUrl()
+            } catch (error) {
+                const message = uploadErrorMessage(error)
+                if (epoch === photoUploadEpoch) {
+                    photoUploadError.value = message
+                    proxy?.$message?.({ type: 'error', message })
+                }
+                uploadUrl.value = ''
+                await refreshUploadUrl()
+            } finally {
+                finish()
+            }
+        })()
+    })
+}
+
+const handleFilePick = (event: Event): void => {
+    const input = event.target as HTMLInputElement
+    const files = Array.from(input.files || [])
+    input.value = ''
+    if (files.length === 0) return
+
+    const slots = remainingPhotoSlots.value
+    if (slots <= 0) {
+        proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请先删除部分图片` })
         return
     }
 
-    photos.value.push(url)
-    diaryForm.value.picture = [...photos.value]
-    // 票据按次消费，每次成功后换新票据，保证后续上传仍可用
-    void refreshUploadUrl()
-}
+    let picked = files
+    if (files.length > slots) {
+        picked = files.slice(0, slots)
+        proxy?.$message?.({ type: 'error', message: `最多还能添加 ${slots} 张，已自动截取前 ${slots} 张` })
+    }
 
-const handleUploadError = (error: unknown): void => {
-    let message = '图片上传失败，请确认后端服务已启动并重新登录后再试'
-
-    if (typeof error === 'string' && error.trim()) {
-        message = error
-    } else if (typeof error === 'object' && error !== null) {
-        const response = error as { error?: unknown; message?: unknown }
-        const responseMessage = response.error || response.message
-        if (typeof responseMessage === 'string' && responseMessage.trim()) {
-            message = responseMessage
+    void (async () => {
+        for (const file of picked) {
+            if (!file.type.startsWith('image/')) {
+                photoUploadError.value = `${file.name} 不是图片文件，已跳过`
+                continue
+            }
+            if (file.size > 8 * 1024 * 1024) {
+                photoUploadError.value = `${file.name} 超过 8MB，已跳过`
+                continue
+            }
+            await uploadSinglePhoto(file)
         }
-    }
-
-    proxy?.$message?.({ type: 'error', message })
-}
-
-const handleUploadDelete = (payload: unknown): void => {
-    // yk-upload 删除时回传 [被删项, 剩余列表]，按「剩余数量」反推被删序号
-    const [, remainList] = Array.isArray(payload) ? payload : []
-    const remainCount = Array.isArray(remainList) ? remainList.length : 0
-    const removedIndex = photos.value.length - remainCount - 1
-    if (removedIndex >= 0) {
-        photos.value.splice(removedIndex, 1)
-    }
-    diaryForm.value.picture = [...photos.value]
+    })()
 }
 
 // 从素材库选择图片：随笔图片上限与上传一致，超出的部分直接忽略
 const handleMediaSelect = (urls: string[]): void => {
     const picked = urls
         .filter(url => !photos.value.includes(url))
-        .slice(0, maxPhotoCount - photos.value.length)
+        .slice(0, remainingPhotoSlots.value)
     if (picked.length === 0) return
 
     photos.value = [...photos.value, ...picked]
-    diaryForm.value.picture = [...photos.value]
+    syncPhotos()
     proxy?.$message?.({ type: 'primary', message: `已从素材库添加 ${picked.length} 张图片` })
 }
 
 // AI 生成配图：作者确认后由服务端落库并回传地址，这里只追加到配图列表
 const handleAiPhoto = (url: string): void => {
     if (!url) return
-    if (photos.value.length >= maxPhotoCount) {
+    if (!canAddPhoto.value) {
         proxy?.$message?.({ type: 'error', message: `图片最多${maxPhotoCount}张，请先删除部分图片` })
         return
     }
@@ -285,7 +457,7 @@ const handleAiPhoto = (url: string): void => {
     // 记录 AI 辅助标记：随笔配图来自 AI 生成
     markAiFeature('cover')
     photos.value = [...photos.value, url]
-    diaryForm.value.picture = [...photos.value]
+    syncPhotos()
     proxy?.$message?.({ type: 'primary', message: 'AI 配图已添加' })
 }
 
@@ -388,12 +560,6 @@ const dismissAiGalleryDescription = (): void => {
     aiGalleryDescription.value = null
 }
 
-// 图片数量上限（与后端校验一致）
-const maxPhotoCount = 6
-
-// 通过重挂载清空 yk-upload 内部的缩略图列表
-const uploaderVisible = ref(true)
-
 // 新建/保存日记
 const submitting = ref(false)
 
@@ -462,16 +628,15 @@ const resetForm = (): void => {
     editingId.value = null
     diaryForm.value = { weatherId: swWeatherId.value, picture: [] }
     photos.value = []
+    pendingPhotos.value = []
+    photoUploadError.value = ''
+    photoUploadEpoch += 1
     // 表单清空后重新统计 AI 环节，避免上一条随笔的标记串到下一条
     resetAiFeatures()
     aiWriting.value = null
     aiError.value = ''
     aiGalleryDescription.value = null
     aiImageError.value = ''
-    uploaderVisible.value = false
-    void nextTick(() => {
-        uploaderVisible.value = true
-    })
     const defaultWeather = weathers.find(item => item.id === 0)
     if (defaultWeather) {
         selectWeather(defaultWeather)
@@ -491,6 +656,9 @@ onMounted(() => {
 // 编辑日记：回显标题/内容/天气/图片
 const startEdit = (diary: DiaryData): void => {
     editingId.value = diary.id
+    pendingPhotos.value = []
+    photoUploadError.value = ''
+    photoUploadEpoch += 1
     // 编辑已有随笔时重新统计：本次采用 AI 才会再次记标记
     resetAiFeatures()
     aiWriting.value = null
@@ -504,6 +672,7 @@ const startEdit = (diary: DiaryData): void => {
         picture: [...(diary.picture || [])],
     }
     photos.value = [...(diary.picture || [])]
+    syncPhotos()
 
     // 按天气名称匹配前端字典；未知名称回退晴天
     const matched = weathers.find(item => item.name === diary.weatherName) || weathers.find(item => item.id === 0)
@@ -559,51 +728,311 @@ defineExpose({ startEdit, resetForm })
             }
 
             &-picture {
-                padding-top: @space-xl;
-                /* width: 100%; */
-                /* height: 20px; */
-                /* background-color: green; */
+                padding-top: @space-l;
+
+                .diary-photo-head {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 12px;
+                    padding: 12px 14px;
+                    border: 1px solid var(--admin-line, @line-color-s);
+                    border-radius: 12px 12px 0 0;
+                    background:
+                        linear-gradient(180deg,
+                            color-mix(in srgb, var(--admin-accent, @pcolor) 4%, transparent),
+                            transparent),
+                        var(--admin-surface, @bg-color-l);
+
+                    div {
+                        display: flex;
+                        min-width: 0;
+                        flex-direction: column;
+                        gap: 2px;
+                    }
+
+                    strong {
+                        color: @font-color-l;
+                        font-size: @size-m;
+                    }
+
+                    span {
+                        color: @font-color-s;
+                        font-size: @size-s;
+                        line-height: 1.55;
+                    }
+                }
+
+                .diary-photo-count {
+                    flex: none;
+                    padding: 3px 8px;
+                    border-radius: 999px;
+                    background: color-mix(in srgb, var(--admin-accent, @pcolor) 9%, transparent);
+                    color: var(--admin-accent, @pcolor) !important;
+                    font-size: @size-ss !important;
+                    font-weight: 700;
+                    font-variant-numeric: tabular-nums;
+                    line-height: 1.6 !important;
+                }
+
+                .diary-photo-head + .diary-editor-top-existing,
+                .diary-photo-head + .diary-photo-empty {
+                    border: 1px solid var(--admin-line, @line-color-s);
+                    border-top: 0;
+                    border-radius: 0 0 12px 12px;
+                    background: var(--admin-surface, @bg-color-l);
+                }
+
+                .diary-photo-head + .diary-editor-top-existing {
+                    padding: 12px 14px;
+                }
+
+                .diary-photo-empty {
+                    display: flex;
+                    min-height: 126px;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 4px;
+                    padding: 20px;
+                    border-style: dashed !important;
+                    color: @font-color-s;
+                    text-align: center;
+
+                    svg {
+                        margin-bottom: 2px;
+                        color: color-mix(in srgb, var(--admin-accent, @pcolor) 72%, transparent);
+                        font-size: 22px;
+                    }
+
+                    strong {
+                        color: @font-color-m;
+                        font-size: @size-s;
+                    }
+
+                    span {
+                        font-size: @size-s;
+                        line-height: 1.55;
+                    }
+                }
+
+                .diary-photo-pending {
+                    position: relative;
+                    display: flex;
+                    width: 104px;
+                    height: 104px;
+                    flex-direction: column;
+                    justify-content: flex-end;
+                    gap: 3px;
+                    padding: 10px;
+                    overflow: hidden;
+                    border: 1px dashed color-mix(in srgb, var(--admin-accent, @pcolor) 34%, transparent);
+                    border-radius: 12px;
+                    background:
+                        linear-gradient(135deg,
+                            color-mix(in srgb, var(--admin-accent, @pcolor) 8%, transparent),
+                            transparent),
+                        var(--admin-surface, @bg-color-l);
+
+                    strong {
+                        color: var(--admin-accent, @pcolor);
+                        font-size: @size-s;
+                        font-variant-numeric: tabular-nums;
+                    }
+                }
+
+                .diary-photo-pending-name {
+                    overflow: hidden;
+                    color: @font-color-s;
+                    font-size: 10px;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .diary-photo-pending-bar {
+                    position: absolute;
+                    right: 0;
+                    bottom: 0;
+                    left: 0;
+                    height: 4px;
+                    background: color-mix(in srgb, var(--admin-accent, @pcolor) 12%, transparent);
+
+                    i {
+                        display: block;
+                        height: 100%;
+                        background: var(--admin-accent, @pcolor);
+                        transition: width 0.2s ease;
+                    }
+                }
+
+                .diary-photo-tools {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 8px;
+                    padding-top: 10px;
+                }
+
+                .diary-photo-upload {
+                    display: inline-flex;
+                    height: 32px;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 0 12px;
+                    border: 1px solid var(--admin-line, @line-color-s);
+                    border-radius: 8px;
+                    background: var(--admin-surface, @bg-color-l);
+                    color: @font-color-m;
+                    font-size: @size-s;
+                    cursor: pointer;
+                    transition: border-color @animatb, color @animatb, background @animatb;
+
+                    svg {
+                        font-size: 13px;
+                    }
+
+                    &:hover:not(:disabled) {
+                        border-color: var(--admin-accent, @pcolor);
+                        background: color-mix(in srgb, var(--admin-accent, @pcolor) 5%, transparent);
+                        color: var(--admin-accent, @pcolor);
+                    }
+
+                    &:disabled {
+                        cursor: not-allowed;
+                        opacity: 0.55;
+                    }
+                }
+
+                .diary-photo-limit {
+                    color: @font-color-s;
+                    font-size: @size-s;
+                }
+
+                .diary-photo-error {
+                    margin: 8px 0 0;
+                    color: @ecolor;
+                    font-size: @size-s;
+                    line-height: 1.55;
+                }
+
+                .diary-photo-file-input {
+                    display: none;
+                }
             }
 
             &-existing {
-                display: flex;
-                flex-wrap: wrap;
-                gap: @space-s;
-                padding-bottom: @space-s;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, 104px);
+                gap: 10px;
+                padding: 10px 0 12px;
             }
 
             &-photo {
                 position: relative;
-                width: 80px;
-                height: 80px;
-                border-radius: 8px;
+                width: 104px;
+                height: 104px;
+                border: 1px solid var(--admin-line, @line-color-s);
+                border-radius: 12px;
                 overflow: hidden;
+                background: var(--admin-bg, @bg-color-m);
+                transition: border-color @animatb, box-shadow @animatb, transform @animatb;
+
+                &:hover {
+                    border-color: color-mix(in srgb, var(--admin-accent, @pcolor) 38%, transparent);
+                    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+                    transform: translateY(-1px);
+                }
 
                 img {
                     width: 100%;
                     height: 100%;
-                    border-radius: 8px;
                     object-fit: cover;
                     display: block;
                     margin: 0;
                 }
 
+                &-index {
+                    position: absolute;
+                    top: 6px;
+                    left: 6px;
+                    display: grid;
+                    width: 20px;
+                    height: 20px;
+                    place-items: center;
+                    border-radius: 6px;
+                    background: rgba(20, 24, 28, 0.62);
+                    color: #fff;
+                    font-size: 10px;
+                    font-weight: 700;
+                    backdrop-filter: blur(4px);
+                }
+
                 &-delete {
                     position: absolute;
-                    top: 4px;
-                    right: 4px;
-                    width: 24px;
-                    height: 24px;
-                    padding: 3px;
-                    border-radius: 6px;
-                    background: rgba(255, 255, 255, 0.85);
-                    color: @font-color-s;
+                    top: 6px;
+                    right: 6px;
+                    display: grid;
+                    width: 22px;
+                    height: 22px;
+                    padding: 4px;
+                    place-items: center;
+                    border: 0;
+                    border-radius: 50%;
+                    background: rgba(20, 24, 28, 0.62);
+                    color: #fff;
                     cursor: pointer;
-                    transition: color @animatb;
+                    opacity: 0;
+                    transition: opacity @animatb, background @animatb;
 
                     &:hover {
-                        color: @ecolor;
-                        background: rgba(255, 255, 255, 0.95);
+                        background: @ecolor;
+                    }
+                }
+
+                &-actions {
+                    position: absolute;
+                    right: 6px;
+                    bottom: 6px;
+                    left: 6px;
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 4px;
+                    opacity: 0;
+                    transform: translateY(4px);
+                    transition: opacity @animatb, transform @animatb;
+
+                    button {
+                        display: grid;
+                        min-width: 22px;
+                        height: 22px;
+                        padding: 0 5px;
+                        place-items: center;
+                        border: 0;
+                        border-radius: 6px;
+                        background: rgba(20, 24, 28, 0.66);
+                        color: #fff;
+                        font-size: 11px;
+                        line-height: 1;
+                        cursor: pointer;
+                        backdrop-filter: blur(4px);
+
+                        &:hover:not(:disabled) {
+                            background: var(--admin-accent, @pcolor);
+                        }
+
+                        &:disabled {
+                            cursor: not-allowed;
+                            opacity: 0.35;
+                        }
+                    }
+                }
+
+                &:hover,
+                &:focus-within {
+                    .diary-editor-top-photo-delete,
+                    .diary-editor-top-photo-actions {
+                        opacity: 1;
+                        transform: none;
                     }
                 }
             }

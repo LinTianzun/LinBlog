@@ -149,3 +149,71 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
   await page.getByRole('button', { name: '保存修改' }).click()
   await expect(page.locator('.collection-selected-item')).toHaveCount(1)
 })
+
+test('添加文章支持服务端搜索、状态分类筛选和分页加载', async ({ page }) => {
+  await seedSession(page, {
+    permissions: ['collection.view', 'collection.manage', 'article.create'],
+  })
+  await installApiMock(page)
+
+  const requests: URLSearchParams[] = []
+  await page.route(url => url.pathname === '/api/article', async (route) => {
+    const params = new URL(route.request().url()).searchParams
+    requests.push(params)
+    const pageNo = Math.max(1, Number(params.get('page') || 1))
+    const pageSize = Math.max(1, Number(params.get('pageSize') || 20))
+    const keyword = (params.get('keyword') || '').trim()
+    const total = keyword ? 0 : 45
+    const start = (pageNo - 1) * pageSize
+    const list = keyword
+      ? []
+      : Array.from({ length: Math.max(0, Math.min(pageSize, total - start)) }, (_, index) => ({
+          ...article,
+          id: 3000 + start + index,
+          title: `系列候选文章 ${start + index + 1}`,
+          state: 'published',
+          subsetId: 3,
+          subsetName: '生活随笔',
+        }))
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: 'ok',
+        data: {
+          total,
+          page: pageNo,
+          pageSize,
+          totalPage: Math.ceil(total / pageSize),
+          list,
+        },
+      }),
+    })
+  })
+
+  await page.goto('/collectionManage')
+  // 默认 mock 没有系列；进入新建态即可看到右侧文章选择器
+  await page.getByRole('button', { name: '+ 新建系列' }).click()
+  await expect(page.locator('.collection-available-item')).toHaveCount(20, { timeout: 30_000 })
+  expect(requests[0]?.get('keyword')).toBeNull()
+  expect(requests[0]?.get('pageSize')).toBe('20')
+  await expect(page.locator('.collection-picker-meta')).toContainText('共 45 篇匹配文章')
+
+  // 状态与分类都交给后端筛选，不再只过滤本机前 100 篇
+  await page.locator('.collection-state-tab').filter({ hasText: /^已发布$/ }).click()
+  await expect.poll(() => requests.some(item => item.get('state') === 'published')).toBe(true)
+  await page.locator('.collection-select').selectOption('3')
+  await expect.poll(() => requests.some(item => item.get('subsetId') === '3')).toBe(true)
+
+  // 加载更多会请求下一页并追加列表
+  await page.getByRole('button', { name: /加载更多/ }).click()
+  await expect(page.locator('.collection-available-item')).toHaveCount(40)
+  await expect.poll(() => requests.some(item => item.get('page') === '2')).toBe(true)
+
+  // 关键词搜索走后端，搜不到时给出可理解的空状态
+  await page.getByPlaceholder('搜索标题、简介或正文关键词').fill('不存在的文章')
+  await expect.poll(() => requests.some(item => item.get('keyword') === '不存在的文章')).toBe(true)
+  await expect(page.locator('.collection-panel-empty').filter({ hasText: '没有匹配的文章' })).toBeVisible()
+})

@@ -172,17 +172,21 @@ test('AI 优化只生成候选，作者确认后才应用到提示词输入框',
   await page.locator('.ai-prompt-assist-input').fill('更简洁，强调输出格式')
   await page.getByRole('button', { name: 'AI 优化' }).click()
 
-  const candidate = page.locator('.ai-prompt-result.is-candidate')
+  const candidate = page.locator('.ai-prompt-assist-candidate')
   await expect(candidate).toBeVisible()
   await expect(candidate).toContainText('已增强输出约束')
-  await expect(candidate.locator('.ai-prompt-candidate-content'))
+  await expect(candidate.locator('.ai-prompt-assist-candidate-content'))
     .toHaveText('请用更简洁的方式输出：{{title}}')
+  // 候选应出现在左侧提示词编辑区，右侧试跑结果区保持空白
+  await expect(page.locator('.ai-prompt-preview-form .ai-prompt-assist-candidate')).toBeVisible()
+  await expect(page.locator('.ai-prompt-result-panel .ai-prompt-assist-candidate')).toHaveCount(0)
+  await expect(page.locator('.ai-prompt-result-panel')).toContainText('还没有试跑结果')
   // 候选只展示，未确认前不能偷偷改掉输入框
   await expect(editor).toHaveValue(originalContent)
 
   await candidate.getByRole('button', { name: '应用到输入框' }).click()
   await expect(editor).toHaveValue('请用更简洁的方式输出：{{title}}')
-  await expect(page.locator('.ai-banner.is-success')).toContainText('候选提示词已应用')
+  await expect(page.locator('.ai-prompt-assist-notice')).toContainText('候选提示词已应用')
 })
 
 test('AI 帮我写可生成候选，忽略后不改动输入框', async ({ page }) => {
@@ -204,14 +208,14 @@ test('AI 帮我写可生成候选，忽略后不改动输入框', async ({ page 
   await page.locator('.ai-prompt-assist-input').fill('写一段适合自由创作的模板')
   await page.getByRole('button', { name: 'AI 帮我写' }).click()
 
-  const candidate = page.locator('.ai-prompt-result.is-candidate')
+  const candidate = page.locator('.ai-prompt-assist-candidate')
   await expect(candidate).toBeVisible()
   await expect(candidate).toContainText('为自由创作生成候选模板')
-  await expect(candidate.locator('.ai-prompt-candidate-content'))
+  await expect(candidate.locator('.ai-prompt-assist-candidate-content'))
     .toHaveText('请用友好口吻回答：{{input}}')
 
   await candidate.getByRole('button', { name: '忽略' }).click()
-  await expect(page.locator('.ai-prompt-result.is-candidate')).toHaveCount(0)
+  await expect(page.locator('.ai-prompt-assist-candidate')).toHaveCount(0)
   await expect(editor).toHaveValue(originalContent)
 })
 
@@ -247,14 +251,14 @@ test('AI 优化进行中显示进度，完成后展示候选', async ({ page }) 
   await expect(page.locator('.ai-prompt-preview')).toBeVisible({ timeout: 30_000 })
 
   await page.getByRole('button', { name: 'AI 优化' }).click()
-  const loading = page.locator('.ai-prompt-result.is-loading')
+  const loading = page.locator('.ai-prompt-assist-loading')
   await expect(loading).toBeVisible()
   await expect(loading).toContainText('正在生成候选提示词')
   await expect(loading.locator('.ai-prompt-progress')).toBeVisible()
 
-  await expect(page.locator('.ai-prompt-result.is-candidate')).toBeVisible()
-  await expect(page.locator('.ai-prompt-result.is-candidate')).toContainText('延迟返回的候选提示词')
-  await expect(page.locator('.ai-prompt-result.is-loading')).toHaveCount(0)
+  await expect(page.locator('.ai-prompt-assist-candidate')).toBeVisible()
+  await expect(page.locator('.ai-prompt-assist-candidate')).toContainText('延迟返回的候选提示词')
+  await expect(page.locator('.ai-prompt-assist-loading')).toHaveCount(0)
 })
 
 test('提示词试跑失败时展示模型错误，不残留加载态', async ({ page }) => {
