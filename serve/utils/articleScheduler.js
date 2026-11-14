@@ -1,6 +1,10 @@
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
 const { writeSystemLog } = require('./logHelper')
 const { cleanupCover } = require('./coverCleanup')
+const {
+    notifyScheduledPublishSuccess,
+    notifyScheduledPublishFailure,
+} = require('./articlePublishNotification')
 
 const DEFAULT_INTERVAL_MS = 30_000
 
@@ -31,8 +35,6 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                     if (!result.published) continue
                     notifiedFailures.delete(Number(row.id))
 
-                    if (result.previousCover) await cleanupCover(result.previousCover)
-
                     writeSystemLog({
                         userId: row.userId,
                         action: 'publish',
@@ -41,6 +43,24 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                         targetId: row.id,
                         detail: '定时发布已执行',
                     })
+
+                    await notifyScheduledPublishSuccess({
+                        userId: row.userId,
+                        title: row.title || result.title,
+                        classify: row.classify,
+                    }).catch((notifyError) => {
+                        console.warn(`[ArticleScheduler] 文章 ${row.id} 发布成功通知失败：`, notifyError.message)
+                    })
+
+                    // 封面清理属于发布后的附属动作，失败不应把已成功的发布标记为失败，
+                    // 否则会给作者发出错误的失败通知。
+                    if (result.previousCover) {
+                        try {
+                            await cleanupCover(result.previousCover)
+                        } catch (cleanupError) {
+                            console.warn(`[ArticleScheduler] 文章 ${row.id} 旧封面清理失败：`, cleanupError.message)
+                        }
+                    }
                 } catch (err) {
                     console.error(`[ArticleScheduler] 文章 ${row.id} 定时发布失败：`, err.message)
                     if (!notifiedFailures.has(Number(row.id))) {
@@ -52,6 +72,15 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                             targetType: 'article',
                             targetId: row.id,
                             detail: `定时发布失败：${err.message}`,
+                        })
+
+                        await notifyScheduledPublishFailure({
+                            userId: row.userId,
+                            title: row.title,
+                            classify: row.classify,
+                            errorMessage: err.message,
+                        }).catch((notifyError) => {
+                            console.warn(`[ArticleScheduler] 文章 ${row.id} 发布失败通知发送失败：`, notifyError.message)
                         })
                     }
                 }

@@ -162,6 +162,14 @@ Module._load = function (request, parent, isMain) {
         if (request === './coverCleanup') {
             return { cleanupCover: async cover => calls.push({ sql: 'CLEAN_COVER', values: [cover] }) }
         }
+        if (request === './articlePublishNotification') {
+            return {
+                notifyScheduledPublishSuccess: async payload =>
+                    calls.push({ sql: 'NOTIFY_SUCCESS', values: [payload] }),
+                notifyScheduledPublishFailure: async payload =>
+                    calls.push({ sql: 'NOTIFY_FAILURE', values: [payload] }),
+            }
+        }
     }
     return originalLoad.call(this, request, parent, isMain)
 }
@@ -574,7 +582,7 @@ test('workflow controller returns 409 for stale revisions and 403 without publis
 })
 
 test('scheduler publishes due rows and records an audit log', async () => {
-    dueRows = [{ id: 10, userId: 1, classify: 'article' }]
+    dueRows = [{ id: 10, userId: 1, classify: 'article', title: '定时标题' }]
     articleRows = [makeArticle({
         scheduledAt: '2026-10-01T00:00:00.000Z',
         draftRevision: 1,
@@ -600,10 +608,15 @@ test('scheduler publishes due rows and records an audit log', async () => {
     assert.ok(calls.some(call =>
         call.sql === 'LOG' && call.values[0].detail === '定时发布已执行'
     ))
+    assert.ok(calls.some(call =>
+        call.sql === 'NOTIFY_SUCCESS'
+        && call.values[0].title === '定时标题'
+        && call.values[0].userId === 1
+    ))
 })
 
 test('scheduler logs a failure once while the same overdue row remains stuck', async () => {
-    dueRows = [{ id: 10, userId: 1, classify: 'article' }]
+    dueRows = [{ id: 10, userId: 1, classify: 'article', title: '定时标题' }]
     articleRows = [makeArticle({
         scheduledAt: '2026-10-01T00:00:00.000Z',
         draftRevision: 1,
@@ -626,6 +639,9 @@ test('scheduler logs a failure once while the same overdue row remains stuck', a
         call.sql === 'LOG' && call.values[0].detail === '定时发布失败：数据库暂时不可用'
     )
     assert.equal(failureLogs.length, 1)
+    const failureNotices = calls.filter(call => call.sql === 'NOTIFY_FAILURE')
+    assert.equal(failureNotices.length, 1)
+    assert.equal(failureNotices[0].values[0].title, '定时标题')
 })
 
 test('promoting the working copy moves it online and clears the draft fields', async () => {

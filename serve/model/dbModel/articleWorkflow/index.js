@@ -458,7 +458,7 @@ async function resumeSchedule(articleId, scheduledAt = null) {
  */
 async function findDueScheduledArticles(limit = 20, now = new Date()) {
     return query(
-        `SELECT id, user_id AS userId, classify
+        `SELECT id, user_id AS userId, classify, title
          FROM article
          WHERE state != 'deleted'
            AND scheduled_at IS NOT NULL
@@ -692,6 +692,7 @@ async function publishScheduledArticle(articleId) {
         return {
             published: true,
             articleId,
+            title: snapshot.title,
             revision: nextRevision,
             previousCover: article.cover ?? null,
         }
