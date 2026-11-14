@@ -48,13 +48,13 @@ const EDITABLE_ROLE_KEYS = ['admin', 'editor', 'normal', 'visitor']
 const PERMISSION_GROUPS = [
     {
         key: 'overview',
-        label: '系统总览',
-        description: '控制后台首页的数据统计范围'
+        label: '总览与洞察',
+        description: '控制后台首页统计、内容健康与站点洞察的查看范围'
     },
     {
         key: 'content',
         label: '内容管理',
-        description: '文章、摄影图库、随笔与分类标签'
+        description: '文章、内容系列、定时发布、摄影图库、随笔与分类标签'
     },
     {
         key: 'interaction',
@@ -94,6 +94,18 @@ const PERMISSIONS = [
         group: 'overview',
         label: '查看全站总览',
         description: '关闭后仅统计当前用户自己的内容；系统设置始终对本人开放'
+    },
+    {
+        key: 'contentHealth.view',
+        group: 'overview',
+        label: '查看内容健康',
+        description: '运行内容巡检并查看失效链接、缺封面、久未更新等健康问题'
+    },
+    {
+        key: 'siteInsights.view',
+        group: 'overview',
+        label: '查看站点洞察',
+        description: '查看门户搜索词、无结果搜索与 404 访问统计'
     },
     {
         key: 'article.viewAll',
@@ -183,6 +195,24 @@ const PERMISSIONS = [
         label: '管理全部随笔',
         description: '编辑和删除全站随笔',
         risk: 'high'
+    },
+    {
+        key: 'collection.view',
+        group: 'content',
+        label: '查看内容系列',
+        description: '查看文章系列列表、系列详情与选文情况'
+    },
+    {
+        key: 'collection.manage',
+        group: 'content',
+        label: '管理内容系列',
+        description: '新建、编辑、删除内容系列并调整系列内文章顺序'
+    },
+    {
+        key: 'schedule.manage',
+        group: 'content',
+        label: '管理定时发布',
+        description: '查看定时发布队列并安排、调整或取消计划发布时间'
     },
     {
         key: 'category.manage',
@@ -340,6 +370,12 @@ const PERMISSIONS = [
         description: '查询登录、内容与用户操作日志'
     },
     {
+        key: 'pet.manage',
+        group: 'system',
+        label: '管理宠物站点设置',
+        description: '修改桌宠的全站显示范围、尺寸、活跃度与停靠位置'
+    },
+    {
         key: 'backup.view',
         group: 'system',
         label: '查看数据库备份',
@@ -374,6 +410,9 @@ const CONTENT_ALL = [
     'diary.create',
     'diary.manageOwn',
     'diary.manageAll',
+    'collection.view',
+    'collection.manage',
+    'schedule.manage',
     'category.manage',
     'label.manage'
 ]
@@ -393,6 +432,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
     ),
     editor: [
         'overview.viewAll',
+        'contentHealth.view',
+        'siteInsights.view',
         ...CONTENT_ALL,
         'ai.use',
         'comment.create',

@@ -63,19 +63,19 @@ const routes = [
             {
                 path: 'contentHealth',
                 component: () => import('../views/ContentHealthView.vue'),
-                // 内容健康扫描会读取全站已发布内容，与总览使用同一管理权限
+                // 内容健康扫描会读取全站已发布内容，使用独立的巡检权限
                 meta: {
                     requiresAuth: true,
-                    permissions: ['overview.viewAll'],
+                    permissions: ['contentHealth.view'],
                 },
             },
             {
                 path: 'siteInsights',
                 component: () => import('../views/SiteInsightsView.vue'),
-                // 搜索词与 404 属于全站运营数据，沿用总览权限
+                // 搜索词与 404 属于全站运营数据，使用独立的洞察权限
                 meta: {
                     requiresAuth: true,
-                    permissions: ['overview.viewAll'],
+                    permissions: ['siteInsights.view'],
                 },
             },
             {
@@ -156,7 +156,7 @@ const routes = [
                 component: () => import('../views/ScheduledPublishView.vue'),
                 meta: {
                     requiresAuth: true,
-                    permissions: ['article.publish', 'gallery.publish']
+                    permissions: ['schedule.manage']
                 }
             },
             {
@@ -164,7 +164,7 @@ const routes = [
                 component: () => import('../views/CollectionManageView.vue'),
                 meta: {
                     requiresAuth: true,
-                    permissions: ['category.manage']
+                    permissions: ['collection.view', 'collection.manage']
                 }
             },
             {
@@ -283,6 +283,7 @@ router.afterEach((to) => {
         '/messages': '回复私信',
         '/localfile': '本地文件',
         '/article': '博客文章',
+        '/collectionManage': '内容系列',
         '/scheduledPublish': '定时发布',
         '/gallery': '摄影图库',
         '/diary': '随笔随记',

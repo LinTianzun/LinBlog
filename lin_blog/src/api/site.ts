@@ -27,7 +27,7 @@ export function getSiteSettings() {
     )
 }
 
-// 仅拥有 permission.edit 的账号可修改
+// 仅拥有 pet.manage 的账号可修改
 export function updateSiteSettings(payload: SiteSettings) {
     return request.put<{ code: number; message: string; data: SiteSettings }>(
         '/site/settings',

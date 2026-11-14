@@ -6,7 +6,7 @@ test('站点洞察展示搜索与 404 摘要并支持切换周期', async ({ pag
   await seedSession(page, {
     id: 1,
     username: '林知雨',
-    permissions: ['overview.viewAll'],
+    permissions: ['siteInsights.view'],
   })
 
   await page.goto('/siteInsights')

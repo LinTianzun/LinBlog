@@ -196,6 +196,30 @@ test('createCollection rejects non-manager users', async () => {
     assert.equal(res.body.code, 403)
 })
 
+test('collection.view can read the series list but cannot write', async () => {
+    const originalFind = collectionModel.findCollections
+    collectionModel.findCollections = async () => []
+
+    try {
+        const listRes = createRes()
+        await collectionController.getCollections({
+            user: { userId: 8, permissions: ['collection.view'] }
+        }, listRes)
+        assert.equal(listRes.body.code, 200)
+        assert.deepEqual(listRes.body.data.list, [])
+
+        const writeRes = createRes()
+        await collectionController.createCollection({
+            body: { name: '只读账号不能创建' },
+            user: { userId: 8, permissions: ['collection.view'] }
+        }, writeRes)
+        assert.equal(writeRes.statusCode, 403)
+        assert.equal(writeRes.body.code, 403)
+    } finally {
+        collectionModel.findCollections = originalFind
+    }
+})
+
 test('createCollection trims fields and applies a safe sort', async () => {
     const originalInsert = collectionModel.insertCollection
     let saved = null

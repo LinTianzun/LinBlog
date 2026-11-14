@@ -1,6 +1,6 @@
 const collectionController = require('../controller/collectionController')
 const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth')
-const { requirePermission } = require('../utils/accessControl')
+const { requirePermission, requireAnyPermission } = require('../utils/accessControl')
 
 module.exports = (app) => {
     // 门户公开读取：只返回状态正常且包含已发布文章的系列
@@ -8,11 +8,12 @@ module.exports = (app) => {
     app.get('/api/public/collection/article/:articleId', optionalAuthMiddleware, collectionController.getPublicCollectionsForArticle)
     app.get('/api/public/collection/:id', optionalAuthMiddleware, collectionController.getPublicCollectionById)
 
-    // 后台系列管理：复用分类管理权限，避免新增权限矩阵项带来额外迁移
-    app.get('/api/collection', authMiddleware, requirePermission('category.manage'), collectionController.getCollections)
-    app.get('/api/collection/:id', authMiddleware, requirePermission('category.manage'), collectionController.getCollectionById)
-    app.post('/api/collection', authMiddleware, requirePermission('category.manage'), collectionController.createCollection)
-    app.put('/api/collection/:id', authMiddleware, requirePermission('category.manage'), collectionController.updateCollection)
-    app.delete('/api/collection/:id', authMiddleware, requirePermission('category.manage'), collectionController.deleteCollection)
-    app.put('/api/collection/:id/articles', authMiddleware, requirePermission('category.manage'), collectionController.setCollectionArticles)
+    // 后台系列管理：查看与编辑分开授权，编辑能力同时允许进入列表
+    const canViewCollections = requireAnyPermission(['collection.view', 'collection.manage'])
+    app.get('/api/collection', authMiddleware, canViewCollections, collectionController.getCollections)
+    app.get('/api/collection/:id', authMiddleware, canViewCollections, collectionController.getCollectionById)
+    app.post('/api/collection', authMiddleware, requirePermission('collection.manage'), collectionController.createCollection)
+    app.put('/api/collection/:id', authMiddleware, requirePermission('collection.manage'), collectionController.updateCollection)
+    app.delete('/api/collection/:id', authMiddleware, requirePermission('collection.manage'), collectionController.deleteCollection)
+    app.put('/api/collection/:id/articles', authMiddleware, requirePermission('collection.manage'), collectionController.setCollectionArticles)
 }

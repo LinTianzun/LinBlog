@@ -493,7 +493,7 @@ const tablesSql = {
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日志ID',
     user_id BIGINT UNSIGNED COMMENT '操作用户ID（系统操作为NULL）',
     action VARCHAR(50) NOT NULL COMMENT '动作（login/logout/create/update/delete/publish/revoke/status）',
-    module VARCHAR(50) NOT NULL COMMENT '模块（user/article/gallery/diary/file/comment/message/subset/label/system）',
+    module VARCHAR(50) NOT NULL COMMENT '模块（user/article/collection/gallery/diary/file/comment/message/subset/label/ai/permission/system/backup/pet）',
     target_type VARCHAR(50) COMMENT '目标类型（article/diary/user/file等）',
     target_id BIGINT UNSIGNED COMMENT '目标ID',
     detail VARCHAR(500) COMMENT '操作详情（动作描述或关键参数）',

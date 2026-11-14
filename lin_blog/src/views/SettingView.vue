@@ -563,6 +563,8 @@ const roleName = computed(() => roleMap[profile.value?.user_type ?? ''] || '')
 // ── 我的权限（只读展示，权限键转中文标签） ──
 const PERMISSION_LABELS: Record<string, string> = {
     'overview.viewAll': '查看全站总览',
+    'contentHealth.view': '查看内容健康',
+    'siteInsights.view': '查看站点洞察',
     'article.viewAll': '查看文章',
     'article.create': '创建文章',
     'article.manageOwn': '管理自己的文章',
@@ -577,6 +579,9 @@ const PERMISSION_LABELS: Record<string, string> = {
     'diary.create': '创建随笔',
     'diary.manageOwn': '管理自己的随笔',
     'diary.manageAll': '管理全部随笔',
+    'collection.view': '查看内容系列',
+    'collection.manage': '管理内容系列',
+    'schedule.manage': '管理定时发布',
     'category.manage': '管理分类',
     'label.manage': '管理标签',
     'comment.create': '发表评论与回复',
@@ -601,18 +606,21 @@ const PERMISSION_LABELS: Record<string, string> = {
     'permission.view': '查看权限管理',
     'permission.edit': '修改权限矩阵',
     'systemLog.view': '查看系统日志',
+    'pet.manage': '管理宠物站点设置',
+    'backup.view': '查看数据库备份',
+    'backup.manage': '管理与恢复数据库备份',
 }
 
 // 权限分组：与后端 PERMISSION_GROUPS 对齐，键前缀决定归属
 const PERMISSION_GROUPS: { key: string; label: string; prefixes: string[] }[] = [
-    { key: 'overview', label: '系统总览', prefixes: ['overview'] },
-    { key: 'content', label: '内容管理', prefixes: ['article', 'gallery', 'diary', 'category', 'label'] },
+    { key: 'overview', label: '总览与洞察', prefixes: ['overview', 'contentHealth', 'siteInsights'] },
+    { key: 'content', label: '内容管理', prefixes: ['article', 'gallery', 'diary', 'collection', 'schedule', 'category', 'label'] },
     { key: 'interaction', label: '评论互动', prefixes: ['comment'] },
     { key: 'file', label: '本地文件', prefixes: ['file'] },
     { key: 'message', label: '消息通知', prefixes: ['message'] },
     { key: 'user', label: '用户管理', prefixes: ['user'] },
     { key: 'ai', label: 'AI 能力', prefixes: ['ai'] },
-    { key: 'system', label: '系统与权限', prefixes: ['permission', 'systemLog'] },
+    { key: 'system', label: '系统与权限', prefixes: ['permission', 'systemLog', 'pet', 'backup'] },
 ]
 
 const permissionTotal = computed(() => session.permissions.length)

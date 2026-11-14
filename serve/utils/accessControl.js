@@ -13,6 +13,15 @@ const permissionModel = require('../model/dbModel/permission/index')
 let permissionCache = null
 let refreshPromise = null
 
+// 新能力上线前沿用旧权限键：迁移时按旧键的显式配置回填，
+// 避免已有自定义矩阵因为新键缺失而退回默认值。
+const LEGACY_PERMISSION_FALLBACKS = {
+    'collection.view': 'category.manage',
+    'collection.manage': 'category.manage',
+    'contentHealth.view': 'overview.viewAll',
+    'siteInsights.view': 'overview.viewAll'
+}
+
 function getDefaultPermissionMap() {
     const result = new Map()
     for (const roleKey of EDITABLE_ROLE_KEYS) {
@@ -97,17 +106,33 @@ async function refreshPermissionCache() {
 
         try {
             const rows = await permissionModel.findAllRolePermissions()
+            const explicitRows = new Map()
             for (const row of rows) {
                 const roleKey = String(row.role_key || '')
                 const permissionKey = String(row.permission_key || '')
                 if (!EDITABLE_ROLE_KEYS.includes(roleKey)) continue
                 if (!ALL_PERMISSION_KEYS.includes(permissionKey)) continue
 
+                if (!explicitRows.has(roleKey)) explicitRows.set(roleKey, new Map())
+                explicitRows.get(roleKey).set(permissionKey, Number(row.allowed) === 1)
                 if (!map.has(roleKey)) map.set(roleKey, new Set())
                 if (Number(row.allowed) === 1) {
                     map.get(roleKey).add(permissionKey)
                 } else {
                     map.get(roleKey).delete(permissionKey)
+                }
+            }
+            for (const [roleKey, rolePermissions] of explicitRows) {
+                const roleSet = map.get(roleKey)
+                if (!roleSet) continue
+                for (const [permissionKey, legacyKey] of Object.entries(LEGACY_PERMISSION_FALLBACKS)) {
+                    if (rolePermissions.has(permissionKey)) continue
+                    if (!rolePermissions.has(legacyKey)) continue
+                    if (rolePermissions.get(legacyKey)) {
+                        roleSet.add(permissionKey)
+                    } else {
+                        roleSet.delete(permissionKey)
+                    }
                 }
             }
             permissionCache = map

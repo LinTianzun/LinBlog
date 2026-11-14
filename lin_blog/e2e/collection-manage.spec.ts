@@ -34,7 +34,9 @@ const createdCollection = {
 }
 
 test('后台可以新建系列并保存文章顺序', async ({ page }) => {
-  await seedSession(page, { permissions: ['category.manage', 'article.create'] })
+  await seedSession(page, {
+    permissions: ['collection.view', 'collection.manage', 'article.create'],
+  })
   await installApiMock(page)
 
   let collections = [

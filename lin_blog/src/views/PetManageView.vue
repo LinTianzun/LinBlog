@@ -201,7 +201,7 @@ const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
 const session = useSessionStore()
 
-const canEditPet = computed(() => session.can('permission.edit'))
+const canEditPet = computed(() => session.can('pet.manage'))
 const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
 const petVitals = ref<PetVitals>(getPetVitals())
 const homestead = ref<HomesteadState>(getHomesteadState())

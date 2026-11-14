@@ -79,7 +79,7 @@
                         {{ item.detail || '（无详情）' }}
                     </span>
                     <span class="log-col log-col-target">
-                        {{ item.targetType ? `${item.targetType} #${item.targetId ?? '-'}` : '-' }}
+                        {{ targetLabel(item.targetType, item.targetId) }}
                         <span class="log-ip">{{ item.ip || '-' }}</span>
                     </span>
                     <span class="log-col log-col-time">{{ formatTime(item.createdAt) }}</span>
@@ -120,6 +120,7 @@
     const moduleOptions = [
         { value: 'user', label: '用户' },
         { value: 'article', label: '文章' },
+        { value: 'collection', label: '内容系列' },
         { value: 'gallery', label: '图库' },
         { value: 'diary', label: '日记' },
         { value: 'file', label: '文件' },
@@ -131,6 +132,7 @@
         { value: 'ai', label: 'AI' },
         { value: 'system', label: '系统' },
         { value: 'backup', label: '备份' },
+        { value: 'pet', label: '宠物' },
     ]
 
     // 支持从权限管理页带 ?module=permission 直接落到权限审计
@@ -174,6 +176,33 @@
 
     const moduleLabel = (value: string): string =>
         moduleOptions.find(item => item.value === value)?.label || value
+
+    const targetTypeLabels: Record<string, string> = {
+        article: '内容',
+        collection: '内容系列',
+        gallery: '图库',
+        diary: '随笔',
+        comment: '评论',
+        comment_report: '评论举报',
+        diary_comment: '随笔评论',
+        file: '文件',
+        label: '标签',
+        message: '消息',
+        subset: '分类',
+        user: '用户',
+        permission: '权限矩阵',
+        system_log: '系统日志',
+        database: '数据库',
+        site_setting: '站点设置',
+        model: 'AI 模型',
+        prompt: '提示词模板',
+    }
+
+    const targetLabel = (type: string | null, id: number | null): string => {
+        if (!type) return '-'
+        const label = targetTypeLabels[type] || type
+        return id == null ? label : `${label} #${id}`
+    }
 
     const formatTime = (value: string): string =>
         String(value || '').replace('T', ' ').slice(0, 19)

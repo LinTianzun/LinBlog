@@ -5,7 +5,11 @@ const { hasPermission } = require('../utils/accessControl')
 const MAX_ARTICLES = 200
 
 function canManageCollection(user) {
-    return hasPermission(user, 'category.manage')
+    return hasPermission(user, 'collection.manage')
+}
+
+function canViewCollection(user) {
+    return canManageCollection(user) || hasPermission(user, 'collection.view')
 }
 
 function formatCollection(row, { includeArticles = false } = {}) {
@@ -133,7 +137,7 @@ async function getPublicCollectionsForArticle(req, res) {
 
 async function getCollections(req, res) {
     try {
-        if (!canManageCollection(req.user)) {
+        if (!canViewCollection(req.user)) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以查看系列管理' })
         }
 
@@ -151,7 +155,7 @@ async function getCollections(req, res) {
 
 async function getCollectionById(req, res) {
     try {
-        if (!canManageCollection(req.user)) {
+        if (!canViewCollection(req.user)) {
             return res.status(403).json({ code: 403, message: '仅管理员或编辑可以查看系列管理' })
         }
 
@@ -198,7 +202,7 @@ async function createCollection(req, res) {
         writeSystemLog({
             userId: req.user.userId,
             action: 'create',
-            module: 'article',
+            module: 'collection',
             targetType: 'collection',
             targetId: result.collectionId,
             detail: `创建内容系列「${name}」`,
@@ -246,7 +250,7 @@ async function updateCollection(req, res) {
         writeSystemLog({
             userId: req.user.userId,
             action: 'update',
-            module: 'article',
+            module: 'collection',
             targetType: 'collection',
             targetId: id,
             detail: `更新内容系列「${name || current.name}」`,
@@ -280,7 +284,7 @@ async function deleteCollection(req, res) {
         writeSystemLog({
             userId: req.user.userId,
             action: 'delete',
-            module: 'article',
+            module: 'collection',
             targetType: 'collection',
             targetId: id,
             detail: `删除内容系列「${current.name}」`,
@@ -335,7 +339,7 @@ async function setCollectionArticles(req, res) {
         writeSystemLog({
             userId: req.user.userId,
             action: 'update',
-            module: 'article',
+            module: 'collection',
             targetType: 'collection',
             targetId: id,
             detail: `调整内容系列「${current.name}」文章顺序（${savedCount} 篇）`,

@@ -310,10 +310,12 @@ const roleTemplates: RoleTemplate[] = [
         label: '内容编辑',
         description: '文章 / 图库 / 随笔的创作与管理，保留 AI 写作与配图能力',
         permissions: [
-            'overview.viewAll', 'article.viewAll', 'article.create', 'article.manageOwn',
+            'overview.viewAll', 'contentHealth.view', 'siteInsights.view',
+            'article.viewAll', 'article.create', 'article.manageOwn',
             'article.manageAll', 'article.publish', 'gallery.viewAll', 'gallery.create',
             'gallery.manageOwn', 'gallery.manageAll', 'gallery.publish', 'diary.viewAll',
-            'diary.create', 'diary.manageOwn', 'category.manage', 'label.manage',
+            'diary.create', 'diary.manageOwn', 'collection.view', 'collection.manage',
+            'schedule.manage', 'category.manage', 'label.manage',
             'ai.use', 'file.view', 'file.upload'
         ]
     },
@@ -322,7 +324,8 @@ const roleTemplates: RoleTemplate[] = [
         label: '内容审核',
         description: '查看全站内容并处理发布状态，可管理评论举报',
         permissions: [
-            'overview.viewAll', 'article.viewAll', 'article.publish', 'gallery.viewAll',
+            'overview.viewAll', 'contentHealth.view', 'siteInsights.view',
+            'article.viewAll', 'article.publish', 'gallery.viewAll',
             'gallery.publish', 'diary.viewAll', 'comment.moderate', 'ai.use', 'systemLog.view'
         ]
     },

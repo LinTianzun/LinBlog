@@ -8,6 +8,11 @@ const systemLogModel = require(path.resolve(__dirname, '../model/dbModel/systemL
 const systemLogController = require(path.resolve(__dirname, '../controller/systemLogController.js'))
 const { writeSystemLog } = require(path.resolve(__dirname, '../utils/logHelper.js'))
 
+test('system log modules cover content collections and pet settings', () => {
+    assert.ok(systemLogModel.MODULES.includes('collection'))
+    assert.ok(systemLogModel.MODULES.includes('pet'))
+})
+
 function createRes() {
     return {
         statusCode: 0,
@@ -190,6 +195,12 @@ test('getLogsByPage orders by created_at with the requested direction', async ()
         assert.equal(orderClauses.length, 2)
         assert.match(orderClauses[0], /ORDER BY l\.created_at ASC, l\.id ASC/)
         assert.match(orderClauses[1], /ORDER BY l\.created_at DESC, l\.id DESC/)
+
+        await freshModel.getLogsByPage({ module: 'collection', pageSize: 10, offset: 0 })
+        // 内容系列历史日志曾写在 article 模块，筛选时要同时兼容 target_type
+        assert.ok(capturedSql.some(sql =>
+            sql.includes('(l.module = ? OR l.target_type = ?)')
+        ))
     } finally {
         delete require.cache[path.resolve(__dirname, '../model/dbModel/systemLog/index.js')]
         if (originalModule) require.cache[dbPath] = originalModule

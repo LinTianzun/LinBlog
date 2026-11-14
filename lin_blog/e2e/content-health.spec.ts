@@ -6,7 +6,7 @@ test('内容健康页展示巡检摘要、问题筛选与编辑入口', async ({
   await seedSession(page, {
     id: 1,
     username: '林知雨',
-    permissions: ['overview.viewAll'],
+    permissions: ['contentHealth.view'],
   })
 
   await page.goto('/contentHealth')
@@ -30,7 +30,7 @@ test('内容健康页展示巡检摘要、问题筛选与编辑入口', async ({
   await request
 })
 
-test('无总览权限时不显示内容健康入口', async ({ page }) => {
+test('无内容健康权限时不显示入口', async ({ page }) => {
   await installApiMock(page)
   await seedSession(page, { permissions: ['article.create'] })
 
@@ -45,7 +45,7 @@ test('内容健康列表支持分页并在筛选后回到第一页', async ({ pa
   await seedSession(page, {
     id: 1,
     username: '林知雨',
-    permissions: ['overview.viewAll'],
+    permissions: ['contentHealth.view'],
   })
 
   const items = Array.from({ length: 13 }, (_, index) => ({

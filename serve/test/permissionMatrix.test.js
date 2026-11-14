@@ -283,3 +283,37 @@ test('database backup management is reserved for the super admin', () => {
         assert.equal(DEFAULT_ROLE_PERMISSIONS[roleKey].includes('backup.manage'), false)
     }
 })
+
+test('new feature permissions are exposed and inherit legacy matrix rows', async () => {
+    const config = require('../config/accessControl.js')
+    const newKeys = [
+        'collection.view',
+        'collection.manage',
+        'contentHealth.view',
+        'siteInsights.view',
+        'schedule.manage',
+        'pet.manage',
+    ]
+    for (const key of newKeys) {
+        assert.ok(config.ALL_PERMISSION_KEYS.includes(key), `缺少权限：${key}`)
+    }
+    assert.ok(config.DEFAULT_ROLE_PERMISSIONS.admin.includes('pet.manage'))
+    assert.ok(config.DEFAULT_ROLE_PERMISSIONS.editor.includes('collection.manage'))
+    assert.ok(config.DEFAULT_ROLE_PERMISSIONS.editor.includes('contentHealth.view'))
+    assert.ok(config.DEFAULT_ROLE_PERMISSIONS.editor.includes('siteInsights.view'))
+    assert.equal(config.DEFAULT_ROLE_PERMISSIONS.normal.includes('collection.manage'), false)
+
+    // 旧矩阵曾显式关闭「分类管理 / 查看全站总览」，新键要继承这个决定，
+    // 不能因为新增权限没有历史记录就退回默认授予。
+    storedRows = [
+        { role_key: 'editor', permission_key: 'category.manage', allowed: 0 },
+        { role_key: 'editor', permission_key: 'overview.viewAll', allowed: 0 },
+    ]
+    const { refreshPermissionCache, getPermissionsForUser } = require('../utils/accessControl.js')
+    await refreshPermissionCache()
+    const editor = getPermissionsForUser({ userType: 'editor' })
+    assert.equal(editor.includes('collection.view'), false)
+    assert.equal(editor.includes('collection.manage'), false)
+    assert.equal(editor.includes('contentHealth.view'), false)
+    assert.equal(editor.includes('siteInsights.view'), false)
+})

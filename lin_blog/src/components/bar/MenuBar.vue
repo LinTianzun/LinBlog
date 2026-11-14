@@ -63,8 +63,8 @@ const pendingReportBadge = computed(() =>
 // 总览是全站统计，按 overview.viewAll 收窄；系统设置对所有登录用户开放
 const MENU_PERMISSIONS: Record<string, string[]> = {
     overView: ['overview.viewAll'],
-    contentHealth: ['overview.viewAll'],
-    siteInsights: ['overview.viewAll'],
+    contentHealth: ['contentHealth.view'],
+    siteInsights: ['siteInsights.view'],
     userManagement: ['user.view'],
     permissionManagement: ['permission.view'],
     systemLog: ['systemLog.view'],
@@ -74,8 +74,8 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     messages: ['message.private'],
     localfile: ['file.view'],
     article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
-    collectionManage: ['category.manage'],
-    scheduledPublish: ['article.publish', 'gallery.publish'],
+    collectionManage: ['collection.view', 'collection.manage'],
+    scheduledPublish: ['schedule.manage'],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
     petManage: [],

@@ -2,7 +2,7 @@ const { query } = require('../../db/dbnew')
 
 const ACTIONS = ['login', 'logout', 'create', 'update', 'delete', 'publish', 'revoke', 'status', 'system', 'ai']
 // permission 模块：角色权限矩阵变更属于高风险操作，必须可审计
-const MODULES = ['user', 'article', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'ai', 'permission', 'system', 'backup']
+const MODULES = ['user', 'article', 'collection', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'ai', 'permission', 'system', 'backup', 'pet']
 const EXPORT_MAX_ROWS = 100000
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
@@ -64,8 +64,14 @@ async function getLogsByPage({
         params.push(term, term, term, term)
     }
     if (module) {
-        where.push('l.module = ?')
-        params.push(module)
+        // 内容系列早期写在 article 模块下，按 target_type 兼容历史日志
+        if (module === 'collection') {
+            where.push('(l.module = ? OR l.target_type = ?)')
+            params.push(module, 'collection')
+        } else {
+            where.push('l.module = ?')
+            params.push(module)
+        }
     }
     if (action) {
         where.push('l.action = ?')
@@ -114,8 +120,13 @@ function buildLogFilters({
         params.push(term, term, term, term)
     }
     if (module && MODULES.includes(module)) {
-        where.push('l.module = ?')
-        params.push(module)
+        if (module === 'collection') {
+            where.push('(l.module = ? OR l.target_type = ?)')
+            params.push(module, 'collection')
+        } else {
+            where.push('l.module = ?')
+            params.push(module)
+        }
     }
     if (action && ACTIONS.includes(action)) {
         where.push('l.action = ?')

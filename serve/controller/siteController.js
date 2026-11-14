@@ -1,4 +1,19 @@
 const siteModel = require('../model/dbModel/site/index')
+const { writeSystemLog } = require('../utils/logHelper')
+
+const PET_SETTING_LABELS = {
+    desktopPetEnabled: '桌宠总开关',
+    petSize: '尺寸档位',
+    petScale: '缩放比例',
+    petActivity: '活跃度',
+    petRoamingEnabled: '自动走动',
+    petDragEnabled: '允许拖动',
+    petBubbleEnabled: '气泡碎碎念',
+    petOpacity: '不透明度',
+    petAutoSleepEnabled: '自动入睡',
+    petHomeCorner: '默认角落',
+    petScope: '显示范围'
+}
 
 // 公开读取：桌宠是否显示对所有访客一致，不能依赖各浏览器本地状态
 async function getSettings(_req, res) {
@@ -82,7 +97,22 @@ async function updateSettings(req, res) {
     }
 
     try {
+        const before = await siteModel.getSettings()
         const settings = await siteModel.updateSettings(body)
+        const changedLabels = Object.keys(PET_SETTING_LABELS)
+            .filter(field => before[field] !== settings[field])
+            .map(field => PET_SETTING_LABELS[field])
+        if (changedLabels.length > 0) {
+            writeSystemLog({
+                userId: req.user?.userId,
+                action: 'update',
+                module: 'pet',
+                targetType: 'site_setting',
+                targetId: null,
+                detail: `更新宠物站点设置：${changedLabels.join('、')}`,
+                ip: req.ip || null
+            })
+        }
         return res.status(200).json({
             code: 200,
             message: '站点设置已保存',

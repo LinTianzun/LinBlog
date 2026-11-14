@@ -6,7 +6,7 @@ module.exports = (app) => {
     app.get(
         '/api/content/health',
         authMiddleware,
-        requirePermission('overview.viewAll'),
+        requirePermission('contentHealth.view'),
         contentHealthController.getContentHealth
     )
 }
