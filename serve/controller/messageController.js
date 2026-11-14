@@ -174,7 +174,7 @@ async function getConversation(req, res) {
 /**
  *  收件箱查询（分页+筛选）
  */
-async function getInBox(req, res) {
+async function respondInbox(req, res, scope = '') {
     try {
         const { userId } = req.user
         const { type, isRead } = req.query
@@ -194,14 +194,17 @@ async function getInBox(req, res) {
             page,
             pageSize,
             offset,
-            type: type || '',
+            type: scope === 'notification' ? '' : (type || ''),
             isRead: isRead !== undefined ? Number(isRead) : undefined,
-            userId
+            userId,
+            scope,
         })
 
         res.json({
             code: 200,
-            message: result.total > 0 ? '收件箱查询成功' : '收件箱暂无消息',
+            message: result.total > 0
+                ? (scope === 'notification' ? '通知查询成功' : '收件箱查询成功')
+                : (scope === 'notification' ? '暂无通知' : '收件箱暂无消息'),
             data: {
                 total: result.total,
                 page: result.page,
@@ -211,8 +214,19 @@ async function getInBox(req, res) {
             }
         })
     } catch (err) {
-        res.status(500).json({ code: 500, message: '收件箱查询失败：' + err.message })
+        res.status(500).json({
+            code: 500,
+            message: (scope === 'notification' ? '通知查询失败：' : '收件箱查询失败：') + err.message
+        })
     }
+}
+
+async function getInBox(req, res) {
+    return respondInbox(req, res, '')
+}
+
+async function getNotifications(req, res) {
+    return respondInbox(req, res, 'notification')
 }
 
 /**
@@ -352,6 +366,39 @@ async function getUnreadCount(req, res) {
     }
 }
 
+async function getNotificationUnreadCount(req, res) {
+    try {
+        const { userId } = req.user
+        const count = await messageModel.getUnreadCountByScope(userId, '', 'notification')
+
+        res.json({
+            code: 200,
+            message: '未读通知数量查询成功',
+            data: {
+                unreadCount: count,
+                type: 'notification',
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '未读通知数量查询失败：' + err.message })
+    }
+}
+
+async function markAllNotificationsRead(req, res) {
+    try {
+        const { userId } = req.user
+        const markedCount = await messageModel.markAllNotificationsRead(userId)
+
+        res.json({
+            code: 200,
+            message: markedCount > 0 ? `已将 ${markedCount} 条通知标记为已读` : '没有未读通知',
+            data: { markedCount }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '标记通知已读失败：' + err.message })
+    }
+}
+
 /**
  * 门户留言墙：查询博主收到的私信（公开、脱敏）
  */
@@ -418,10 +465,13 @@ module.exports = {
     getConversations,
     getConversation,
     getInBox,
+    getNotifications,
     getOutBox,
     markAdRead,
+    markAllNotificationsRead,
     deleteMessage,
     getUnreadCount,
+    getNotificationUnreadCount,
     getWallMessages,
     createWallMessage
 }

@@ -12,9 +12,11 @@ const query = async (sql, params = []) => {
 
     if (sql.includes("user_type = 'admin'")) return [{ id: 1 }]
     if (sql.includes('SELECT id FROM users WHERE id = ? AND status = 1')) return [{ id: 1 }]
+    if (sql.includes('COUNT(*) AS count')) return [{ count: 0 }]
     if (sql.includes('COUNT(') && sql.includes('total') && sql.includes('FROM message')) {
         return [{ total: 0 }]
     }
+    if (sql.includes('UPDATE message')) return { affectedRows: 2 }
     return []
 }
 
@@ -64,4 +66,35 @@ test('门户留言墙展示所有留言和每位用户的首条私信', async ()
     assert.ok(wallQueries.every(call => call.sql.includes("channel = 'wall'")))
     assert.ok(wallQueries.every(call => call.sql.includes('first_message.first_id IS NOT NULL')))
     assert.ok(wallQueries[1].sql.includes('COUNT(*) AS total'))
+})
+
+test('通知中心只查询系统消息与通知，并按范围统计未读', async () => {
+    await messageModel.getInBoxMessages({
+        page: 1,
+        pageSize: 8,
+        offset: 0,
+        userId: 3,
+        type: 'private',
+        scope: 'notification',
+    })
+
+    const listCall = calls.find(call =>
+        call.sql.includes('FROM message m') && call.sql.includes('LIMIT ? OFFSET ?')
+    )
+    assert.ok(listCall.sql.includes("type IN ('system', 'notice')"))
+    assert.ok(!listCall.sql.includes('AND type = ?'))
+
+    calls = []
+    await messageModel.getUnreadCountByScope(3, '', 'notification')
+    assert.ok(calls[0].sql.includes("type IN ('system', 'notice')"))
+    assert.deepEqual(calls[0].params, [3])
+})
+
+test('全部已读只更新当前用户的未读系统消息与通知', async () => {
+    const affected = await messageModel.markAllNotificationsRead(3)
+
+    assert.equal(affected, 2)
+    const update = calls.find(call => call.sql.includes('UPDATE message'))
+    assert.ok(update.sql.includes("type IN ('system', 'notice')"))
+    assert.deepEqual(update.params, [3])
 })

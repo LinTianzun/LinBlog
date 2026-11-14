@@ -11,6 +11,11 @@ module.exports = (app) => {
     //  收件箱查询
     app.get('/api/message/inbox', authMiddleware, requirePermission('message.private'), messageController.getInBox)
 
+    //  站内通知中心：只返回当前用户收到的 system/notice
+    app.get('/api/message/notifications', authMiddleware, messageController.getNotifications)
+    app.get('/api/message/notifications/unread/count', authMiddleware, messageController.getNotificationUnreadCount)
+    app.patch('/api/message/notifications/read-all', authMiddleware, messageController.markAllNotificationsRead)
+
     //  私信会话列表与单个会话（博主可看全部，其他账号只看与博主的会话）
     app.get('/api/message/conversations', authMiddleware, requirePermission('message.private'), messageController.getConversations)
     app.get('/api/message/conversation/:userId', authMiddleware, requirePermission('message.private'), messageController.getConversation)
@@ -19,10 +24,11 @@ module.exports = (app) => {
     app.get('/api/message/outbox', authMiddleware, requirePermission('message.private'), messageController.getOutBox)
 
     //  标记消息已读
-    app.patch('/api/message/read', authMiddleware, requirePermission('message.private'), messageController.markAdRead)
+    // 已读与删除只作用于本人收发的消息，通知中心也需要，因此不绑私信查看权限
+    app.patch('/api/message/read', authMiddleware, messageController.markAdRead)
 
     //  删除消息
-    app.delete('/api/message/:id', authMiddleware, requirePermission('message.private'), messageController.deleteMessage)
+    app.delete('/api/message/:id', authMiddleware, messageController.deleteMessage)
 
     //  查询未读消息数量
     app.get('/api/message/unread/count', authMiddleware, requirePermission('message.private'), messageController.getUnreadCount)

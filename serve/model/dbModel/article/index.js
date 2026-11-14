@@ -28,7 +28,7 @@ function normalizeAccess(access) {
  * @returns 
  */
 async function findAtricleStateById(articleId) {
-    const sql = 'SELECT id, state FROM article WHERE id = ?'
+    const sql = 'SELECT id, state, user_id, title FROM article WHERE id = ?'
     return query(sql, [articleId])
 }
 

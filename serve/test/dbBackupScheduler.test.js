@@ -83,6 +83,7 @@ test('scheduled backup records failure, logs it and sends optional alert mail', 
     const histories = []
     const logs = []
     const mails = []
+    const notifications = []
     const originalCreate = dbBackup.createDatabaseBackup
     const originalInsert = backupModel.insertLog
     const originalSystemLog = systemLogModel.insertLog
@@ -112,8 +113,14 @@ test('scheduled backup records failure, logs it and sends optional alert mail', 
             assert.equal(histories[0].triggerType, 'scheduled')
             assert.equal(histories[0].errorMessage, '连接失败')
             assert.match(logs[0].detail, /定时数据库备份失败/)
+            assert.match(notifications[0].content, /定时数据库备份失败/)
             assert.equal(mails[0].to, 'owner@example.com')
             assert.match(mails[0].text, /连接失败/)
+        }, {
+            notifySuperAdmin: async (payload) => {
+                notifications.push(payload)
+                return { delivered: true }
+            },
         })
     } finally {
         dbBackup.createDatabaseBackup = originalCreate

@@ -9,6 +9,7 @@ let articleState = 'published'
 let parentRow = { id: 7, user_id: 9, parent_id: 0 }
 const queryCalls = []
 const createCalls = []
+const notifications = []
 
 const commentModel = {
     async getCommentsByPage() { return { total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] } },
@@ -22,7 +23,15 @@ const commentModel = {
 }
 const articleModel = {
     async findAtricleStateById() {
-        return articleState ? [{ id: 5, state: articleState }] : []
+        return articleState
+            ? [{ id: 5, state: articleState, user_id: 1, title: '测试文章' }]
+            : []
+    }
+}
+const commentNotification = {
+    async notifyComment(payload) {
+        notifications.push(payload)
+        return { delivered: true }
     }
 }
 async function query(sql, values) {
@@ -36,6 +45,7 @@ Module._load = function (request, parent, isMain) {
         if (request === '../model/dbModel/article/index') return articleModel
         if (request === '../model/db/dbnew') return { query }
         if (request === '../utils/logHelper') return { writeSystemLog: () => {} }
+        if (request === '../utils/commentNotification') return commentNotification
     }
     return originalLoad.call(this, request, parent, isMain)
 }
@@ -62,6 +72,7 @@ test.beforeEach(() => {
     parentRow = { id: 7, user_id: 9, parent_id: 0 }
     queryCalls.length = 0
     createCalls.length = 0
+    notifications.length = 0
 })
 
 test('comments cannot be created on draft or rejected articles', async () => {
@@ -106,6 +117,26 @@ test('valid replies on published articles are created with normalized IDs', asyn
         parentId: 7,
         replyToCommentId: 7,
         replyToUserId: 9
+    }])
+    assert.deepEqual(
+        notifications.map(item => item.recipientId).sort((a, b) => a - b),
+        [1, 9]
+    )
+    assert.ok(notifications.some(item => item.content.includes('回复了你的评论')))
+})
+
+test('top-level comments notify the article author once', async () => {
+    const res = makeResponse()
+    await commentController.createComment({
+        body: { articleId: 5, content: '新评论' },
+        user: { userId: 42, userType: 'normal' }
+    }, res)
+
+    assert.equal(res.statusCode, 201)
+    assert.deepEqual(notifications, [{
+        recipientId: 1,
+        content: '你的文章《测试文章》收到一条新评论',
+        senderId: 42,
     }])
 })
 

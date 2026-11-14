@@ -1577,6 +1577,27 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    if (method === 'GET' && path === '/api/message/notifications/unread/count') {
+      await fulfill({ unreadCount: 0, type: 'notification' })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/message/notifications') {
+      await fulfill({
+        total: 0,
+        page: 1,
+        pageSize: 8,
+        totalPage: 0,
+        list: [],
+      })
+      return
+    }
+
+    if (method === 'PATCH' && path === '/api/message/notifications/read-all') {
+      await fulfill({ markedCount: 0 })
+      return
+    }
+
     if (method === 'GET' && path === '/api/message/conversations') {
       await fulfill({
         owner,

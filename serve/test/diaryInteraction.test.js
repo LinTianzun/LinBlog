@@ -12,6 +12,7 @@ let commentResult = null
 let commentPage = { total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }
 let commentInputs = []
 let logCalls = []
+let notifications = []
 
 const diaryInteractionModel = {
     parseDiaryId(value) {
@@ -26,6 +27,12 @@ const diaryInteractionModel = {
         return commentResult
     }
 }
+const commentNotification = {
+    async notifyComment(payload) {
+        notifications.push(payload)
+        return { delivered: true }
+    }
+}
 
 Module._load = function (request, parent, isMain) {
     const filename = parent && parent.filename
@@ -34,6 +41,7 @@ Module._load = function (request, parent, isMain) {
         if (request === '../utils/logHelper') {
             return { writeSystemLog: (entry) => logCalls.push(entry) }
         }
+        if (request === '../utils/commentNotification') return commentNotification
     }
     return originalLoad.call(this, request, parent, isMain)
 }
@@ -57,6 +65,7 @@ test.beforeEach(() => {
     commentPage = { total: 0, page: 1, pageSize: 10, totalPage: 0, list: [] }
     commentInputs = []
     logCalls = []
+    notifications = []
 })
 
 test('随笔点赞状态匿名可读且不带 liked 标记', async () => {
@@ -151,7 +160,12 @@ test('随笔评论内容做空值与长度校验', async () => {
 })
 
 test('登录用户评论随笔成功并写日志', async () => {
-    commentResult = { commentId: 12 }
+    commentResult = {
+        commentId: 12,
+        diaryUserId: 1,
+        diaryTitle: '雨天的旧书店',
+        replyToUserId: null,
+    }
     const res = makeResponse()
     await controller.createComment({
         body: { diaryId: '3', content: '  写得真好  ' },
@@ -164,10 +178,20 @@ test('登录用户评论随笔成功并写日志', async () => {
     assert.equal(res.body.data.commentId, 12)
     assert.equal(logCalls[0].module, 'diary')
     assert.equal(logCalls[0].targetType, 'diary_comment')
+    assert.deepEqual(notifications, [{
+        recipientId: 1,
+        content: '你的随笔《雨天的旧书店》收到一条新评论',
+        senderId: 42,
+    }])
 })
 
 test('回复随笔评论时 parentId 透传到模型并记录回复日志', async () => {
-    commentResult = { commentId: 13 }
+    commentResult = {
+        commentId: 13,
+        diaryUserId: 1,
+        diaryTitle: '雨天的旧书店',
+        replyToUserId: 9,
+    }
     const res = makeResponse()
     await controller.createComment({
         body: { diaryId: 3, content: '回复你', parentId: 12 },
@@ -178,6 +202,11 @@ test('回复随笔评论时 parentId 透传到模型并记录回复日志', asyn
     assert.equal(res.statusCode, 201)
     assert.deepEqual(commentInputs, [{ diaryId: 3, userId: 42, content: '回复你', parentId: 12 }])
     assert.match(logCalls[0].detail, /回复/)
+    assert.deepEqual(
+        notifications.map(item => item.recipientId).sort((a, b) => a - b),
+        [1, 9]
+    )
+    assert.ok(notifications.some(item => item.content.includes('回复了你的评论')))
 })
 
 test('回复目标不存在时返回 400 且不写日志', async () => {

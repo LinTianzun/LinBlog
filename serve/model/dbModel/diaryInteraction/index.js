@@ -167,7 +167,7 @@ async function createComment({ diaryId, userId, content, parentId = 0 }) {
 
         // 只允许评论正常状态的随笔；随笔没有草稿概念，status=1 即可评论
         const diaries = await run(
-            `SELECT id FROM diary WHERE id = ? AND status = 1 FOR UPDATE`,
+            `SELECT id, user_id, title FROM diary WHERE id = ? AND status = 1 FOR UPDATE`,
             [id]
         )
         if (diaries.length === 0) return null
@@ -204,7 +204,12 @@ async function createComment({ diaryId, userId, content, parentId = 0 }) {
         )
         await run('UPDATE diary SET comments = comments + 1 WHERE id = ?', [id])
 
-        return { commentId: result.insertId }
+        return {
+            commentId: result.insertId,
+            diaryUserId: Number(diaries[0].user_id) || null,
+            diaryTitle: diaries[0].title || '',
+            replyToUserId,
+        }
     })
 }
 

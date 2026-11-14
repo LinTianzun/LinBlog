@@ -2,6 +2,7 @@ const diaryInteractionModel = require('../model/dbModel/diaryInteraction/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
+const { notifyComment } = require('../utils/commentNotification')
 
 /**
  * 查询随笔点赞状态与总数（匿名可用，未登录只返回总数）
@@ -148,6 +149,25 @@ async function createComment(req, res) {
             detail: parentId > 0 ? '门户回复随笔评论' : '门户评论随笔',
             ip: req.ip || null,
         })
+
+        const title = result.diaryTitle || '未命名随笔'
+        const targets = []
+        if (result.replyToUserId) {
+            targets.push({
+                recipientId: result.replyToUserId,
+                content: `有人在《${title}》下回复了你的评论`,
+            })
+        }
+        if (result.diaryUserId && result.diaryUserId !== result.replyToUserId) {
+            targets.push({
+                recipientId: result.diaryUserId,
+                content: `你的随笔《${title}》收到一条新评论`,
+            })
+        }
+        await Promise.all(targets.map(target =>
+            notifyComment({ ...target, senderId: userId })
+                .catch((notifyError) => console.warn('[Diary] 发送站内评论通知失败：', notifyError.message))
+        ))
 
         res.status(201).json({
             code: 200,

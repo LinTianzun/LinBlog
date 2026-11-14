@@ -10,6 +10,7 @@ const mysql = require('mysql2')
 const config = require('../config/default')
 const backupModel = require('../model/dbModel/backup/index')
 const { writeSystemLog } = require('./logHelper')
+const { notifySuperAdmin } = require('./notificationHelper')
 const mailer = require('./mailer')
 
 const DEFAULT_BACKUP_DIR = path.resolve(
@@ -778,6 +779,7 @@ function startScheduledBackup(options = {}) {
     const createBackup = options.createDatabaseBackup || createDatabaseBackup
     const prune = options.pruneOldBackups || pruneOldBackups
     const pruneBackupLogs = options.pruneBackupLogs || ((days) => backupModel.pruneLogs(days))
+    const notifyAdmin = options.notifySuperAdmin || notifySuperAdmin
     let timer = null
     let stopped = false
 
@@ -799,6 +801,8 @@ function startScheduledBackup(options = {}) {
                 targetType: 'database',
                 detail,
             })
+            await notifyAdmin({ content: detail })
+                .catch((notifyError) => logger.warn('[DBBackup] 发送站内备份告警失败：', notifyError.message))
             const alertRecipient = process.env.LINBLOG_BACKUP_ALERT_EMAIL
             if (alertRecipient) {
                 await mailer.sendAlertMail({

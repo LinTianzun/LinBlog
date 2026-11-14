@@ -4,6 +4,7 @@ const { formatPaginationParams } = require('../utils/paginationUtil')   // 引�
 const { query } = require('../model/db/dbnew')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getCommentViewType } = require('../utils/accessControl')
+const { notifyComment } = require('../utils/commentNotification')
 /**
  * 分页查询评论（支持一级/二级评论，关联文章信息）
  */
@@ -177,7 +178,9 @@ async function submitComment(body, userId) {
             articleId: parsedArticleId,
             parentId: normalizedParentId,
             replyToCommentId,
-            replyToUserId
+            replyToUserId,
+            articleAuthorId: Number(article.user_id) || null,
+            articleTitle: article.title || '',
         }
     }
 }
@@ -200,7 +203,7 @@ async function createComment(req, res) {
             })
         }
 
-        const { commentId, parentId } = normalized.data
+        const { commentId, parentId, articleAuthorId, articleTitle, replyToUserId } = normalized.data
         writeSystemLog({
             userId,
             action: 'create',
@@ -210,6 +213,25 @@ async function createComment(req, res) {
             detail: parentId > 0 ? `回复评论 #${parentId}` : '发表评论',
             ip: req.ip || null,
         })
+
+        const title = articleTitle || '未命名内容'
+        const targets = []
+        if (parentId > 0 && replyToUserId) {
+            targets.push({
+                recipientId: replyToUserId,
+                content: `有人在《${title}》下回复了你的评论`,
+            })
+        }
+        if (articleAuthorId && articleAuthorId !== replyToUserId) {
+            targets.push({
+                recipientId: articleAuthorId,
+                content: `你的文章《${title}》收到一条新评论`,
+            })
+        }
+        await Promise.all(targets.map(target =>
+            notifyComment({ ...target, senderId: userId })
+                .catch((notifyError) => console.warn('[Comment] 发送站内评论通知失败：', notifyError.message))
+        ))
 
         res.status(201).json({
             code: 200,

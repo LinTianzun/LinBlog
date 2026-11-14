@@ -50,6 +50,28 @@ export function getInboxMessages(
   return request.get<ApiResult<MessagePageData>>("/message/inbox", { params });
 }
 
+// 站内通知中心：只返回当前用户收到的 system / notice
+export function getNotifications(
+  params: { page?: number; pageSize?: number; isRead?: number } = {}
+) {
+  return request.get<ApiResult<MessagePageData>>("/message/notifications", {
+    params,
+  });
+}
+
+export function getNotificationUnreadCount() {
+  return request.get<ApiResult<{ unreadCount: number; type: string }>>(
+    "/message/notifications/unread/count"
+  );
+}
+
+// 全部通知标记已读（不只当前页）
+export function markAllNotificationsRead() {
+  return request.patch<ApiResult<{ markedCount: number }>>(
+    "/message/notifications/read-all"
+  );
+}
+
 // 未读消息数量（type 传 private 即未读私信）
 export function getUnreadCount(type?: MessageType) {
   return request.get<ApiResult<{ unreadCount: number; type: string }>>(

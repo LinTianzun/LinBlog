@@ -12,6 +12,14 @@
         </button>
 
         <div class="head-actions">
+            <button v-if="canUseNotifications" type="button" class="icon-button notice-button"
+                :class="{ 'has-new': noticePulse }" :title="noticeTitle" :aria-label="noticeTitle"
+                @click="openNotifications">
+                <yk-badge :count="noticeUnreadCount" :overflow-count="99" :hidden="!hasNoticeUnread">
+                    <IconBellOutline />
+                </yk-badge>
+            </button>
+
             <button v-if="canUseMessages" type="button" class="icon-button inbox-button" :class="{ 'has-new': unreadPulse }"
                 :title="inboxTitle" :aria-label="inboxTitle" @click="openInbox">
                 <yk-badge :count="unreadCount" :overflow-count="99" :hidden="!hasUnread">
@@ -80,6 +88,7 @@
     </header>
 
     <information :active="active" @close="changeActive(false)" @read="fetchUnread" />
+    <NotificationDrawer :active="noticeActive" @close="changeNoticeActive(false)" @read="fetchNoticeUnread" />
 
 </template>
 
@@ -89,7 +98,8 @@ import { useRoute, useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
 import { information } from '../reply/index.ts'
-import { getUnreadCount } from '../../api/message'
+import NotificationDrawer from '../notification/NotificationDrawer.vue'
+import { getNotificationUnreadCount, getUnreadCount } from '../../api/message'
 import { useThemeDark } from '../../utils/themeMode'
 import { onClickOutside } from '@vueuse/core'
 import { themePresets, findPreset } from '../../utils/themes'
@@ -212,6 +222,9 @@ const quit = () => {
     emitPetReaction('logout')
     stopUnreadPolling()
     unreadCount.value = 0
+    noticeUnreadCount.value = 0
+    noticeActive.value = false
+    canUseNotifications.value = false
     // 清除本地登录信息
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
@@ -237,6 +250,9 @@ const roleLabel = computed(() => {
 })
 
 const canUseMessages = computed(() => session.can('message.private'))
+
+// 站内通知对所有登录账号开放；未登录时不展示铃铛
+const canUseNotifications = ref(Boolean(localStorage.getItem('token')))
 
 const defaultAvatar = '/src/assets/img/xw11.jpg'
 
@@ -264,6 +280,17 @@ let unreadFetching = false
 let unreadInitialized = false
 let headerMounted = false
 
+const noticeActive = ref(false)
+const noticeUnreadCount = ref(0)
+const hasNoticeUnread = computed(() => noticeUnreadCount.value > 0)
+const noticePulse = ref(false)
+const noticeTitle = computed(() =>
+    hasNoticeUnread.value ? `通知 · ${noticeUnreadCount.value} 条未读` : '通知'
+)
+let noticePulseTimer: number | undefined
+let noticeFetching = false
+let noticeInitialized = false
+
 const stopUnreadPolling = (): void => {
     if (unreadTimer !== undefined) {
         window.clearInterval(unreadTimer)
@@ -279,10 +306,17 @@ const pulseInbox = (): void => {
     }, 1800)
 }
 
+const pulseNotice = (): void => {
+    noticePulse.value = true
+    if (noticePulseTimer !== undefined) window.clearTimeout(noticePulseTimer)
+    noticePulseTimer = window.setTimeout(() => {
+        noticePulse.value = false
+    }, 1800)
+}
+
 const fetchUnread = async () => {
     // 匿名访问门户等公开页时不请求未读数，避免 401 触发登录跳转
     if (!localStorage.getItem('token') || !session.can('message.private')) {
-        stopUnreadPolling()
         unreadCount.value = 0
         unreadInitialized = false
         return
@@ -323,13 +357,14 @@ const startUnreadPolling = (): void => {
         !headerMounted
         || !isDocumentVisible()
         || !localStorage.getItem('token')
-        || !session.can('message.private')
     ) {
         return
     }
     void fetchUnread()
+    void fetchNoticeUnread()
     unreadTimer = window.setInterval(() => {
         void fetchUnread()
+        void fetchNoticeUnread()
     }, MESSAGE_POLL_INTERVAL)
 }
 
@@ -343,10 +378,49 @@ const handleVisibilityChange = (): void => {
 
 const handleMessageStateChange = (): void => {
     void fetchUnread()
+    void fetchNoticeUnread()
 }
 
 const openInbox = () => {
     changeActive(true)
+}
+
+const fetchNoticeUnread = async (): Promise<void> => {
+    if (!localStorage.getItem('token') || !canUseNotifications.value) {
+        noticeUnreadCount.value = 0
+        noticeInitialized = false
+        return
+    }
+    if (noticeFetching) return
+
+    noticeFetching = true
+    const previousCount = noticeUnreadCount.value
+    try {
+        const result = await getNotificationUnreadCount()
+        if (result.code === 200 && result.data) {
+            const nextCount = Math.max(0, Number(result.data.unreadCount) || 0)
+            noticeUnreadCount.value = nextCount
+            if (noticeInitialized && nextCount > previousCount) {
+                pulseNotice()
+            }
+            noticeInitialized = true
+        }
+    } catch {
+        // 查询失败时保持现状，不打扰用户
+    } finally {
+        noticeFetching = false
+    }
+}
+
+const changeNoticeActive = (value: boolean): void => {
+    noticeActive.value = value
+    if (!value) {
+        void fetchNoticeUnread()
+    }
+}
+
+const openNotifications = (): void => {
+    changeNoticeActive(true)
 }
 
 // 设置页更新/删除头像后实时同步顶栏，无需刷新页面
@@ -361,6 +435,7 @@ const onAvatarChange = (event: Event) => {
 
 onMounted(() => {
     headerMounted = true
+    canUseNotifications.value = Boolean(localStorage.getItem('token'))
     const savedUserInfo = localStorage.getItem('userInfo')
 
     if (savedUserInfo) {
@@ -386,6 +461,7 @@ onUnmounted(() => {
     headerMounted = false
     stopUnreadPolling()
     if (unreadPulseTimer !== undefined) window.clearTimeout(unreadPulseTimer)
+    if (noticePulseTimer !== undefined) window.clearTimeout(noticePulseTimer)
     window.removeEventListener('user:avatar-change', onAvatarChange)
     window.removeEventListener('theme:preset-change', onPresetChange)
     window.removeEventListener('keydown', onGlobalKeydown)
@@ -398,9 +474,8 @@ onUnmounted(() => {
 watch(canUseMessages, value => {
     if (!headerMounted) return
     if (value) {
-        startUnreadPolling()
+        void fetchUnread()
     } else {
-        stopUnreadPolling()
         unreadCount.value = 0
         unreadInitialized = false
     }
@@ -532,7 +607,8 @@ watch(canUseMessages, value => {
         }
     }
 
-    .inbox-button.has-new {
+    .inbox-button.has-new,
+    .notice-button.has-new {
         animation: inbox-pulse 900ms ease 2;
     }
 

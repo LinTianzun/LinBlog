@@ -28,12 +28,15 @@ async function insertMessage(msgData, senderId) {
  * @returns {Promise<Object>} 分页消息列表+总数
  */
 async function getInBoxMessages(params) {
-    const { page, pageSize, offset, type, isRead, userId } = params
+    const { page, pageSize, offset, type, isRead, userId, scope } = params
     let whereClause = 'receiver_id = ?'
     const whereParams = [userId]
 
     // 筛选：消息类型（system/private/notice）
-    if (type && ['system', 'private', 'notice'].includes(type)) {
+    // scope=notification 时合并系统消息与通知，供站内通知中心使用
+    if (scope === 'notification') {
+        whereClause += " AND type IN ('system', 'notice')"
+    } else if (type && ['system', 'private', 'notice'].includes(type)) {
         whereClause += ' AND type = ?'
         whereParams.push(type)
     }
@@ -171,10 +174,19 @@ async function deleteMessage(messageId, userId) {
  * @returns {Promise<number>} 未读数量
  */
 async function getUnreadCount(userId, type) {
+    return getUnreadCountByScope(userId, type, '')
+}
+
+/**
+ * 查询未读消息数量；scope=notification 时只统计系统消息与通知。
+ */
+async function getUnreadCountByScope(userId, type, scope = '') {
     let whereClause = 'receiver_id = ? AND is_read = 0'
     const whereParams = [userId]
 
-    if (type && ['system', 'private', 'notice'].includes(type)) {
+    if (scope === 'notification') {
+        whereClause += " AND type IN ('system', 'notice')"
+    } else if (type && ['system', 'private', 'notice'].includes(type)) {
         whereClause += ' AND type = ?'
         whereParams.push(type)
     }
@@ -182,6 +194,19 @@ async function getUnreadCount(userId, type) {
     const sql = `SELECT COUNT(*) AS count FROM message WHERE ${whereClause}`
     const [result] = await query(sql, whereParams)
     return result.count
+}
+
+/**
+ * 把当前用户的全部未读系统消息与通知标记为已读。
+ */
+async function markAllNotificationsRead(userId) {
+    const sql = `
+    UPDATE message
+    SET is_read = 1
+    WHERE receiver_id = ? AND is_read = 0 AND type IN ('system', 'notice')
+    `
+    const result = await query(sql, [userId])
+    return result.affectedRows
 }
 
 /**
@@ -497,7 +522,9 @@ module.exports = {
     insertMessage,
     getInBoxMessages,
     getOutBoxMessages,
+    getUnreadCountByScope,
     markMessageAdRead,
+    markAllNotificationsRead,
     deleteMessage,
     getUnreadCount,
     getOwnerId,

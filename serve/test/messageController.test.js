@@ -10,6 +10,9 @@ let ownerId = 1
 let conversationsResult = { owner: null, conversations: [] }
 let conversationResult = { target: null, list: [], total: 0, page: 1, pageSize: 50, totalPage: 0 }
 let conversationCalls = []
+let inboxCalls = []
+let unreadScopeCalls = []
+let markAllNotificationCalls = []
 
 const messageModel = {
     async insertMessage(payload, senderId) {
@@ -28,6 +31,18 @@ const messageModel = {
     },
     async findActiveUser(userId) {
         return userId === 404 ? null : { id: userId, name: '用户' + userId, avatar: null }
+    },
+    async getInBoxMessages(params) {
+        inboxCalls.push(params)
+        return { list: [], total: 0, page: 1, pageSize: 8, totalPage: 0 }
+    },
+    async getUnreadCountByScope(userId, type, scope) {
+        unreadScopeCalls.push({ userId, type, scope })
+        return 4
+    },
+    async markAllNotificationsRead(userId) {
+        markAllNotificationCalls.push(userId)
+        return 4
     }
 }
 
@@ -63,6 +78,9 @@ test.beforeEach(() => {
     conversationsResult = { owner: null, conversations: [] }
     conversationResult = { target: null, list: [], total: 0, page: 1, pageSize: 50, totalPage: 0 }
     conversationCalls = []
+    inboxCalls = []
+    unreadScopeCalls = []
+    markAllNotificationCalls = []
 })
 
 test('non-admin users cannot send system messages or notices', async () => {
@@ -79,6 +97,38 @@ test('non-admin users cannot send system messages or notices', async () => {
     }
 
     assert.equal(insertCalls.length, 0)
+})
+
+test('notification inbox and unread count always use the notification scope', async () => {
+    const listRes = makeResponse()
+    await messageController.getNotifications({
+        query: { page: '1', pageSize: '8', type: 'private' },
+        user: { userId: 3 }
+    }, listRes)
+
+    assert.equal(listRes.body.code, 200)
+    assert.equal(inboxCalls[0].scope, 'notification')
+    assert.equal(inboxCalls[0].type, '')
+
+    const countRes = makeResponse()
+    await messageController.getNotificationUnreadCount({
+        query: {},
+        user: { userId: 3 }
+    }, countRes)
+
+    assert.equal(countRes.body.data.unreadCount, 4)
+    assert.deepEqual(unreadScopeCalls[0], { userId: 3, type: '', scope: 'notification' })
+})
+
+test('marking all notifications read only touches the current user', async () => {
+    const res = makeResponse()
+    await messageController.markAllNotificationsRead({
+        user: { userId: 5 }
+    }, res)
+
+    assert.equal(res.body.code, 200)
+    assert.equal(res.body.data.markedCount, 4)
+    assert.deepEqual(markAllNotificationCalls, [5])
 })
 
 test('all authenticated roles can send private messages', async () => {
