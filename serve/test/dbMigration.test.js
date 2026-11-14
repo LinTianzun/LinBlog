@@ -10,6 +10,7 @@ const PET_RESET_MIGRATION = ['2026', '1113_pet_reset'].join('')
 const PET_HOMESTEAD_MIGRATION = ['2026', '1113_pet_homestead'].join('')
 const CONTENT_COLLECTION_MIGRATION = ['2026', '1113_content_collection'].join('')
 const SITE_EVENT_MIGRATION = ['2026', '1113_site_event'].join('')
+const SCHEDULED_PAUSE_MIGRATION = ['2026', '1114_scheduled_pause'].join('')
 
 // 已应用列表：用例通过「除目标迁移外全部已应用」来隔离单个迁移。
 // 新增迁移后同步补进这里，否则待执行迁移会多出一个导致 appliedCount 断言失败。
@@ -58,7 +59,8 @@ const ALL_MIGRATIONS = [
     PET_RESET_MIGRATION,
     PET_HOMESTEAD_MIGRATION,
     CONTENT_COLLECTION_MIGRATION,
-    SITE_EVENT_MIGRATION
+    SITE_EVENT_MIGRATION,
+    SCHEDULED_PAUSE_MIGRATION
 ]
 
 // 除 exclude 外全部视为已应用
@@ -983,5 +985,28 @@ test('site event migration creates the search and 404 event table', async () => 
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === SITE_EVENT_MIGRATION
+    ))
+})
+
+test('scheduled pause migration adds the pause marker to article', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(SCHEDULED_PAUSE_MIGRATION)
+        }
+        if (sql.includes('information_schema.COLUMNS')) return []
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE article ADD COLUMN scheduled_paused_at DATETIME NULL')
+        && call.values[0] === '定时发布暂停时间'
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === SCHEDULED_PAUSE_MIGRATION
     ))
 })

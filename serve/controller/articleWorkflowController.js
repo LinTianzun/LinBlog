@@ -13,6 +13,12 @@ function parsePositiveId(value) {
     return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
+function parseScheduleDate(raw) {
+    if (!raw) return null
+    const date = new Date(raw)
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
 // AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
 const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery', 'image-alt'])
 
@@ -344,8 +350,8 @@ async function scheduleWorkflow(req, res) {
         if (!articleId) return sendError(res, 400, '请传入有效的文章ID')
 
         const raw = req.body?.scheduledAt
-        const scheduledAt = new Date(raw)
-        if (!raw || Number.isNaN(scheduledAt.getTime())) {
+        const scheduledAt = parseScheduleDate(raw)
+        if (!scheduledAt) {
             return sendError(res, 400, '请传入有效的计划发布时间')
         }
         if (scheduledAt.getTime() < Date.now() + 60_000) {
@@ -379,6 +385,113 @@ async function scheduleWorkflow(req, res) {
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '安排定时发布失败：' + err.message })
+    }
+}
+
+async function pauseSchedule(req, res) {
+    try {
+        const articleId = parsePositiveId(req.params.id)
+        if (!articleId) return sendError(res, 400, '请传入有效的文章ID')
+
+        const access = await resolveAccess(req, articleId, 'status')
+        if (!access.exists) return sendError(res, 404, '文章不存在或已删除')
+        if (!access.allowed) return sendError(res, 403, '无权限暂停该文章的计划发布')
+        if (!access.scope.publish) return sendError(res, 403, '当前账号没有发布权限')
+        if (!access.article.scheduledAt) {
+            return sendError(res, 404, '文章没有待执行的计划发布')
+        }
+        if (access.article.scheduledPausedAt) {
+            return sendError(res, 409, '该计划已处于暂停状态')
+        }
+
+        const paused = await articleWorkflowModel.pauseSchedule(articleId)
+        if (!paused) return sendError(res, 409, '计划状态已变化，请刷新后重试')
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'status',
+            module: access.article.classify === 'image' ? 'gallery' : 'article',
+            targetType: 'article',
+            targetId: articleId,
+            detail: '暂停定时发布',
+            ip: req.ip || null,
+        })
+
+        res.json({
+            code: 200,
+            message: '已暂停定时发布',
+            data: {
+                articleId,
+                scheduledAt: access.article.scheduledAt,
+                scheduledPausedAt: new Date().toISOString(),
+            },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '暂停定时发布失败：' + err.message })
+    }
+}
+
+async function resumeSchedule(req, res) {
+    try {
+        const articleId = parsePositiveId(req.params.id)
+        if (!articleId) return sendError(res, 400, '请传入有效的文章ID')
+
+        const raw = req.body?.scheduledAt
+        const nextScheduledAt = raw ? parseScheduleDate(raw) : null
+        if (raw && !nextScheduledAt) {
+            return sendError(res, 400, '请传入有效的计划发布时间')
+        }
+        if (nextScheduledAt && nextScheduledAt.getTime() < Date.now() + 60_000) {
+            return sendError(res, 400, '计划发布时间至少需晚于当前时间 1 分钟')
+        }
+
+        const access = await resolveAccess(req, articleId, 'status')
+        if (!access.exists) return sendError(res, 404, '文章不存在或已删除')
+        if (!access.allowed) return sendError(res, 403, '无权限恢复该文章的计划发布')
+        if (!access.scope.publish) return sendError(res, 403, '当前账号没有发布权限')
+        if (!access.article.scheduledAt) {
+            return sendError(res, 404, '文章没有待执行的计划发布')
+        }
+        if (!access.article.scheduledPausedAt) {
+            return sendError(res, 409, '该计划未处于暂停状态')
+        }
+
+        const original = new Date(access.article.scheduledAt)
+        if (!nextScheduledAt && original.getTime() <= Date.now()) {
+            return res.status(400).json({
+                code: 400,
+                message: '原计划时间已过，请重新选择发布时间',
+                data: { requiresReschedule: true, scheduledAt: access.article.scheduledAt },
+            })
+        }
+
+        const resumed = await articleWorkflowModel.resumeSchedule(articleId, nextScheduledAt)
+        if (!resumed) return sendError(res, 409, '计划状态已变化，请刷新后重试')
+
+        const effectiveAt = nextScheduledAt || original
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'status',
+            module: access.article.classify === 'image' ? 'gallery' : 'article',
+            targetType: 'article',
+            targetId: articleId,
+            detail: nextScheduledAt
+                ? `恢复定时发布并改期至 ${effectiveAt.toISOString()}`
+                : '恢复定时发布',
+            ip: req.ip || null,
+        })
+
+        res.json({
+            code: 200,
+            message: nextScheduledAt ? '已恢复并改期' : '已恢复定时发布',
+            data: {
+                articleId,
+                scheduledAt: effectiveAt.toISOString(),
+                scheduledPausedAt: null,
+            },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '恢复定时发布失败：' + err.message })
     }
 }
 
@@ -419,6 +532,8 @@ module.exports = {
     restoreVersion,
     publishWorkflow,
     scheduleWorkflow,
+    pauseSchedule,
+    resumeSchedule,
     cancelSchedule,
     validatePayload,
 }

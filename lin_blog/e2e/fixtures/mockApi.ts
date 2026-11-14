@@ -223,6 +223,7 @@ export interface WorkflowMock {
   revision: number
   savedAt: string
   scheduledAt: string | null
+  scheduledPausedAt?: string | null
   publishedAt: string | null
   hasUnpublishedChanges: boolean
   workingCopy: {
@@ -1110,6 +1111,9 @@ export async function installApiMock(page: Page): Promise<MockState> {
     if (method === 'GET' && path === '/api/article') {
       const classify = url.searchParams.get('classify')
       const keyword = (url.searchParams.get('keyword') || '').trim()
+      const stateFilter = url.searchParams.get('state')
+      const requestedPage = Math.max(1, Number(url.searchParams.get('page') || 1))
+      const requestedPageSize = Math.max(1, Number(url.searchParams.get('pageSize') || 10))
       const source = classify === 'image'
         ? state.galleries.map(item => {
             const workflow = state.workflows[item.id]
@@ -1117,6 +1121,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
               ...item,
               hasUnpublishedChanges: Boolean(workflow?.hasUnpublishedChanges),
               scheduledAt: workflow?.scheduledAt ?? null,
+              scheduledPausedAt: workflow?.scheduledPausedAt ?? null,
             }
           })
         : state.articles.map(item => {
@@ -1125,24 +1130,36 @@ export async function installApiMock(page: Page): Promise<MockState> {
               ...item,
               hasUnpublishedChanges: Boolean(workflow?.hasUnpublishedChanges),
               scheduledAt: workflow?.scheduledAt ?? null,
+              scheduledPausedAt: workflow?.scheduledPausedAt ?? null,
             }
           })
-      const list = keyword
+      const filtered = (keyword
         ? source.filter(item => item.title.includes(keyword))
         : source
+      ).filter(item => !stateFilter || item.state === stateFilter)
+      const list = filtered.slice(
+        (requestedPage - 1) * requestedPageSize,
+        requestedPage * requestedPageSize
+      )
 
       await fulfill({
-        total: list.length,
-        page: 1,
-        pageSize: Number(url.searchParams.get('pageSize') || 10),
-        totalPage: 1,
+        total: filtered.length,
+        page: requestedPage,
+        pageSize: requestedPageSize,
+        totalPage: Math.ceil(filtered.length / requestedPageSize),
         list,
       })
       return
     }
 
     if (method === 'GET' && path === '/api/article/state/summary') {
-      await fulfill({ published: 1, draft: 0 })
+      const classify = url.searchParams.get('classify') === 'image' ? 'image' : 'article'
+      const source = classify === 'image' ? state.galleries : state.articles
+      await fulfill({
+        published: source.filter(item => item.state === 'published').length,
+        draft: source.filter(item => item.state === 'draft').length,
+        rejected: source.filter(item => item.state === 'rejected').length,
+      })
       return
     }
 
@@ -1165,6 +1182,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
             classify: workflow.classify,
             state: workflow.state,
             scheduledAt: workflow.scheduledAt as string,
+            scheduledPausedAt: workflow.scheduledPausedAt ?? null,
             hasUnpublishedChanges: workflow.hasUnpublishedChanges,
             draftSavedAt: workflow.hasUnpublishedChanges ? workflow.savedAt : null,
             updatedAt: target.updatedAt,
@@ -1187,8 +1205,13 @@ export async function installApiMock(page: Page): Promise<MockState> {
         totalPage: Math.ceil(total / requestedPageSize),
         summary: {
           total,
-          upcoming: scheduled.filter(item => new Date(item.scheduledAt).getTime() > now).length,
-          overdue: scheduled.filter(item => new Date(item.scheduledAt).getTime() <= now).length,
+          upcoming: scheduled.filter(item =>
+            !item.scheduledPausedAt && new Date(item.scheduledAt).getTime() > now
+          ).length,
+          overdue: scheduled.filter(item =>
+            !item.scheduledPausedAt && new Date(item.scheduledAt).getTime() <= now
+          ).length,
+          paused: scheduled.filter(item => Boolean(item.scheduledPausedAt)).length,
         },
       })
       return
@@ -1243,6 +1266,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
         revision: 0,
         savedAt: target.updatedAt,
         scheduledAt: null,
+        scheduledPausedAt: null,
         publishedAt: target.publishedAt,
         hasUnpublishedChanges: false,
         workingCopy: {
@@ -1349,6 +1373,7 @@ export async function installApiMock(page: Page): Promise<MockState> {
       workflow.state = 'published'
       workflow.hasUnpublishedChanges = false
       workflow.scheduledAt = null
+      workflow.scheduledPausedAt = null
       workflow.publishedAt = new Date().toISOString()
       workflow.revision += 1
       const target = state.articles.find(item => item.id === id)
@@ -1378,6 +1403,34 @@ export async function installApiMock(page: Page): Promise<MockState> {
         return
       }
       workflow.scheduledAt = String(body?.scheduledAt || '')
+      workflow.scheduledPausedAt = null
+      await fulfill({ articleId: id, scheduledAt: workflow.scheduledAt })
+      return
+    }
+
+    const schedulePauseMatch = path.match(/^\/api\/article\/(\d+)\/workflow\/schedule\/pause$/)
+    if (method === 'POST' && schedulePauseMatch) {
+      const id = Number(schedulePauseMatch[1])
+      const workflow = state.workflows[id]
+      if (!workflow?.scheduledAt) {
+        await fulfill({}, { code: 404, message: '文章没有待执行的计划发布', status: 404 })
+        return
+      }
+      workflow.scheduledPausedAt = new Date().toISOString()
+      await fulfill({ articleId: id, scheduledAt: workflow.scheduledAt })
+      return
+    }
+
+    const scheduleResumeMatch = path.match(/^\/api\/article\/(\d+)\/workflow\/schedule\/resume$/)
+    if (method === 'POST' && scheduleResumeMatch) {
+      const id = Number(scheduleResumeMatch[1])
+      const workflow = state.workflows[id]
+      if (!workflow?.scheduledAt) {
+        await fulfill({}, { code: 404, message: '文章没有待执行的计划发布', status: 404 })
+        return
+      }
+      if (body?.scheduledAt) workflow.scheduledAt = String(body.scheduledAt)
+      workflow.scheduledPausedAt = null
       await fulfill({ articleId: id, scheduledAt: workflow.scheduledAt })
       return
     }
@@ -1385,7 +1438,10 @@ export async function installApiMock(page: Page): Promise<MockState> {
     if (method === 'DELETE' && scheduleMatch) {
       const id = Number(scheduleMatch[1])
       const workflow = state.workflows[id]
-      if (workflow) workflow.scheduledAt = null
+      if (workflow) {
+        workflow.scheduledAt = null
+        workflow.scheduledPausedAt = null
+      }
       await fulfill({ articleId: id })
       return
     }

@@ -245,6 +245,7 @@ const tablesSql = {
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     published_at DATETIME COMMENT '发布时间',
     scheduled_at DATETIME NULL COMMENT '计划发布时间',
+    scheduled_paused_at DATETIME NULL COMMENT '定时发布暂停时间',
     draft_content LONGTEXT NULL COMMENT '未发布的编辑工作稿正文',
     draft_payload LONGTEXT NULL COMMENT '未发布的编辑工作稿元数据（JSON）',
     draft_revision INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '工作稿修订号（用于自动保存冲突检测）',
@@ -2343,6 +2344,14 @@ async function ensureArticleWorkflowSchema(exec = query) {
   }
 }
 
+// 定时发布暂停：保留原计划时间，用独立时间戳标记暂停，恢复时可继续原计划或改期。
+async function ensureArticleSchedulePauseSchema(exec = query) {
+  await ensureColumn(exec, 'article', 'scheduled_paused_at', {
+    definition: 'DATETIME NULL',
+    comment: '定时发布暂停时间'
+  });
+}
+
 // message 表同时承载私信会话与门户留言，用 channel 记录来源。
 // 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
 async function ensureMessageChannelSchema(exec = query) {
@@ -2698,6 +2707,10 @@ const migrations = [
   {
     version: '20261113_site_event',
     up: ensureSiteEventSchema
+  },
+  {
+    version: '20261114_scheduled_pause',
+    up: ensureArticleSchedulePauseSchema
   }
 ];
 

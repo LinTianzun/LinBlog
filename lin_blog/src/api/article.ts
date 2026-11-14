@@ -32,6 +32,8 @@ export interface ArticleItem {
   hasUnpublishedChanges?: boolean;
   /** 计划发布时间；有值时表示已安排定时发布 */
   scheduledAt?: string | null;
+  /** 计划已暂停；暂停期间调度器不会自动发布 */
+  scheduledPausedAt?: string | null;
 
   /** 该内容是否被 AI 辅助过 */
   aiAssisted?: boolean;
@@ -138,6 +140,7 @@ export interface ArticleWorkflowState {
   revision: number;
   savedAt: string | null;
   scheduledAt: string | null;
+  scheduledPausedAt: string | null;
   publishedAt: string | null;
   hasUnpublishedChanges: boolean;
   workingCopy: ArticleWorkingCopy;
@@ -194,6 +197,7 @@ export interface ScheduledArticleItem {
   classify: ArticleClassify;
   state: ArticleDatabaseState;
   scheduledAt: string;
+  scheduledPausedAt: string | null;
   hasUnpublishedChanges: boolean;
   draftSavedAt: string | null;
   updatedAt: string;
@@ -203,6 +207,7 @@ export interface ScheduledArticleSummary {
   total: number;
   upcoming: number;
   overdue: number;
+  paused: number;
 }
 
 export interface ScheduledArticlePage {
@@ -403,6 +408,29 @@ export function scheduleArticlePublish(id: number, scheduledAt: string) {
 export function cancelArticleSchedule(id: number) {
   return request.delete<ApiResult<{ articleId: number }>>(
     `/article/${id}/workflow/schedule`
+  );
+}
+
+export function pauseArticleSchedule(id: number) {
+  return request.post<
+    ApiResult<{
+      articleId: number;
+      scheduledAt: string;
+      scheduledPausedAt: string;
+    }>
+  >(`/article/${id}/workflow/schedule/pause`);
+}
+
+export function resumeArticleSchedule(id: number, scheduledAt?: string) {
+  return request.post<
+    ApiResult<{
+      articleId: number;
+      scheduledAt: string;
+      scheduledPausedAt: null;
+    }>
+  >(
+    `/article/${id}/workflow/schedule/resume`,
+    scheduledAt ? { scheduledAt } : {}
   );
 }
 

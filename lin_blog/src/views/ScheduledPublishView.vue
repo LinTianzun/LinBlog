@@ -1,6 +1,6 @@
 <template>
     <yk-space dir="vertical" size="l" class="admin-page sched-page">
-        <top-title name="定时发布" description="待发布队列 · 改期 · 立即发布 · 逾期告警" :is-search="false">
+        <top-title name="定时发布" description="待发布队列 · 暂停/恢复 · 改期 · 立即发布 · 逾期告警" :is-search="false">
             <template #custom>
                 <yk-space align="center" size="m">
                     <yk-text type="third">{{ lastLoadedText }}</yk-text>
@@ -61,7 +61,7 @@
 
             <div v-else class="sched-list" :class="{ 'is-refreshing': loading }">
                 <article v-for="item in items" :key="item.id"
-                    :class="['sched-card', isOverdue(item.scheduledAt) ? 'status-overdue' : 'status-upcoming']">
+                    :class="['sched-card', cardStatusClass(item)]">
                     <div class="sched-date" :aria-label="`计划发布时间 ${formatWorkflowTime(item.scheduledAt)}`">
                         <span class="sched-date-month">{{ dateParts(item.scheduledAt).month }}</span>
                         <strong class="sched-date-day">{{ dateParts(item.scheduledAt).day }}</strong>
@@ -74,7 +74,8 @@
                         <header class="sched-card-head">
                             <h2 class="sched-card-title">{{ item.title }}</h2>
                             <span class="sched-type-tag">{{ classifyLabel(item.classify) }}</span>
-                            <span v-if="isOverdue(item.scheduledAt)" class="sched-state-tag is-overdue">逾期</span>
+                            <span v-if="item.scheduledPausedAt" class="sched-state-tag is-paused">已暂停</span>
+                            <span v-else-if="isOverdue(item)" class="sched-state-tag is-overdue">逾期</span>
                             <span v-else class="sched-state-tag">待发布</span>
                             <span v-if="asBoolean(item.hasUnpublishedChanges)" class="sched-state-tag is-draft">
                                 有未发布修改
@@ -90,7 +91,7 @@
                             </span>
                             <span class="sched-meta-item">
                                 <span class="sched-meta-label">状态</span>
-                                <strong class="sched-meta-value">{{ distance(item.scheduledAt) }}</strong>
+                                <strong class="sched-meta-value">{{ distance(item) }}</strong>
                             </span>
                             <span class="sched-meta-item">
                                 <span class="sched-meta-label">作者</span>
@@ -108,6 +109,14 @@
                         <yk-button size="s" type="secondary" :disabled="actingId === item.id"
                             @click="openReschedule(item)">
                             改期
+                        </yk-button>
+                        <yk-button v-if="item.scheduledPausedAt" size="s" type="secondary"
+                            :disabled="actingId === item.id" @click="resumeItem(item)">
+                            恢复
+                        </yk-button>
+                        <yk-button v-else size="s" type="secondary" :disabled="actingId === item.id"
+                            @click="pauseItem(item)">
+                            暂停
                         </yk-button>
                         <yk-button size="s" type="primary" :disabled="actingId === item.id"
                             @click="askPublish(item)">
@@ -181,7 +190,9 @@ import {
     cancelArticleSchedule,
     getArticleErrorMessage,
     getScheduledArticles,
+    pauseArticleSchedule,
     publishArticleWorkflow,
+    resumeArticleSchedule,
     scheduleArticlePublish,
     type ArticleClassify,
     type ScheduledArticleItem,
@@ -217,7 +228,7 @@ const items = ref<ScheduledArticleItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const summary = ref<ScheduledArticleSummary>({ total: 0, upcoming: 0, overdue: 0 })
+const summary = ref<ScheduledArticleSummary>({ total: 0, upcoming: 0, overdue: 0, paused: 0 })
 const classifyFilter = ref<'' | ArticleClassify>('')
 const loading = ref(false)
 const acting = ref(false)
@@ -237,6 +248,7 @@ const statusCards = computed(() => [
     { label: '待发布总数', count: summary.value.total, hint: '当前账号可管理的计划', tone: 'primary', classify: '' as '' | ArticleClassify },
     { label: '即将发布', count: summary.value.upcoming, hint: '尚未到点', tone: 'success', classify: '' as '' | ArticleClassify },
     { label: '已到点未发布', count: summary.value.overdue, hint: '需要立即处理', tone: 'danger', classify: '' as '' | ArticleClassify },
+    { label: '已暂停', count: summary.value.paused, hint: '不会自动发布', tone: 'muted', classify: '' as '' | ArticleClassify },
 ])
 
 const lastLoadedText = computed(() => lastLoadedAt.value
@@ -264,10 +276,17 @@ const describeError = (error: unknown, fallback: string): string => {
 }
 
 const asBoolean = (value: unknown): boolean => value === true || Number(value) === 1
-const isOverdue = (value: string): boolean => isScheduleOverdue(value)
+const isOverdue = (item: ScheduledArticleItem): boolean =>
+    !item.scheduledPausedAt && isScheduleOverdue(item.scheduledAt)
+const cardStatusClass = (item: ScheduledArticleItem): string => {
+    if (item.scheduledPausedAt) return 'status-paused'
+    return isOverdue(item) ? 'status-overdue' : 'status-upcoming'
+}
 const dateParts = scheduleDateParts
 const classifyLabel = scheduledClassifyLabel
-const distance = (value: string): string => scheduleDistanceLabel(value)
+const distance = (item: ScheduledArticleItem): string => item.scheduledPausedAt
+    ? `已暂停 · 原计划 ${formatWorkflowTime(item.scheduledAt)}`
+    : scheduleDistanceLabel(item.scheduledAt)
 
 const loadQueue = async (silent = false): Promise<void> => {
     if (!silent) loading.value = true
@@ -353,10 +372,58 @@ const confirmReschedule = async (): Promise<void> => {
             throw new Error(result.message || '改期失败')
         }
         rescheduleTarget.value = null
-        showMessage('success', `已改期至 ${formatWorkflowTime(result.data.scheduledAt)}`)
+        showMessage(
+            'success',
+            target.scheduledPausedAt
+                ? `已恢复并改期至 ${formatWorkflowTime(result.data.scheduledAt)}`
+                : `已改期至 ${formatWorkflowTime(result.data.scheduledAt)}`
+        )
         await loadQueue()
     } catch (error) {
         actionError.value = describeError(error, '调整发布时间失败，请稍后重试')
+    } finally {
+        acting.value = false
+        actingId.value = 0
+    }
+}
+
+const pauseItem = async (item: ScheduledArticleItem): Promise<void> => {
+    if (actingId.value) return
+    acting.value = true
+    actingId.value = item.id
+    actionError.value = ''
+    try {
+        const result = await pauseArticleSchedule(item.id)
+        if (result.code !== 200) throw new Error(result.message || '暂停失败')
+        showMessage('success', `已暂停「${item.title}」的定时发布`)
+        await loadQueue()
+    } catch (error) {
+        actionError.value = describeError(error, '暂停定时发布失败，请稍后重试')
+    } finally {
+        acting.value = false
+        actingId.value = 0
+    }
+}
+
+const resumeItem = async (item: ScheduledArticleItem): Promise<void> => {
+    if (actingId.value) return
+    // 原计划已过期时不能静默恢复成立即发布，先让用户重新选时间。
+    if (isScheduleOverdue(item.scheduledAt)) {
+        actionError.value = '原计划时间已过，请重新选择发布时间后再恢复'
+        openReschedule(item)
+        return
+    }
+
+    acting.value = true
+    actingId.value = item.id
+    actionError.value = ''
+    try {
+        const result = await resumeArticleSchedule(item.id)
+        if (result.code !== 200) throw new Error(result.message || '恢复失败')
+        showMessage('success', `已恢复「${item.title}」的定时发布`)
+        await loadQueue()
+    } catch (error) {
+        actionError.value = describeError(error, '恢复定时发布失败，请稍后重试')
     } finally {
         acting.value = false
         actingId.value = 0
@@ -439,7 +506,7 @@ onBeforeUnmount(() => {
 
     .sched-stats {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         width: 100%;
     }
@@ -485,6 +552,10 @@ onBeforeUnmount(() => {
 
     .tone-danger .sched-stat-count {
         color: @ecolor;
+    }
+
+    .tone-muted .sched-stat-count {
+        color: var(--gray6);
     }
 
     .sched-alarm {
@@ -607,6 +678,15 @@ onBeforeUnmount(() => {
             border-left-color: @ecolor;
             background: linear-gradient(90deg, color-mix(in srgb, @ecolor 5%, var(--admin-surface, var(--bgColor1))), var(--admin-surface, var(--bgColor1)) 42%);
         }
+
+        &.status-paused {
+            border-left-color: var(--gray5);
+            background: repeating-linear-gradient(
+                -45deg,
+                color-mix(in srgb, var(--gray3) 28%, transparent) 0 8px,
+                transparent 8px 16px
+            );
+        }
     }
 
     .sched-date {
@@ -689,6 +769,11 @@ onBeforeUnmount(() => {
     .sched-state-tag.is-draft {
         color: @wcolor;
         background: rgba(255, 170, 26, 0.14);
+    }
+
+    .sched-state-tag.is-paused {
+        color: var(--gray6);
+        background: color-mix(in srgb, var(--gray5) 18%, transparent);
     }
 
     .sched-meta {
@@ -793,6 +878,10 @@ onBeforeUnmount(() => {
     @media (max-width: 1050px) {
         .sched-card {
             grid-template-columns: 78px minmax(0, 1fr);
+        }
+
+        .sched-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .sched-card-actions {

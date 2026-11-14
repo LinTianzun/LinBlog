@@ -160,6 +160,17 @@ const routes = [
                 }
             },
             {
+                path: 'draftBox',
+                component: () => import('../views/DraftBoxView.vue'),
+                meta: {
+                    requiresAuth: true,
+                    permissions: [
+                        'article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll',
+                        'gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'
+                    ]
+                }
+            },
+            {
                 path: 'collectionManage',
                 component: () => import('../views/CollectionManageView.vue'),
                 meta: {
@@ -285,6 +296,7 @@ router.afterEach((to) => {
         '/article': '博客文章',
         '/collectionManage': '内容系列',
         '/scheduledPublish': '定时发布',
+        '/draftBox': '草稿箱',
         '/gallery': '摄影图库',
         '/diary': '随笔随记',
         '/petManage': '宠物管理',

@@ -41,7 +41,8 @@ async function findArticleForWorkflow(articleId) {
         `SELECT a.id, a.user_id AS userId, a.title, a.subset_id AS subsetId,
                 a.classify, a.label, a.introduce, a.content, a.cover, a.state,
                 a.published_at AS publishedAt, a.updated_at AS updatedAt,
-                a.scheduled_at AS scheduledAt, a.draft_content AS draftContent,
+                a.scheduled_at AS scheduledAt, a.scheduled_paused_at AS scheduledPausedAt,
+                a.draft_content AS draftContent,
                 a.draft_payload AS draftPayload,
                 a.draft_revision AS draftRevision, a.draft_saved_at AS draftSavedAt
          FROM article a
@@ -71,6 +72,7 @@ async function findWorkflowState(articleId) {
         revision: Number(article.draftRevision) || 0,
         savedAt: article.draftSavedAt || article.updatedAt,
         scheduledAt: article.scheduledAt || null,
+        scheduledPausedAt: article.scheduledPausedAt || null,
         publishedAt: article.publishedAt || null,
         hasUnpublishedChanges: hasDraft,
         workingCopy: hasDraft
@@ -389,7 +391,7 @@ async function schedulePublish(articleId, scheduledAt, { userId } = {}) {
 
         await exec(
             `UPDATE article
-             SET scheduled_at = ?, updated_at = updated_at
+             SET scheduled_at = ?, scheduled_paused_at = NULL, updated_at = updated_at
              WHERE id = ?`,
             [scheduledAt, articleId]
         )
@@ -400,8 +402,48 @@ async function schedulePublish(articleId, scheduledAt, { userId } = {}) {
 async function clearSchedule(articleId) {
     const result = await query(
         `UPDATE article
-         SET scheduled_at = NULL, updated_at = updated_at
+         SET scheduled_at = NULL, scheduled_paused_at = NULL, updated_at = updated_at
          WHERE id = ? AND state != 'deleted'`,
+        [articleId]
+    )
+    return result.affectedRows > 0
+}
+
+/**
+ * 暂停计划发布：保留 scheduled_at 原值，调度器只跳过带 paused 标记的项。
+ * 重复暂停返回 false，由控制器提示当前状态，避免前端误以为时间被改动。
+ */
+async function pauseSchedule(articleId) {
+    const result = await query(
+        `UPDATE article
+         SET scheduled_paused_at = NOW(), updated_at = updated_at
+         WHERE id = ? AND state != 'deleted'
+           AND scheduled_at IS NOT NULL AND scheduled_paused_at IS NULL`,
+        [articleId]
+    )
+    return result.affectedRows > 0
+}
+
+/**
+ * 恢复计划发布。原计划仍在未来时只需清空暂停标记；
+ * 已过期时必须由调用方传入新时间，避免恢复即触发一次静默发布。
+ */
+async function resumeSchedule(articleId, scheduledAt = null) {
+    if (scheduledAt) {
+        const result = await query(
+            `UPDATE article
+             SET scheduled_at = ?, scheduled_paused_at = NULL, updated_at = updated_at
+             WHERE id = ? AND state != 'deleted' AND scheduled_at IS NOT NULL`,
+            [scheduledAt, articleId]
+        )
+        return result.affectedRows > 0
+    }
+
+    const result = await query(
+        `UPDATE article
+         SET scheduled_paused_at = NULL, updated_at = updated_at
+         WHERE id = ? AND state != 'deleted'
+           AND scheduled_at IS NOT NULL AND scheduled_paused_at IS NOT NULL`,
         [articleId]
     )
     return result.affectedRows > 0
@@ -420,6 +462,7 @@ async function findDueScheduledArticles(limit = 20, now = new Date()) {
          FROM article
          WHERE state != 'deleted'
            AND scheduled_at IS NOT NULL
+           AND scheduled_paused_at IS NULL
            AND scheduled_at <= ?
          ORDER BY scheduled_at ASC, id ASC
          LIMIT ?`,
@@ -474,6 +517,7 @@ async function listScheduledArticles({
     const list = await query(
         `SELECT a.id, a.user_id AS userId, u.username AS ownerName,
                 a.title, a.classify, a.state, a.scheduled_at AS scheduledAt,
+                a.scheduled_paused_at AS scheduledPausedAt,
                 (a.draft_content IS NOT NULL OR a.draft_payload IS NOT NULL) AS hasUnpublishedChanges,
                 a.draft_saved_at AS draftSavedAt, a.updated_at AS updatedAt
          FROM article a
@@ -489,8 +533,9 @@ async function listScheduledArticles({
     )
     const [summaryRow] = await query(
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN a.scheduled_at > ? THEN 1 ELSE 0 END) AS upcoming,
-                SUM(CASE WHEN a.scheduled_at <= ? THEN 1 ELSE 0 END) AS overdue
+                SUM(CASE WHEN a.scheduled_paused_at IS NOT NULL THEN 1 ELSE 0 END) AS paused,
+                SUM(CASE WHEN a.scheduled_paused_at IS NULL AND a.scheduled_at > ? THEN 1 ELSE 0 END) AS upcoming,
+                SUM(CASE WHEN a.scheduled_paused_at IS NULL AND a.scheduled_at <= ? THEN 1 ELSE 0 END) AS overdue
          FROM article a
          WHERE ${whereSql}`,
         [now, now, ...values]
@@ -506,6 +551,7 @@ async function listScheduledArticles({
             total,
             upcoming: Number(summaryRow?.upcoming) || 0,
             overdue: Number(summaryRow?.overdue) || 0,
+            paused: Number(summaryRow?.paused) || 0,
         },
     }
 }
@@ -519,7 +565,7 @@ async function listScheduledArticles({
 async function clearStaleSchedules() {
     const result = await query(
         `UPDATE article
-         SET scheduled_at = NULL
+         SET scheduled_at = NULL, scheduled_paused_at = NULL
          WHERE scheduled_at IS NOT NULL
            AND state IN ('published', 'rejected')`
     )
@@ -528,7 +574,7 @@ async function clearStaleSchedules() {
 async function clearScheduledArticle(articleId) {
     const result = await query(
         `UPDATE article
-         SET scheduled_at = NULL, updated_at = NOW()
+         SET scheduled_at = NULL, scheduled_paused_at = NULL, updated_at = NOW()
          WHERE id = ? AND state != 'deleted'`,
         [articleId]
     )
@@ -596,6 +642,7 @@ async function publishScheduledArticle(articleId) {
                     draft_revision AS draftRevision, scheduled_at AS scheduledAt
              FROM article
              WHERE id = ? AND state != 'deleted' AND scheduled_at IS NOT NULL
+               AND scheduled_paused_at IS NULL
              LIMIT 1
              FOR UPDATE`,
             [articleId]
@@ -615,9 +662,11 @@ async function publishScheduledArticle(articleId) {
             `UPDATE article
              SET title = ?, subset_id = ?, label = ?, introduce = ?, content = ?,
                  cover = ?, state = 'published', published_at = NOW(),
-                 scheduled_at = NULL, draft_content = NULL, draft_payload = NULL,
+                 scheduled_at = NULL, scheduled_paused_at = NULL,
+                 draft_content = NULL, draft_payload = NULL,
                  draft_revision = ?, draft_saved_at = NOW(), updated_at = NOW()
-             WHERE id = ? AND state != 'deleted' AND scheduled_at IS NOT NULL`,
+             WHERE id = ? AND state != 'deleted' AND scheduled_at IS NOT NULL
+               AND scheduled_paused_at IS NULL`,
             [
                 snapshot.title,
                 snapshot.subsetId,
@@ -684,7 +733,8 @@ async function publishWorkingCopy(articleId, { userId } = {}) {
             `UPDATE article
              SET title = ?, subset_id = ?, label = ?, introduce = ?, content = ?,
                  cover = ?, state = 'published', published_at = NOW(),
-                 scheduled_at = NULL, draft_content = NULL, draft_payload = NULL,
+                 scheduled_at = NULL, scheduled_paused_at = NULL,
+                 draft_content = NULL, draft_payload = NULL,
                  draft_revision = ?, draft_saved_at = NOW(), updated_at = NOW()
              WHERE id = ?`,
             [
@@ -723,6 +773,8 @@ module.exports = {
     findLatestVersion,
     restoreVersion,
     schedulePublish,
+    pauseSchedule,
+    resumeSchedule,
     clearSchedule,
     findDueScheduledArticles,
     listScheduledArticles,

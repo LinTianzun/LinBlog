@@ -34,11 +34,16 @@ async function query(sql, values = []) {
         return versionRows
     }
     if (sql.includes('FROM article')) {
-        if (sql.includes('SUM(CASE WHEN a.scheduled_at')) {
+        if (sql.includes('SUM(CASE WHEN a.scheduled_paused_at')) {
             return [scheduledSummaryRow || {
                 total: scheduledPageRows.length,
-                upcoming: scheduledPageRows.filter(row => String(row.scheduledAt) > new Date().toISOString()).length,
-                overdue: scheduledPageRows.filter(row => String(row.scheduledAt) <= new Date().toISOString()).length,
+                upcoming: scheduledPageRows.filter(row =>
+                    !row.scheduledPausedAt && String(row.scheduledAt) > new Date().toISOString()
+                ).length,
+                overdue: scheduledPageRows.filter(row =>
+                    !row.scheduledPausedAt && String(row.scheduledAt) <= new Date().toISOString()
+                ).length,
+                paused: scheduledPageRows.filter(row => Boolean(row.scheduledPausedAt)).length,
             }]
         }
         if (sql.includes('scheduled_at IS NOT NULL') && sql.includes('COUNT(*)')) {
@@ -181,6 +186,7 @@ function makeArticle(overrides = {}) {
         publishedAt: '2026-10-01T00:00:00.000Z',
         updatedAt: '2026-10-01T00:00:00.000Z',
         scheduledAt: null,
+        scheduledPausedAt: null,
         draftContent: null,
         draftPayload: null,
         draftRevision: 0,
@@ -387,6 +393,8 @@ test('scheduled publishing only runs due rows and clears the schedule', async ()
 
     const due = await workflowModel.findDueScheduledArticles(20)
     assert.equal(due.length, 1)
+    const dueQuery = calls.find(call => call.sql.includes('scheduled_at <= ?'))
+    assert.match(dueQuery.sql, /scheduled_paused_at IS NULL/)
 
     const result = await workflowModel.publishScheduledArticle(10)
     assert.equal(result.published, true)
@@ -426,8 +434,21 @@ test('scheduled queue applies per-classify manage scopes and overdue summary', a
             draftSavedAt: null,
             updatedAt: '2026-10-30T00:00:00.000Z',
         },
+        {
+            id: 12,
+            userId: 1,
+            ownerName: '林知雨',
+            title: '已暂停',
+            classify: 'article',
+            state: 'published',
+            scheduledAt: '2030-02-01T00:00:00.000Z',
+            scheduledPausedAt: '2026-10-30T00:00:00.000Z',
+            hasUnpublishedChanges: 0,
+            draftSavedAt: null,
+            updatedAt: '2026-10-30T00:00:00.000Z',
+        },
     ]
-    scheduledSummaryRow = { total: 2, upcoming: 1, overdue: 1 }
+    scheduledSummaryRow = { total: 3, upcoming: 1, overdue: 1, paused: 1 }
 
     const result = await workflowModel.listScheduledArticles({
         page: 1,
@@ -439,16 +460,76 @@ test('scheduled queue applies per-classify manage scopes and overdue summary', a
         userId: 7,
     })
 
-    assert.equal(result.total, 2)
+    assert.equal(result.total, 3)
     assert.equal(result.summary.overdue, 1)
+    assert.equal(result.summary.paused, 1)
     const listQuery = calls.find(call => call.sql.includes('LEFT JOIN users'))
     assert.ok(listQuery)
     assert.match(listQuery.sql, /a\.classify = \? AND a\.user_id = \?/)
     assert.match(listQuery.sql, /a\.classify = \?/)
     assert.match(listQuery.sql, /a\.scheduled_at IS NOT NULL/)
+    assert.match(listQuery.sql, /a\.scheduled_paused_at AS scheduledPausedAt/)
     assert.match(listQuery.sql, /ORDER BY a\.scheduled_at ASC/)
     assert.ok(listQuery.values.includes('article'))
     assert.ok(listQuery.values.includes(7))
+})
+
+test('pause keeps the original schedule and resume clears the pause marker', async () => {
+    assert.equal(await workflowModel.pauseSchedule(10), true)
+    const pauseCall = calls.find(call => call.sql.includes('scheduled_paused_at = NOW()'))
+    assert.ok(pauseCall)
+    assert.match(pauseCall.sql, /scheduled_at IS NOT NULL AND scheduled_paused_at IS NULL/)
+
+    calls.length = 0
+    assert.equal(await workflowModel.resumeSchedule(10), true)
+    const resumeCall = calls.find(call =>
+        call.sql.includes('scheduled_paused_at = NULL')
+        && !call.sql.includes('scheduled_at = ?')
+    )
+    assert.ok(resumeCall)
+
+    calls.length = 0
+    const next = new Date('2030-05-01T00:00:00.000Z')
+    assert.equal(await workflowModel.resumeSchedule(10, next), true)
+    const rescheduleCall = calls.find(call => call.sql.includes('scheduled_at = ?'))
+    assert.equal(rescheduleCall.values[0], next)
+    assert.match(rescheduleCall.sql, /scheduled_paused_at = NULL/)
+})
+
+test('resume controller requires a new time when the paused schedule is already overdue', async () => {
+    articleRows = [makeArticle({
+        scheduledAt: '2020-01-01T00:00:00.000Z',
+        scheduledPausedAt: '2026-10-30T00:00:00.000Z',
+    })]
+    const response = makeResponse()
+
+    await controller.resumeSchedule({
+        params: { id: '10' },
+        body: {},
+        user: { userId: 1, permissions: ['article.manageOwn', 'article.publish'] },
+    }, response)
+
+    assert.equal(response.statusCode, 400)
+    assert.equal(response.body.data.requiresReschedule, true)
+    assert.match(response.body.message, /重新选择发布时间/)
+})
+
+test('resume controller restores a future paused schedule and writes a system log', async () => {
+    articleRows = [makeArticle({
+        scheduledAt: '2030-01-01T00:00:00.000Z',
+        scheduledPausedAt: '2026-10-30T00:00:00.000Z',
+    })]
+    const response = makeResponse()
+
+    await controller.resumeSchedule({
+        params: { id: '10' },
+        body: {},
+        user: { userId: 1, permissions: ['article.manageOwn', 'article.publish'] },
+    }, response)
+
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.body.data.scheduledPausedAt, null)
+    assert.ok(calls.some(call => call.sql === 'LOG' && call.values[0].detail === '恢复定时发布'))
 })
 
 test('scheduled queue controller returns 403 without publish or manage scope', async () => {

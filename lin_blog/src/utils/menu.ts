@@ -78,6 +78,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconTimeOutline'
     },
     {
+        path: 'draftBox',
+        name: '草稿箱',
+        icon: 'IconEditFill'
+    },
+    {
         path: 'gallery',
         name: '摄影图库',
         icon: 'IconImageFill'

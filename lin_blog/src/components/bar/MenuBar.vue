@@ -76,6 +76,10 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
     collectionManage: ['collection.view', 'collection.manage'],
     scheduledPublish: ['schedule.manage'],
+    draftBox: [
+        'article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll',
+        'gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll',
+    ],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
     petManage: [],
@@ -102,7 +106,7 @@ const menuGroups = computed(() => {
         },
         {
             label: '内容',
-            paths: ['localfile', 'article', 'collectionManage', 'scheduledPublish', 'gallery', 'diary'],
+            paths: ['localfile', 'article', 'draftBox', 'collectionManage', 'scheduledPublish', 'gallery', 'diary'],
         },
         {
             label: '系统',

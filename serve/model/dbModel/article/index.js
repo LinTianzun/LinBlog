@@ -153,6 +153,7 @@ async function findArticlesByPage(params) {
             a.ai_assist_features AS aiAssistFeatures,
             a.ai_assisted_at AS aiAssistedAt,
             a.scheduled_at AS scheduledAt,
+            a.scheduled_paused_at AS scheduledPausedAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
             a.published_at AS publishedAt
@@ -274,6 +275,7 @@ async function findAtricleById(articleId, userId, userType) {
             a.ai_assist_features AS aiAssistFeatures,
             a.ai_assisted_at AS aiAssistedAt,
             a.scheduled_at AS scheduledAt,
+            a.scheduled_paused_at AS scheduledPausedAt,
             a.created_at AS createdAt,
             a.updated_at AS updatedAt,
             a.published_at AS publishedAt
@@ -501,7 +503,7 @@ async function updateArticle(articleId, updateData, userId, userType) {
     // 内容已实际发布/驳回/退回草稿时，待发布计划不再有意义：
     // 草稿（draft）是定时发布的正常载体，不能在此清除 scheduled_at。
     if (['published', 'rejected'].includes(updateData.state)) {
-        publishAtSql += ', scheduled_at = NULL'
+        publishAtSql += ', scheduled_at = NULL, scheduled_paused_at = NULL'
     }
 
     // 最终 SQL：SET 子句在前，WHERE 子句在后
@@ -636,7 +638,7 @@ async function updateArticleStatus(articleId, state, userId, userType) {
     // 否则内容会继续留在待发布队列并在到点时被重复发布。
     // draft 是定时发布的正常载体，退回草稿不应清除已安排的计划。
     if (['published', 'rejected'].includes(state)) {
-        publishAtSql += ', article.scheduled_at = NULL';
+        publishAtSql += ', article.scheduled_at = NULL, article.scheduled_paused_at = NULL';
     }
 
     //  SQL语句：所有字段加表别名（article.），避免歧义

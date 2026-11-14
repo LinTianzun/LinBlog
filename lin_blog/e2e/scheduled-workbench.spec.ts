@@ -40,6 +40,7 @@ function scheduleItem(
     revision: hasUnpublishedChanges ? 2 : 1,
     savedAt: '2026-10-30T09:00:00.000Z',
     scheduledAt,
+    scheduledPausedAt: null,
     publishedAt: target.publishedAt,
     hasUnpublishedChanges,
     workingCopy: {
@@ -121,4 +122,37 @@ test('定时发布工作台可改期、立即发布与取消计划', async ({ pa
   await expect.poll(() => state.workflows[galleryItem.id].scheduledAt).toBeNull()
   await expect(page.locator('.sched-card')).toHaveCount(0)
   await expect(page.getByText('当前没有安排定时发布的内容')).toBeVisible()
+})
+
+test('定时发布工作台可暂停与恢复计划', async ({ page }) => {
+  await seedPublisher(page)
+  const state = await installApiMock(page)
+  scheduleItem(state, article, '2030-01-01T00:00:00.000Z')
+
+  await page.goto('/scheduledPublish')
+  const card = page.locator('.sched-card').filter({ hasText: article.title })
+  await expect(card).toHaveCount(1)
+
+  const pauseRequest = page.waitForRequest(request =>
+    request.method() === 'POST'
+    && request.url().includes(`/api/article/${article.id}/workflow/schedule/pause`)
+  )
+  await card.getByRole('button', { name: '暂停' }).click()
+  await pauseRequest
+
+  await expect(card.locator('.sched-state-tag.is-paused')).toHaveText('已暂停')
+  await expect(page.locator('.sched-stat').filter({ hasText: '已暂停' })).toContainText('1')
+  await expect(card.getByRole('button', { name: '恢复' })).toBeVisible()
+  expect(state.workflows[article.id].scheduledPausedAt).toBeTruthy()
+
+  const resumeRequest = page.waitForRequest(request =>
+    request.method() === 'POST'
+    && request.url().includes(`/api/article/${article.id}/workflow/schedule/resume`)
+  )
+  await card.getByRole('button', { name: '恢复' }).click()
+  await resumeRequest
+
+  await expect(card.locator('.sched-state-tag.is-paused')).toHaveCount(0)
+  await expect(card.getByRole('button', { name: '暂停' })).toBeVisible()
+  expect(state.workflows[article.id].scheduledPausedAt).toBeNull()
 })

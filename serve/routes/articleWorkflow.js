@@ -12,5 +12,7 @@ module.exports = (app) => {
     app.post('/api/article/:id/versions/:versionId/restore', authMiddleware, controller.restoreVersion)
     app.post('/api/article/:id/workflow/publish', authMiddleware, controller.publishWorkflow)
     app.post('/api/article/:id/workflow/schedule', authMiddleware, requirePermission('schedule.manage'), controller.scheduleWorkflow)
+    app.post('/api/article/:id/workflow/schedule/pause', authMiddleware, requirePermission('schedule.manage'), controller.pauseSchedule)
+    app.post('/api/article/:id/workflow/schedule/resume', authMiddleware, requirePermission('schedule.manage'), controller.resumeSchedule)
     app.delete('/api/article/:id/workflow/schedule', authMiddleware, requirePermission('schedule.manage'), controller.cancelSchedule)
 }
