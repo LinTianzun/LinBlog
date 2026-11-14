@@ -105,6 +105,9 @@ test('recordNotFoundEvent rejects invalid external paths', async () => {
 
 test('site event stats fill the requested trend window', async () => {
     const originalStats = model.getStats
+    // 趋势窗口以“今天”为终点，用例不能写死日期，否则跨天就会失败
+    const today = new Date()
+    const todayLabel = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     model.getStats = async (days, limit) => ({
         days,
         limit,
@@ -118,7 +121,7 @@ test('site event stats fill the requested trend window', async () => {
         },
         searchTerms: [],
         notFoundPaths: [],
-        trend: [{ date: '11-13', searches: 5, notFound: 2 }]
+        trend: [{ date: todayLabel, searches: 5, notFound: 2 }]
     })
 
     try {
@@ -129,7 +132,7 @@ test('site event stats fill the requested trend window', async () => {
         assert.equal(res.body.data.summary.standardSearches, 7)
         assert.equal(res.body.data.trend.length, 30)
         assert.deepEqual(res.body.data.trend.at(-1), {
-            date: '11-13',
+            date: todayLabel,
             searches: 5,
             notFound: 2
         })

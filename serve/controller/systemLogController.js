@@ -6,6 +6,10 @@ const { hasPermission } = require('../utils/accessControl')
 function getLogFilters(query = {}) {
     const startDate = typeof query.startDate === 'string' ? query.startDate.trim() : ''
     const endDate = typeof query.endDate === 'string' ? query.endDate.trim() : ''
+    const textFilter = (value, maxLength) =>
+        typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+    const rawTargetId = Number.parseInt(query.targetId, 10)
+    const targetId = Number.isSafeInteger(rawTargetId) && rawTargetId > 0 ? rawTargetId : null
     // 与举报中心一致：必须成对提供且都是合法日期，否则时间范围不参与筛选
     const validDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value)
     const hasDateRange = Boolean(startDate) && Boolean(endDate)
@@ -17,6 +21,11 @@ function getLogFilters(query = {}) {
         action: systemLogModel.ACTIONS.includes(query.action) ? query.action : '',
         startDate: hasDateRange ? startDate : null,
         endDate: hasDateRange ? endDate : null,
+        operator: textFilter(query.operator, 50),
+        ip: textFilter(query.ip, 64),
+        targetType: textFilter(query.targetType, 50),
+        targetId,
+        risk: query.risk === 'high' ? 'high' : '',
         sortOrder: query.sortOrder === 'asc' ? 'asc' : 'desc'
     }
 }
@@ -89,6 +98,23 @@ async function exportLogs(req, res) {
     }
 }
 
+async function getRiskSummary(req, res) {
+    try {
+        if (!requireLogView(req, res)) return
+        const days = Number.parseInt(req.query?.days, 10)
+        const data = await systemLogModel.getRiskSummary({
+            days: Number.isFinite(days) ? days : 7
+        })
+        res.json({
+            code: 200,
+            message: '获取高风险操作摘要成功',
+            data
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '获取高风险操作摘要失败：' + err.message })
+    }
+}
+
 async function pruneLogs(req, res) {
     try {
         if (!hasPermission(req.user, 'backup.manage')) {
@@ -115,4 +141,4 @@ async function pruneLogs(req, res) {
     }
 }
 
-module.exports = { getLogs, exportLogs, pruneLogs }
+module.exports = { getLogs, exportLogs, getRiskSummary, pruneLogs }

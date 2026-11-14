@@ -12,6 +12,43 @@
         <yk-text v-else-if="errorMessage" type="danger">{{ errorMessage }}</yk-text>
 
         <template v-else>
+            <section class="system-log-risk" :class="{ 'is-clear': riskSummary && riskSummary.highRisk === 0 }">
+                <div class="risk-copy">
+                    <span class="risk-kicker">风险巡检</span>
+                    <strong v-if="riskSummary">
+                        {{ riskSummary.highRisk > 0
+                            ? `近 ${riskSummary.days} 天有 ${riskSummary.highRisk} 条高风险操作`
+                            : `近 ${riskSummary.days} 天没有高风险操作` }}
+                    </strong>
+                    <strong v-else>正在汇总高风险操作…</strong>
+                    <span v-if="riskSummary?.recent?.length" class="risk-recent">
+                        最近：{{ riskSummary.recent[0].username }} {{ moduleLabel(riskSummary.recent[0].module) }} ·
+                        {{ formatTime(riskSummary.recent[0].createdAt) }}
+                    </span>
+                </div>
+                <div class="risk-actions">
+                    <button type="button" class="risk-chip" :class="{ 'is-active': riskFilter === 'high' }"
+                        @click="toggleRiskFilter">
+                        全部高风险 <b>{{ riskSummary?.highRisk ?? 0 }}</b>
+                    </button>
+                    <button type="button" class="risk-chip"
+                        :class="{ 'is-active': moduleFilter === 'permission' && !riskFilter }"
+                        @click="focusModule('permission')">
+                        权限变更 <b>{{ riskSummary?.permissionChanges ?? 0 }}</b>
+                    </button>
+                    <button type="button" class="risk-chip"
+                        :class="{ 'is-active': moduleFilter === 'backup' && !riskFilter }"
+                        @click="focusModule('backup')">
+                        备份操作 <b>{{ riskSummary?.backupOps ?? 0 }}</b>
+                    </button>
+                    <button type="button" class="risk-chip"
+                        :class="{ 'is-active': moduleFilter === 'pet' && !riskFilter }"
+                        @click="focusModule('pet')">
+                        宠物设置 <b>{{ riskSummary?.petChanges ?? 0 }}</b>
+                    </button>
+                </div>
+            </section>
+
             <yk-space align="center" size="m" class="system-log-filters">
                 <yk-radio-group v-model="moduleFilter" type="button" :solid="true" @change="reload">
                     <yk-radio value="">全部模块</yk-radio>
@@ -45,6 +82,46 @@
                 </div>
             </yk-space>
 
+            <div class="system-log-advanced">
+                <div class="advanced-head">
+                    <button type="button" class="advanced-toggle" :class="{ 'is-active': advancedOpen }"
+                        :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
+                        高级筛选
+                        <span v-if="advancedFilterCount > 0" class="advanced-count">{{ advancedFilterCount }}</span>
+                        <span class="advanced-arrow" aria-hidden="true">{{ advancedOpen ? '收起' : '展开' }}</span>
+                    </button>
+                    <span v-if="advancedFilterCount > 0 && !advancedOpen" class="advanced-hint">
+                        已应用 {{ advancedFilterCount }} 项条件
+                    </span>
+                </div>
+                <div v-if="advancedOpen" class="advanced-fields">
+                    <label class="advanced-field">
+                        <span>操作人</span>
+                        <input v-model="operatorFilter" type="text" placeholder="输入用户名" autocomplete="off"
+                            @change="applyAdvancedFilters" @keydown.enter="applyAdvancedFilters" />
+                    </label>
+                    <label class="advanced-field">
+                        <span>IP</span>
+                        <input v-model="ipFilter" type="text" placeholder="如 127.0.0" autocomplete="off"
+                            @change="applyAdvancedFilters" @keydown.enter="applyAdvancedFilters" />
+                    </label>
+                    <label class="advanced-field">
+                        <span>目标类型</span>
+                        <input v-model="targetTypeFilter" type="text" placeholder="如 collection" autocomplete="off"
+                            @change="applyAdvancedFilters" @keydown.enter="applyAdvancedFilters" />
+                    </label>
+                    <label class="advanced-field">
+                        <span>目标 ID</span>
+                        <input v-model="targetIdFilter" type="number" min="1" placeholder="如 12"
+                            @change="applyAdvancedFilters" @keydown.enter="applyAdvancedFilters" />
+                    </label>
+                    <button v-if="advancedFilterCount > 0" type="button" class="date-chip date-clear"
+                        @click="resetAdvancedFilters">
+                        清除条件
+                    </button>
+                </div>
+            </div>
+
             <yk-empty v-if="logs.length === 0" description="暂无日志" />
 
             <!-- 紧凑日志表：操作人/动作/模块/详情/来源分行对齐 -->
@@ -64,7 +141,11 @@
                     </span>
                 </div>
 
-                <div v-for="item in logs" :key="item.id" class="system-log-row">
+                <div v-for="item in logs" :key="item.id" class="system-log-row"
+                    :class="{ 'is-risk': isHighRisk(item) }" tabindex="0" role="button"
+                    :aria-label="`查看日志详情：${item.detail || '无详情'}`"
+                    @click="openDetail(item)" @keydown.enter.prevent="openDetail(item)"
+                    @keydown.space.prevent="openDetail(item)">
                     <span class="log-col log-col-user">
                         <span class="log-avatar" aria-hidden="true">{{ item.username?.slice(0, 1) || '·' }}</span>
                         <span class="log-user-name">{{ item.username }}</span>
@@ -76,6 +157,7 @@
                         <span class="system-log-item-module">{{ moduleLabel(item.module) }}</span>
                     </span>
                     <span class="log-col log-col-detail" :title="item.detail || ''">
+                        <span v-if="isHighRisk(item)" class="log-risk-tag">高风险</span>
                         {{ item.detail || '（无详情）' }}
                     </span>
                     <span class="log-col log-col-target">
@@ -91,20 +173,65 @@
                     :page-size-options="[5, 10, 20, 50]" :show-page-size="true" :show-total="true"
                     :disabled="loading" @change="handlePagerChange" />
             </div>
+
+            <yk-drawer :show="detailVisible" title="日志详情" placement="right" size="m" :scrollable="true"
+                @close="closeDetail">
+                <div v-if="selectedLog" class="log-detail">
+                    <div class="log-detail-tags">
+                        <span class="system-log-item-tag" :class="`is-${selectedLog.action}`">
+                            {{ actionLabel(selectedLog.action) }}
+                        </span>
+                        <span class="system-log-item-module">{{ moduleLabel(selectedLog.module) }}</span>
+                        <span v-if="isHighRisk(selectedLog)" class="log-risk-tag">高风险</span>
+                    </div>
+                    <dl class="log-detail-grid">
+                        <div>
+                            <dt>操作时间</dt>
+                            <dd>{{ formatTime(selectedLog.createdAt) }}</dd>
+                        </div>
+                        <div>
+                            <dt>操作人</dt>
+                            <dd>{{ selectedLog.username }}</dd>
+                        </div>
+                        <div>
+                            <dt>目标</dt>
+                            <dd>{{ targetLabel(selectedLog.targetType, selectedLog.targetId) }}</dd>
+                        </div>
+                        <div>
+                            <dt>来源 IP</dt>
+                            <dd><code>{{ selectedLog.ip || '未记录' }}</code></dd>
+                        </div>
+                    </dl>
+                    <section class="log-detail-block">
+                        <h4>详情</h4>
+                        <p>{{ selectedLog.detail || '（无详情）' }}</p>
+                    </section>
+                    <section class="log-detail-block">
+                        <h4>审计标识</h4>
+                        <p>
+                            日志 #{{ selectedLog.id }} ·
+                            用户 #{{ selectedLog.userId ?? '-' }} ·
+                            {{ selectedLog.targetType || '无目标类型' }}
+                        </p>
+                    </section>
+                </div>
+            </yk-drawer>
         </template>
     </yk-space>
 </template>
 
 <script lang="ts" setup>
-    import { ref, onMounted } from 'vue'
+    import { computed, ref, onMounted } from 'vue'
     import { useRoute } from 'vue-router'
     import TopTitle from '../components/bar/TopTitle.vue'
     import AdminPager from '../components/common/AdminPager.vue'
     import {
         getSystemLogs,
+        getSystemLogRiskSummary,
         exportSystemLogs,
         getRequestErrorMessage,
         type SystemLogItem,
+        type SystemLogRiskSummary,
         type SystemLogSortOrder,
     } from '../api/systemLog'
     import {
@@ -155,6 +282,15 @@
     const datePreset = ref<ReportRangePreset>(0)
     const startDate = ref('')
     const endDate = ref('')
+    const riskSummary = ref<SystemLogRiskSummary | null>(null)
+    const advancedOpen = ref(false)
+    const operatorFilter = ref('')
+    const ipFilter = ref('')
+    const targetTypeFilter = ref('')
+    const targetIdFilter = ref('')
+    const riskFilter = ref<'' | 'high'>('')
+    const detailVisible = ref(false)
+    const selectedLog = ref<SystemLogItem | null>(null)
 
     const actionOptions = [
         { value: 'login', label: '登录' },
@@ -207,6 +343,35 @@
     const formatTime = (value: string): string =>
         String(value || '').replace('T', ' ').slice(0, 19)
 
+    const targetIdValue = computed(() => {
+        const value = Number.parseInt(targetIdFilter.value, 10)
+        return Number.isSafeInteger(value) && value > 0 ? value : null
+    })
+
+    const advancedFilterCount = computed(() =>
+        [operatorFilter.value, ipFilter.value, targetTypeFilter.value, targetIdFilter.value]
+            .filter(value => String(value).trim().length > 0)
+            .length
+    )
+
+    const isHighRisk = (item: SystemLogItem): boolean =>
+        ['permission', 'backup', 'pet'].includes(item.module) || item.action === 'delete'
+
+    const buildFilterParams = () => ({
+        keyword: keyword.value.trim() || undefined,
+        module: moduleFilter.value || undefined,
+        action: actionFilter.value || undefined,
+        operator: operatorFilter.value.trim() || undefined,
+        ip: ipFilter.value.trim() || undefined,
+        targetType: targetTypeFilter.value.trim() || undefined,
+        ...(targetIdValue.value ? { targetId: targetIdValue.value } : {}),
+        ...(riskFilter.value === 'high' ? { risk: 'high' as const } : {}),
+        ...(isCompleteReportRange(startDate.value, endDate.value)
+            ? { startDate: startDate.value, endDate: endDate.value }
+            : {}),
+        sortOrder: sortOrder.value,
+    })
+
     const fetchLogs = async (): Promise<void> => {
         loading.value = true
         errorMessage.value = ''
@@ -215,13 +380,7 @@
             const result = await getSystemLogs({
                 page: page.value,
                 pageSize: pageSize.value,
-                keyword: keyword.value.trim() || undefined,
-                module: moduleFilter.value || undefined,
-                action: actionFilter.value || undefined,
-                ...(isCompleteReportRange(startDate.value, endDate.value)
-                    ? { startDate: startDate.value, endDate: endDate.value }
-                    : {}),
-                sortOrder: sortOrder.value,
+                ...buildFilterParams(),
             })
 
             if (result.code !== 200 || !result.data) {
@@ -239,6 +398,17 @@
         }
     }
 
+    const fetchRiskSummary = async (): Promise<void> => {
+        try {
+            const result = await getSystemLogRiskSummary(7)
+            if (result.code === 200 && result.data) {
+                riskSummary.value = result.data
+            }
+        } catch {
+            // 高风险摘要失败不阻塞日志列表，保留上一次结果或空态
+        }
+    }
+
     const reload = (): void => {
         page.value = 1
         void fetchLogs()
@@ -247,6 +417,45 @@
     const handleSearch = (value: unknown): void => {
         keyword.value = String(value ?? '').trim()
         reload()
+    }
+
+    const applyAdvancedFilters = (): void => {
+        reload()
+    }
+
+    const resetAdvancedFilters = (): void => {
+        operatorFilter.value = ''
+        ipFilter.value = ''
+        targetTypeFilter.value = ''
+        targetIdFilter.value = ''
+        reload()
+    }
+
+    const toggleRiskFilter = (): void => {
+        if (riskFilter.value === 'high') {
+            riskFilter.value = ''
+        } else {
+            riskFilter.value = 'high'
+            moduleFilter.value = ''
+            actionFilter.value = ''
+        }
+        reload()
+    }
+
+    const focusModule = (module: string): void => {
+        riskFilter.value = ''
+        actionFilter.value = ''
+        moduleFilter.value = moduleFilter.value === module ? '' : module
+        reload()
+    }
+
+    const openDetail = (item: SystemLogItem): void => {
+        selectedLog.value = item
+        detailVisible.value = true
+    }
+
+    const closeDetail = (): void => {
+        detailVisible.value = false
     }
 
     // 页码和每页条数已由 v-model 同步；切换条数时组件会把页码重置为 1
@@ -299,15 +508,7 @@
 
     const exportLogs = async (): Promise<void> => {
         try {
-            const blob = await exportSystemLogs({
-                keyword: keyword.value.trim() || undefined,
-                module: moduleFilter.value || undefined,
-                action: actionFilter.value || undefined,
-                ...(isCompleteReportRange(startDate.value, endDate.value)
-                    ? { startDate: startDate.value, endDate: endDate.value }
-                    : {}),
-                sortOrder: sortOrder.value,
-            })
+            const blob = await exportSystemLogs(buildFilterParams())
             const url = URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = url
@@ -321,6 +522,7 @@
 
     onMounted(() => {
         void fetchLogs()
+        void fetchRiskSummary()
     })
 </script>
 
@@ -332,6 +534,209 @@
             width: 100%;
             flex-wrap: wrap;
             row-gap: 8px;
+
+            :deep(.yk-radio-group) {
+                flex: 1 1 100%;
+                min-width: 0;
+            }
+
+            :deep(.yk-radio-group__container) {
+                flex-wrap: wrap;
+                row-gap: 6px;
+            }
+
+            :deep(.yk-radio__label) {
+                white-space: nowrap;
+            }
+        }
+
+        &-risk {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px 20px;
+            flex-wrap: wrap;
+            padding: 14px 18px;
+            border: 1px solid rgba(255, 170, 26, 0.32);
+            border-radius: var(--admin-radius, 18px);
+            background:
+                linear-gradient(120deg, rgba(255, 170, 26, 0.14), transparent 62%),
+                var(--admin-surface, var(--bgColor1));
+
+            &.is-clear {
+                border-color: var(--admin-line, var(--gray1));
+                background: var(--admin-surface, var(--bgColor1));
+            }
+        }
+
+        .risk-copy {
+            display: flex;
+            align-items: center;
+            gap: 8px 12px;
+            flex-wrap: wrap;
+            min-width: 0;
+
+            strong {
+                color: var(--gray8);
+                font-size: 14px;
+            }
+        }
+
+        .risk-kicker {
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: rgba(255, 170, 26, 0.16);
+            color: @wcolor;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .risk-recent {
+            overflow: hidden;
+            color: var(--gray6);
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .risk-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .risk-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+            padding: 6px 11px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: 999px;
+            background: var(--admin-surface, var(--bgColor1));
+            color: var(--gray7);
+            font-size: 12px;
+            cursor: pointer;
+            transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+
+            b {
+                color: var(--gray8);
+                font-variant-numeric: tabular-nums;
+            }
+
+            &:hover {
+                border-color: rgba(255, 170, 26, 0.5);
+                color: @wcolor;
+            }
+
+            &.is-active {
+                border-color: transparent;
+                background: rgba(255, 170, 26, 0.18);
+                color: @wcolor;
+
+                b {
+                    color: @wcolor;
+                }
+            }
+        }
+
+        &-advanced {
+            width: 100%;
+            padding: 0 2px;
+        }
+
+        .advanced-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .advanced-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            padding: 6px 12px;
+            border: 1px solid var(--admin-line, var(--gray1));
+            border-radius: 999px;
+            background: var(--admin-surface, var(--bgColor1));
+            color: var(--gray7);
+            font-size: 12px;
+            cursor: pointer;
+            transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+
+            &:hover,
+            &.is-active {
+                border-color: var(--pcolor);
+                color: var(--pcolor);
+            }
+        }
+
+        .advanced-count {
+            display: grid;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            place-items: center;
+            border-radius: 999px;
+            background: var(--pcolor);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .advanced-hint {
+            color: var(--gray6);
+            font-size: 12px;
+        }
+
+        .advanced-arrow {
+            color: var(--gray6);
+            font-size: 11px;
+        }
+
+        .advanced-fields {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            padding: 14px;
+            border: 1px dashed var(--admin-line, var(--gray1));
+            border-radius: @radius-s;
+            background: var(--admin-surface-soft, var(--bgColor2));
+        }
+
+        .advanced-field {
+            display: grid;
+            gap: 5px;
+            min-width: 150px;
+            flex: 1 1 160px;
+
+            span {
+                color: var(--gray6);
+                font-size: 11px;
+            }
+
+            input {
+                width: 100%;
+                height: 32px;
+                padding: 0 10px;
+                border: 1px solid var(--admin-line, var(--gray1));
+                border-radius: @radius-s;
+                background: var(--admin-surface, var(--bgColor1));
+                color: var(--gray8);
+                font-size: 12px;
+
+                &:focus {
+                    outline: none;
+                    border-color: var(--pcolor);
+                    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pcolor) 16%, transparent);
+                }
+            }
         }
 
         .date-filter {
@@ -429,6 +834,19 @@
                 border-bottom: 0;
             }
 
+            &:not(.system-log-head) {
+                cursor: pointer;
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--pcolor);
+                outline-offset: -2px;
+            }
+
+            &.is-risk:not(.system-log-head) {
+                box-shadow: inset 3px 0 0 rgba(250, 82, 71, 0.55);
+            }
+
             &:not(.system-log-head):hover {
                 background: color-mix(in srgb, var(--pcolor1) 52%, transparent);
             }
@@ -492,6 +910,19 @@
             background: var(--bgColor3);
             color: var(--gray6);
             font-size: 11px;
+        }
+
+        .log-risk-tag {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 6px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: rgba(250, 82, 71, 0.12);
+            color: @ecolor;
+            font-size: 11px;
+            font-weight: 700;
+            vertical-align: middle;
         }
 
         .log-col-time {
@@ -577,6 +1008,72 @@
             background: @bg-color-m;
         }
 
+        .log-detail {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .log-detail-tags {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .log-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin: 0;
+
+            > div {
+                padding: 12px 14px;
+                border: 1px solid var(--admin-line, var(--gray1));
+                border-radius: @radius-s;
+                background: var(--admin-surface-soft, var(--bgColor2));
+            }
+
+            dt {
+                margin-bottom: 5px;
+                color: var(--gray6);
+                font-size: 11px;
+            }
+
+            dd {
+                margin: 0;
+                color: var(--gray8);
+                font-size: 13px;
+                word-break: break-all;
+            }
+
+            code {
+                color: inherit;
+                font-size: 12px;
+            }
+        }
+
+        .log-detail-block {
+            h4 {
+                margin: 0 0 8px;
+                color: var(--gray8);
+                font-size: 13px;
+            }
+
+            p {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid var(--admin-line, var(--gray1));
+                border-radius: @radius-s;
+                background: var(--admin-surface-soft, var(--bgColor2));
+                color: var(--gray7);
+                font-size: 13px;
+                line-height: 1.7;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+        }
+
         &-pagination {
             display: flex;
             justify-content: flex-end;
@@ -595,6 +1092,22 @@
         }
 
         @media (max-width: 820px) {
+            &-risk {
+                align-items: flex-start;
+            }
+
+            .risk-actions {
+                width: 100%;
+            }
+
+            .advanced-field {
+                flex-basis: 100%;
+            }
+
+            .log-detail-grid {
+                grid-template-columns: 1fr;
+            }
+
             &-head {
                 display: none;
             }

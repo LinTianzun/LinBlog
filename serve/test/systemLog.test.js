@@ -110,6 +110,11 @@ test('getLogs rejects non-admin and formats list rows', async () => {
         systemLogModel.getLogsByPage = async (params) => {
             assert.equal(params.module, 'article')
             assert.equal(params.action, 'publish')
+            assert.equal(params.operator, '管理员')
+            assert.equal(params.ip, '127.0.0')
+            assert.equal(params.targetType, 'article')
+            assert.equal(params.targetId, 3)
+            assert.equal(params.risk, 'high')
             return {
                 list: [{
                     id: 9, user_id: 1, username: '管理员', user_type: 'admin',
@@ -123,7 +128,17 @@ test('getLogs rejects non-admin and formats list rows', async () => {
 
         const res = createRes()
         await systemLogController.getLogs({
-            query: { page: '1', pageSize: '20', module: 'article', action: 'publish' },
+            query: {
+                page: '1',
+                pageSize: '20',
+                module: 'article',
+                action: 'publish',
+                operator: ' 管理员 ',
+                ip: '127.0.0',
+                targetType: 'article',
+                targetId: '3',
+                risk: 'high'
+            },
             user: { userId: 1, user_type: 'admin' }
         }, res)
 
@@ -165,6 +180,41 @@ test('getLogs forwards desc by default and only allows asc when requested', asyn
     }
 })
 
+test('getRiskSummary requires log permission and forwards the requested window', async () => {
+    const originalSummary = systemLogModel.getRiskSummary
+
+    try {
+        const denied = createRes()
+        await systemLogController.getRiskSummary(
+            { query: { days: '7' }, user: { userId: 2, user_type: 'normal' } },
+            denied
+        )
+        assert.equal(denied.statusCode, 403)
+
+        systemLogModel.getRiskSummary = async ({ days }) => {
+            assert.equal(days, 14)
+            return {
+                days: 14,
+                highRisk: 3,
+                permissionChanges: 1,
+                backupOps: 1,
+                petChanges: 1,
+                recent: []
+            }
+        }
+
+        const res = createRes()
+        await systemLogController.getRiskSummary(
+            { query: { days: '14' }, user: { userId: 1, user_type: 'admin' } },
+            res
+        )
+        assert.equal(res.body.code, 200)
+        assert.equal(res.body.data.highRisk, 3)
+    } finally {
+        systemLogModel.getRiskSummary = originalSummary
+    }
+})
+
 test('getLogsByPage orders by created_at with the requested direction', async () => {
     const capturedSql = []
     const dbPath = path.resolve(__dirname, '../model/db/dbnew.js')
@@ -201,6 +251,22 @@ test('getLogsByPage orders by created_at with the requested direction', async ()
         assert.ok(capturedSql.some(sql =>
             sql.includes('(l.module = ? OR l.target_type = ?)')
         ))
+
+        await freshModel.getLogsByPage({
+            operator: 'admin',
+            ip: '127.0.0',
+            targetType: 'collection',
+            targetId: 8,
+            risk: 'high',
+            pageSize: 10,
+            offset: 0
+        })
+        const advancedSql = capturedSql[capturedSql.length - 1]
+        assert.match(advancedSql, /u\.username LIKE \?/)
+        assert.match(advancedSql, /l\.ip LIKE \?/)
+        assert.match(advancedSql, /l\.target_type = \?/)
+        assert.match(advancedSql, /l\.target_id = \?/)
+        assert.match(advancedSql, /l\.module IN \('permission', 'backup', 'pet'\) OR l\.action = 'delete'/)
     } finally {
         delete require.cache[path.resolve(__dirname, '../model/dbModel/systemLog/index.js')]
         if (originalModule) require.cache[dbPath] = originalModule

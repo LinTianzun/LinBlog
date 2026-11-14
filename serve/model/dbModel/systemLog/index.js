@@ -5,6 +5,8 @@ const ACTIONS = ['login', 'logout', 'create', 'update', 'delete', 'publish', 're
 const MODULES = ['user', 'article', 'collection', 'gallery', 'diary', 'file', 'comment', 'message', 'subset', 'label', 'ai', 'permission', 'system', 'backup', 'pet']
 const EXPORT_MAX_ROWS = 100000
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+// 高风险操作：权限矩阵、数据库备份、宠物站点设置，以及任何删除动作
+const RISK_FILTER_SQL = "(l.module IN ('permission', 'backup', 'pet') OR l.action = 'delete')"
 
 function normalizeDateText(value) {
     const trimmed = String(value || '').trim()
@@ -41,20 +43,18 @@ async function insertLog({ userId = null, action, module, targetType = null, tar
     return query(sql, [userId, action, module, targetType, targetId, detail, ip])
 }
 
-/**
- * 分页查询日志；keyword 匹配详情/目标类型/目标ID/用户名，支持按模块和动作过滤
- * sortOrder 仅支持 asc/desc，控制 created_at 的升降序
- */
-async function getLogsByPage({
+function buildLogWhere({
     keyword = '',
     module = '',
     action = '',
     startDate = null,
     endDate = null,
-    pageSize = 20,
-    offset = 0,
-    sortOrder = 'desc'
-}) {
+    operator = '',
+    ip = '',
+    targetType = '',
+    targetId = null,
+    risk = ''
+} = {}) {
     const where = []
     const params = []
 
@@ -63,7 +63,7 @@ async function getLogsByPage({
         const term = `%${keyword}%`
         params.push(term, term, term, term)
     }
-    if (module) {
+    if (module && MODULES.includes(module)) {
         // 内容系列早期写在 article 模块下，按 target_type 兼容历史日志
         if (module === 'collection') {
             where.push('(l.module = ? OR l.target_type = ?)')
@@ -73,9 +73,28 @@ async function getLogsByPage({
             params.push(module)
         }
     }
-    if (action) {
+    if (action && ACTIONS.includes(action)) {
         where.push('l.action = ?')
         params.push(action)
+    }
+    if (operator) {
+        where.push('u.username LIKE ?')
+        params.push(`%${operator}%`)
+    }
+    if (ip) {
+        where.push('l.ip LIKE ?')
+        params.push(`%${ip}%`)
+    }
+    if (targetType) {
+        where.push('l.target_type = ?')
+        params.push(targetType)
+    }
+    if (targetId) {
+        where.push('l.target_id = ?')
+        params.push(targetId)
+    }
+    if (risk === 'high') {
+        where.push(RISK_FILTER_SQL)
     }
     const dateRange = buildLogDateRange(startDate, endDate)
     if (dateRange) {
@@ -83,7 +102,35 @@ async function getLogsByPage({
         params.push(dateRange.from, dateRange.to)
     }
 
-    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+    return {
+        whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '',
+        params
+    }
+}
+
+/**
+ * 分页查询日志；keyword 匹配详情/目标类型/目标ID/用户名，支持模块、动作、
+ * 操作人、IP、目标与高风险过滤；sortOrder 仅支持 asc/desc。
+ */
+async function getLogsByPage({
+    keyword = '',
+    module = '',
+    action = '',
+    startDate = null,
+    endDate = null,
+    operator = '',
+    ip = '',
+    targetType = '',
+    targetId = null,
+    risk = '',
+    pageSize = 20,
+    offset = 0,
+    sortOrder = 'desc'
+}) {
+    const { whereSql, params } = buildLogWhere({
+        keyword, module, action, startDate, endDate,
+        operator, ip, targetType, targetId, risk
+    })
     const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
 
     const totalRows = await query(
@@ -102,42 +149,6 @@ async function getLogsByPage({
     )
 
     return { list, total: Number(totalRows[0]?.total || 0) }
-}
-
-function buildLogFilters({
-    keyword = '',
-    module = '',
-    action = '',
-    startDate = null,
-    endDate = null
-} = {}) {
-    const where = []
-    const params = []
-
-    if (keyword) {
-        where.push('(l.detail LIKE ? OR l.target_type LIKE ? OR CAST(l.target_id AS CHAR) LIKE ? OR u.username LIKE ?)')
-        const term = `%${keyword}%`
-        params.push(term, term, term, term)
-    }
-    if (module && MODULES.includes(module)) {
-        if (module === 'collection') {
-            where.push('(l.module = ? OR l.target_type = ?)')
-            params.push(module, 'collection')
-        } else {
-            where.push('l.module = ?')
-            params.push(module)
-        }
-    }
-    if (action && ACTIONS.includes(action)) {
-        where.push('l.action = ?')
-        params.push(action)
-    }
-    const dateRange = buildLogDateRange(startDate, endDate)
-    if (dateRange) {
-        where.push(`${dateRange.column} >= ?`, `${dateRange.column} < ?`)
-        params.push(dateRange.from, dateRange.to)
-    }
-    return { whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '', params }
 }
 
 function escapeCsvCell(value) {
@@ -159,10 +170,18 @@ async function getLogsForExport({
     action = '',
     startDate = null,
     endDate = null,
+    operator = '',
+    ip = '',
+    targetType = '',
+    targetId = null,
+    risk = '',
     sortOrder = 'desc',
     limit = EXPORT_MAX_ROWS
 } = {}) {
-    const { whereSql, params } = buildLogFilters({ keyword, module, action, startDate, endDate })
+    const { whereSql, params } = buildLogWhere({
+        keyword, module, action, startDate, endDate,
+        operator, ip, targetType, targetId, risk
+    })
     const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC'
     const rows = await query(
         `SELECT l.id, l.user_id, u.username, l.action, l.module,
@@ -175,6 +194,53 @@ async function getLogsForExport({
         [...params, Math.min(Math.max(Number(limit) || EXPORT_MAX_ROWS, 1), EXPORT_MAX_ROWS)]
     )
     return { rows: rows || [], csv: toCsv(rows || []) }
+}
+
+async function getRiskSummary({ days = 7, limit = 5 } = {}) {
+    const riskDays = Math.min(Math.max(Number.parseInt(days, 10) || 7, 1), 30)
+    const recentLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 5, 1), 10)
+
+    const countRows = await query(
+        `SELECT
+            COUNT(*) AS highRisk,
+            SUM(CASE WHEN l.module = 'permission' THEN 1 ELSE 0 END) AS permissionChanges,
+            SUM(CASE WHEN l.module = 'backup' THEN 1 ELSE 0 END) AS backupOps,
+            SUM(CASE WHEN l.module = 'pet' THEN 1 ELSE 0 END) AS petChanges
+         FROM system_log l
+         WHERE ${RISK_FILTER_SQL} AND l.created_at >= (NOW() - INTERVAL ? DAY)`,
+        [riskDays]
+    )
+    const recent = await query(
+        `SELECT l.id, l.user_id, u.username, l.action, l.module,
+                l.target_type, l.target_id, l.detail, l.ip, l.created_at
+         FROM system_log l
+         LEFT JOIN users u ON l.user_id = u.id
+         WHERE ${RISK_FILTER_SQL} AND l.created_at >= (NOW() - INTERVAL ? DAY)
+         ORDER BY l.created_at DESC, l.id DESC
+         LIMIT ?`,
+        [riskDays, recentLimit]
+    )
+
+    const counts = countRows[0] || {}
+    return {
+        days: riskDays,
+        highRisk: Number(counts.highRisk) || 0,
+        permissionChanges: Number(counts.permissionChanges) || 0,
+        backupOps: Number(counts.backupOps) || 0,
+        petChanges: Number(counts.petChanges) || 0,
+        recent: (recent || []).map(item => ({
+            id: item.id,
+            userId: item.user_id,
+            username: item.username || '（已注销）',
+            action: item.action,
+            module: item.module,
+            targetType: item.target_type,
+            targetId: item.target_id,
+            detail: item.detail,
+            ip: item.ip,
+            createdAt: item.created_at
+        }))
+    }
 }
 
 async function pruneLogs(days = 365, limit = 1000) {
@@ -203,5 +269,6 @@ module.exports = {
     insertLog,
     getLogsByPage,
     getLogsForExport,
+    getRiskSummary,
     pruneLogs,
 }

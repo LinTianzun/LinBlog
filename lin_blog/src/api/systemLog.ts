@@ -22,6 +22,15 @@ export interface SystemLogPageData {
   list: SystemLogItem[];
 }
 
+export interface SystemLogRiskSummary {
+  days: number;
+  highRisk: number;
+  permissionChanges: number;
+  backupOps: number;
+  petChanges: number;
+  recent: SystemLogItem[];
+}
+
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -42,29 +51,33 @@ export function getRequestErrorMessage(
 // 系统日志分页查询（仅管理员；keyword 匹配详情/目标/用户名）
 export type SystemLogSortOrder = "asc" | "desc";
 
+export interface SystemLogFilters {
+  keyword?: string;
+  module?: string;
+  action?: string;
+  operator?: string;
+  ip?: string;
+  targetType?: string;
+  targetId?: number;
+  risk?: "high";
+  startDate?: string;
+  endDate?: string;
+  sortOrder?: SystemLogSortOrder;
+}
+
 export function getSystemLogs(
-  params: {
-    page?: number;
-    pageSize?: number;
-    keyword?: string;
-    module?: string;
-    action?: string;
-    startDate?: string;
-    endDate?: string;
-    sortOrder?: SystemLogSortOrder;
-  } = {}
+  params: SystemLogFilters & { page?: number; pageSize?: number } = {}
 ) {
   return request.get<ApiResult<SystemLogPageData>>("/systemLog", { params });
 }
 
-export function exportSystemLogs(params: {
-  keyword?: string;
-  module?: string;
-  action?: string;
-  startDate?: string;
-  endDate?: string;
-  sortOrder?: SystemLogSortOrder;
-} = {}) {
+export function getSystemLogRiskSummary(days = 7) {
+  return request.get<ApiResult<SystemLogRiskSummary>>("/systemLog/risk-summary", {
+    params: { days },
+  });
+}
+
+export function exportSystemLogs(params: SystemLogFilters = {}) {
   return request.get<Blob>("/systemLog/export", {
     params,
     responseType: "blob",
