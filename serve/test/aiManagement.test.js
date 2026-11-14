@@ -2060,6 +2060,60 @@ test('提示词助手返回的 JSON 能解析为候选模板', () => {
     assert.throws(() => aiClient.parsePromptAssistantPayload('不是 JSON'), /模型没有返回可用提示词/)
 })
 
+test('提示词助手把渲染后的模板正文发给模型，而不是模板 key', async () => {
+    const originalFetch = global.fetch
+    const originalGetTemplate = aiModel.getEnabledPromptTemplate
+    let sentPrompt = ''
+
+    // 强制走内置默认模板，验证真实的提示词渲染链路
+    aiModel.getEnabledPromptTemplate = async () => null
+    global.fetch = async (url, init = {}) => {
+        assert.match(String(url), /\/chat\/completions$/)
+        const payload = JSON.parse(init.body)
+        sentPrompt = payload.messages.find(message => message.role === 'user')?.content || ''
+        return new Response(JSON.stringify({
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        content: '你是一名编辑助手，只输出 JSON。\n标题：{{title}}',
+                        summary: '补充输出格式约束'
+                    })
+                }
+            }],
+            usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 }
+        }), { status: 200 })
+    }
+
+    try {
+        const result = await aiClient.assistPromptTemplate({
+            task: 'optimize',
+            featureKey: 'suggest',
+            content: '旧模板：{{title}}',
+            requirement: '强调只输出 JSON',
+            variables: { title: '示例标题' },
+            aiConfig: {
+                id: 9,
+                name: '测试模型',
+                baseUrl: 'https://a.example.test/v1',
+                apiKey: 'test-key',
+                model: 'glm-4-flash'
+            },
+            chainFn: async () => []
+        })
+
+        assert.notEqual(sentPrompt.trim(), 'prompt-assistant')
+        assert.match(sentPrompt, /只返回一个 JSON 对象/)
+        assert.match(sentPrompt, /写作建议/)
+        assert.match(sentPrompt, /- title/)
+        assert.match(sentPrompt, /强调只输出 JSON/)
+        assert.equal(result.content, '你是一名编辑助手，只输出 JSON。\n标题：{{title}}')
+        assert.equal(result.summary, '补充输出格式约束')
+    } finally {
+        global.fetch = originalFetch
+        aiModel.getEnabledPromptTemplate = originalGetTemplate
+    }
+})
+
 test('提示词助手生成候选并写入 AI 调用日志', async () => {
     const originalAssist = aiClient.assistPromptTemplate
     const originalLog = aiModel.logUsage

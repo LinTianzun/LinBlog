@@ -1091,14 +1091,14 @@ async function previewPrompt({ featureKey, content, variables = {}, mode = 'auto
     })
 }
 
-function buildPromptAssistantPrompt({ task, featureKey, featureName, variables, currentContent, requirement }) {
+async function buildPromptAssistantPrompt({ task, featureKey, featureName, variables, currentContent, requirement }) {
     const names = Array.isArray(variables) ? variables : Object.keys(variables || {})
     const variableList = names.length > 0
         ? names.map(name => `- ${name}`).join('\n')
         : '暂无'
     const safeRequirement = String(requirement || '').slice(0, 4000)
 
-    return renderTemplate('prompt-assistant', {
+    return resolvePromptTemplate('prompt-assistant', {
         task,
         taskLabel: task === 'create' ? '新建一套提示词模板' : '优化现有提示词模板',
         featureName: featureName || featureKey,
@@ -1171,8 +1171,15 @@ async function assistPromptTemplate({
 
     return await runWithFallback(chain, async (candidate) => {
         const raw = await chatCompletion(prompt, { aiConfig: candidate, json: true, maxTokens: 2200 })
-        const parsed = parsePromptAssistantPayload(raw.text)
-        return { ...parsed, usage: raw.usage, outputChars: parsed.content.length }
+        try {
+            const parsed = parsePromptAssistantPayload(raw.text)
+            return { ...parsed, usage: raw.usage, outputChars: parsed.content.length }
+        } catch (err) {
+            if (err?.code === 'AI_PARSE_ERROR') {
+                console.warn('[AI] 提示词助手解析失败，模型输出片段：', String(raw.text || '').slice(0, 200))
+            }
+            throw err
+        }
     })
 }
 
