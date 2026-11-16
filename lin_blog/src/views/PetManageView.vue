@@ -36,7 +36,6 @@
                     :pet-home-tab="petHomeTab"
                     :pet-home-status="petHomeStatus"
                     :pet-home-room-class="petHomeRoomClass"
-                    :pet-home-note="petHomeNote"
                     :display-pet-name="displayPetName"
                     :pet-vitals="petVitals"
                     :settings="petSettings"
@@ -217,9 +216,6 @@ const petHomeRoomClass = computed(() =>
     petHomeTab.value === 'home'
         ? ['is-home-interior']
         : ['is-pixel-farm', `is-tab-${petHomeTab.value}`]
-)
-const petHomeNote = computed(
-    () => PET_HOME_TABS.find((tab) => tab.id === petHomeTab.value)?.note || ''
 )
 const petHomeStatus = computed(() => {
     const tab = PET_HOME_TABS.find((item) => item.id === petHomeTab.value)
@@ -1089,11 +1085,11 @@ onUnmounted(() => {
 
 /* ===== 小屋内部 ===== */
 .pet-home-room.is-home-interior {
-    border-color: #7a563c;
-    background: #f7e9d8;
+    border-color: #8a5a3b;
+    background: #f6ead9;
     box-shadow:
-        inset 0 0 0 5px rgba(255, 255, 255, 0.38),
-        inset 0 -20px 38px rgba(104, 64, 36, 0.12);
+        inset 0 0 0 5px rgba(255, 255, 255, 0.42),
+        inset 0 -22px 40px rgba(104, 64, 36, 0.14);
 }
 
 .pet-home-room.is-home-interior::before {
@@ -1102,134 +1098,337 @@ onUnmounted(() => {
 
 .pet-home-room.is-home-interior::after {
     box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.32),
-        inset 0 -26px 45px rgba(104, 64, 36, 0.14);
+        inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+        inset 0 -28px 48px rgba(104, 64, 36, 0.16);
 }
 
 .pet-home-room.is-home-interior .pet-home-interior {
     width: 100%;
     box-shadow: none;
+    background:
+        linear-gradient(180deg, #fdfaf3 0%, #fbf4e8 57%, transparent 57%),
+        linear-gradient(180deg, transparent 57%, #ecd0ae 57%, #d8ad80 100%);
+
+    &::before {
+        position: absolute;
+        inset: 0 0 43%;
+        content: '';
+        opacity: 0.5;
+        background:
+            repeating-linear-gradient(90deg,
+                transparent 0 72px,
+                rgba(196, 160, 120, 0.16) 72px 74px);
+        pointer-events: none;
+    }
+
+    &::after {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 43%;
+        content: '';
+        opacity: 0.42;
+        background:
+            repeating-linear-gradient(90deg,
+                transparent 0 56px,
+                rgba(120, 74, 42, 0.2) 56px 58px);
+        pointer-events: none;
+    }
+}
+
+.pet-home-baseboard {
+    position: absolute;
+    z-index: 2;
+    top: 56.2%;
+    right: 0;
+    left: 0;
+    height: 2.2%;
+    background: linear-gradient(180deg, #fffdf8, #efe0cb);
+    box-shadow: 0 3px 5px rgba(104, 64, 36, 0.16);
 }
 
 .pet-home-room.is-home-interior .pet-home-window {
-    top: 6%;
-    width: 32%;
-    border-width: 5px;
+    top: 7%;
+    width: 33%;
+    border-width: 6px;
+    border-radius: 46% 46% 8px 8px;
+    box-shadow:
+        0 12px 26px rgba(48, 73, 121, 0.16),
+        inset 0 0 0 1px rgba(26, 46, 96, 0.12);
 }
 
 .pet-home-room.is-home-interior .pet-home-curtain {
-    top: 5%;
-    width: 10%;
-    height: 20%;
+    top: 6%;
+    width: 9%;
+    height: 21%;
 }
 
 .pet-home-room.is-home-interior .pet-home-curtain-left {
-    left: 28%;
+    left: 30%;
 }
 
 .pet-home-room.is-home-interior .pet-home-curtain-right {
-    right: 28%;
+    right: 30%;
 }
 
 .pet-home-room.is-home-interior .pet-home-shelf {
-    top: 27%;
-    left: 7%;
-    width: 18%;
+    top: 25%;
+    left: 6%;
+    width: 19%;
 }
 
 .pet-home-room.is-home-interior .pet-home-picture {
-    top: 10%;
-    right: 7%;
-    width: 11%;
-}
-
-.pet-home-room.is-home-interior .pet-home-clock {
-    top: 36%;
-    left: 8%;
+    top: 14%;
+    right: 22%;
     width: 9%;
 }
 
+.pet-home-room.is-home-interior .pet-home-clock {
+    top: 35%;
+    left: 7%;
+    width: 8%;
+}
+
 .pet-home-room.is-home-interior .pet-home-plant {
-    right: 5%;
-    bottom: 10%;
-    font-size: 32px;
+    right: 4%;
+    bottom: 8%;
+    font-size: 34px;
 }
 
 .pet-home-room.is-home-interior .pet-home-rug {
-    bottom: 3.5%;
-    width: 46%;
-    height: 12%;
+    bottom: 3.2%;
+    width: 50%;
+    height: 12.5%;
 }
 
 .pet-home-room.is-home-interior .pet-home-cushion {
-    bottom: 8%;
+    bottom: 7.5%;
     left: 34%;
-    width: 14%;
-    height: 6%;
+    width: 13%;
+    height: 6.5%;
 }
 
 .pet-home-room.is-home-interior .pet-home-bowl {
-    right: 17%;
-    bottom: 5%;
+    right: 16%;
+    bottom: 4.5%;
     font-size: 26px;
+}
+
+.pet-home-room.is-home-interior .pet-home-door {
+    right: 3%;
+    bottom: 43%;
+    width: 21%;
+    height: 27%;
+}
+
+.pet-home-room.is-home-interior .pet-home-table {
+    right: 30%;
+    bottom: 6%;
+    width: 15%;
+    height: 12%;
+}
+
+.pet-home-wall-photo {
+    position: absolute;
+    z-index: 1;
+    border: 4px solid #fff8ef;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--pcolor) 22%, #fff);
+    box-shadow: 0 6px 12px rgba(101, 70, 44, 0.12);
+
+    &::after {
+        position: absolute;
+        inset: 18%;
+        content: '';
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--scolor, #1fb4a2) 26%, #fff);
+    }
+}
+
+.pet-home-wall-photo-a {
+    top: 12%;
+    right: 7%;
+    width: 7%;
+    aspect-ratio: 0.82;
+    transform: rotate(3deg);
+}
+
+.pet-home-wall-photo-b {
+    top: 26%;
+    right: 16%;
+    width: 6.5%;
+    aspect-ratio: 1.1;
+    transform: rotate(-4deg);
+}
+
+.pet-home-hanging-plant {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: 2%;
+    width: 6%;
+    height: 17%;
+
+    &::before {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 2px;
+        height: 58%;
+        content: '';
+        background: #9a6b48;
+    }
+
+    &::after {
+        position: absolute;
+        top: 48%;
+        left: -34%;
+        width: 160%;
+        content: '🌿';
+        font-size: clamp(14px, 1.8vw, 22px);
+        line-height: 1;
+        text-align: center;
+        filter: drop-shadow(0 3px 4px rgba(62, 84, 50, 0.18));
+    }
+}
+
+.pet-home-hanging-pot {
+    position: absolute;
+    top: 58%;
+    left: 50%;
+    width: 100%;
+    aspect-ratio: 0.9;
+    transform: translateX(-50%);
+    border-radius: 6px 6px 42% 42%;
+    background: linear-gradient(180deg, #db9463, #b5653f);
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.24);
+}
+
+.pet-home-lamp {
+    position: absolute;
+    z-index: 2;
+    bottom: 14%;
+    left: 44%;
+    width: 7%;
+    height: 21%;
+}
+
+.pet-home-lamp-shade {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 40%;
+    border-radius: 5px 5px 2px 2px;
+    background: linear-gradient(180deg, #ffe6ad, #e6b96e);
+    clip-path: polygon(24% 0, 76% 0, 100% 100%, 0 100%);
+    box-shadow: inset 0 -3px 0 rgba(150, 97, 52, 0.2);
+}
+
+.pet-home-lamp-stand {
+    position: absolute;
+    top: 38%;
+    left: 47%;
+    width: 6%;
+    height: 54%;
+    background: #8a5a3b;
+}
+
+.pet-home-lamp-base {
+    position: absolute;
+    bottom: 0;
+    left: 28%;
+    width: 44%;
+    height: 8%;
+    border-radius: 50%;
+    background: #8a5a3b;
+}
+
+.pet-home-lamp-glow {
+    position: absolute;
+    z-index: 1;
+    bottom: 8%;
+    left: 24%;
+    width: 22%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    opacity: 0.7;
+    background: radial-gradient(circle, rgba(255, 224, 150, 0.5), transparent 68%);
+    filter: blur(5px);
+    animation: pet-lamp-breathe 4.5s ease-in-out infinite;
+    pointer-events: none;
 }
 
 .pet-home-bed {
     position: absolute;
-    z-index: 1;
-    bottom: 8%;
-    left: 5%;
+    z-index: 2;
+    bottom: 6.5%;
+    left: 4%;
     width: 24%;
-    height: 17%;
+    height: 18%;
     border: 4px solid #8a5a3b;
-    border-radius: 12px 12px 6px 6px;
-    background: #f7e6cf;
+    border-radius: 12px 12px 8px 8px;
+    background: #f8e8d3;
     box-shadow:
-        inset 0 0 0 3px #e8c9a8,
-        0 8px 16px rgba(83, 54, 34, 0.18);
+        inset 0 0 0 3px #ecd2b3,
+        0 9px 18px rgba(83, 54, 34, 0.18);
+}
+
+.pet-home-bed-headboard {
+    position: absolute;
+    top: -32%;
+    left: -2%;
+    width: 14%;
+    height: 132%;
+    border: 4px solid #8a5a3b;
+    border-radius: 10px 10px 6px 6px;
+    background: linear-gradient(180deg, #c98a5b, #a96b44);
 }
 
 .pet-home-bed-pillow {
     position: absolute;
-    top: 8%;
-    left: 8%;
-    width: 34%;
-    height: 26%;
-    border: 3px solid #e8d4bb;
+    top: 14%;
+    left: 16%;
+    width: 30%;
+    height: 42%;
+    border: 3px solid #ecd9c0;
     border-radius: 8px;
     background: #fffaf0;
 }
 
 .pet-home-bed-blanket {
     position: absolute;
-    right: 6%;
+    right: 5%;
     bottom: 6%;
-    width: 62%;
-    height: 44%;
+    width: 58%;
+    height: 52%;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--pcolor) 55%, #f4c7a4);
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+    background:
+        repeating-linear-gradient(90deg,
+            rgba(255, 255, 255, 0.16) 0 8px,
+            transparent 8px 16px),
+        color-mix(in srgb, var(--pcolor) 46%, #f4c7a4);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
-.pet-home-room.is-home-interior .pet-home-room-note {
-    top: 2.5%;
-    right: 2.5%;
-    left: auto;
-    padding: 5px 9px;
-    border: 2px solid #d8b99a;
-    border-radius: 8px;
-    background: #fff8ef;
-    color: #7a563c;
-    font-family: inherit;
-    font-size: 10px;
-    backdrop-filter: none;
-}
+@keyframes pet-lamp-breathe {
+    0%,
+    100% {
+        opacity: 0.58;
+        transform: scale(0.96);
+    }
 
+    50% {
+        opacity: 0.86;
+        transform: scale(1.04);
+    }
+}
 /* ===== 全宽农场场景 ===== */
 .pet-home-room {
-    min-height: clamp(560px, 62vh, 760px);
-    max-height: 760px;
-    aspect-ratio: 1 / 1.02;
+    min-height: clamp(440px, 44vh, 560px);
+    max-height: 560px;
+    aspect-ratio: 16 / 11;
     border-color: color-mix(in srgb, #6ca34d 24%, var(--admin-line, var(--gray1)));
     border-radius: 22px;
     background:
@@ -2016,47 +2215,6 @@ onUnmounted(() => {
     right: 8%;
 }
 
-.pet-home-sign {
-    z-index: 6;
-    top: 41%;
-    bottom: auto;
-    left: 31.5%;
-    display: flex;
-    width: 13%;
-    min-width: 62px;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    padding: 6px 7px 5px;
-    border: 2px solid #7f4c25;
-    border-radius: 5px;
-    background:
-        repeating-linear-gradient(90deg,
-            rgba(255, 255, 255, 0.05) 0 4%,
-            transparent 4% 11%),
-        linear-gradient(180deg, #c78348, #9d5d30);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.24),
-        0 5px 7px rgba(71, 46, 25, 0.18);
-    transform: rotate(-2deg);
-
-    b {
-        color: #fff5d8;
-        font-size: clamp(9px, 1vw, 12px);
-        font-weight: 760;
-        letter-spacing: 0.08em;
-        text-shadow: 0 1px 1px rgba(86, 45, 18, 0.45);
-        white-space: nowrap;
-    }
-
-    small {
-        color: rgba(255, 244, 211, 0.74);
-        font-size: 7px;
-        letter-spacing: 0.12em;
-        line-height: 1.2;
-    }
-}
-
 @keyframes pet-windmill-spin {
     to {
         rotate: 360deg;
@@ -2094,20 +2252,6 @@ onUnmounted(() => {
     }
 }
 
-.pet-home-room-note {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    z-index: 5;
-    padding: 5px 9px;
-    border: 1px solid rgba(255, 255, 255, 0.56);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.48);
-    color: rgba(56, 74, 105, 0.72);
-    font-size: 10px;
-    backdrop-filter: blur(5px);
-    pointer-events: none;
-}
 
 .pet-homestead-tools {
     display: flex;
@@ -2552,9 +2696,9 @@ onUnmounted(() => {
 
 /* ===== Kenney Tiny Farm 像素场景 ===== */
 .pet-home-room.is-pixel-farm {
-    min-height: clamp(560px, 62vh, 760px);
-    max-height: 760px;
-    aspect-ratio: 1 / 1.02;
+    min-height: clamp(440px, 44vh, 560px);
+    max-height: 560px;
+    aspect-ratio: 16 / 11;
     overflow: hidden;
     border: 4px solid #3c2b2f;
     border-radius: 0;
@@ -3429,11 +3573,10 @@ onUnmounted(() => {
 
 .pet-home-room.is-pixel-farm .pet-home-plots {
     z-index: 4;
-    top: 40%;
-    right: auto;
-    left: 35%;
-    width: 37%;
-    height: 32%;
+    top: 46%;
+    right: 16%;
+    left: 16%;
+    height: 34%;
     grid-template-columns: repeat(var(--plot-columns, 2), minmax(0, 1fr));
     gap: 3.2%;
     filter: none;
@@ -3754,72 +3897,7 @@ onUnmounted(() => {
     animation: pet-pixel-fish 3.2s steps(2, end) infinite;
 }
 
-.pet-home-room.is-pixel-farm .pet-home-sign {
-    z-index: 6;
-    top: 56%;
-    bottom: auto;
-    left: 3%;
-    width: 13%;
-    min-width: 58px;
-    gap: 2px;
-    padding: 5px 6px;
-    border: 3px solid #3c2b2f;
-    border-radius: 0;
-    background:
-        repeating-linear-gradient(0deg,
-            #d39a59 0 6px,
-            #c98d4f 6px 8px);
-    box-shadow: 4px 4px 0 rgba(60, 43, 47, 0.24);
-    transform: none;
 
-    &::before,
-    &::after {
-        position: absolute;
-        bottom: -11px;
-        width: 4px;
-        height: 12px;
-        content: '';
-        background: #6f4531;
-        box-shadow: inset -2px 0 0 #8f5c3c;
-    }
-
-    &::before {
-        left: 15%;
-    }
-
-    &::after {
-        right: 15%;
-    }
-
-    b {
-        color: #fff4d1;
-        font-family: 'Courier New', monospace;
-        font-size: clamp(10px, 1vw, 13px);
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-shadow: 2px 2px 0 #7d4d30;
-    }
-
-    small {
-        color: #624126;
-        font-family: 'Courier New', monospace;
-        font-size: 8px;
-    }
-}
-
-.pet-home-room.is-pixel-farm .pet-home-room-note {
-    top: 2.5%;
-    right: 2.5%;
-    left: auto;
-    padding: 4px 7px;
-    border: 2px solid #3c2b2f;
-    border-radius: 0;
-    background: #fff2c7;
-    color: #4f3a2b;
-    font-family: 'Courier New', monospace;
-    font-size: 9px;
-    backdrop-filter: none;
-}
 
 .pet-home-room.is-pixel-farm .pet-home-yard-badge {
     min-width: 21px;
@@ -3979,11 +4057,12 @@ onUnmounted(() => {
 }
 
 .pet-home-room.is-tab-raise .pet-home-pasture {
-    top: auto;
-    bottom: 5%;
-    left: 3%;
-    width: 48%;
-    height: 30%;
+    top: 52%;
+    right: auto;
+    bottom: 8%;
+    left: 9%;
+    width: 37%;
+    height: 33%;
 }
 
 .pet-home-room.is-tab-raise .pet-home-pasture > b.pet-pixel-cow {
@@ -4010,10 +4089,10 @@ onUnmounted(() => {
 }
 
 .pet-home-room.is-tab-raise .pet-home-coop {
-    top: 8%;
-    right: 5%;
-    width: 23%;
-    height: 23%;
+    top: 14%;
+    right: 9%;
+    width: 33%;
+    height: 30%;
 }
 
 .pet-home-room.is-tab-raise .pet-pixel-fence {
@@ -4064,12 +4143,12 @@ onUnmounted(() => {
 }
 
 .pet-home-room.is-tab-fish .pet-home-pond {
-    top: auto;
-    right: 3%;
-    bottom: 4%;
-    left: auto;
-    width: 44%;
-    height: 33%;
+    top: 42%;
+    right: 12%;
+    bottom: 8%;
+    left: 12%;
+    width: auto;
+    height: 44%;
 }
 
 .pet-home-room.is-tab-fish .pet-pixel-pond-dock {
@@ -4105,8 +4184,7 @@ onUnmounted(() => {
 .pet-home-room.is-tab-raise .pet-pixel-tree-c,
 .pet-home-room.is-tab-raise .pet-pixel-bush-c,
 .pet-home-room.is-tab-raise .pet-pixel-flower-b,
-.pet-home-room.is-tab-raise .pet-pixel-flower-e,
-.pet-home-room.is-tab-raise .pet-home-sign {
+.pet-home-room.is-tab-raise .pet-pixel-flower-e {
     display: none;
 }
 
@@ -4131,7 +4209,7 @@ onUnmounted(() => {
     display: none;
 }
 
-/* Three.js 场景接管视觉后，DOM 只保留交互热区与作物/动物精灵 */
+/* Three.js 场景接管视觉后，DOM 只保留交互热区与作物精灵 */
 .pet-home-room.is-yard3d {
     .pet-home-plot,
     .pet-home-plot.is-empty {
@@ -4313,9 +4391,6 @@ onUnmounted(() => {
         aspect-ratio: 0.92;
     }
 
-    .pet-home-room-note {
-        display: none;
-    }
 
     .pet-home-interior {
         width: 48%;
@@ -4371,9 +4446,6 @@ onUnmounted(() => {
         font-size: 16px;
     }
 
-    .pet-home-sign {
-        display: none;
-    }
 
     .pet-homestead-seed {
         padding: 5px 7px;

@@ -17,8 +17,13 @@
                     <i />
                 </span>
                 <span class="pet-home-picture">♥</span>
+                <span class="pet-home-wall-photo pet-home-wall-photo-a" />
+                <span class="pet-home-wall-photo pet-home-wall-photo-b" />
                 <span class="pet-home-clock" />
                 <span class="pet-home-door" />
+                <span class="pet-home-hanging-plant">
+                    <i class="pet-home-hanging-pot" />
+                </span>
                 <span class="pet-home-plant">🪴</span>
                 <span class="pet-home-table">
                     <i class="pet-home-table-top" />
@@ -26,13 +31,21 @@
                     <i class="pet-home-table-leg is-right" />
                     <i class="pet-home-table-cup" />
                 </span>
+                <span class="pet-home-lamp">
+                    <i class="pet-home-lamp-shade" />
+                    <i class="pet-home-lamp-stand" />
+                    <i class="pet-home-lamp-base" />
+                </span>
                 <span class="pet-home-bed">
+                    <i class="pet-home-bed-headboard" />
                     <i class="pet-home-bed-pillow" />
                     <i class="pet-home-bed-blanket" />
                 </span>
                 <span class="pet-home-rug" />
                 <span class="pet-home-cushion" />
                 <span class="pet-home-bowl">🥣</span>
+                <span class="pet-home-baseboard" />
+                <span class="pet-home-lamp-glow" />
             </div>
         </template>
         <template v-else>
@@ -152,12 +165,7 @@
                     aria-hidden="true">🐟</b>
             </button>
 
-            <span class="pet-home-sign" aria-hidden="true">
-                <b>开心农场</b>
-                <small>DAY {{ streakDays + 1 }}</small>
-            </span>
         </template>
-        <span class="pet-home-room-note">{{ note }}</span>
     </div>
 </template>
 
@@ -203,8 +211,6 @@ const props = defineProps<{
     pondReady: boolean
     pondLabel: string
     ownedDecorations: PetHomeDecoration[]
-    streakDays: number
-    note: string
 }>()
 
 const roomClasses = computed(() => [

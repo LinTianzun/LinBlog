@@ -89,7 +89,7 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
   await page.getByRole('tab', { name: '小屋' }).click()
   await expect(page.locator('.pet-home-interior')).toBeVisible()
   await expect(page.locator('.pet-home-plot')).toHaveCount(0)
-  await expect(page.locator('.pet-home-room-note')).toContainText('它的小屋')
+  await expect(page.locator('.pet-home-bed')).toBeVisible()
 
   await page.getByRole('tab', { name: '养殖' }).click()
   await expect(page.locator('.pet-home-coop')).toBeVisible()

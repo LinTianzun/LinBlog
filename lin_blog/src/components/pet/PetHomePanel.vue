@@ -11,79 +11,85 @@
             </span>
         </header>
 
-        <div class="pet-home-tabs" role="tablist" aria-label="宠物小屋和农场区域">
-            <button v-for="(tab, index) in tabs" :key="tab.id"
-                :id="`pet-home-tab-${tab.id}`" type="button" role="tab"
-                :aria-selected="petHomeTab === tab.id" aria-controls="pet-home-panel"
-                :tabindex="petHomeTab === tab.id ? 0 : -1"
-                :class="[`is-${tab.id}`, { 'is-active': petHomeTab === tab.id }]"
-                @click="emit('select-tab', tab.id)"
-                @keydown="handleTabKeydown($event, index)">
-                <span aria-hidden="true">{{ tab.icon }}</span>{{ tab.label }}
-            </button>
-        </div>
+        <div class="pet-home-console">
+            <div class="pet-home-stage">
+                <div class="pet-home-tabs" role="tablist" aria-label="宠物小屋和农场区域">
+                    <button v-for="(tab, index) in tabs" :key="tab.id"
+                        :id="`pet-home-tab-${tab.id}`" type="button" role="tab"
+                        :aria-selected="petHomeTab === tab.id" aria-controls="pet-home-panel"
+                        :tabindex="petHomeTab === tab.id ? 0 : -1"
+                        :class="[`is-${tab.id}`, { 'is-active': petHomeTab === tab.id }]"
+                        @click="emit('select-tab', tab.id)"
+                        @keydown="handleTabKeydown($event, index)">
+                        <span aria-hidden="true">{{ tab.icon }}</span>{{ tab.label }}
+                    </button>
+                </div>
 
-        <PetHomeRoom :tab="petHomeTab" :room-class="petHomeRoomClass"
-            :plots="homesteadPlots" :plot-columns="homesteadPlotColumns"
-            :chicken="chicken" :chicken-label="chickenLabel"
-            :cow="cow" :cow-label="cowLabel"
-            :pond-ready="pondReady" :pond-label="pondLabel"
-            :owned-decorations="ownedDecorations"
-            :streak-days="petVitals.streakDays" :note="petHomeNote"
-            @plot-click="emit('plot-click', $event)"
-            @collect-chicken="emit('collect-chicken')"
-            @collect-cow="emit('collect-cow')" @pond-click="emit('pond-click')" />
+                <PetHomeRoom :tab="petHomeTab" :room-class="petHomeRoomClass"
+                    :plots="homesteadPlots" :plot-columns="homesteadPlotColumns"
+                    :chicken="chicken" :chicken-label="chickenLabel"
+                    :cow="cow" :cow-label="cowLabel"
+                    :pond-ready="pondReady" :pond-label="pondLabel"
+                    :owned-decorations="ownedDecorations"
+                    :streak-days="petVitals.streakDays"
+                    @plot-click="emit('plot-click', $event)"
+                    @collect-chicken="emit('collect-chicken')"
+                    @collect-cow="emit('collect-cow')" @pond-click="emit('pond-click')" />
+            </div>
 
-        <PetHomestead v-if="petHomeTab !== 'home'" :tab="petHomeTab"
-            :coins="homestead.coins"
-            :completed-orders="completedOrderCount"
-            :order-total="homestead.orders.length"
-            :claimable-orders="claimableOrderCount"
-            :claimable-achievements="claimableHomesteadAchievementCount"
-            :crops="HOMESTEAD_CROPS"
-            :seed-stock="homestead.seedStock"
-            :selected-seed-id="selectedSeedId"
-            :tend-count="homesteadTendCount"
-            :inventory-chips="inventoryChips"
-            :auto-help-enabled="homestead.autoHelp.enabled"
-            :auto-help-status="autoHelpStatus"
-            @open-business="emit('open-business', $event)"
-            @select-seed="emit('select-seed', $event)"
-            @tend="emit('tend')"
-            @request-auto-help="emit('request-auto-help')"
-            @update:auto-help-enabled="emit('update:auto-help-enabled', $event)" />
+            <aside class="pet-home-hud">
+                <PetHomestead v-if="petHomeTab !== 'home'" :tab="petHomeTab"
+                    :coins="homestead.coins"
+                    :completed-orders="completedOrderCount"
+                    :order-total="homestead.orders.length"
+                    :claimable-orders="claimableOrderCount"
+                    :claimable-achievements="claimableHomesteadAchievementCount"
+                    :crops="HOMESTEAD_CROPS"
+                    :seed-stock="homestead.seedStock"
+                    :selected-seed-id="selectedSeedId"
+                    :tend-count="homesteadTendCount"
+                    :inventory-chips="inventoryChips"
+                    :auto-help-enabled="homestead.autoHelp.enabled"
+                    :auto-help-status="autoHelpStatus"
+                    @open-business="emit('open-business', $event)"
+                    @select-seed="emit('select-seed', $event)"
+                    @tend="emit('tend')"
+                    @request-auto-help="emit('request-auto-help')"
+                    @update:auto-help-enabled="emit('update:auto-help-enabled', $event)" />
 
-        <div class="pet-home-actions">
-            <button type="button" :disabled="feedCooldownLeft > 0"
-                :title="feedCooldownLeft > 0 ? '刚喂过，稍后再试' : '喂一口'"
-                @click="emit('feed', selectedFood.id)">
-                <span>{{ selectedFood.icon }}</span>喂一口
-            </button>
-            <button type="button" :disabled="!settings.desktopPetEnabled"
-                @click="emit('send-command', 'home')">
-                <span>🏠</span>回到小院
-            </button>
-            <button type="button" :disabled="!settings.desktopPetEnabled"
-                @click="emit('send-command', 'speak')">
-                <span>💬</span>说句话
-            </button>
-            <button type="button" :disabled="!settings.desktopPetEnabled"
-                @click="emit('send-command', 'sleep')">
-                <span>🌙</span>睡一觉
-            </button>
-            <button type="button" :disabled="!settings.desktopPetEnabled"
-                @click="emit('send-command', 'wake')">
-                <span>☀️</span>叫醒它
-            </button>
-        </div>
+                <div class="pet-home-actions">
+                    <button type="button" :disabled="feedCooldownLeft > 0"
+                        :title="feedCooldownLeft > 0 ? '刚喂过，稍后再试' : '喂一口'"
+                        @click="emit('feed', selectedFood.id)">
+                        <span>{{ selectedFood.icon }}</span>喂一口
+                    </button>
+                    <button type="button" :disabled="!settings.desktopPetEnabled"
+                        @click="emit('send-command', 'home')">
+                        <span>🏠</span>回到小院
+                    </button>
+                    <button type="button" :disabled="!settings.desktopPetEnabled"
+                        @click="emit('send-command', 'speak')">
+                        <span>💬</span>说句话
+                    </button>
+                    <button type="button" :disabled="!settings.desktopPetEnabled"
+                        @click="emit('send-command', 'sleep')">
+                        <span>🌙</span>睡一觉
+                    </button>
+                    <button type="button" :disabled="!settings.desktopPetEnabled"
+                        @click="emit('send-command', 'wake')">
+                        <span>☀️</span>叫醒它
+                    </button>
+                </div>
 
-        <div class="pet-home-footer">
-            <button type="button" :disabled="!canEditPet" @click="emit('reset-settings')">
-                恢复默认展示
-            </button>
-            <button type="button" @click="emit('open-preferences')">
-                本机偏好设置 →
-            </button>
+                <div class="pet-home-footer">
+                    <button type="button" :disabled="!canEditPet" @click="emit('reset-settings')">
+                        恢复默认展示
+                    </button>
+                    <button type="button" @click="emit('open-preferences')">
+                        本机偏好设置 →
+                    </button>
+                </div>
+            </aside>
         </div>
     </section>
 </template>
@@ -114,7 +120,6 @@ const props = defineProps<{
     petHomeTab: PetHomeTab
     petHomeStatus: string
     petHomeRoomClass: string[]
-    petHomeNote: string
     displayPetName: string
     petVitals: PetVitals
     settings: DesktopPetSettings
@@ -225,6 +230,186 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
         font-size: 12px;
         line-height: 1.5;
     }
+}
+
+.pet-home-console {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pet-home-stage {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pet-home-hud {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.pet-home-hud .pet-homestead-business {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 12px;
+}
+
+.pet-home-hud .pet-homestead-business-actions {
+    width: auto;
+    margin-left: auto;
+    gap: 5px;
+}
+
+.pet-home-hud .pet-homestead-business-actions button {
+    min-height: 28px;
+    padding: 0 7px;
+    border-radius: 8px;
+    font-size: 10px;
+}
+
+.pet-home-hud .pet-homestead-business-actions b {
+    min-width: 15px;
+    height: 15px;
+    font-size: 8px;
+}
+
+.pet-home-hud .pet-homestead-orders-progress {
+    max-width: 98px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pet-home-hud .pet-homestead-tools,
+.pet-home-hud .pet-homestead-store {
+    flex-direction: row;
+    align-items: center;
+    padding: 5px 7px;
+    border-radius: 12px;
+}
+
+.pet-home-hud .pet-homestead-seeds {
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 3px;
+    border-radius: 10px;
+}
+
+.pet-home-hud .pet-homestead-hint {
+    flex: 1;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pet-home-hud .pet-homestead-tend {
+    min-height: 30px;
+    padding: 0 8px;
+    border-radius: 9px;
+    font-size: 11px;
+    justify-content: center;
+}
+
+.pet-home-hud .pet-homestead-tend-count {
+    top: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 9px;
+}
+
+.pet-home-hud .pet-homestead-store {
+    gap: 5px;
+    min-height: 32px;
+    scrollbar-width: none;
+}
+
+.pet-home-hud .pet-homestead-store::-webkit-scrollbar {
+    display: none;
+}
+
+.pet-home-hud .pet-homestead-store-label {
+    padding-right: 2px;
+    font-size: 10px;
+}
+
+.pet-home-hud .pet-homestead-item {
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.pet-home-hud .pet-homestead-item span {
+    font-size: 11px;
+}
+
+.pet-home-hud .pet-homestead-store-empty {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+}
+
+.pet-home-hud .pet-homestead-auto {
+    align-items: center;
+    gap: 7px;
+    padding: 5px 7px;
+    border-radius: 12px;
+}
+
+.pet-home-hud .pet-homestead-auto-copy {
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+}
+
+.pet-home-hud .pet-homestead-auto-copy span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pet-home-hud .pet-homestead-auto-actions {
+    gap: 5px;
+}
+
+.pet-home-hud .pet-homestead-auto-now {
+    min-height: 28px;
+    padding: 0 7px;
+    border-radius: 8px;
+    font-size: 10px;
+}
+
+.pet-home-hud .pet-home-actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 0;
+}
+
+.pet-home-hud .pet-home-actions button {
+    min-height: 36px;
+    padding: 6px;
+    font-size: 11px;
+}
+
+.pet-home-hud .pet-home-footer {
+    justify-content: flex-end;
+    padding-top: 1px;
 }
 
 .pet-home-kicker {

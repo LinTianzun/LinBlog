@@ -20,17 +20,15 @@ import type {
     WebGLRenderer,
 } from 'three'
 import barrelUrl from '../../assets/farm/pixel/barrel.png'
-import beehiveUrl from '../../assets/farm/pixel/beehive.png'
 import bushUrl from '../../assets/farm/pixel/bush.png'
 import crateUrl from '../../assets/farm/pixel/crate.png'
-import cropCarrotUrl from '../../assets/farm/pixel/crop-carrot-2.png'
-import cropTomatoUrl from '../../assets/farm/pixel/crop-tomato-2.png'
 import fenceStripUrl from '../../assets/farm/pixel/fence-strip.png'
 import fishUrl from '../../assets/farm/pixel/fish.png'
 import flowerUrl from '../../assets/farm/pixel/flower.png'
 import grassUrl from '../../assets/farm/pixel/grass.png'
 import hayUrl from '../../assets/farm/pixel/hay.png'
 import chickenUrl from '../../assets/farm/pixel/chicken.png'
+import cowUrl from '../../assets/farm/pixel/cow.png'
 import houseUrl from '../../assets/farm/pixel/house.png'
 import lilyUrl from '../../assets/farm/pixel/lily.png'
 import milkCanUrl from '../../assets/farm/pixel/milk-can.png'
@@ -38,6 +36,8 @@ import petCatUrl from '../../assets/farm/pixel/pet-cat.png'
 import reedsUrl from '../../assets/farm/pixel/reeds.png'
 import rockUrl from '../../assets/farm/pixel/rock.png'
 import scarecrowUrl from '../../assets/farm/pixel/scarecrow.png'
+import sheepUrl from '../../assets/farm/pixel/sheep.png'
+import troughUrl from '../../assets/farm/pixel/trough.png'
 import treeOakUrl from '../../assets/farm/pixel/tree-oak.png'
 import treeUrl from '../../assets/farm/pixel/tree.png'
 import wateringCanUrl from '../../assets/farm/pixel/watering-can.png'
@@ -149,6 +149,13 @@ const SPRITE_ASPECT = new Map<string, number>([
 
 const VIEW_HEIGHT = 26
 const PET_WIDTH_PCT = 8.4
+const PLOT_GRID = {
+    left: 16,
+    top: 46,
+    width: 68,
+    height: 34,
+    gap: 6,
+}
 
 const ZONE_TINTS: Record<PetYardTab, number> = {
     grow: 0xffffff,
@@ -460,122 +467,107 @@ function patchMesh(patch: PatchSpec): Mesh {
 
 function buildZone(tab: PetYardTab): ZoneSpec {
     if (tab === 'grow') {
+        const beds: PatchSpec[] = plotRects().map((rect) => ({
+            kind: 'soil',
+            left: rect.left + 1.1,
+            top: rect.top + 1.1,
+            width: Math.max(4, rect.width - 2.2),
+            height: Math.max(4, rect.height - 2.2),
+        }))
         return {
             tint: ZONE_TINTS.grow,
-            petStart: { x: 58, y: 54 },
+            petStart: { x: 50, y: 86 },
             patches: [
-                { kind: 'path', left: 14, top: 41, width: 18, height: 24 },
-                { kind: 'path', left: 30, top: 55, width: 22, height: 6 },
-                { kind: 'soil', left: 30, top: 33, width: 49, height: 41 },
-                { kind: 'soil', left: 2, top: 76, width: 15, height: 15 },
+                { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
+                ...beds,
             ],
             sprites: [
-                { src: houseUrl, x: 11, y: 47, w: 15.5 },
-                { src: treeOakUrl, x: 71, y: 30, w: 9 },
-                { src: treeUrl, x: 87, y: 27, w: 8, anim: 'sway' },
-                { src: treeUrl, x: 95, y: 59, w: 7, anim: 'sway' },
-                { src: treeUrl, x: 9, y: 79, w: 8, anim: 'sway' },
-                { src: bushUrl, x: 65, y: 52, w: 5, anim: 'sway' },
-                { src: bushUrl, x: 25, y: 24, w: 4.5, anim: 'sway' },
-                { src: bushUrl, x: 43, y: 25, w: 4, anim: 'sway' },
-                { src: flowerUrl, x: 21, y: 35, w: 3.4, anim: 'sway' },
-                { src: flowerUrl, x: 28, y: 30, w: 3.1, anim: 'sway' },
-                { src: flowerUrl, x: 63, y: 89, w: 3.4, anim: 'sway' },
-                { src: flowerUrl, x: 92, y: 85, w: 3.2, anim: 'sway' },
-                { src: flowerUrl, x: 52, y: 28, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 16, y: 60, w: 3.2, anim: 'sway' },
-                { src: rockUrl, x: 17, y: 91, w: 5 },
-                { src: rockUrl, x: 45, y: 93, w: 4 },
-                { src: scarecrowUrl, x: 30, y: 57, w: 7, anim: 'sway' },
-                { src: hayUrl, x: 63, y: 47, w: 6.5 },
-                { src: hayUrl, x: 68, y: 88, w: 6 },
-                { src: barrelUrl, x: 90, y: 71, w: 4.5 },
-                { src: crateUrl, x: 92, y: 61, w: 4.5 },
-                { src: beehiveUrl, x: 85, y: 45, w: 5.5 },
-                { src: wateringCanUrl, x: 37, y: 84, w: 5 },
-                { src: cropCarrotUrl, x: 5, y: 86, w: 3.6 },
-                { src: cropCarrotUrl, x: 8.5, y: 89, w: 3.4 },
-                { src: cropTomatoUrl, x: 12, y: 86, w: 3.6 },
-                { src: fenceStripUrl, x: 77, y: 90, w: 40 },
+                { src: houseUrl, x: 2, y: 30, w: 13.5 },
+                { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
+                { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
+                { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
+                { src: bushUrl, x: 72, y: 30, w: 4.5, anim: 'sway' },
+                { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 86, y: 46, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 90, y: 56, w: 3, anim: 'sway' },
+                { src: scarecrowUrl, x: 90, y: 78, w: 6.5 },
+                { src: wateringCanUrl, x: 12, y: 76, w: 4.5 },
+                { src: crateUrl, x: 16, y: 90, w: 4.5 },
+                { src: hayUrl, x: 84, y: 94, w: 5.5 },
+                { src: barrelUrl, x: 90, y: 90, w: 4.5 },
+                { src: fenceStripUrl, x: 14, y: 96, w: 74 },
             ],
         }
     }
     if (tab === 'raise') {
         return {
             tint: ZONE_TINTS.raise,
-            petStart: { x: 46, y: 58 },
+            petStart: { x: 50, y: 86 },
             patches: [
-                { kind: 'path', left: 12, top: 40, width: 16, height: 22 },
-                { kind: 'pasture', left: 1, top: 63, width: 52, height: 35 },
-                { kind: 'path', left: 20, top: 58, width: 44, height: 6 },
-                { kind: 'sand', left: 70, top: 10, width: 29, height: 24 },
+                { kind: 'sand', left: 54, top: 14, width: 38, height: 30 },
+                { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
+                { kind: 'pasture', left: 9, top: 52, width: 37, height: 33 },
             ],
             sprites: [
-                { src: houseUrl, x: 11, y: 44, w: 14.5 },
-                { src: treeOakUrl, x: 40, y: 31, w: 8 },
-                { src: treeUrl, x: 92, y: 31, w: 8 },
-                { src: treeUrl, x: 96, y: 61, w: 7 },
-                { src: treeUrl, x: 2, y: 47, w: 6 },
-                { src: bushUrl, x: 60, y: 43, w: 4.5 },
-                { src: bushUrl, x: 35, y: 90, w: 4 },
-                { src: flowerUrl, x: 54, y: 58, w: 3.4 },
-                { src: flowerUrl, x: 88, y: 52, w: 3.2 },
-                { src: flowerUrl, x: 16, y: 94, w: 3.2 },
-                { src: flowerUrl, x: 64, y: 34, w: 3 },
-                { src: hayUrl, x: 55, y: 67, w: 7 },
-                { src: hayUrl, x: 62, y: 92, w: 6 },
-                { src: hayUrl, x: 47, y: 71, w: 5.5 },
-                { src: milkCanUrl, x: 58, y: 75, w: 4.5 },
-                { src: milkCanUrl, x: 66, y: 60, w: 4.2 },
-                { src: chickenUrl, x: 63, y: 38, w: 3.8, anim: 'hop' },
-                { src: chickenUrl, x: 68, y: 43, w: 3.4, flip: true, anim: 'hop' },
-                { src: chickenUrl, x: 58, y: 45, w: 3.6, anim: 'graze' },
-                { src: rockUrl, x: 94, y: 90, w: 4.5 },
-                { src: fenceStripUrl, x: 27, y: 62, w: 50 },
-                { src: fenceStripUrl, x: 54, y: 82, w: 12, flip: true },
-                { src: fenceStripUrl, x: 5, y: 88, w: 10, flip: true },
+                { src: houseUrl, x: 2, y: 30, w: 13.5 },
+                { src: chickenUrl, x: 60, y: 29, w: 3.6, anim: 'hop' },
+                { src: chickenUrl, x: 67, y: 35, w: 3.3, flip: true, anim: 'hop' },
+                { src: chickenUrl, x: 73, y: 25, w: 3.5, anim: 'graze' },
+                { src: hayUrl, x: 60, y: 40, w: 6 },
+                { src: hayUrl, x: 68, y: 37, w: 5 },
+                { src: milkCanUrl, x: 79, y: 40, w: 4.2 },
+                { src: crateUrl, x: 88, y: 34, w: 4.5 },
+                { src: chickenUrl, x: 84, y: 41, w: 3.6, anim: 'hop' },
+                { src: cowUrl, x: 17, y: 63, w: 6.5, anim: 'graze' },
+                { src: sheepUrl, x: 32, y: 66, w: 5, anim: 'hop' },
+                { src: troughUrl, x: 40, y: 79, w: 4.8 },
+                { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
+                { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
+                { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
+                { src: bushUrl, x: 80, y: 84, w: 4.5, anim: 'sway' },
+                { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 86, y: 46, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 90, y: 56, w: 3, anim: 'sway' },
+                { src: rockUrl, x: 8, y: 88, w: 5 },
+                { src: rockUrl, x: 88, y: 88, w: 4.5 },
+                { src: fenceStripUrl, x: 10, y: 83, w: 34 },
+                { src: fenceStripUrl, x: 45, y: 79, w: 8, flip: true },
             ],
         }
     }
     return {
         tint: ZONE_TINTS.fish,
-        petStart: { x: 48, y: 66 },
+        petStart: { x: 50, y: 86 },
         patches: [
-            { kind: 'path', left: 11, top: 38, width: 15, height: 22 },
-            { kind: 'path', left: 20, top: 58, width: 34, height: 5 },
-            { kind: 'sand', left: 44, top: 53, width: 57, height: 46 },
-            { kind: 'water', left: 47, top: 57, width: 51, height: 40 },
-            { kind: 'plank', left: 55, top: 62, width: 24, height: 7 },
+            { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
+            { kind: 'sand', left: 12, top: 42, width: 76, height: 46 },
+            { kind: 'water', left: 21, top: 49, width: 58, height: 34 },
+            { kind: 'plank', left: 45, top: 49, width: 13, height: 9 },
         ],
         sprites: [
-            { src: houseUrl, x: 10, y: 41, w: 14 },
-            { src: treeOakUrl, x: 80, y: 27, w: 8 },
-            { src: treeUrl, x: 92, y: 41, w: 7, anim: 'sway' },
-            { src: treeUrl, x: 8, y: 67, w: 8, anim: 'sway' },
-            { src: bushUrl, x: 61, y: 44, w: 4.5, anim: 'sway' },
-            { src: bushUrl, x: 44, y: 92, w: 4, anim: 'sway' },
-            { src: flowerUrl, x: 50, y: 52, w: 3.2, anim: 'sway' },
-            { src: flowerUrl, x: 97, y: 58, w: 3, anim: 'sway' },
-            { src: flowerUrl, x: 41, y: 74, w: 3, anim: 'sway' },
-            { src: flowerUrl, x: 90, y: 52, w: 3.2, anim: 'sway' },
-            { src: reedsUrl, x: 49, y: 75, w: 4.2, anim: 'sway' },
-            { src: reedsUrl, x: 51, y: 87, w: 4, anim: 'sway' },
-            { src: reedsUrl, x: 95, y: 73, w: 4, anim: 'sway' },
-            { src: reedsUrl, x: 46, y: 62, w: 4, anim: 'sway' },
-            { src: reedsUrl, x: 93, y: 94, w: 4.2, anim: 'sway' },
-            { src: reedsUrl, x: 66, y: 55, w: 3.8, anim: 'sway' },
-            { src: lilyUrl, x: 61, y: 79, w: 4.2, anim: 'drift' },
-            { src: lilyUrl, x: 72, y: 87, w: 4, anim: 'drift' },
-            { src: lilyUrl, x: 86, y: 77, w: 3.8, anim: 'drift' },
-            { src: lilyUrl, x: 80, y: 93, w: 4, anim: 'drift' },
-            { src: rockUrl, x: 44, y: 89, w: 5 },
-            { src: rockUrl, x: 98, y: 92, w: 4 },
-            { src: rockUrl, x: 50, y: 55, w: 4 },
-            { src: fenceStripUrl, x: 34, y: 60, w: 26 },
+            { src: houseUrl, x: 2, y: 30, w: 13.5 },
+            { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
+            { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
+            { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
+            { src: bushUrl, x: 36, y: 84, w: 4.5, anim: 'sway' },
+            { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
+            { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
+            { src: flowerUrl, x: 92, y: 54, w: 3, anim: 'sway' },
+            { src: reedsUrl, x: 23, y: 52, w: 4.2, anim: 'sway' },
+            { src: reedsUrl, x: 26, y: 80, w: 4.2, anim: 'sway' },
+            { src: reedsUrl, x: 76, y: 80, w: 4, anim: 'sway' },
+            { src: reedsUrl, x: 78, y: 52, w: 4, anim: 'sway' },
+            { src: lilyUrl, x: 52, y: 62, w: 4.2, anim: 'drift' },
+            { src: lilyUrl, x: 64, y: 70, w: 4, anim: 'drift' },
+            { src: lilyUrl, x: 70, y: 58, w: 3.8, anim: 'drift' },
+            { src: lilyUrl, x: 58, y: 76, w: 4, anim: 'drift' },
+            { src: rockUrl, x: 86, y: 46, w: 4.5 },
+            { src: rockUrl, x: 18, y: 78, w: 5 },
         ],
     }
 }
-
 function disposeGroup(group: Group | null) {
     if (!group) return
     group.traverse((child) => {
@@ -639,8 +631,8 @@ async function rebuildZone() {
     if (props.tab === 'fish') {
         const fish = spriteFromSpec({
             src: fishUrl,
-            x: 76,
-            y: 72,
+            x: 62,
+            y: 64,
             w: 4,
         })
         fishSprite = fish
@@ -692,42 +684,58 @@ function updatePetTransform(dt: number, elapsed: number) {
     void dt
 }
 
-function plotWaypoints(): PctPoint[] {
-    const left = 32
-    const top = 35
-    const width = 45
-    const height = 37
-    const rows = Math.max(1, Math.ceil(props.plotCount / props.plotColumns))
-    const points: PctPoint[] = []
+function plotRects() {
+    const cols = Math.max(1, props.plotColumns)
+    const rows = Math.max(1, Math.ceil(props.plotCount / cols))
+    const gapX = (PLOT_GRID.width * PLOT_GRID.gap) / 100
+    const gapY = (PLOT_GRID.height * PLOT_GRID.gap) / 100
+    const cellWidth = (PLOT_GRID.width - (cols - 1) * gapX) / cols
+    const cellHeight = (PLOT_GRID.height - (rows - 1) * gapY) / rows
+    const rects: Array<{
+        left: number
+        top: number
+        width: number
+        height: number
+    }> = []
     for (let row = 0; row < rows; row += 1) {
-        for (let col = 0; col < props.plotColumns; col += 1) {
-            const index = row * props.plotColumns + col
+        for (let col = 0; col < cols; col += 1) {
+            const index = row * cols + col
             if (index >= props.plotCount) break
-            points.push({
-                x: left + (width * (col + 0.5)) / props.plotColumns,
-                y: top + (height * (row + 0.5)) / rows,
+            rects.push({
+                left: PLOT_GRID.left + col * (cellWidth + gapX),
+                top: PLOT_GRID.top + row * (cellHeight + gapY),
+                width: cellWidth,
+                height: cellHeight,
             })
         }
     }
-    return points
+    return rects
+}
+
+function plotWaypoints(): PctPoint[] {
+    const rects = plotRects()
+    return rects.map((rect) => ({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+    }))
 }
 
 function waypointsForZone(): PctPoint[] {
     if (props.tab === 'grow') {
-        return [...plotWaypoints(), { x: 24, y: 40 }, { x: 62, y: 52 }]
+        return [...plotWaypoints(), { x: 26, y: 87 }, { x: 72, y: 87 }]
     }
     if (props.tab === 'raise') {
         return [
-            { x: 83.5, y: 20 },
-            { x: 27, y: 80 },
-            { x: 46, y: 58 },
-            { x: 60, y: 72 },
+            { x: 73, y: 29 },
+            { x: 27, y: 69 },
+            { x: 41, y: 86 },
+            { x: 50, y: 87 },
         ]
     }
     return [
-        { x: 67, y: 66 },
-        { x: 78, y: 78 },
-        { x: 58, y: 64 },
+        { x: 50, y: 66 },
+        { x: 66, y: 78 },
+        { x: 44, y: 86 },
     ]
 }
 
@@ -820,7 +828,7 @@ function updateWater(elapsed: number) {
         if (cycle < 1.1) {
             fishSprite.visible = true
             const local = cycle / 1.1
-            const ground = pctToGround(76, 72)
+            const ground = pctToGround(62, 64)
             fishSprite.position.set(
                 ground.x,
                 0.4 + Math.sin(local * Math.PI) * 2.2,
@@ -975,21 +983,21 @@ watch(
 watch(
     () => props.chickenReady,
     (ready) => {
-        if (ready) reactToReady('chicken', { x: 83.5, y: 22 })
+        if (ready) reactToReady('chicken', { x: 73, y: 29 })
     }
 )
 
 watch(
     () => props.cowReady,
     (ready) => {
-        if (ready) reactToReady('cow', { x: 27, y: 78 })
+        if (ready) reactToReady('cow', { x: 27, y: 69 })
     }
 )
 
 watch(
     () => props.pondReady,
     (ready) => {
-        if (ready) reactToReady('pond', { x: 78, y: 80 })
+        if (ready) reactToReady('pond', { x: 50, y: 66 })
     }
 )
 
