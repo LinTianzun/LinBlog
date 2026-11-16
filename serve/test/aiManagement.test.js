@@ -822,9 +822,59 @@ test('首选模型可重试故障时自动降级到候选模型', async () => {
 test('参数或鉴权类错误不触发降级，直接抛出真实原因', () => {
     assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 400 }), false)
     assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 401 }), false)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 0 }), true)
+    assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 408 }), true)
     assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 429 }), true)
     assert.equal(aiClient.isRetryableModelError({ code: 'AI_PROVIDER_ERROR', status: 500 }), true)
+    assert.equal(aiClient.isRetryableModelError({ name: 'TimeoutError' }), true)
+    assert.equal(aiClient.isRetryableModelError({ name: 'AbortError' }), true)
     assert.equal(aiClient.isRetryableModelError({ code: 'AI_PARSE_ERROR' }), false)
+})
+
+test('首选模型超时会归一成可重试错误并自动降级', async () => {
+    const originalFetch = global.fetch
+    const attempted = []
+
+    global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body)
+        attempted.push(body.model)
+        if (body.model === 'slow-model') {
+            throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+        }
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '{"summary":"备用模型的简介","labels":["测试"]}' } }],
+            usage: { prompt_tokens: 8, completion_tokens: 4 }
+        }), { status: 200 })
+    }
+
+    try {
+        const result = await aiClient.suggestArticleMeta({
+            title: '标题',
+            content: '正文',
+            aiConfig: {
+                id: 1,
+                name: '慢模型',
+                model: 'slow-model',
+                baseUrl: 'https://a.test/v1',
+                apiKey: 'k',
+                timeoutMs: 20000
+            },
+            chainFn: async () => [{
+                id: 2,
+                name: '备用模型',
+                model: 'backup-model',
+                baseUrl: 'https://b.test/v1',
+                apiKey: 'k'
+            }]
+        })
+
+        assert.deepEqual(attempted, ['slow-model', 'backup-model'])
+        assert.equal(result.summary, '备用模型的简介')
+        assert.equal(result.modelUsed.id, 2)
+        assert.equal(result.modelUsed.degraded, true)
+    } finally {
+        global.fetch = originalFetch
+    }
 })
 
 test('所有候选模型都失败时抛出最后一次错误', async () => {

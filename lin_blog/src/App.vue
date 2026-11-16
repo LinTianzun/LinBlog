@@ -6,6 +6,7 @@
   <ErrorBoundary :key="route.path">
     <router-view />
   </ErrorBoundary>
+  <PwaUpdateBanner />
   <!-- 全站桌宠：门户与后台都常驻（dsh-pet 移植版） -->
   <DesktopPet />
 </template>
@@ -15,6 +16,7 @@
   import { useRoute } from 'vue-router'
   import HeadBar from './components/bar/HeadBar.vue'
   import ErrorBoundary from './components/common/ErrorBoundary.vue'
+import PwaUpdateBanner from './components/common/PwaUpdateBanner.vue'
 import DesktopPet from './components/common/DesktopPet.vue'
   import { useSessionStore } from './store/session'
 

@@ -461,6 +461,25 @@ function parseGalleryCurationPayload(raw) {
     return { titles, summary, labels }
 }
 
+/**
+ * fetch 在超时或断网时抛出的是 DOMException，没有业务错误码。
+ * 统一归一成 AI_PROVIDER_ERROR，runWithFallback 才能判断是否切到备用模型。
+ */
+function normalizeChatTransportError(error, timeoutMs) {
+    if (error?.code) return error
+    const name = String(error?.name || '')
+    if (name === 'TimeoutError' || name === 'AbortError') {
+        return Object.assign(
+            new Error(`AI 服务商响应超时（${Math.max(1, Math.round(timeoutMs / 1000))} 秒）`),
+            { code: 'AI_PROVIDER_ERROR', status: 408, cause: error }
+        )
+    }
+    return Object.assign(
+        new Error(`AI 服务商网络请求失败：${error?.message || '未知错误'}`),
+        { code: 'AI_PROVIDER_ERROR', status: 0, cause: error }
+    )
+}
+
 async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500, images = [] } = {}) {
     const timeoutMs = Number(aiConfig.timeoutMs) || 20000
     const userContent = Array.isArray(images) && images.length > 0
@@ -472,28 +491,33 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500,
             }))
         ]
         : prompt
-    const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${aiConfig.apiKey}`
-        },
-        body: JSON.stringify({
-            model: aiConfig.model,
-            messages: [
-                {
-                    role: 'system',
-                    content: json
-                        ? '你是一名严谨的中文博客编辑助手，只输出符合要求的 JSON。'
-                        : '你是一名严谨的中文博客编辑助手，只输出正文片段。'
-                },
-                { role: 'user', content: userContent }
-            ],
-            temperature: 0.6,
-            max_tokens: maxTokens
-        }),
-        signal: AbortSignal.timeout(timeoutMs)
-    })
+    let response
+    try {
+        response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${aiConfig.apiKey}`
+            },
+            body: JSON.stringify({
+                model: aiConfig.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: json
+                            ? '你是一名严谨的中文博客编辑助手，只输出符合要求的 JSON。'
+                            : '你是一名严谨的中文博客编辑助手，只输出正文片段。'
+                    },
+                    { role: 'user', content: userContent }
+                ],
+                temperature: 0.6,
+                max_tokens: maxTokens
+            }),
+            signal: AbortSignal.timeout(timeoutMs)
+        })
+    } catch (error) {
+        throw normalizeChatTransportError(error, timeoutMs)
+    }
 
     if (!response.ok) {
         const error = Object.assign(
@@ -518,9 +542,12 @@ async function chatCompletion(prompt, { aiConfig, json = false, maxTokens = 500,
  * 参数或鉴权错误换模型也救不回来，直接抛出让作者看到真实原因。
  */
 function isRetryableModelError(error) {
+    const name = String(error?.name || '')
+    if (name === 'TimeoutError' || name === 'AbortError') return true
     if (error?.code !== 'AI_PROVIDER_ERROR') return false
     const status = Number(error?.status || 0)
-    return status === 408 || status === 429 || status >= 500
+    // status 0 表示没有拿到 HTTP 响应（断网、DNS 失败等），同样值得换模型重试
+    return status === 0 || status === 408 || status === 429 || status >= 500
 }
 
 /**

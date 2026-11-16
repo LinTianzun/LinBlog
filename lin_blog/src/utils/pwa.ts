@@ -1,3 +1,5 @@
+import { isPwaUpdateMessage } from './pwaUpdate'
+
 const SNAPSHOT_RESOURCE_TYPES = new Set([
   'fetch',
   'image',
@@ -7,6 +9,8 @@ const SNAPSHOT_RESOURCE_TYPES = new Set([
   'css',
   'xmlhttprequest',
 ])
+
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 function sendLoadedResourceSnapshot(): void {
   const urls = new Set<string>()
@@ -36,6 +40,52 @@ function sendLoadedResourceSnapshot(): void {
     })
 }
 
+/**
+ * 监听新版本接管事件。
+ * - 只有页面加载时就已被旧 Service Worker 控制的标签页才提示，首次安装不打扰；
+ * - 同时监听 controllerchange，防止个别浏览器漏投 message。
+ */
+export function setupPwaUpdateListener(onUpdate: () => void): () => void {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return () => {}
+  }
+
+  const hadControllerAtLoad = Boolean(navigator.serviceWorker.controller)
+  let announced = false
+
+  const announce = () => {
+    if (!hadControllerAtLoad || announced) return
+    announced = true
+    onUpdate()
+  }
+
+  const onMessage = (event: MessageEvent) => {
+    if (isPwaUpdateMessage(event.data)) announce()
+  }
+  const onControllerChange = () => announce()
+
+  navigator.serviceWorker.addEventListener('message', onMessage)
+  navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
+
+  return () => {
+    navigator.serviceWorker.removeEventListener('message', onMessage)
+    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+  }
+}
+
+function scheduleUpdateChecks(registration: ServiceWorkerRegistration): void {
+  const check = () => {
+    // 更新检查失败不打扰用户，下次前台、恢复网络或整点再试
+    void registration.update().catch(() => {})
+  }
+
+  window.setInterval(check, UPDATE_CHECK_INTERVAL_MS)
+  window.addEventListener('online', check)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check()
+  })
+}
+
 export function registerServiceWorker(): void {
   if (typeof window === 'undefined' || !import.meta.env.PROD) return
   if (!('serviceWorker' in navigator)) return
@@ -43,7 +93,10 @@ export function registerServiceWorker(): void {
   const register = () => {
     navigator.serviceWorker
       .register('/sw.js', { scope: '/', type: 'module' })
-      .then(() => sendLoadedResourceSnapshot())
+      .then((registration) => {
+        sendLoadedResourceSnapshot()
+        scheduleUpdateChecks(registration)
+      })
       .catch((error) => {
         console.warn('[PWA] Service Worker 注册失败：', error)
       })
