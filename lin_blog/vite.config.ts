@@ -79,6 +79,7 @@ export default defineConfig({
             if (id.includes("echarts") || id.includes("zrender"))
               return "echarts";
             if (id.includes("@yike-design")) return "yike-design";
+            if (id.includes("/three/")) return "three";
           }
         },
       },

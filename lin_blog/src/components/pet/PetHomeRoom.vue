@@ -1,5 +1,5 @@
 <template>
-    <div id="pet-home-panel" class="pet-home-room" :class="roomClass"
+    <div id="pet-home-panel" class="pet-home-room" :class="roomClasses"
         data-pet-home-zone role="tabpanel"
         :aria-labelledby="`pet-home-tab-${tab}`">
         <template v-if="tab === 'home'">
@@ -36,7 +36,14 @@
             </div>
         </template>
         <template v-else>
-            <div class="pet-pixel-backdrop" aria-hidden="true">
+            <PetYard3D v-if="scene3d !== 'fallback'" :tab="tab"
+                :plot-count="plots.length" :plot-columns="plotColumns"
+                :chicken-ready="chicken.eggReady || chicken.manureReady"
+                :cow-ready="cow.milkReady || cow.manureReady"
+                :pond-ready="pondReady"
+                @ready="scene3d = 'ready'" @unavailable="scene3d = 'fallback'" />
+            <div v-if="scene3d !== 'ready'" class="pet-pixel-backdrop"
+                aria-hidden="true">
                 <span class="pet-pixel-house" />
                 <span v-if="tab !== 'fish'"
                     class="pet-pixel-path pet-pixel-path-top" />
@@ -155,6 +162,9 @@
 </template>
 
 <script lang="ts" setup>
+import { computed, ref, watch } from 'vue'
+import PetYard3D from './PetYard3D.vue'
+
 interface PetHomePlot {
     index: number
     cropId: string | null
@@ -179,7 +189,9 @@ interface PetHomeDecoration {
     name: string
 }
 
-defineProps<{
+const scene3d = ref<'loading' | 'ready' | 'fallback'>('loading')
+
+const props = defineProps<{
     tab: 'home' | 'grow' | 'raise' | 'fish'
     roomClass: string[]
     plots: PetHomePlot[]
@@ -194,6 +206,20 @@ defineProps<{
     streakDays: number
     note: string
 }>()
+
+const roomClasses = computed(() => [
+    ...props.roomClass,
+    ...(scene3d.value === 'ready' && props.tab !== 'home'
+        ? ['is-yard3d']
+        : []),
+])
+
+watch(
+    () => props.tab,
+    (tab) => {
+        if (tab === 'home') scene3d.value = 'loading'
+    }
+)
 
 const emit = defineEmits<{
     (e: 'plot-click', index: number): void

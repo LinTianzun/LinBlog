@@ -106,6 +106,7 @@ declare module 'vue' {
     PetHomePanel: typeof import('./src/components/pet/PetHomePanel.vue')['default']
     PetHomeRoom: typeof import('./src/components/pet/PetHomeRoom.vue')['default']
     PetHomestead: typeof import('./src/components/pet/PetHomestead.vue')['default']
+    PetYard3D: typeof import('./src/components/pet/PetYard3D.vue')['default']
     Pie: typeof import('./src/components/echarts/pie.vue')['default']
     PortalAmbientBackground: typeof import('./src/components/portal/PortalAmbientBackground.vue')['default']
     PortalArticleDetail: typeof import('./src/components/portal/PortalArticleDetail.vue')['default']

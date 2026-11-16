@@ -4131,6 +4131,90 @@ onUnmounted(() => {
     display: none;
 }
 
+/* Three.js 场景接管视觉后，DOM 只保留交互热区与作物/动物精灵 */
+.pet-home-room.is-yard3d {
+    .pet-home-plot,
+    .pet-home-plot.is-empty {
+        background: transparent;
+        box-shadow: none;
+
+        &::before {
+            display: none;
+        }
+    }
+
+    .pet-home-plot::after {
+        position: absolute;
+        inset: 4%;
+        content: '';
+        border: 3px solid transparent;
+        border-radius: 6px;
+        pointer-events: none;
+        transition: border-color 0.16s ease, background 0.16s ease;
+    }
+
+    .pet-home-plot:hover::after,
+    .pet-home-plot:focus-visible::after {
+        border-color: color-mix(in srgb, #ffe27a 82%, #3c2b2f);
+        background: rgba(255, 226, 122, 0.12);
+    }
+
+    .pet-home-plot.is-ready::after {
+        border-color: rgba(255, 215, 120, 0.55);
+    }
+
+    .pet-home-pasture {
+        background: transparent;
+        box-shadow: none;
+
+        &::after {
+            display: none;
+        }
+    }
+
+    .pet-pixel-pasture-fence,
+    .pet-pixel-pasture-gate {
+        display: none;
+    }
+
+    .pet-home-pond {
+        overflow: visible;
+        background: transparent;
+        box-shadow: none;
+        clip-path: none;
+
+        &::before {
+            display: none;
+        }
+    }
+
+    .pet-pixel-pond-dock,
+    .pet-pixel-pond-ripple,
+    .pet-pixel-reeds,
+    .pet-pixel-lily {
+        display: none;
+    }
+
+    .pet-home-pond::after {
+        position: absolute;
+        inset: -2%;
+        content: '';
+        border: 3px solid transparent;
+        border-radius: 42%;
+        pointer-events: none;
+        transition: border-color 0.16s ease;
+    }
+
+    .pet-home-pond:hover::after,
+    .pet-home-pond:focus-visible::after {
+        border-color: rgba(255, 255, 255, 0.6);
+    }
+
+    .pet-pixel-fence {
+        opacity: 0.9;
+    }
+}
+
 @media (max-width: 1420px) {
     .pet-manage-grid {
         grid-template-columns: minmax(0, 0.86fr) minmax(500px, 1.14fr);
