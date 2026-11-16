@@ -8,8 +8,12 @@
             </template>
         </top-title>
 
+        <span class="sr-only" role="status" aria-live="polite">
+            {{ logListAnnouncement }}
+        </span>
         <yk-text v-if="loading" type="secondary">正在加载日志...</yk-text>
-        <yk-text v-else-if="errorMessage" type="danger">{{ errorMessage }}</yk-text>
+        <yk-text v-else-if="errorMessage" type="danger" role="alert"
+            aria-live="assertive">{{ errorMessage }}</yk-text>
 
         <template v-else>
             <section class="system-log-risk" :class="{ 'is-clear': riskSummary && riskSummary.highRisk === 0 }">
@@ -28,21 +32,24 @@
                 </div>
                 <div class="risk-actions">
                     <button type="button" class="risk-chip" :class="{ 'is-active': riskFilter === 'high' }"
-                        @click="toggleRiskFilter">
+                        :aria-pressed="riskFilter === 'high'" @click="toggleRiskFilter">
                         全部高风险 <b>{{ riskSummary?.highRisk ?? 0 }}</b>
                     </button>
                     <button type="button" class="risk-chip"
                         :class="{ 'is-active': moduleFilter === 'permission' && !riskFilter }"
+                        :aria-pressed="moduleFilter === 'permission' && !riskFilter"
                         @click="focusModule('permission')">
                         权限变更 <b>{{ riskSummary?.permissionChanges ?? 0 }}</b>
                     </button>
                     <button type="button" class="risk-chip"
                         :class="{ 'is-active': moduleFilter === 'backup' && !riskFilter }"
+                        :aria-pressed="moduleFilter === 'backup' && !riskFilter"
                         @click="focusModule('backup')">
                         备份操作 <b>{{ riskSummary?.backupOps ?? 0 }}</b>
                     </button>
                     <button type="button" class="risk-chip"
                         :class="{ 'is-active': moduleFilter === 'pet' && !riskFilter }"
+                        :aria-pressed="moduleFilter === 'pet' && !riskFilter"
                         @click="focusModule('pet')">
                         宠物设置 <b>{{ riskSummary?.petChanges ?? 0 }}</b>
                     </button>
@@ -66,6 +73,7 @@
                             type="button"
                             class="date-chip"
                             :class="{ 'is-active': datePreset === option.value }"
+                            :aria-pressed="datePreset === option.value"
                             @click="applyDatePreset(option.value)"
                         >
                             {{ option.label }}
@@ -85,7 +93,8 @@
             <div class="system-log-advanced">
                 <div class="advanced-head">
                     <button type="button" class="advanced-toggle" :class="{ 'is-active': advancedOpen }"
-                        :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
+                        :aria-expanded="advancedOpen" aria-controls="system-log-advanced-filters"
+                        @click="advancedOpen = !advancedOpen">
                         高级筛选
                         <span v-if="advancedFilterCount > 0" class="advanced-count">{{ advancedFilterCount }}</span>
                         <span class="advanced-arrow" aria-hidden="true">{{ advancedOpen ? '收起' : '展开' }}</span>
@@ -94,7 +103,7 @@
                         已应用 {{ advancedFilterCount }} 项条件
                     </span>
                 </div>
-                <div v-if="advancedOpen" class="advanced-fields">
+                <div v-if="advancedOpen" id="system-log-advanced-filters" class="advanced-fields">
                     <label class="advanced-field">
                         <span>操作人</span>
                         <input v-model="operatorFilter" type="text" placeholder="输入用户名" autocomplete="off"
@@ -125,16 +134,18 @@
             <yk-empty v-if="logs.length === 0" description="暂无日志" />
 
             <!-- 紧凑日志表：操作人/动作/模块/详情/来源分行对齐 -->
-            <div v-else class="system-log-table">
+            <div v-else class="system-log-table" :aria-busy="loading">
                 <div class="system-log-row system-log-head">
                     <span class="log-col log-col-user">操作人</span>
                     <span class="log-col log-col-action">动作</span>
                     <span class="log-col log-col-module">模块</span>
                     <span class="log-col log-col-detail">详情</span>
                     <span class="log-col log-col-target">目标 / IP</span>
-                    <span class="log-col log-col-time">
+                    <span class="log-col log-col-time" role="columnheader"
+                        :aria-sort="sortOrder === 'asc' ? 'ascending' : 'descending'">
                         <button type="button" class="log-sort" :class="{ 'is-active': sortOrder !== 'desc' }"
-                            :aria-sort="sortOrder === 'asc' ? 'ascending' : 'descending'" @click="toggleSort">
+                            :aria-label="sortOrder === 'asc' ? '当前时间升序，点击切换为降序' : '当前时间降序，点击切换为升序'"
+                            @click="toggleSort">
                             <span>时间</span>
                             <span class="log-sort-icon" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
                         </button>
@@ -143,7 +154,7 @@
 
                 <div v-for="item in logs" :key="item.id" class="system-log-row"
                     :class="{ 'is-risk': isHighRisk(item) }" tabindex="0" role="button"
-                    :aria-label="`查看日志详情：${item.detail || '无详情'}`"
+                    :aria-label="`查看日志详情：${item.username} ${actionLabel(item.action)}，${item.detail || '无详情'}`"
                     @click="openDetail(item)" @keydown.enter.prevent="openDetail(item)"
                     @keydown.space.prevent="openDetail(item)">
                     <span class="log-col log-col-user">
@@ -408,6 +419,13 @@
             .length
     )
 
+    const logListAnnouncement = computed(() => {
+        if (loading.value) return '正在加载系统日志'
+        if (errorMessage.value) return `系统日志加载失败：${errorMessage.value}`
+        if (total.value === 0) return '当前筛选条件下没有日志'
+        return `已加载第 ${page.value} 页，共 ${total.value} 条日志`
+    })
+
     const isHighRisk = (item: SystemLogItem): boolean =>
         ['permission', 'backup', 'pet'].includes(item.module) || item.action === 'delete'
 
@@ -615,6 +633,18 @@
 </script>
 
 <style lang="less" scoped>
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     .system-log {
         width: 100%;
 
@@ -717,6 +747,11 @@
             &:hover {
                 border-color: rgba(255, 170, 26, 0.5);
                 color: @wcolor;
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--pcolor);
+                outline-offset: 2px;
             }
 
             &.is-active {
@@ -858,6 +893,11 @@
             &:hover {
                 border-color: color-mix(in srgb, var(--pcolor) 34%, transparent);
                 color: var(--pcolor);
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--pcolor);
+                outline-offset: 2px;
             }
 
             &.is-active {

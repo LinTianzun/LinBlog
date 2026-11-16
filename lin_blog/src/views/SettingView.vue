@@ -408,6 +408,7 @@ import {
 } from '../utils/themePreset'
 import { buildImageUploadUrl } from '../utils/uploadUrl.ts'
 import { emitPetReaction } from '../utils/desktopPetScene'
+import { logError } from '../utils/clientLogger'
 import {
     DEFAULT_VISITOR_PET_PREFERENCES,
     getVisitorPetPreferences,
@@ -856,7 +857,7 @@ const loadProfile = async () => {
             syncAvatarFileList()
         }
     } catch (error) {
-        console.error('获取用户信息失败：', error)
+        logError('获取用户信息失败：', error)
     }
 }
 

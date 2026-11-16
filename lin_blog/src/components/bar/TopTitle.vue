@@ -42,7 +42,6 @@
         isSearch: true,
         description: '',
     })
-    // console.log(props)
 
     const emit = defineEmits(['search'])
 

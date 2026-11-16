@@ -3,7 +3,11 @@
         'stat-card-clickable': clickable,
         'stat-card-active': active,
     }]"
-        :style="bgColor" @click="handleClick">
+        :style="bgColor" :tabindex="clickable ? 0 : undefined"
+        :role="clickable ? 'button' : undefined"
+        :aria-current="active ? 'true' : undefined" @click="handleClick"
+        @keydown.enter.prevent="handleKeyboardClick"
+        @keydown.space.prevent="handleKeyboardClick">
         <div class="stat-card-copy">
             <span class="stat-card-label">{{ name }}</span>
             <strong class="stat-card-value">{{ total }}</strong>
@@ -62,6 +66,10 @@ const handleClick = (): void => {
     }
     // 用户管理页等父级监听 click 实现卡片筛选
     emit('click')
+}
+
+const handleKeyboardClick = (): void => {
+    if (clickable.value) handleClick()
 }
 </script>
 

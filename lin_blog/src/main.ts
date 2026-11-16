@@ -15,6 +15,7 @@ import './style/portal.less'
 import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
 import { ensureServerClock } from './utils/serverClock'
+import { logError } from './utils/clientLogger'
 import { registerServiceWorker } from './utils/pwa'
 import { installModalA11y } from './utils/modalA11y'
 
@@ -33,7 +34,7 @@ const app = createApp(App)
 // 全局兜底：未被 ErrorBoundary 覆盖的组件异常（如异步生命周期、事件处理器）
 // 记录到控制台，避免静默失败；界面层由 ErrorBoundary 负责展示可恢复卡片。
 app.config.errorHandler = (err, _instance, info) => {
-    console.error('[App] 未处理的组件异常：', info, err)
+    logError('[App] 未处理的组件异常：', { info, err })
 }
 
 // yike 组件内部会在模板里直接用图标（见 utils/libraryIcons.ts）。

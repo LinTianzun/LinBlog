@@ -58,6 +58,7 @@
     import { LineChart, PieChart } from '../echarts/index.ts'
     import { getVisitStats, getTopPaths, type VisitPoint, type PieItem, type TopPathItem } from '../../api/overview.ts'
     import { useSessionStore } from '../../store/session.ts'
+    import { logError } from '../../utils/clientLogger'
 
     const session = useSessionStore()
 
@@ -90,7 +91,7 @@
             if (res.code !== 200 || !res.data) return
             visitData.value = res.data.visit ?? []
         } catch (error) {
-            console.error('访问量加载失败：', error)
+            logError('访问量加载失败：', error)
         }
     }
 
@@ -101,7 +102,7 @@
             deviceData.value = res.data.device ?? []
             websiteData.value = res.data.website ?? []
         } catch (error) {
-            console.error('数据监测加载失败：', error)
+            logError('数据监测加载失败：', error)
         }
     }
 
@@ -111,7 +112,7 @@
             if (res.code !== 200 || !res.data) return
             topPaths.value = res.data.paths ?? []
         } catch (error) {
-            console.error('热门路径加载失败：', error)
+            logError('热门路径加载失败：', error)
         }
     }
 

@@ -2,11 +2,14 @@
     <yk-space dir="vertical" size="l" class="admin-page user-management">
         <!-- 页面标题与搜索 -->
         <top-title name="用户管理" :is-search="true" @search="handleSearch" />
+        <span class="sr-only" role="status" aria-live="polite">
+            {{ userListAnnouncement }}
+        </span>
         <yk-text v-if="loading" type="secondary">
             正在加载用户数据...
         </yk-text>
 
-        <yk-text v-else-if="errorMessage" type="danger">
+        <yk-text v-else-if="errorMessage" type="danger" role="alert" aria-live="assertive">
             {{ errorMessage }}
         </yk-text>
         <!-- 用户统计 -->
@@ -41,16 +44,16 @@
                 </yk-space>
             </yk-space>
 
-            <div class="table-wrapper">
-                <table>
+            <div class="table-wrapper" :aria-busy="loading">
+                <table aria-label="用户列表">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>用户名</th>
-                            <th>邮箱</th>
-                            <th>用户角色</th>
-                            <th>状态</th>
-                            <th>操作</th>
+                            <th scope="col">ID</th>
+                            <th scope="col">用户名</th>
+                            <th scope="col">邮箱</th>
+                            <th scope="col">用户角色</th>
+                            <th scope="col">状态</th>
+                            <th scope="col">操作</th>
                         </tr>
                     </thead>
 
@@ -71,6 +74,7 @@
                             <td>
                                 <yk-switch :model-value="Number(user.status) === 1" :checked-value="true"
                                     :unchecked-value="false" checked-color="#1fb4a2" unchecked-color="#fa5247"
+                                    :aria-label="`${Number(user.status) === 1 ? '禁用' : '启用'}用户 ${user.username}`"
                                     :disabled="isCurrentUser(user) ||
                                         updatingStatusIds.has(String(user.id)) ||
                                         !canDisableUser ||
@@ -116,11 +120,13 @@
 
 
         <!-- 添加用户弹窗 -->
-        <div v-if="addUserModalVisible" class="modal-mask" @click.self="closeAddUserModal">
-            <div class="user-modal">
+        <div v-if="addUserModalVisible" class="modal-mask" @click.self="closeAddUserModal"
+            @keydown.esc="closeAddUserModal">
+            <div class="user-modal" role="dialog" aria-modal="true" aria-labelledby="add-user-title">
                 <div class="modal-header">
-                    <h3>添加用户</h3>
-                    <button type="button" class="modal-close" @click="closeAddUserModal">
+                    <h3 id="add-user-title">添加用户</h3>
+                    <button type="button" class="modal-close" aria-label="关闭添加用户弹窗"
+                        @click="closeAddUserModal">
                         ×
                     </button>
                 </div>
@@ -171,7 +177,7 @@
         <!-- 编辑用户弹窗 -->
         <Teleport to="body">
             <div v-if="editUserModalVisible" class="ue-mask" @click.self="closeEditUserModal">
-                <div class="ue-panel" role="dialog" aria-label="编辑用户">
+                <div class="ue-panel" role="dialog" aria-modal="true" aria-label="编辑用户">
                     <!-- 头部：身份卡 -->
                     <header class="ue-head">
                         <div class="ue-identity">
@@ -225,7 +231,8 @@
                                 <button v-for="option in assignableRoles" :key="option.value" type="button"
                                     class="ue-role" :class="[`ue-role-${option.value}`, {
                                         'is-active': editUser.user_type === option.value
-                                    }]" @click="editUser.user_type = option.value">
+                                    }]" :aria-pressed="editUser.user_type === option.value"
+                                    @click="editUser.user_type = option.value">
                                     <span class="ue-role-name">{{ option.label }}</span>
                                     <span class="ue-role-desc">{{ roleDesc(option.value) }}</span>
                                 </button>
@@ -274,6 +281,7 @@ import StatCard from '../components/common/StatCard.vue'
 import AdminPager from '../components/common/AdminPager.vue'
 import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
 import { useSessionStore } from '../store/session.ts'
+import { logError } from '../utils/clientLogger'
 
 const proxy: any = getCurrentInstance()?.proxy
 const session = useSessionStore()
@@ -351,6 +359,13 @@ const activeRoleCounts = ref({
 
 // 卡片筛选状态：all=全部，admin=仅管理员，staff=编辑+普通用户（不含游客），banned=仅封禁
 const statusFilter = ref<'all' | 'admin' | 'staff' | 'banned'>('all')
+
+const userListAnnouncement = computed(() => {
+    if (loading.value) return '正在加载用户数据'
+    if (errorMessage.value) return `用户列表加载失败：${errorMessage.value}`
+    if (total.value === 0) return '当前筛选条件下没有用户'
+    return `已加载第 ${currentPage.value} 页，共 ${total.value} 位用户`
+})
 
 // 编辑与普通用户 = 启用的编辑 + 启用的普通用户（不含游客）
 const editorAndNormal = computed(() =>
@@ -577,7 +592,7 @@ const submitAddUser = async () => {
             message: '用户创建成功'
         })
     } catch (error: any) {
-        console.error('创建用户失败：', error)
+        logError('创建用户失败：', error)
 
         proxy?.$message({
             type: 'error',
@@ -727,7 +742,7 @@ const submitEditUser = async () => {
             message: '用户资料更新成功'
         })
     } catch (error: any) {
-        console.error('更新用户失败：', error)
+        logError('更新用户失败：', error)
 
         proxy?.$message({
             type: 'error',
@@ -776,7 +791,7 @@ const handleDeleteUser = async (user: UserInfo) => {
             message: `用户「${user.username}」删除成功`
         })
     } catch (error: any) {
-        console.error('删除用户失败：', error)
+        logError('删除用户失败：', error)
 
         proxy?.$message({
             type: 'error',
@@ -816,7 +831,6 @@ const fetchUsers = async (
 
     try {
         const result = await getAllUsers(page, size, search)
-        // console.log('获取用户列表结果：', result)
         if (result.code === 200) {
             users.value = result.data.list
             total.value = result.data.total
@@ -844,7 +858,7 @@ const fetchUsers = async (
                 result.message || '获取用户列表失败'
         }
     } catch (error: any) {
-        console.error('获取用户列表失败：', error)
+        logError('获取用户列表失败：', error)
 
         errorMessage.value =
             error.response?.data?.message ||
@@ -875,7 +889,7 @@ const fetchUsersByStatus = async (
         }
         errorMessage.value = result.message || '获取用户列表失败'
     } catch (error: any) {
-        console.error('获取用户列表失败：', error)
+        logError('获取用户列表失败：', error)
         errorMessage.value =
             error.response?.data?.message ||
             error.message ||
@@ -906,7 +920,7 @@ const fetchUsersByRole = async (
         }
         errorMessage.value = result.message || '获取用户列表失败'
     } catch (error: any) {
-        console.error('获取用户列表失败：', error)
+        logError('获取用户列表失败：', error)
         errorMessage.value =
             error.response?.data?.message ||
             error.message ||
@@ -968,6 +982,18 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .user-management {
     width: 100%;
 }

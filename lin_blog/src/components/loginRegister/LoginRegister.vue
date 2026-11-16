@@ -103,6 +103,7 @@ import { useRouter } from "vue-router";
 import { requestPasswordReset } from "../../api/user";
 import { useSessionStore } from "../../store/session";
 import { emitPetReaction } from "../../utils/desktopPetScene";
+import { logError } from "../../utils/clientLogger";
 
 const router = useRouter();
 const session = useSessionStore();
@@ -212,7 +213,7 @@ const login = async () => {
         emitPetReaction("login");
         await router.push("/overView");
     } catch (error) {
-        console.error("登录请求失败：", error);
+        logError("登录请求失败：", error);
 
         proxy?.$message({
             type: "error",
@@ -285,7 +286,7 @@ const register = async () => {
         user.value.name = mail
         user.value.pwd = ''
     } catch (error) {
-        console.error('注册请求失败：', error)
+        logError('注册请求失败：', error)
 
         proxy?.$message({
             type: 'error',
@@ -297,7 +298,6 @@ const register = async () => {
 
 // const login = () => {
 //     if (user.value.name && user.value.pwd) {
-//         // console.log(user)
 //         router.push('/overView')
 //     } else {
 //         proxy.$message({ type: 'warning', message: '输入不完整' })

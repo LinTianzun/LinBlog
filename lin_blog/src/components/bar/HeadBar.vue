@@ -111,6 +111,7 @@ import {
     isDocumentVisible,
 } from '../../utils/messageRealtime'
 import { emitPetReaction } from '../../utils/desktopPetScene'
+import { logError } from '../../utils/clientLogger'
 
 const isDark = useThemeDark()
 const session = useSessionStore()
@@ -442,7 +443,7 @@ onMounted(() => {
         try {
             userInfo.value = JSON.parse(savedUserInfo)
         } catch (error) {
-            console.error('读取用户信息失败：', error)
+            logError('读取用户信息失败：', error)
             userInfo.value = {}
         }
     }

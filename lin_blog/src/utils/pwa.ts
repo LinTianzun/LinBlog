@@ -1,4 +1,5 @@
 import { isPwaUpdateMessage } from './pwaUpdate'
+import { logWarning } from './clientLogger'
 
 const SNAPSHOT_RESOURCE_TYPES = new Set([
   'fetch',
@@ -98,7 +99,7 @@ export function registerServiceWorker(): void {
         scheduleUpdateChecks(registration)
       })
       .catch((error) => {
-        console.warn('[PWA] Service Worker 注册失败：', error)
+        logWarning('[PWA] Service Worker 注册失败：', error)
       })
   }
 

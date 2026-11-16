@@ -21,8 +21,6 @@
                     :pet-milestones="petMilestones"
                     :pet-daily-tasks="petDailyTasks"
                     :completed-daily-task-count="completedDailyTaskCount"
-                    :unlocked-achievement-count="unlockedAchievementCount"
-                    :new-achievement-count="newAchievementCount"
                     @feed="feedFromSettings"
                     @retry-sync="retryPetSync"
                     @pet-name-input="onPetNameInputValue"
@@ -281,20 +279,6 @@ const petDailyTasks = computed(() =>
 )
 const completedDailyTaskCount = computed(
     () => petDailyTasks.value.filter((task) => task.done).length
-)
-const unlockedAchievementCount = computed(() =>
-    petMilestones.value.reduce(
-        (total, group) =>
-            total + group.items.filter((item) => item.unlocked).length,
-        0
-    )
-)
-const newAchievementCount = computed(() =>
-    petMilestones.value.reduce(
-        (total, group) =>
-            total + group.items.filter((item) => item.isNew).length,
-        0
-    )
 )
 const displayPetName = computed(() => petVitals.value.name || '小 Lin')
 
