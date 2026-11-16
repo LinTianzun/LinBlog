@@ -2113,6 +2113,14 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 14%, var(--admin-line, var(--gray1)));
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--pcolor) 7%, transparent),
+            transparent 68%),
+        var(--admin-surface, var(--bgColor1));
 }
 
 .pet-homestead-hint {
@@ -2234,12 +2242,12 @@ onUnmounted(() => {
     display: flex;
     flex: 1;
     min-width: 0;
-    gap: 4px;
+    gap: 5px;
     overflow-x: auto;
-    padding: 4px;
-    border: 1px solid var(--admin-line, var(--gray1));
+    padding: 5px;
+    border: 1px solid color-mix(in srgb, var(--pcolor) 16%, var(--admin-line, var(--gray1)));
     border-radius: 12px;
-    background: var(--bgColor2);
+    background: color-mix(in srgb, var(--bgColor2) 84%, var(--pcolor) 6%);
     scrollbar-width: none;
 
     &::-webkit-scrollbar {
@@ -2252,10 +2260,10 @@ onUnmounted(() => {
     flex: none;
     align-items: center;
     gap: 4px;
-    padding: 5px 8px;
-    border: none;
+    padding: 5px 9px;
+    border: 1px solid transparent;
     border-radius: 8px;
-    background: transparent;
+    background: color-mix(in srgb, var(--admin-surface, var(--bgColor1)) 78%, transparent);
     color: var(--admin-muted, var(--gray6));
     font: inherit;
     font-size: 11px;
@@ -2345,6 +2353,14 @@ onUnmounted(() => {
     gap: 6px;
     min-height: 26px;
     overflow-x: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--admin-line, var(--gray1));
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--pcolor) 5%, transparent),
+            transparent 78%),
+        var(--admin-surface, var(--bgColor1));
     color: var(--admin-muted, var(--gray6));
     font-size: 11px;
     scrollbar-width: thin;
@@ -4283,6 +4299,29 @@ onUnmounted(() => {
         }
     }
 
+    .pet-homestead-tools,
+    .pet-homestead-store {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .pet-homestead-hint {
+        text-align: center;
+    }
+
+    .pet-homestead-tend {
+        min-height: 42px;
+        justify-content: center;
+    }
+
+    .pet-home-plot,
+    .pet-home-coop,
+    .pet-home-pasture,
+    .pet-home-pond {
+        min-width: 36px;
+        min-height: 36px;
+    }
+
     .pet-homestead-business {
         gap: 6px;
     }
@@ -4337,6 +4376,11 @@ onUnmounted(() => {
     .pet-home-plot,
     .pet-home-plot.is-ready,
     .pet-home-plot-crop,
+    .pet-pixel-chicken-free,
+    .pet-pixel-chicken,
+    .pet-home-room.is-pixel-farm .pet-home-pasture > b.pet-pixel-cow,
+    .pet-pixel-pond-ripple,
+    .pet-pixel-fish,
     .pet-home-yard-badge {
         animation: none;
         transition: none;

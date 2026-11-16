@@ -15,9 +15,20 @@
                     累计互动 {{ petVitals.totalInteractions }} 次
                 </p>
                 <div class="pet-hero-tags">
-                    <span>称号 {{ petTitle }}</span>
                     <span>心情 {{ vitalsMoodLabel(petVitals) }}</span>
                     <span>亲密度 Lv.{{ vitalsIntimacyLevel(petVitals) }}</span>
+                </div>
+                <div class="pet-hero-brief">
+                    <span>
+                        今日任务 <b>{{ completedDailyTaskCount }}/{{ petDailyTasks.length }}</b>
+                    </span>
+                    <i aria-hidden="true">·</i>
+                    <span>
+                        下个目标 <b v-if="petMilestone">
+                            {{ petMilestone.remaining }}{{ petMilestone.kind === 'streak' ? ' 天' : ' 次' }}
+                        </b>
+                        <b v-else>全部完成</b>
+                    </span>
                 </div>
             </div>
         </div>
@@ -343,6 +354,33 @@ const petMilestonePercent = (current: number, target: number) =>
         background: color-mix(in srgb, var(--pcolor) 6%, transparent);
         color: var(--admin-muted, var(--gray6));
         font-size: 11px;
+    }
+}
+
+.pet-hero-brief {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    color: var(--admin-muted, var(--gray6));
+    font-size: 10px;
+
+    > span {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+    }
+
+    b {
+        color: var(--pcolor);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    i {
+        color: color-mix(in srgb, var(--admin-muted, var(--gray6)) 54%, transparent);
+        font-style: normal;
     }
 }
 

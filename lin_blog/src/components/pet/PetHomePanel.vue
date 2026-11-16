@@ -1,5 +1,5 @@
 <template>
-    <section class="pet-home-card">
+    <section class="pet-home-card" :class="`is-zone-${petHomeTab}`">
         <header class="pet-home-head">
             <div>
                 <span class="pet-home-kicker">PET HOME</span>
@@ -16,7 +16,7 @@
                 :id="`pet-home-tab-${tab.id}`" type="button" role="tab"
                 :aria-selected="petHomeTab === tab.id" aria-controls="pet-home-panel"
                 :tabindex="petHomeTab === tab.id ? 0 : -1"
-                :class="{ 'is-active': petHomeTab === tab.id }"
+                :class="[`is-${tab.id}`, { 'is-active': petHomeTab === tab.id }]"
                 @click="emit('select-tab', tab.id)"
                 @keydown="handleTabKeydown($event, index)">
                 <span aria-hidden="true">{{ tab.icon }}</span>{{ tab.label }}
@@ -180,6 +180,7 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
 <style lang="less">
 .pet-home-card {
     position: relative;
+    --pet-zone-accent: var(--pcolor);
     display: flex;
     flex-direction: column;
     gap: 15px;
@@ -191,6 +192,18 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
         radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--pcolor) 12%, transparent), transparent 34%),
         linear-gradient(160deg, var(--admin-surface, var(--bgColor1)), var(--bgColor2));
     box-shadow: var(--admin-shadow-sm, @shadow-s);
+}
+
+.pet-home-card.is-zone-grow {
+    --pet-zone-accent: #4f9d4a;
+}
+
+.pet-home-card.is-zone-raise {
+    --pet-zone-accent: #d88645;
+}
+
+.pet-home-card.is-zone-fish {
+    --pet-zone-accent: #3f9cbb;
 }
 
 .pet-home-head {
@@ -215,7 +228,7 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
 }
 
 .pet-home-kicker {
-    color: var(--pcolor);
+    color: var(--pet-zone-accent);
     font-size: 9px;
     font-weight: 760;
     letter-spacing: 0.18em;
@@ -227,10 +240,10 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
     align-items: center;
     gap: 6px;
     padding: 5px 9px;
-    border: 1px solid color-mix(in srgb, var(--scolor, #1fb4a2) 24%, transparent);
+    border: 1px solid color-mix(in srgb, var(--pet-zone-accent) 24%, transparent);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--scolor, #1fb4a2) 8%, transparent);
-    color: var(--scolor, #1fb4a2);
+    background: color-mix(in srgb, var(--pet-zone-accent) 8%, transparent);
+    color: var(--pet-zone-accent);
     font-size: 11px;
     font-weight: 650;
 
@@ -281,9 +294,21 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
         }
 
         &.is-active {
-            background: var(--pcolor);
+            background: var(--pet-zone-accent);
             color: #fff;
-            box-shadow: 0 4px 10px color-mix(in srgb, var(--pcolor) 28%, transparent);
+            box-shadow: 0 4px 10px color-mix(in srgb, var(--pet-zone-accent) 28%, transparent);
+        }
+
+        &.is-grow.is-active {
+            background: linear-gradient(135deg, #79cc6c, #438f45);
+        }
+
+        &.is-raise.is-active {
+            background: linear-gradient(135deg, #efa85e, #c86c47);
+        }
+
+        &.is-fish.is-active {
+            background: linear-gradient(135deg, #5bc0d8, #337fa7);
         }
 
         &:focus-visible {
