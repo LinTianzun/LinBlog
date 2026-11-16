@@ -469,6 +469,81 @@ test('getCollectionVersionDiff reports metadata, additions, removals and moves',
     }
 })
 
+test('updateCollectionVersionPolicy validates and saves the retention limit', async () => {
+    const originalFind = collectionModel.findCollectionById
+    const originalUpdate = collectionModel.updateCollectionVersionPolicy
+    let received = null
+
+    collectionModel.findCollectionById = async () => ({
+        id: 8,
+        name: '系列',
+        versionRetention: 20
+    })
+    collectionModel.updateCollectionVersionPolicy = async (id, retention) => {
+        received = { id, retention }
+        return { found: true, deleted: 3, retention, total: retention }
+    }
+
+    try {
+        const res = createRes()
+        await collectionController.updateCollectionVersionPolicy(
+            { params: { id: '8' }, body: { retention: 10 }, user: admin },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(received, { id: 8, retention: 10 })
+        assert.equal(res.body.data.deleted, 3)
+        assert.equal(res.body.data.retention, 10)
+    } finally {
+        collectionModel.findCollectionById = originalFind
+        collectionModel.updateCollectionVersionPolicy = originalUpdate
+    }
+})
+
+test('updateCollectionVersionPolicy rejects out-of-range retention', async () => {
+    const res = createRes()
+    await collectionController.updateCollectionVersionPolicy(
+        { params: { id: '8' }, body: { retention: 0 }, user: admin },
+        res
+    )
+
+    assert.equal(res.statusCode, 400)
+    assert.match(res.body.message, /1-100/)
+})
+
+test('cleanupCollectionVersions uses the saved policy of the series', async () => {
+    const originalFind = collectionModel.findCollectionById
+    const originalPrune = collectionModel.pruneCollectionVersions
+    let received = null
+
+    collectionModel.findCollectionById = async () => ({
+        id: 8,
+        name: '系列',
+        versionRetention: 12
+    })
+    collectionModel.pruneCollectionVersions = async (id, options) => {
+        received = { id, options }
+        return { found: true, deleted: 2, retention: 12, total: 12 }
+    }
+
+    try {
+        const res = createRes()
+        await collectionController.cleanupCollectionVersions(
+            { params: { id: '8' }, user: admin },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(received, { id: 8, options: { retention: 12 } })
+        assert.equal(res.body.data.deleted, 2)
+        assert.match(res.body.message, /清理 2 个旧版本/)
+    } finally {
+        collectionModel.findCollectionById = originalFind
+        collectionModel.pruneCollectionVersions = originalPrune
+    }
+})
+
 test('deleteCollection soft deletes and records the current name', async () => {
     const originalFind = collectionModel.findCollectionById
     const originalDelete = collectionModel.softDeleteCollection

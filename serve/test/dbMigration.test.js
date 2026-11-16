@@ -10,6 +10,7 @@ const PET_RESET_MIGRATION = ['2026', '1113_pet_reset'].join('')
 const PET_HOMESTEAD_MIGRATION = ['2026', '1113_pet_homestead'].join('')
 const CONTENT_COLLECTION_MIGRATION = ['2026', '1113_content_collection'].join('')
 const COLLECTION_VERSION_MIGRATION = '20261116_collection_version'
+const COLLECTION_VERSION_RETENTION_MIGRATION = '20261116_collection_version_retention'
 const SITE_EVENT_MIGRATION = ['2026', '1113_site_event'].join('')
 const SCHEDULED_PAUSE_MIGRATION = ['2026', '1114_scheduled_pause'].join('')
 
@@ -61,6 +62,7 @@ const ALL_MIGRATIONS = [
     PET_HOMESTEAD_MIGRATION,
     CONTENT_COLLECTION_MIGRATION,
     COLLECTION_VERSION_MIGRATION,
+    COLLECTION_VERSION_RETENTION_MIGRATION,
     SITE_EVENT_MIGRATION,
     SCHEDULED_PAUSE_MIGRATION
 ]
@@ -986,6 +988,27 @@ test('collection version migration creates the revision snapshot table', async (
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === COLLECTION_VERSION_MIGRATION
+    ))
+})
+
+test('collection version retention migration adds the per-series limit', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(COLLECTION_VERSION_RETENTION_MIGRATION)
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE content_collection ADD COLUMN version_retention SMALLINT UNSIGNED NOT NULL DEFAULT 20')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === COLLECTION_VERSION_RETENTION_MIGRATION
     ))
 })
 

@@ -51,6 +51,7 @@ export interface CollectionPayload {
   description?: string;
   cover?: string;
   sort?: number;
+  versionRetention?: number;
   articleIds?: number[];
 }
 
@@ -150,6 +151,7 @@ export interface CollectionVersionPage {
   page: number;
   pageSize: number;
   totalPage: number;
+  retention: number;
 }
 
 export interface ArticleSeriesLink {
@@ -255,4 +257,26 @@ export function restoreCollectionVersion(id: number, versionId: number) {
       skippedArticleIds: number[];
     }>
   >(`/collection/${id}/versions/${versionId}/restore`);
+}
+
+export function cleanupCollectionVersions(id: number) {
+  return request.post<
+    ApiResult<{
+      found: boolean;
+      deleted: number;
+      retention: number;
+      total: number;
+    }>
+  >(`/collection/${id}/versions/cleanup`);
+}
+
+export function updateCollectionVersionPolicy(id: number, retention: number) {
+  return request.put<
+    ApiResult<{
+      found: boolean;
+      deleted: number;
+      retention: number;
+      total: number;
+    }>
+  >(`/collection/${id}/version-policy`, { retention });
 }

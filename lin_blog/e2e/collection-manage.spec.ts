@@ -231,6 +231,7 @@ test('版本历史可以对比当前差异', async ({ page }) => {
     permissions: ['collection.view', 'collection.manage', 'article.create'],
   })
   await installApiMock(page)
+  let retention = 20
 
   await page.route(/\/api\/collection(?:\?.*)?$/, async (route) => {
     await route.fulfill({
@@ -296,7 +297,34 @@ test('版本历史可以对比当前差异', async ({ page }) => {
           page: 1,
           pageSize: 10,
           totalPage: 1,
+          retention,
         },
+      }),
+    })
+  })
+
+  await page.route(/\/api\/collection\/8\/version-policy$/, async (route) => {
+    const payload = route.request().postDataJSON() as { retention?: number }
+    retention = Number(payload.retention) || retention
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: '版本保留策略已保存',
+        data: { found: true, deleted: 1, retention, total: retention },
+      }),
+    })
+  })
+
+  await page.route(/\/api\/collection\/8\/versions\/cleanup$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: '已清理 2 个旧版本',
+        data: { found: true, deleted: 2, retention, total: retention },
       }),
     })
   })
@@ -388,6 +416,13 @@ test('版本历史可以对比当前差异', async ({ page }) => {
 
   const history = page.locator('.yk-modal__main:visible').filter({ hasText: '系列版本历史' })
   await expect(history.getByText('旧系列名')).toBeVisible()
+  await expect(history).toContainText('保留最近 20 个版本')
+  await history.locator('.collection-version-select').selectOption('10')
+  await history.getByRole('button', { name: '保存策略' }).click()
+  await expect(history).toContainText('策略已保存，并清理了 1 个旧版本')
+  await expect(history).toContainText('保留最近 10 个版本')
+  await history.getByRole('button', { name: '立即清理' }).click()
+  await expect(history).toContainText('已清理 2 个旧版本')
   await history.getByRole('button', { name: '对比当前' }).click()
 
   const diff = page.locator('.yk-modal__main:visible').filter({ hasText: '版本 #2 与当前对比' })

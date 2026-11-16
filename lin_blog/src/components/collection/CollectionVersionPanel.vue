@@ -20,6 +20,46 @@
         </yk-button>
       </div>
 
+      <div class="collection-version-policy">
+        <div class="collection-version-policy-copy">
+          <strong>保留最近 {{ retention }} 个版本</strong>
+          <span>
+            超出数量的旧快照会自动清理，回滚记录同样计入保留范围。
+          </span>
+        </div>
+        <div v-if="canManage" class="collection-version-policy-actions">
+          <select v-model.number="retention" class="collection-version-select" aria-label="版本保留数量">
+            <option v-for="option in retentionOptions" :key="option" :value="option">
+              最近 {{ option }} 版
+            </option>
+          </select>
+          <yk-button
+            type="secondary"
+            size="s"
+            :loading="policySaving"
+            :disabled="retention === savedRetention || cleanupBusy"
+            @click="savePolicy"
+          >
+            保存策略
+          </yk-button>
+          <yk-button
+            type="secondary"
+            size="s"
+            :loading="cleanupBusy"
+            :disabled="policySaving"
+            @click="cleanupVersions"
+          >
+            立即清理
+          </yk-button>
+        </div>
+      </div>
+      <p v-if="policyNotice" class="collection-version-policy-notice">
+        {{ policyNotice }}
+      </p>
+      <p v-if="policyError" class="collection-version-policy-error">
+        {{ policyError }}
+      </p>
+
       <div v-if="loading" class="collection-version-state">
         <yk-spinner size="m" />
         <yk-text type="secondary">正在读取版本...</yk-text>
@@ -289,18 +329,21 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import {
+  cleanupCollectionVersions,
   getCollectionVersion,
   getCollectionVersionDiff,
   getCollectionVersions,
   restoreCollectionVersion,
+  updateCollectionVersionPolicy,
   type CollectionVersionDetail,
   type CollectionVersionDiff,
   type CollectionVersionSummary,
 } from "../../api/collection";
 import { formatWorkflowTime } from "../../utils/articleWorkflow";
 import AdminPager from "../common/AdminPager.vue";
+import { useSessionStore } from "../../store/session";
 
 const props = defineProps<{
   open: boolean;
@@ -312,6 +355,8 @@ const emit = defineEmits<{
   restored: [revision: number];
 }>();
 
+const session = useSessionStore();
+const canManage = computed(() => session.can("collection.manage"));
 const versions = ref<CollectionVersionSummary[]>([]);
 const page = ref(1);
 const pageSize = ref(10);
@@ -326,17 +371,26 @@ const diffingId = ref(0);
 const diffTargetId = ref(0);
 const diffVersion = ref<CollectionVersionDiff | null>(null);
 const diffError = ref("");
+const retention = ref(20);
+const savedRetention = ref(20);
+const policySaving = ref(false);
+const cleanupBusy = ref(false);
+const policyNotice = ref("");
+const policyError = ref("");
+const retentionOptions = computed(() =>
+  [...new Set([5, 10, 20, 50, 100, retention.value])].sort((left, right) => left - right)
+);
 
 function sourceLabel(source: string): string {
   return source === "rollback" ? "回滚" : "保存";
 }
 
-function describeError(error: unknown): string {
+function describeError(error: unknown, fallback = "版本历史加载失败，请稍后重试"): string {
   return (
     (error as { response?: { data?: { message?: string } } })?.response?.data
       ?.message ||
     (error instanceof Error ? error.message : "") ||
-    "版本历史加载失败，请稍后重试"
+    fallback
   );
 }
 
@@ -356,11 +410,60 @@ async function loadVersions(nextPage = page.value): Promise<void> {
     }
     versions.value = result.data.list;
     total.value = result.data.total;
+    retention.value = result.data.retention || 20;
+    savedRetention.value = retention.value;
   } catch (error) {
     errorMessage.value = describeError(error);
     versions.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+async function savePolicy(): Promise<void> {
+  if (!props.collectionId || policySaving.value || cleanupBusy.value) return;
+  policySaving.value = true;
+  policyNotice.value = "";
+  policyError.value = "";
+  try {
+    const result = await updateCollectionVersionPolicy(
+      props.collectionId,
+      retention.value
+    );
+    if (result.code !== 200 || !result.data) {
+      throw new Error(result.message || "版本保留策略保存失败");
+    }
+    savedRetention.value = result.data.retention;
+    retention.value = result.data.retention;
+    policyNotice.value = result.data.deleted > 0
+      ? `策略已保存，并清理了 ${result.data.deleted} 个旧版本`
+      : "版本保留策略已保存";
+    await loadVersions(1);
+  } catch (error) {
+    policyError.value = describeError(error, "版本保留策略保存失败，请稍后重试");
+  } finally {
+    policySaving.value = false;
+  }
+}
+
+async function cleanupVersions(): Promise<void> {
+  if (!props.collectionId || cleanupBusy.value || policySaving.value) return;
+  cleanupBusy.value = true;
+  policyNotice.value = "";
+  policyError.value = "";
+  try {
+    const result = await cleanupCollectionVersions(props.collectionId);
+    if (result.code !== 200 || !result.data) {
+      throw new Error(result.message || "版本清理失败");
+    }
+    policyNotice.value = result.data.deleted > 0
+      ? `已清理 ${result.data.deleted} 个旧版本`
+      : "没有需要清理的旧版本";
+    await loadVersions(1);
+  } catch (error) {
+    policyError.value = describeError(error, "版本清理失败，请稍后重试");
+  } finally {
+    cleanupBusy.value = false;
   }
 }
 
@@ -477,6 +580,8 @@ watch(
       diffOpen.value = false;
       diffVersion.value = null;
       diffError.value = "";
+      policyNotice.value = "";
+      policyError.value = "";
       void loadVersions(1);
     }
   },
@@ -510,6 +615,75 @@ watch(
   color: var(--gray6);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.collection-version-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--pcolor) 18%, var(--gray1));
+  border-radius: 13px;
+  background:
+    linear-gradient(110deg, color-mix(in srgb, var(--pcolor) 7%, transparent), transparent 64%),
+    var(--bgColor1);
+}
+
+.collection-version-policy-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+
+  strong {
+    color: var(--gray);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--gray6);
+    font-size: 11px;
+    line-height: 1.55;
+  }
+}
+
+.collection-version-policy-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.collection-version-select {
+  height: 30px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--gray1);
+  border-radius: 8px;
+  outline: none;
+  color: var(--gray);
+  background: var(--bgColor1);
+  font: inherit;
+  font-size: 12px;
+
+  &:focus {
+    border-color: var(--pcolor);
+  }
+}
+
+.collection-version-policy-notice,
+.collection-version-policy-error {
+  margin: -7px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.collection-version-policy-notice {
+  color: #2f8f67;
+}
+
+.collection-version-policy-error {
+  color: #c75b5b;
 }
 
 .collection-version-state {
@@ -875,6 +1049,20 @@ watch(
 }
 
 @media (max-width: 640px) {
+  .collection-version-policy,
+  .collection-version-policy-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .collection-version-policy-actions {
+    width: 100%;
+  }
+
+  .collection-version-select {
+    width: 100%;
+  }
+
   .collection-version-card {
     flex-direction: column;
   }

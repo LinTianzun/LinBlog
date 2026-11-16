@@ -4,6 +4,17 @@ const { hasPermission } = require('../utils/accessControl')
 
 const MAX_ARTICLES = 200
 
+function parseVersionRetention(value) {
+    if (value === undefined || value === null || value === '') return undefined
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed)
+        || parsed < 1
+        || parsed > collectionModel.MAX_VERSION_RETENTION) {
+        return null
+    }
+    return parsed
+}
+
 function canManageCollection(user) {
     return hasPermission(user, 'collection.manage')
 }
@@ -349,12 +360,21 @@ async function createCollection(req, res) {
             }
         }
 
+        const versionRetention = parseVersionRetention(req.body?.versionRetention)
+        if (versionRetention === null) {
+            return res.status(400).json({
+                code: 400,
+                message: `版本保留数量必须是 1-${collectionModel.MAX_VERSION_RETENTION} 的整数`
+            })
+        }
+
         const result = await collectionModel.insertCollection({
             name,
             description,
             cover,
             sort: normalizeSort(req.body?.sort),
-            articleIds
+            articleIds,
+            ...(versionRetention === undefined ? {} : { versionRetention })
         }, { userId: req.user.userId })
 
         writeSystemLog({
@@ -422,12 +442,23 @@ async function updateCollection(req, res) {
             }
         }
 
+        const versionRetention = parseVersionRetention(req.body?.versionRetention)
+        if (versionRetention === null) {
+            return res.status(400).json({
+                code: 400,
+                message: `版本保留数量必须是 1-${collectionModel.MAX_VERSION_RETENTION} 的整数`
+            })
+        }
+
         const saved = await collectionModel.saveCollectionWithArticles(id, {
             name,
             description: normalizeText(req.body?.description, 500),
             cover: normalizeText(req.body?.cover, 255),
             sort: req.body?.sort === undefined ? undefined : normalizeSort(req.body.sort)
-        }, articleIds, { userId: req.user.userId })
+        }, articleIds, {
+            userId: req.user.userId,
+            ...(versionRetention === undefined ? {} : { versionRetention })
+        })
         if (!saved.found) {
             return res.status(404).json({ code: 404, message: '系列不存在' })
         }
@@ -681,6 +712,100 @@ async function restoreCollectionVersion(req, res) {
     }
 }
 
+async function cleanupCollectionVersions(req, res) {
+    try {
+        if (!canManageCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以清理系列版本' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        if (!id) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列ID' })
+        }
+
+        const collection = await collectionModel.findCollectionById(id)
+        if (!collection) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        const result = await collectionModel.pruneCollectionVersions(id, {
+            retention: collection.versionRetention
+        })
+        if (!result.found) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'collection',
+            targetType: 'collection',
+            targetId: id,
+            detail: `清理内容系列「${collection.name}」版本快照（保留最近 ${result.retention} 版，删除 ${result.deleted} 条）`,
+            ip: req.ip || null
+        })
+
+        res.json({
+            code: 200,
+            message: result.deleted > 0
+                ? `已清理 ${result.deleted} 个旧版本`
+                : '没有需要清理的旧版本',
+            data: result
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '系列版本清理失败：' + err.message })
+    }
+}
+
+async function updateCollectionVersionPolicy(req, res) {
+    try {
+        if (!canManageCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以调整版本保留策略' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        if (!id) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列ID' })
+        }
+
+        const retention = parseVersionRetention(req.body?.retention)
+        if (retention === undefined || retention === null) {
+            return res.status(400).json({
+                code: 400,
+                message: `版本保留数量必须是 1-${collectionModel.MAX_VERSION_RETENTION} 的整数`
+            })
+        }
+
+        const collection = await collectionModel.findCollectionById(id)
+        if (!collection) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        const result = await collectionModel.updateCollectionVersionPolicy(id, retention)
+        if (!result.found) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'collection',
+            targetType: 'collection',
+            targetId: id,
+            detail: `调整内容系列「${collection.name}」版本保留数量为 ${retention}（清理 ${result.deleted} 条）`,
+            ip: req.ip || null
+        })
+
+        res.json({
+            code: 200,
+            message: '版本保留策略已保存',
+            data: result
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '版本保留策略保存失败：' + err.message })
+    }
+}
+
 module.exports = {
     getPublicCollections,
     getPublicCollectionById,
@@ -694,5 +819,7 @@ module.exports = {
     getCollectionVersions,
     getCollectionVersion,
     getCollectionVersionDiff,
-    restoreCollectionVersion
+    restoreCollectionVersion,
+    cleanupCollectionVersions,
+    updateCollectionVersionPolicy
 }

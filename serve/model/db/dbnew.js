@@ -712,6 +712,7 @@ const tablesSql = {
     description VARCHAR(500) NULL COMMENT '系列说明',
     cover VARCHAR(255) NULL COMMENT '系列封面',
     sort INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序权重（越大越靠前）',
+    version_retention SMALLINT UNSIGNED NOT NULL DEFAULT 20 COMMENT '版本快照保留数量',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -2323,6 +2324,16 @@ async function ensureCollectionVersionSchema(exec = query) {
   await exec(tablesSql.content_collection_version);
 }
 
+// 内容系列版本保留策略：限制每个系列的快照数量，回滚记录始终参与保留。
+async function ensureCollectionVersionRetentionSchema(exec = query) {
+  await exec(tablesSql.content_collection);
+  await exec(tablesSql.content_collection_version);
+  await ensureColumn(exec, 'content_collection', 'version_retention', {
+    definition: 'SMALLINT UNSIGNED NOT NULL DEFAULT 20',
+    comment: '版本快照保留数量'
+  });
+}
+
 // 站点洞察：单独记录站内搜索与门户 404，不与访问路径统计混在一张表里。
 async function ensureSiteEventSchema(exec = query) {
   await exec(tablesSql.site_event);
@@ -2730,6 +2741,10 @@ const migrations = [
   {
     version: '20261116_collection_version',
     up: ensureCollectionVersionSchema
+  },
+  {
+    version: '20261116_collection_version_retention',
+    up: ensureCollectionVersionRetentionSchema
   },
   {
     version: '20261113_site_event',

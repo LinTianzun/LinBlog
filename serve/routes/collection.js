@@ -13,6 +13,8 @@ module.exports = (app) => {
     app.get('/api/collection', authMiddleware, canViewCollections, collectionController.getCollections)
     // 版本路由放在 /:id 之前，避免后续新增动态前缀时被吞掉
     app.get('/api/collection/:id/versions', authMiddleware, canViewCollections, collectionController.getCollectionVersions)
+    app.put('/api/collection/:id/version-policy', authMiddleware, requirePermission('collection.manage'), collectionController.updateCollectionVersionPolicy)
+    app.post('/api/collection/:id/versions/cleanup', authMiddleware, requirePermission('collection.manage'), collectionController.cleanupCollectionVersions)
     app.get('/api/collection/:id/versions/:versionId/diff', authMiddleware, canViewCollections, collectionController.getCollectionVersionDiff)
     app.get('/api/collection/:id/versions/:versionId', authMiddleware, canViewCollections, collectionController.getCollectionVersion)
     app.post('/api/collection/:id/versions/:versionId/restore', authMiddleware, requirePermission('collection.manage'), collectionController.restoreCollectionVersion)

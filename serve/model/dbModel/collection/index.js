@@ -58,6 +58,7 @@ async function findCollections({ publicOnly = false } = {}) {
 async function findCollectionById(id, { publicOnly = false } = {}) {
     const rows = await query(
         `SELECT c.id, c.name, c.description, c.cover, c.sort, c.status,
+                c.version_retention AS versionRetention,
                 c.created_at AS createdAt, c.updated_at AS updatedAt
            FROM content_collection c
           WHERE c.id = ? AND c.status = 1
@@ -163,6 +164,16 @@ function parseArticleIds(value) {
     }
 }
 
+const MIN_VERSION_RETENTION = 1
+const MAX_VERSION_RETENTION = 100
+const DEFAULT_VERSION_RETENTION = 20
+
+function normalizeVersionRetention(value) {
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed)) return DEFAULT_VERSION_RETENTION
+    return Math.min(MAX_VERSION_RETENTION, Math.max(MIN_VERSION_RETENTION, parsed))
+}
+
 /**
  * 追加一条版本快照。调用方必须在事务里先锁住系列行，
  * 保证并发保存时 revision 不会重复。
@@ -199,7 +210,53 @@ async function appendVersion(
             userId ?? null
         ]
     )
+    const [policyRow] = await execute(
+        connection,
+        'SELECT version_retention FROM content_collection WHERE id = ? LIMIT 1',
+        [collectionId]
+    )
+    await pruneVersionsInConnection(
+        connection,
+        collectionId,
+        policyRow?.version_retention
+    )
     return revision
+}
+
+async function pruneVersionsInConnection(connection, collectionId, retention) {
+    const safeRetention = normalizeVersionRetention(retention)
+    const countRows = await execute(
+        connection,
+        'SELECT COUNT(*) AS total FROM content_collection_version WHERE collection_id = ?',
+        [collectionId]
+    )
+    const total = Number(countRows?.[0]?.total) || 0
+    const exceeded = Math.max(0, total - safeRetention)
+    if (exceeded <= 0) {
+        return { deleted: 0, retention: safeRetention, total }
+    }
+
+    const staleRows = await execute(
+        connection,
+        `SELECT id
+           FROM content_collection_version
+          WHERE collection_id = ?
+          ORDER BY revision DESC, id DESC
+          LIMIT ? OFFSET ?`,
+        [collectionId, safeRetention, safeRetention]
+    )
+    const staleIds = (staleRows || []).map(row => Number(row.id))
+    if (staleIds.length > 0) {
+        await execute(
+            connection,
+            `DELETE FROM content_collection_version
+              WHERE collection_id = ?
+                AND id IN (${staleIds.map(() => '?').join(', ')})`,
+            [collectionId, ...staleIds]
+        )
+    }
+
+    return { deleted: staleIds.length, retention: safeRetention, total: safeRetention }
 }
 
 async function replaceArticlesInConnection(connection, collectionId, articleIds) {
@@ -243,7 +300,7 @@ async function saveCollectionWithArticles(
     id,
     payload,
     articleIds,
-    { userId = null } = {}
+    { userId = null, versionRetention } = {}
 ) {
     return withTransaction(async (connection) => {
         const currentRows = await execute(
@@ -259,6 +316,10 @@ async function saveCollectionWithArticles(
 
         const fields = []
         const params = []
+        if (versionRetention !== undefined) {
+            fields.push('version_retention = ?')
+            params.push(normalizeVersionRetention(versionRetention))
+        }
         if (payload.name !== undefined) {
             fields.push('name = ?')
             params.push(payload.name)
@@ -340,6 +401,10 @@ async function listCollectionVersions(id, { page = 1, pageSize = 10 } = {}) {
         'SELECT COUNT(*) AS total FROM content_collection_version WHERE collection_id = ?',
         [id]
     )
+    const [retentionRow] = await query(
+        'SELECT version_retention FROM content_collection WHERE id = ? LIMIT 1',
+        [id]
+    )
 
     const parsedRows = rows.map(row => ({
         ...row,
@@ -375,8 +440,43 @@ async function listCollectionVersions(id, { page = 1, pageSize = 10 } = {}) {
         total: Number(countRow?.total) || 0,
         page: safePage,
         pageSize: safePageSize,
-        totalPage: Math.ceil((Number(countRow?.total) || 0) / safePageSize)
+        totalPage: Math.ceil((Number(countRow?.total) || 0) / safePageSize),
+        retention: normalizeVersionRetention(retentionRow?.version_retention)
     }
+}
+
+async function pruneCollectionVersions(id, { retention } = {}) {
+    return withTransaction(async (connection) => {
+        const collectionRows = await execute(
+            connection,
+            'SELECT id FROM content_collection WHERE id = ? AND status = 1 FOR UPDATE',
+            [id]
+        )
+        if (!collectionRows?.[0]) return { found: false, reason: 'collection' }
+
+        const result = await pruneVersionsInConnection(connection, id, retention)
+        return { found: true, ...result }
+    })
+}
+
+async function updateCollectionVersionPolicy(id, retention) {
+    const safeRetention = normalizeVersionRetention(retention)
+    return withTransaction(async (connection) => {
+        const collectionRows = await execute(
+            connection,
+            'SELECT id FROM content_collection WHERE id = ? AND status = 1 FOR UPDATE',
+            [id]
+        )
+        if (!collectionRows?.[0]) return { found: false, reason: 'collection' }
+
+        await execute(
+            connection,
+            'UPDATE content_collection SET version_retention = ? WHERE id = ?',
+            [safeRetention, id]
+        )
+        const result = await pruneVersionsInConnection(connection, id, safeRetention)
+        return { found: true, ...result }
+    })
 }
 
 async function findCollectionVersion(id, versionId) {
@@ -500,7 +600,14 @@ async function restoreCollectionVersion(id, versionId, { userId = null } = {}) {
 }
 
 async function insertCollection(
-    { name, description = '', cover = '', sort = 0, articleIds = [] },
+    {
+        name,
+        description = '',
+        cover = '',
+        sort = 0,
+        articleIds = [],
+        versionRetention
+    },
     { userId = null } = {}
 ) {
     return withTransaction(async (connection) => {
@@ -513,6 +620,13 @@ async function insertCollection(
         const collectionId = Number(result.insertId)
         const ids = normalizeArticleIds(articleIds)
         await replaceArticlesInConnection(connection, collectionId, ids)
+        if (versionRetention !== undefined) {
+            await execute(
+                connection,
+                'UPDATE content_collection SET version_retention = ? WHERE id = ?',
+                [normalizeVersionRetention(versionRetention), collectionId]
+            )
+        }
         const revision = await appendVersion(connection, collectionId, {
             name,
             description,
@@ -603,5 +717,10 @@ module.exports = {
     replaceCollectionArticlesWithVersion,
     listCollectionVersions,
     findCollectionVersion,
-    restoreCollectionVersion
+    restoreCollectionVersion,
+    pruneCollectionVersions,
+    updateCollectionVersionPolicy,
+    normalizeVersionRetention,
+    DEFAULT_VERSION_RETENTION,
+    MAX_VERSION_RETENTION
 }
