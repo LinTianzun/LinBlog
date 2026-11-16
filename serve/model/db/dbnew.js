@@ -733,6 +733,25 @@ const tablesSql = {
     FOREIGN KEY (collection_id) REFERENCES content_collection(id) ON DELETE CASCADE,
     FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内容系列文章关系';`
+
+  ,content_collection_version: `CREATE TABLE IF NOT EXISTS content_collection_version(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '版本ID',
+    collection_id BIGINT UNSIGNED NOT NULL COMMENT '系列ID',
+    revision INT UNSIGNED NOT NULL COMMENT '系列修订号',
+    name VARCHAR(80) NOT NULL COMMENT '名称快照',
+    description VARCHAR(500) NULL COMMENT '说明快照',
+    cover VARCHAR(255) NULL COMMENT '封面快照',
+    sort INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序快照',
+    article_ids LONGTEXT NOT NULL COMMENT '有序文章ID（JSON）',
+    source ENUM('manual', 'rollback') NOT NULL DEFAULT 'manual' COMMENT '版本来源',
+    created_by BIGINT UNSIGNED NULL COMMENT '操作人ID',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_collection_revision (collection_id, revision),
+    FOREIGN KEY (collection_id) REFERENCES content_collection(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_collection_version_created (collection_id, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内容系列版本快照';`
 };
 
 // 内容图片（文章/图库/随笔上传）存在 image 表，历史版本没有聚合入口。
@@ -1714,7 +1733,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'content_collection_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2300,6 +2319,10 @@ async function ensureContentCollectionSchema(exec = query) {
   await exec(tablesSql.content_collection_article);
 }
 
+async function ensureCollectionVersionSchema(exec = query) {
+  await exec(tablesSql.content_collection_version);
+}
+
 // 站点洞察：单独记录站内搜索与门户 404，不与访问路径统计混在一张表里。
 async function ensureSiteEventSchema(exec = query) {
   await exec(tablesSql.site_event);
@@ -2703,6 +2726,10 @@ const migrations = [
   {
     version: '20261113_content_collection',
     up: ensureContentCollectionSchema
+  },
+  {
+    version: '20261116_collection_version',
+    up: ensureCollectionVersionSchema
   },
   {
     version: '20261113_site_event',

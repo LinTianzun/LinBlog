@@ -9,6 +9,7 @@ const PET_GROWTH_MIGRATION = ['2026', '1113_pet_growth'].join('')
 const PET_RESET_MIGRATION = ['2026', '1113_pet_reset'].join('')
 const PET_HOMESTEAD_MIGRATION = ['2026', '1113_pet_homestead'].join('')
 const CONTENT_COLLECTION_MIGRATION = ['2026', '1113_content_collection'].join('')
+const COLLECTION_VERSION_MIGRATION = '20261116_collection_version'
 const SITE_EVENT_MIGRATION = ['2026', '1113_site_event'].join('')
 const SCHEDULED_PAUSE_MIGRATION = ['2026', '1114_scheduled_pause'].join('')
 
@@ -59,6 +60,7 @@ const ALL_MIGRATIONS = [
     PET_RESET_MIGRATION,
     PET_HOMESTEAD_MIGRATION,
     CONTENT_COLLECTION_MIGRATION,
+    COLLECTION_VERSION_MIGRATION,
     SITE_EVENT_MIGRATION,
     SCHEDULED_PAUSE_MIGRATION
 ]
@@ -960,6 +962,30 @@ test('content collection migration creates collection and membership tables', as
     assert.ok(calls.some(call =>
         call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
         && call.values[0] === CONTENT_COLLECTION_MIGRATION
+    ))
+})
+
+test('collection version migration creates the revision snapshot table', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(COLLECTION_VERSION_MIGRATION)
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+    assert.ok(calls.some(call =>
+        call.sql.includes('CREATE TABLE IF NOT EXISTS content_collection_version(')
+        && call.sql.includes('article_ids LONGTEXT')
+        && call.sql.includes("source ENUM('manual', 'rollback')")
+        && call.sql.includes('UNIQUE KEY uk_collection_revision (collection_id, revision)')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === COLLECTION_VERSION_MIGRATION
     ))
 })
 

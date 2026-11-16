@@ -72,6 +72,10 @@
                                 :href="`/portal/series?collection=${activeId}`" target="_blank" rel="noopener">
                                 预览系列
                             </a>
+                            <yk-button v-if="!isCreating && activeId" type="secondary" size="s"
+                                @click="versionPanelOpen = true">
+                                版本历史
+                            </yk-button>
                             <yk-button v-if="!isCreating" type="danger" size="s" :disabled="saving"
                                 @click="handleDelete">
                                 删除系列
@@ -289,6 +293,8 @@
         </div>
 
         <MediaPickerDialog v-model:open="mediaPickerOpen" @select="handleMediaSelect" />
+        <CollectionVersionPanel v-model:open="versionPanelOpen" :collection-id="activeId"
+            @restored="handleVersionRestored" />
     </yk-space>
 </template>
 
@@ -296,6 +302,7 @@
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
 import MediaPickerDialog from '../components/common/MediaPickerDialog.vue'
+import CollectionVersionPanel from '../components/collection/CollectionVersionPanel.vue'
 import { getArticles, type ArticleItem } from '../api/article'
 import { getRequestErrorMessage } from '../api/file'
 import { getSubsets } from '../api/subset'
@@ -304,7 +311,6 @@ import {
     deleteCollection,
     getCollectionById,
     getCollections,
-    setCollectionArticles,
     updateCollection,
     type CollectionSummary,
 } from '../api/collection'
@@ -345,6 +351,7 @@ const noticeMessage = ref('')
 const coverFileList = ref<CoverFile[]>([])
 const coverUploadError = ref('')
 const mediaPickerOpen = ref(false)
+const versionPanelOpen = ref(false)
 const uploadUrl = ref('')
 const uploadTicketBusy = ref(false)
 const PICKER_PAGE_SIZE = 20
@@ -650,6 +657,7 @@ const handleSave = async (): Promise<void> => {
                 description: form.description.trim(),
                 cover: form.cover.trim(),
                 sort: Number(form.sort) || 0,
+                articleIds: selectedIds.value,
             })
             if (created.code !== 200 || !created.data) {
                 throw new Error(created.message || '系列创建失败')
@@ -677,16 +685,10 @@ const handleSave = async (): Promise<void> => {
                 description: form.description.trim(),
                 cover: form.cover.trim(),
                 sort: Number(form.sort) || 0,
+                articleIds: selectedIds.value,
             })
             if (updated.code !== 200) {
                 throw new Error(updated.message || '系列更新失败')
-            }
-        }
-
-        if (collectionId) {
-            const saved = await setCollectionArticles(collectionId, selectedIds.value)
-            if (saved.code !== 200) {
-                throw new Error(saved.message || '系列文章保存失败')
             }
         }
 
@@ -732,6 +734,14 @@ const handleDelete = async (): Promise<void> => {
         showToast('error', errorMessage.value)
     } finally {
         saving.value = false
+    }
+}
+
+const handleVersionRestored = async (revision: number): Promise<void> => {
+    showToast('primary', `系列已回滚（修订 #${revision}）`)
+    await loadCollections()
+    if (activeId.value) {
+        await selectCollection(activeId.value)
     }
 }
 

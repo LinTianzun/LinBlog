@@ -13,6 +13,7 @@ declare module 'vue' {
     Artcle: typeof import('./src/components/article/artcle.vue')['default']
     ArtcleItem: typeof import('./src/components/article/artcleItem.vue')['default']
     ArticleVersionPanel: typeof import('./src/components/article/ArticleVersionPanel.vue')['default']
+    CollectionVersionPanel: typeof import('./src/components/collection/CollectionVersionPanel.vue')['default']
     Comment: typeof import('./src/components/reply/comment.vue')['default']
     CommentList: typeof import('./src/components/reply/commentList.vue')['default']
     CommentReportDialog: typeof import('./src/components/content/CommentReportDialog.vue')['default']

@@ -7,6 +7,11 @@ const memberArticle = {
   title: '系列里的第一篇文章',
 }
 
+const nextRevisionByCollectionId: Record<number, number> = {
+  8: 2,
+  12: 1,
+}
+
 const existingCollection = {
   id: 8,
   name: '旧系列',
@@ -65,7 +70,7 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
         body: JSON.stringify({
           code: 200,
           message: '系列创建成功',
-          data: { collectionId: createdCollection.id },
+          data: { collectionId: createdCollection.id, revision: 1 },
         }),
       })
       return
@@ -84,6 +89,24 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
 
   for (const id of [8, 12]) {
     await page.route(new RegExp(`/api/collection/${id}$`), async (route) => {
+      if (route.request().method() === 'PUT') {
+        const payload = route.request().postDataJSON() as { articleIds?: number[] }
+        const ids = Array.isArray(payload.articleIds) ? payload.articleIds : []
+        members[id] = ids.map(articleId => ({ ...memberArticle, id: articleId }))
+        const revision = nextRevisionByCollectionId[id] ?? 1
+        nextRevisionByCollectionId[id] = revision + 1
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 200,
+            message: '系列更新成功',
+            data: { collectionId: id, articleCount: ids.length, revision },
+          }),
+        })
+        return
+      }
+
       const collection = collections.find(item => item.id === id)
       if (!collection) {
         await route.fulfill({
@@ -100,21 +123,6 @@ test('后台可以新建系列并保存文章顺序', async ({ page }) => {
           code: 200,
           message: 'ok',
           data: { ...collection, articles: members[id] || [] },
-        }),
-      })
-    })
-
-    await page.route(new RegExp(`/api/collection/${id}/articles$`), async (route) => {
-      const payload = route.request().postDataJSON() as { articleIds?: number[] }
-      const ids = Array.isArray(payload.articleIds) ? payload.articleIds : []
-      members[id] = ids.map(articleId => ({ ...memberArticle, id: articleId }))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 200,
-          message: '系列文章保存成功',
-          data: { collectionId: id, articleCount: ids.length },
         }),
       })
     })

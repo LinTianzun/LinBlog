@@ -192,12 +192,36 @@ async function createCollection(req, res) {
             return res.status(400).json({ code: 400, message: '系列名称不能为空' })
         }
 
+        const rawArticleIds = req.body?.articleIds
+        const articleIds = rawArticleIds === undefined ? [] : normalizeArticleIds(rawArticleIds)
+        if (!articleIds) {
+            return res.status(400).json({ code: 400, message: 'articleIds 必须是数组' })
+        }
+        if (Array.isArray(rawArticleIds) && rawArticleIds.length > MAX_ARTICLES) {
+            return res.status(400).json({
+                code: 400,
+                message: `一个系列最多包含 ${MAX_ARTICLES} 篇文章`
+            })
+        }
+        if (articleIds.length > 0) {
+            const availableIds = await collectionModel.findAvailableArticleIds(articleIds)
+            const availableSet = new Set(availableIds)
+            const invalidIds = articleIds.filter(articleId => !availableSet.has(articleId))
+            if (invalidIds.length > 0) {
+                return res.status(400).json({
+                    code: 400,
+                    message: `以下文章不存在、已删除或不是文章类型：${invalidIds.join(', ')}`
+                })
+            }
+        }
+
         const result = await collectionModel.insertCollection({
             name,
             description,
             cover,
-            sort: normalizeSort(req.body?.sort)
-        })
+            sort: normalizeSort(req.body?.sort),
+            articleIds
+        }, { userId: req.user.userId })
 
         writeSystemLog({
             userId: req.user.userId,
@@ -212,7 +236,7 @@ async function createCollection(req, res) {
         res.status(201).json({
             code: 200,
             message: '系列创建成功',
-            data: { collectionId: result.collectionId }
+            data: { collectionId: result.collectionId, revision: result.revision }
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '系列创建失败：' + err.message })
@@ -240,12 +264,39 @@ async function updateCollection(req, res) {
             return res.status(400).json({ code: 400, message: '系列名称不能为空' })
         }
 
-        await collectionModel.updateCollection(id, {
+        const rawArticleIds = req.body?.articleIds
+        const hasArticleIds = rawArticleIds !== undefined
+        const articleIds = hasArticleIds ? normalizeArticleIds(rawArticleIds) : undefined
+        if (hasArticleIds && !articleIds) {
+            return res.status(400).json({ code: 400, message: 'articleIds 必须是数组' })
+        }
+        if (Array.isArray(rawArticleIds) && rawArticleIds.length > MAX_ARTICLES) {
+            return res.status(400).json({
+                code: 400,
+                message: `一个系列最多包含 ${MAX_ARTICLES} 篇文章`
+            })
+        }
+        if (articleIds && articleIds.length > 0) {
+            const availableIds = await collectionModel.findAvailableArticleIds(articleIds)
+            const availableSet = new Set(availableIds)
+            const invalidIds = articleIds.filter(articleId => !availableSet.has(articleId))
+            if (invalidIds.length > 0) {
+                return res.status(400).json({
+                    code: 400,
+                    message: `以下文章不存在、已删除或不是文章类型：${invalidIds.join(', ')}`
+                })
+            }
+        }
+
+        const saved = await collectionModel.saveCollectionWithArticles(id, {
             name,
             description: normalizeText(req.body?.description, 500),
             cover: normalizeText(req.body?.cover, 255),
             sort: req.body?.sort === undefined ? undefined : normalizeSort(req.body.sort)
-        })
+        }, articleIds, { userId: req.user.userId })
+        if (!saved.found) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
 
         writeSystemLog({
             userId: req.user.userId,
@@ -253,11 +304,15 @@ async function updateCollection(req, res) {
             module: 'collection',
             targetType: 'collection',
             targetId: id,
-            detail: `更新内容系列「${name || current.name}」`,
+            detail: `更新内容系列「${name || current.name}」（修订 #${saved.revision}）`,
             ip: req.ip || null
         })
 
-        res.json({ code: 200, message: '系列更新成功' })
+        res.json({
+            code: 200,
+            message: '系列更新成功',
+            data: { collectionId: id, revision: saved.revision, articleCount: saved.articleCount }
+        })
     } catch (err) {
         res.status(500).json({ code: 500, message: '系列更新失败：' + err.message })
     }
@@ -334,7 +389,15 @@ async function setCollectionArticles(req, res) {
             })
         }
 
-        const savedCount = await collectionModel.replaceCollectionArticles(id, articleIds)
+        const saved = await collectionModel.replaceCollectionArticlesWithVersion(
+            id,
+            articleIds,
+            { userId: req.user.userId }
+        )
+        if (!saved.found) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+        const savedCount = Number(saved.articleCount) || 0
 
         writeSystemLog({
             userId: req.user.userId,
@@ -342,17 +405,114 @@ async function setCollectionArticles(req, res) {
             module: 'collection',
             targetType: 'collection',
             targetId: id,
-            detail: `调整内容系列「${current.name}」文章顺序（${savedCount} 篇）`,
+            detail: `调整内容系列「${current.name}」文章顺序（${savedCount} 篇，修订 #${saved.revision}）`,
             ip: req.ip || null
         })
 
         res.json({
             code: 200,
             message: '系列文章保存成功',
-            data: { collectionId: id, articleCount: savedCount }
+            data: { collectionId: id, articleCount: savedCount, revision: saved.revision }
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '系列文章保存失败：' + err.message })
+    }
+}
+
+async function getCollectionVersions(req, res) {
+    try {
+        if (!canViewCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以查看系列版本' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        if (!id) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列ID' })
+        }
+
+        const collection = await collectionModel.findCollectionById(id)
+        if (!collection) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        const result = await collectionModel.listCollectionVersions(id, {
+            page: req.query?.page,
+            pageSize: req.query?.pageSize
+        })
+        res.json({ code: 200, message: '查询成功', data: result })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '系列版本查询失败：' + err.message })
+    }
+}
+
+async function getCollectionVersion(req, res) {
+    try {
+        if (!canViewCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以查看系列版本' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        const versionId = parseCollectionId(req.params.versionId)
+        if (!id || !versionId) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列和版本ID' })
+        }
+
+        const version = await collectionModel.findCollectionVersion(id, versionId)
+        if (!version) {
+            return res.status(404).json({ code: 404, message: '版本不存在' })
+        }
+
+        res.json({ code: 200, message: '查询成功', data: version })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '系列版本详情查询失败：' + err.message })
+    }
+}
+
+async function restoreCollectionVersion(req, res) {
+    try {
+        if (!canManageCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以回滚系列版本' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        const versionId = parseCollectionId(req.params.versionId)
+        if (!id || !versionId) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列和版本ID' })
+        }
+
+        const result = await collectionModel.restoreCollectionVersion(id, versionId, {
+            userId: req.user.userId
+        })
+        if (!result.found) {
+            return res.status(404).json({
+                code: 404,
+                message: result.reason === 'version' ? '版本不存在' : '系列不存在'
+            })
+        }
+
+        const collection = await collectionModel.findCollectionById(id)
+        writeSystemLog({
+            userId: req.user.userId,
+            action: 'update',
+            module: 'collection',
+            targetType: 'collection',
+            targetId: id,
+            detail: `回滚内容系列「${collection?.name || id}」到修订 #${result.restoredFrom}（新修订 #${result.revision}）`,
+            ip: req.ip || null
+        })
+
+        res.json({
+            code: 200,
+            message: '系列已回滚',
+            data: {
+                collectionId: id,
+                revision: result.revision,
+                restoredFrom: result.restoredFrom,
+                skippedArticleIds: result.skippedArticleIds || []
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '系列回滚失败：' + err.message })
     }
 }
 
@@ -365,5 +525,8 @@ module.exports = {
     createCollection,
     updateCollection,
     deleteCollection,
-    setCollectionArticles
+    setCollectionArticles,
+    getCollectionVersions,
+    getCollectionVersion,
+    restoreCollectionVersion
 }

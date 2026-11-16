@@ -51,6 +51,57 @@ export interface CollectionPayload {
   description?: string;
   cover?: string;
   sort?: number;
+  articleIds?: number[];
+}
+
+export interface CollectionVersionSummary {
+  id: number;
+  collectionId: number;
+  revision: number;
+  name: string;
+  description: string;
+  cover: string;
+  sort: number;
+  articleCount: number;
+  articleTitles: string[];
+  source: "manual" | "rollback";
+  operatorName: string;
+  createdAt: string;
+}
+
+export interface CollectionVersionArticle {
+  id: number;
+  title: string;
+  introduce?: string;
+  cover?: string;
+  classify?: string;
+  state?: string;
+  subsetId?: number;
+  subsetName?: string;
+  missing?: boolean;
+}
+
+export interface CollectionVersionDetail {
+  id: number;
+  collectionId: number;
+  revision: number;
+  name: string;
+  description: string;
+  cover: string;
+  sort: number;
+  source: "manual" | "rollback";
+  operatorName: string;
+  createdAt: string;
+  articleIds: number[];
+  articles: CollectionVersionArticle[];
+}
+
+export interface CollectionVersionPage {
+  list: CollectionVersionSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPage: number;
 }
 
 export interface ArticleSeriesLink {
@@ -103,14 +154,16 @@ export function getCollectionById(id: number) {
 }
 
 export function createCollection(data: CollectionPayload) {
-  return request.post<ApiResult<{ collectionId: number }>>(
+  return request.post<ApiResult<{ collectionId: number; revision: number }>>(
     "/collection",
     data
   );
 }
 
 export function updateCollection(id: number, data: Partial<CollectionPayload>) {
-  return request.put<ApiResult<never>>(`/collection/${id}`, data);
+  return request.put<
+    ApiResult<{ collectionId: number; revision: number; articleCount: number }>
+  >(`/collection/${id}`, data);
 }
 
 export function deleteCollection(id: number) {
@@ -121,4 +174,31 @@ export function setCollectionArticles(id: number, articleIds: number[]) {
   return request.put<
     ApiResult<{ collectionId: number; articleCount: number }>
   >(`/collection/${id}/articles`, { articleIds });
+}
+
+export function getCollectionVersions(
+  id: number,
+  params: { page?: number; pageSize?: number } = {}
+) {
+  return request.get<ApiResult<CollectionVersionPage>>(
+    `/collection/${id}/versions`,
+    { params }
+  );
+}
+
+export function getCollectionVersion(id: number, versionId: number) {
+  return request.get<ApiResult<CollectionVersionDetail>>(
+    `/collection/${id}/versions/${versionId}`
+  );
+}
+
+export function restoreCollectionVersion(id: number, versionId: number) {
+  return request.post<
+    ApiResult<{
+      collectionId: number;
+      revision: number;
+      restoredFrom: number;
+      skippedArticleIds: number[];
+    }>
+  >(`/collection/${id}/versions/${versionId}/restore`);
 }

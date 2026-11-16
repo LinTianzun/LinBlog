@@ -222,10 +222,12 @@ test('collection.view can read the series list but cannot write', async () => {
 
 test('createCollection trims fields and applies a safe sort', async () => {
     const originalInsert = collectionModel.insertCollection
+    const originalAvailable = collectionModel.findAvailableArticleIds
+    collectionModel.findAvailableArticleIds = async () => [11, 12]
     let saved = null
-    collectionModel.insertCollection = async (payload) => {
-        saved = payload
-        return { collectionId: 9 }
+    collectionModel.insertCollection = async (payload, options) => {
+        saved = { payload, options }
+        return { collectionId: 9, revision: 1 }
     }
 
     try {
@@ -236,7 +238,8 @@ test('createCollection trims fields and applies a safe sort', async () => {
                     name: '  从零搭博客  ',
                     description: '  系列说明  ',
                     cover: '  /cover.png  ',
-                    sort: -20
+            sort: -20,
+            articleIds: [11, 12]
                 },
                 user: admin
             },
@@ -245,14 +248,20 @@ test('createCollection trims fields and applies a safe sort', async () => {
 
         assert.equal(res.statusCode, 201)
         assert.equal(res.body.data.collectionId, 9)
+        assert.equal(res.body.data.revision, 1)
         assert.deepEqual(saved, {
-            name: '从零搭博客',
-            description: '系列说明',
-            cover: '/cover.png',
-            sort: 0
+            payload: {
+                name: '从零搭博客',
+                description: '系列说明',
+                cover: '/cover.png',
+                sort: 0,
+                articleIds: [11, 12]
+            },
+            options: { userId: 1 }
         })
     } finally {
         collectionModel.insertCollection = originalInsert
+        collectionModel.findAvailableArticleIds = originalAvailable
     }
 })
 
@@ -276,10 +285,14 @@ test('updateCollection rejects unknown series', async () => {
 
 test('updateCollection does not treat an unchanged row as missing', async () => {
     const originalFind = collectionModel.findCollectionById
-    const originalUpdate = collectionModel.updateCollection
+    const originalSave = collectionModel.saveCollectionWithArticles
 
     collectionModel.findCollectionById = async () => ({ id: 1, name: '系列' })
-    collectionModel.updateCollection = async () => 0
+    collectionModel.saveCollectionWithArticles = async () => ({
+        found: true,
+        revision: 2,
+        articleCount: 0
+    })
 
     try {
         const res = createRes()
@@ -291,19 +304,19 @@ test('updateCollection does not treat an unchanged row as missing', async () => 
         assert.equal(res.body.code, 200)
     } finally {
         collectionModel.findCollectionById = originalFind
-        collectionModel.updateCollection = originalUpdate
+        collectionModel.saveCollectionWithArticles = originalSave
     }
 })
 
 test('setCollectionArticles rejects article IDs that are unavailable', async () => {
     const originalFind = collectionModel.findCollectionById
     const originalAvailable = collectionModel.findAvailableArticleIds
-    const originalReplace = collectionModel.replaceCollectionArticles
+    const originalReplace = collectionModel.replaceCollectionArticlesWithVersion
     let replaced = false
 
     collectionModel.findCollectionById = async () => ({ id: 1, name: '系列' })
     collectionModel.findAvailableArticleIds = async () => [11]
-    collectionModel.replaceCollectionArticles = async () => {
+    collectionModel.replaceCollectionArticlesWithVersion = async () => {
         replaced = true
         return 2
     }
@@ -328,7 +341,7 @@ test('setCollectionArticles rejects article IDs that are unavailable', async () 
 test('setCollectionArticles preserves order and removes duplicate IDs', async () => {
     const originalFind = collectionModel.findCollectionById
     const originalAvailable = collectionModel.findAvailableArticleIds
-    const originalReplace = collectionModel.replaceCollectionArticles
+    const originalReplace = collectionModel.replaceCollectionArticlesWithVersion
     let received = null
 
     collectionModel.findCollectionById = async () => ({ id: 1, name: '系列' })
@@ -336,9 +349,10 @@ test('setCollectionArticles preserves order and removes duplicate IDs', async ()
         assert.deepEqual(ids, [12, 11, 13])
         return [11, 12, 13]
     }
-    collectionModel.replaceCollectionArticles = async (id, ids) => {
+    collectionModel.replaceCollectionArticlesWithVersion = async (id, ids, options) => {
         received = { id, ids }
-        return ids.length
+        assert.deepEqual(options, { userId: 1 })
+        return { found: true, revision: 4, articleCount: ids.length }
     }
 
     try {
@@ -351,6 +365,7 @@ test('setCollectionArticles preserves order and removes duplicate IDs', async ()
         assert.equal(res.body.code, 200)
         assert.deepEqual(received, { id: 1, ids: [12, 11, 13] })
         assert.equal(res.body.data.articleCount, 3)
+        assert.equal(res.body.data.revision, 4)
     } finally {
         collectionModel.findCollectionById = originalFind
         collectionModel.findAvailableArticleIds = originalAvailable
