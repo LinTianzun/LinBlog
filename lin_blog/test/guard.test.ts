@@ -68,6 +68,7 @@ const PROTECTED_ROUTES: { path: string; permissions: string[] }[] = [
     { path: '/diary', permissions: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'] },
     { path: '/editarticle', permissions: ['article.create', 'article.manageOwn', 'article.manageAll'] },
     { path: '/editgallery', permissions: ['gallery.create', 'gallery.manageOwn', 'gallery.manageAll'] },
+    { path: '/petManage', permissions: ['pet.manage'] },
 ]
 
 // ─── 匿名访问（无 token） ──────────────────────────────────────────
@@ -272,6 +273,10 @@ describe('编辑角色', () => {
     it('系统设置页可进入（对所有登录用户开放）', () => {
         assert.equal(guard(target('/setting', { requiresAuth: true })), undefined)
     })
+
+    it('无 pet.manage 权限，宠物管理页回落到总览', () => {
+        assert.equal(guard(target('/petManage', { permissions: ['pet.manage'] })), '/overView')
+    })
 })
 
 // ─── 普通用户（normal） ───────────────────────────────────────────
@@ -349,6 +354,10 @@ describe('普通用户', () => {
     it('系统设置页可进入', () => {
         assert.equal(guard(target('/setting', { requiresAuth: true })), undefined)
     })
+
+    it('无 pet.manage 权限，宠物管理页回落到系统设置', () => {
+        assert.equal(guard(target('/petManage', { permissions: ['pet.manage'] })), '/setting')
+    })
 })
 
 // ─── 游客角色（visitor） ────────────────────────────────────────────
@@ -390,6 +399,10 @@ describe('游客角色', () => {
 
     it('系统设置页可进入', () => {
         assert.equal(guard(target('/setting', { requiresAuth: true })), undefined)
+    })
+
+    it('无 pet.manage 权限，宠物管理页回落到系统设置', () => {
+        assert.equal(guard(target('/petManage', { permissions: ['pet.manage'] })), '/setting')
     })
 
     it('无 overview.viewAll 时无法进入总览页（全站统计不可见）', () => {

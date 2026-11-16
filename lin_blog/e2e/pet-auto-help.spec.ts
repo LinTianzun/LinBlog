@@ -79,7 +79,7 @@ const seedHomestead = async (
 
 test('宠物空闲后会自己走到菜地收获并记入小院仓库', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await seedHomestead(page)
   await installApiMock(page)
   await page.goto('/petManage')
@@ -113,7 +113,7 @@ test('宠物空闲后会自己走到菜地收获并记入小院仓库', async ({
 
 test('手动去帮忙会尊重冷却并给出提示', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await seedHomestead(page, { cooldown: true })
   await installApiMock(page)
   await page.goto('/petManage')
@@ -131,7 +131,7 @@ test('手动去帮忙会尊重冷却并给出提示', async ({ page }) => {
 
 test('自动帮忙会先切到对应分区再干活', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await seedHomestead(page, { animalsOnly: true })
   await installApiMock(page)
   await page.goto('/petManage')

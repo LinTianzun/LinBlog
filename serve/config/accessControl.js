@@ -84,7 +84,12 @@ const PERMISSION_GROUPS = [
     {
         key: 'system',
         label: '系统与权限',
-        description: '权限矩阵、系统日志等高风险能力'
+        description: '权限矩阵、系统日志、数据库备份与站点维护'
+    },
+    {
+        key: 'pet',
+        label: '宠物与个性化',
+        description: '桌宠展示范围、行为与小院站点级配置'
     }
 ]
 
@@ -206,7 +211,7 @@ const PERMISSIONS = [
         key: 'collection.manage',
         group: 'content',
         label: '管理内容系列',
-        description: '新建、编辑、删除内容系列并调整系列内文章顺序'
+        description: '新建、编辑、删除内容系列；可管理选文顺序、版本回滚与快照保留策略'
     },
     {
         key: 'schedule.manage',
@@ -371,9 +376,9 @@ const PERMISSIONS = [
     },
     {
         key: 'pet.manage',
-        group: 'system',
+        group: 'pet',
         label: '管理宠物站点设置',
-        description: '修改桌宠的全站显示范围、尺寸、活跃度与停靠位置'
+        description: '修改站点级桌宠配置：显示范围、尺寸、透明度、行为、停靠位置与小院默认偏好'
     },
     {
         key: 'backup.view',

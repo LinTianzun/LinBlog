@@ -3,7 +3,7 @@ import { installApiMock, seedSession } from './fixtures/mockApi'
 
 test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await page.addInitScript(() => {
     const now = Date.now()
     localStorage.setItem(
@@ -74,7 +74,7 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
 
 test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/petManage')
 
@@ -107,7 +107,7 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
 
 test('每日订单可以换金币，商店可以买种子并继续播种', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await page.addInitScript(() => {
     const now = Date.now()
     const date = new Date(now)
@@ -218,7 +218,7 @@ test('每日订单可以换金币，商店可以买种子并继续播种', async
 
 test('小院存档会从云端合并并在改动后自动回传', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
 
   const now = Date.now()
@@ -300,7 +300,7 @@ test('小院存档会从云端合并并在改动后自动回传', async ({ page 
 
 test('小院成就展示累计进度并标记已达成项目', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await page.addInitScript(() => {
     const now = Date.now()
     localStorage.setItem(
@@ -364,7 +364,7 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
 
 test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await page.addInitScript(() => {
     const now = Date.now()
     localStorage.setItem(

@@ -162,7 +162,7 @@ test('动画加载失败时显示静态桌宠兜底', async ({ page }) => {
 })
 
 test('宠物管理页修改桌宠名字后状态气泡立即使用新名字', async ({ page }) => {
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/petManage')
 
@@ -182,7 +182,7 @@ test('宠物管理页修改桌宠名字后状态气泡立即使用新名字', as
 
 test('宠物管理页桌宠可见身体活动范围限制在宠物之家内', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/petManage')
 
@@ -243,7 +243,7 @@ test('宠物管理页桌宠可见身体活动范围限制在宠物之家内', as
 })
 
 test('系统设置只保留本机宠物偏好，不再承载完整宠物配置', async ({ page }) => {
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/setting')
 
@@ -260,7 +260,7 @@ test('系统设置只保留本机宠物偏好，不再承载完整宠物配置',
 
 test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/loginRegister')
 
@@ -313,7 +313,7 @@ test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) 
 
 test('不同零食提供不同加成并共享冷却', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/loginRegister')
 
@@ -546,7 +546,7 @@ test('桌宠隐藏时发布事件仍会记录每日任务', async ({ page }) => 
 
 test('宠物管理页展示已解锁成就与新成就标记', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/loginRegister')
 
@@ -598,7 +598,7 @@ test('宠物管理页展示已解锁成就与新成就标记', async ({ page }) 
 
 test('重新养一只会清空成长并提升状态版本', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
   await page.goto('/loginRegister')
 
@@ -791,7 +791,7 @@ test('桌宠会自动避让身下的操作按钮', async ({ page }) => {
 
 test('同步失败进入待重试，恢复网络后自动补传', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await seedSession(page, { id: 7, permissions: [] })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
   await installApiMock(page)
 
   let allowPut = false

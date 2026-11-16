@@ -82,7 +82,7 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     ],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
-    petManage: [],
+    petManage: ['pet.manage'],
     setting: [],
 }
 
@@ -92,7 +92,7 @@ const hasMenuAccess = (path: string): boolean => {
 }
 
 const visibleLinks = computed(() => {
-    // 空权限声明的菜单（系统设置）对所有登录用户可见
+            // 无权限声明或命中任一权限才显示；系统设置保持登录即可见
     return navLinks.filter(item => hasMenuAccess(item.path))
 })
 

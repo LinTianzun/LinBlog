@@ -201,9 +201,10 @@ const routes = [
             {
                 path: 'petManage',
                 component: () => import('../views/PetManageView.vue'),
-                // 宠物管理对所有登录用户开放，站点级配置仍由页面内权限控制
+                // 站点级展示与行为需要 pet.manage；养成状态由本人使用
                 meta: {
                     requiresAuth: true,
+                    permissions: ['pet.manage'],
                 }
             },
             {
