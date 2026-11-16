@@ -25,7 +25,6 @@ import crateUrl from '../../assets/farm/pixel/crate.png'
 import fenceStripUrl from '../../assets/farm/pixel/fence-strip.png'
 import fishUrl from '../../assets/farm/pixel/fish.png'
 import flowerUrl from '../../assets/farm/pixel/flower.png'
-import grassUrl from '../../assets/farm/pixel/grass.png'
 import hayUrl from '../../assets/farm/pixel/hay.png'
 import chickenUrl from '../../assets/farm/pixel/chicken.png'
 import cowUrl from '../../assets/farm/pixel/cow.png'
@@ -60,7 +59,7 @@ interface SpriteSpec {
 }
 
 interface PatchSpec {
-    kind: 'soil' | 'water' | 'pasture' | 'path' | 'plank' | 'sand'
+    kind: 'soil' | 'pond' | 'pasture' | 'path' | 'plank' | 'sand' | 'horizon'
     left: number
     top: number
     width: number
@@ -113,7 +112,6 @@ let running = false
 let frameId = 0
 let resizeObserver: ResizeObserver | null = null
 let buildToken = 0
-let waterTexture: Texture | null = null
 let groundMaterial: MeshBasicMaterial | null = null
 let fishSprite: Sprite | null = null
 let fishClock = 0
@@ -154,7 +152,7 @@ const PLOT_GRID = {
     top: 46,
     width: 68,
     height: 34,
-    gap: 6,
+    gap: 5,
 }
 
 const ZONE_TINTS: Record<PetYardTab, number> = {
@@ -218,64 +216,184 @@ function makeCanvasTexture(
 }
 
 function buildSoilTexture(): Texture {
-    const key = 'soil-patch'
+    const key = 'soil-patch-v2'
     const cached = textureCache.get(key)
     if (cached) return cached
-    const texture = makeCanvasTexture(64, (ctx) => {
-        const colors = ['#8c5235', '#855035', '#946041', '#7e4a30']
-        for (let row = 0; row < 2; row += 1) {
-            for (let col = 0; col < 2; col += 1) {
-                ctx.fillStyle = colors[(row * 2 + col) % colors.length]
-                ctx.fillRect(col * 32, row * 32, 32, 32)
-                ctx.fillStyle = 'rgba(58, 38, 26, 0.18)'
-                ctx.fillRect(col * 32, row * 32 + 30, 32, 2)
-            }
+    const texture = makeCanvasTexture(96, (ctx, size) => {
+        ctx.fillStyle = '#8a5133'
+        ctx.fillRect(0, 0, size, size)
+        const tones = ['#7d4629', '#96593a', '#84492c', '#a06340']
+        let seed = 23
+        const rand = () => {
+            seed = (seed * 9301 + 49297) % 233280
+            return seed / 233280
+        }
+        for (let i = 0; i < 70; i += 1) {
+            const w = 2 + rand() * 7
+            const h = 1 + rand() * 3
+            ctx.fillStyle = tones[(rand() * tones.length) | 0]
+            ctx.fillRect(rand() * size, rand() * size, w, h)
+        }
+        ctx.fillStyle = 'rgba(56, 34, 22, 0.22)'
+        for (let i = 0; i < 16; i += 1) {
+            ctx.fillRect(rand() * size, rand() * size, 4 + rand() * 6, 2 + rand() * 2)
         }
     })
     textureCache.set(key, texture)
     return texture
 }
 
-function buildWaterTexture(): Texture {
-    const key = 'water-patch'
+function buildGroundTexture(): Texture {
+    const key = 'yard-ground'
     const cached = textureCache.get(key)
     if (cached) return cached
-    const texture = makeCanvasTexture(48, (ctx, size) => {
-        ctx.fillStyle = '#58b6d4'
+    const texture = makeCanvasTexture(128, (ctx, size) => {
+        ctx.fillStyle = '#7cc465'
         ctx.fillRect(0, 0, size, size)
+        const tones = ['#71b957', '#86cf6c', '#6cb353', '#8ed470', '#75bd5c']
+        let seed = 7
+        const rand = () => {
+            seed = (seed * 9301 + 49297) % 233280
+            return seed / 233280
+        }
+        for (let i = 0; i < 190; i += 1) {
+            const w = 2 + rand() * 6
+            const h = 1 + rand() * 4
+            ctx.fillStyle = tones[(rand() * tones.length) | 0]
+            ctx.fillRect(rand() * size, rand() * size, w, h)
+        }
+        ctx.fillStyle = 'rgba(52, 108, 40, 0.14)'
+        for (let i = 0; i < 26; i += 1) {
+            ctx.fillRect(rand() * size, rand() * size, 3 + rand() * 8, 2 + rand() * 3)
+        }
+    })
+    textureCache.set(key, texture)
+    return texture
+}
+
+function buildHorizonTexture(): Texture {
+    const key = 'yard-horizon'
+    const cached = textureCache.get(key)
+    if (cached) return cached
+    const texture = makeCanvasTexture(64, (ctx, size) => {
+        const bands = [
+            'rgba(146, 196, 106, 0)',
+            'rgba(128, 184, 96, 0.1)',
+            'rgba(104, 164, 82, 0.22)',
+            'rgba(82, 144, 70, 0.36)',
+            'rgba(64, 124, 60, 0.5)',
+        ]
+        const bandHeight = size / bands.length
+        bands.forEach((color, index) => {
+            ctx.fillStyle = color
+            ctx.fillRect(0, index * bandHeight, size, bandHeight)
+        })
+    })
+    textureCache.set(key, texture)
+    return texture
+}
+
+function buildPondTexture(): Texture {
+    const key = 'yard-pond'
+    const cached = textureCache.get(key)
+    if (cached) return cached
+    const texture = makeCanvasTexture(256, (ctx, size) => {
+        const points: Array<[number, number]> = []
+        const segments = 28
+        for (let i = 0; i < segments; i += 1) {
+            const angle = (i / segments) * Math.PI * 2
+            const wobble =
+                1 +
+                Math.sin(angle * 2 + 1.2) * 0.09 +
+                Math.cos(angle * 3 + 0.4) * 0.07 +
+                Math.sin(angle * 5 + 2.1) * 0.035
+            points.push([
+                size / 2 + Math.cos(angle) * 96 * wobble,
+                size / 2 + Math.sin(angle) * 66 * wobble,
+            ])
+        }
+        ctx.beginPath()
+        points.forEach(([x, y], index) => {
+            const next = points[(index + 1) % points.length]
+            const midX = (x + next[0]) / 2
+            const midY = (y + next[1]) / 2
+            if (index === 0) ctx.moveTo(midX, midY)
+            else ctx.quadraticCurveTo(x, y, midX, midY)
+        })
+        ctx.closePath()
+        ctx.strokeStyle = '#e3d1a5'
+        ctx.lineWidth = 14
+        ctx.stroke()
+        ctx.fillStyle = '#4fb0cd'
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(96, 66, 44, 0.4)'
+        ctx.lineWidth = 3
+        ctx.stroke()
+        ctx.save()
+        ctx.clip()
+        ctx.fillStyle = 'rgba(214, 240, 250, 0.2)'
+        ctx.beginPath()
+        ctx.ellipse(size / 2 - 24, size / 2 - 30, 78, 34, -0.12, 0, Math.PI * 2)
+        ctx.fill()
         ctx.fillStyle = '#7fd2e8'
-        for (let y = 2; y < size; y += 8) {
-            for (let x = 0; x < size; x += 12) {
-                ctx.fillRect(x + ((y / 8) % 2) * 5, y, 7, 2)
+        for (let y = 10; y < size; y += 16) {
+            for (let x = 0; x < size; x += 26) {
+                ctx.fillRect(x + ((y / 16) % 2) * 11, y, 16, 4)
             }
         }
         ctx.fillStyle = '#9fe6f5'
-        for (let y = 5; y < size; y += 10) {
-            ctx.fillRect(6 + (y % 10), y, 4, 1)
+        for (let y = 20; y < size; y += 22) {
+            ctx.fillRect(14 + (y % 18), y, 10, 2)
         }
-        ctx.fillStyle = '#3f9cbb'
-        for (let y = 6; y < size; y += 9) {
-            ctx.fillRect(18 + (y % 12), y, 9, 2)
+        ctx.fillStyle = 'rgba(46, 122, 148, 0.34)'
+        for (let y = 30; y < size; y += 19) {
+            ctx.fillRect(30 + (y % 26), y, 12, 2)
         }
+        ctx.restore()
+    })
+    textureCache.set(key, texture)
+    return texture
+}
+
+function buildPatchEdgeTexture(): Texture {
+    const key = 'patch-edge'
+    const cached = textureCache.get(key)
+    if (cached) return cached
+    const texture = makeCanvasTexture(128, (ctx, size) => {
+        ctx.save()
+        ctx.shadowColor = 'rgba(46, 34, 24, 0.32)'
+        ctx.shadowBlur = 10
+        ctx.strokeStyle = 'rgba(58, 40, 28, 0.28)'
+        ctx.lineWidth = 5
+        ctx.beginPath()
+        ctx.roundRect(6, 6, size - 12, size - 12, 18)
+        ctx.stroke()
+        ctx.restore()
     })
     textureCache.set(key, texture)
     return texture
 }
 
 function buildPastureTexture(): Texture {
-    const key = 'pasture-patch'
+    const key = 'pasture-patch-v2'
     const cached = textureCache.get(key)
     if (cached) return cached
-    const texture = makeCanvasTexture(32, (ctx, size) => {
-        ctx.fillStyle = '#b7d47a'
+    const texture = makeCanvasTexture(128, (ctx, size) => {
+        ctx.fillStyle = '#8fc96a'
         ctx.fillRect(0, 0, size, size)
-        ctx.fillStyle = '#a3c964'
-        for (let i = 0; i < 10; i += 1) {
-            ctx.fillRect((i * 11) % size, (i * 7) % size, 2, 3)
+        const tones = ['#7fbf58', '#9cd475', '#76b44f', '#a8dc80']
+        let seed = 41
+        const rand = () => {
+            seed = (seed * 9301 + 49297) % 233280
+            return seed / 233280
         }
-        ctx.fillStyle = '#d3eaa0'
-        for (let i = 0; i < 8; i += 1) {
-            ctx.fillRect((i * 13 + 5) % size, (i * 9 + 3) % size, 3, 1)
+        for (let i = 0; i < 150; i += 1) {
+            ctx.fillStyle = tones[(rand() * tones.length) | 0]
+            ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 5, 1 + rand() * 3)
+        }
+        ctx.fillStyle = 'rgba(64, 118, 44, 0.14)'
+        for (let i = 0; i < 18; i += 1) {
+            ctx.fillRect(rand() * size, rand() * size, 4 + rand() * 9, 2 + rand() * 3)
         }
     })
     textureCache.set(key, texture)
@@ -283,19 +401,21 @@ function buildPastureTexture(): Texture {
 }
 
 function buildPathTexture(): Texture {
-    const key = 'path-patch'
+    const key = 'path-patch-v2'
     const cached = textureCache.get(key)
     if (cached) return cached
-    const texture = makeCanvasTexture(32, (ctx, size) => {
+    const texture = makeCanvasTexture(64, (ctx, size) => {
         ctx.fillStyle = '#d8b98a'
         ctx.fillRect(0, 0, size, size)
-        ctx.fillStyle = '#c9a878'
-        for (let i = 0; i < 14; i += 1) {
-            ctx.fillRect((i * 9) % size, (i * 13) % size, 2, 2)
+        const tones = ['#c9a878', '#e0c396', '#bfa072']
+        let seed = 59
+        const rand = () => {
+            seed = (seed * 9301 + 49297) % 233280
+            return seed / 233280
         }
-        ctx.fillStyle = '#efd8b0'
-        for (let i = 0; i < 6; i += 1) {
-            ctx.fillRect((i * 15 + 4) % size, (i * 5 + 2) % size, 1, 1)
+        for (let i = 0; i < 90; i += 1) {
+            ctx.fillStyle = tones[(rand() * tones.length) | 0]
+            ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 4, 1 + rand() * 3)
         }
     })
     textureCache.set(key, texture)
@@ -303,7 +423,7 @@ function buildPathTexture(): Texture {
 }
 
 function buildPlankTexture(): Texture {
-    const key = 'plank-patch'
+    const key = 'plank-patch-v2'
     const cached = textureCache.get(key)
     if (cached) return cached
     const texture = makeCanvasTexture(32, (ctx, size) => {
@@ -323,7 +443,7 @@ function buildPlankTexture(): Texture {
 }
 
 function buildSandTexture(): Texture {
-    const key = 'sand-patch'
+    const key = 'sand-patch-v2'
     const cached = textureCache.get(key)
     if (cached) return cached
     const texture = makeCanvasTexture(32, (ctx, size) => {
@@ -409,26 +529,31 @@ function patchMesh(patch: PatchSpec): Mesh {
     const texture =
         patch.kind === 'soil'
             ? buildSoilTexture()
-            : patch.kind === 'water'
-              ? buildWaterTexture()
+            : patch.kind === 'pond'
+              ? buildPondTexture()
               : patch.kind === 'pasture'
                 ? buildPastureTexture()
                 : patch.kind === 'path'
                   ? buildPathTexture()
                   : patch.kind === 'sand'
                     ? buildSandTexture()
-                    : buildPlankTexture()
+                    : patch.kind === 'plank'
+                      ? buildPlankTexture()
+                      : buildHorizonTexture()
     const map = texture.clone()
     clonedTextures.push(map)
     map.needsUpdate = true
     map.wrapS = THREE.RepeatWrapping
     map.wrapT = THREE.RepeatWrapping
-    const repeatScale =
-        patch.kind === 'water' ? 6 : patch.kind === 'plank' ? 3 : 5
-    map.repeat.set(
-        Math.max(1, (patch.width / repeatScale) | 0),
-        Math.max(1, (patch.height / repeatScale) | 0)
-    )
+    if (patch.kind === 'pond' || patch.kind === 'horizon') {
+        map.repeat.set(1, 1)
+    } else {
+        const repeatScale = patch.kind === 'plank' ? 3 : 5
+        map.repeat.set(
+            Math.max(1, (patch.width / repeatScale) | 0),
+            Math.max(1, (patch.height / repeatScale) | 0)
+        )
+    }
     const geometry = new THREE.BufferGeometry()
     const tl = pctToGround(patch.left, patch.top)
     const tr = pctToGround(patch.left + patch.width, patch.top)
@@ -454,18 +579,53 @@ function patchMesh(patch: PatchSpec): Mesh {
     geometry.computeVertexNormals()
     const material = new THREE.MeshBasicMaterial({
         map,
-        transparent: patch.kind === 'water',
+        transparent: true,
         side: THREE.DoubleSide,
         depthTest: false,
         depthWrite: false,
     })
     const mesh = new THREE.Mesh(geometry, material)
-    mesh.renderOrder = -900
-    if (patch.kind === 'water') waterTexture = map
+    mesh.renderOrder =
+        patch.kind === 'pond'
+            ? -880
+            : patch.kind === 'plank'
+              ? -860
+              : patch.kind === 'horizon'
+                ? -940
+                : -900
     return mesh
 }
 
+const HORIZON_PATCH: PatchSpec = {
+    kind: 'horizon',
+    left: 0,
+    top: 0,
+    width: 100,
+    height: 22,
+}
+
+let horizonSprites: SpriteSpec[] | null = null
+function horizonTreeLine(): SpriteSpec[] {
+    if (horizonSprites) return horizonSprites
+    horizonSprites = [
+        { src: treeUrl, x: 4, y: 7, w: 6.5, anim: 'sway', opacity: 0.97 },
+        { src: treeOakUrl, x: 11, y: 5, w: 8, anim: 'sway' },
+        { src: treeUrl, x: 19, y: 9, w: 5.5, anim: 'sway', opacity: 0.95 },
+        { src: treeUrl, x: 27, y: 6, w: 7.5, anim: 'sway' },
+        { src: treeOakUrl, x: 36, y: 9, w: 6.5, anim: 'sway', opacity: 0.96 },
+        { src: treeUrl, x: 45, y: 5, w: 8.5, anim: 'sway' },
+        { src: treeUrl, x: 54, y: 8, w: 6, anim: 'sway', opacity: 0.95 },
+        { src: treeOakUrl, x: 63, y: 5, w: 8, anim: 'sway' },
+        { src: treeUrl, x: 72, y: 9, w: 5.5, anim: 'sway', opacity: 0.96 },
+        { src: treeUrl, x: 80, y: 6, w: 7.5, anim: 'sway' },
+        { src: treeOakUrl, x: 89, y: 8, w: 6.5, anim: 'sway', opacity: 0.95 },
+        { src: treeUrl, x: 95, y: 6, w: 6, anim: 'sway' },
+    ]
+    return horizonSprites
+}
+
 function buildZone(tab: PetYardTab): ZoneSpec {
+    const horizon = horizonTreeLine()
     if (tab === 'grow') {
         const beds: PatchSpec[] = plotRects().map((rect) => ({
             kind: 'soil',
@@ -476,97 +636,168 @@ function buildZone(tab: PetYardTab): ZoneSpec {
         }))
         return {
             tint: ZONE_TINTS.grow,
-            petStart: { x: 50, y: 86 },
+            petStart: { x: 50, y: 88 },
             patches: [
-                { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
+                HORIZON_PATCH,
+                { kind: 'path', left: 18, top: 84, width: 64, height: 9 },
                 ...beds,
             ],
             sprites: [
-                { src: houseUrl, x: 2, y: 30, w: 13.5 },
-                { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
-                { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
-                { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
-                { src: bushUrl, x: 72, y: 30, w: 4.5, anim: 'sway' },
-                { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 86, y: 46, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 90, y: 56, w: 3, anim: 'sway' },
-                { src: scarecrowUrl, x: 90, y: 78, w: 6.5 },
-                { src: wateringCanUrl, x: 12, y: 76, w: 4.5 },
-                { src: crateUrl, x: 16, y: 90, w: 4.5 },
-                { src: hayUrl, x: 84, y: 94, w: 5.5 },
-                { src: barrelUrl, x: 90, y: 90, w: 4.5 },
-                { src: fenceStripUrl, x: 14, y: 96, w: 74 },
+                ...horizon,
+                { src: houseUrl, x: 5.5, y: 27, w: 13.5 },
+                { src: bushUrl, x: 24, y: 28, w: 4.5, anim: 'sway' },
+                { src: bushUrl, x: 72, y: 29, w: 4.5, anim: 'sway' },
+                { src: bushUrl, x: 79, y: 32, w: 4, anim: 'sway' },
+                { src: scarecrowUrl, x: 86, y: 41, w: 6.5 },
+                { src: flowerUrl, x: 7, y: 46, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 11, y: 54, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 90, y: 50, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 93, y: 58, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 13, y: 79, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 88, y: 79, w: 3, anim: 'sway' },
+                { src: wateringCanUrl, x: 33, y: 90, w: 4.5 },
+                { src: crateUrl, x: 8, y: 93, w: 4.5 },
+                { src: barrelUrl, x: 14, y: 92, w: 4.5 },
+                { src: hayUrl, x: 82, y: 93, w: 5.5 },
+                { src: fenceStripUrl, x: 16, y: 97, w: 70 },
             ],
         }
     }
     if (tab === 'raise') {
         return {
             tint: ZONE_TINTS.raise,
-            petStart: { x: 50, y: 86 },
+            petStart: { x: 50, y: 88 },
             patches: [
-                { kind: 'sand', left: 54, top: 14, width: 38, height: 30 },
-                { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
-                { kind: 'pasture', left: 9, top: 52, width: 37, height: 33 },
+                HORIZON_PATCH,
+                { kind: 'sand', left: 58, top: 14, width: 33, height: 28 },
+                { kind: 'pasture', left: 9, top: 52, width: 37, height: 40 },
+                { kind: 'path', left: 18, top: 84, width: 64, height: 9 },
             ],
             sprites: [
-                { src: houseUrl, x: 2, y: 30, w: 13.5 },
-                { src: chickenUrl, x: 60, y: 29, w: 3.6, anim: 'hop' },
-                { src: chickenUrl, x: 67, y: 35, w: 3.3, flip: true, anim: 'hop' },
-                { src: chickenUrl, x: 73, y: 25, w: 3.5, anim: 'graze' },
-                { src: hayUrl, x: 60, y: 40, w: 6 },
-                { src: hayUrl, x: 68, y: 37, w: 5 },
-                { src: milkCanUrl, x: 79, y: 40, w: 4.2 },
-                { src: crateUrl, x: 88, y: 34, w: 4.5 },
-                { src: chickenUrl, x: 84, y: 41, w: 3.6, anim: 'hop' },
-                { src: cowUrl, x: 17, y: 63, w: 6.5, anim: 'graze' },
-                { src: sheepUrl, x: 32, y: 66, w: 5, anim: 'hop' },
-                { src: troughUrl, x: 40, y: 79, w: 4.8 },
-                { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
-                { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
+                ...horizon,
+                { src: houseUrl, x: 5.5, y: 27, w: 13.5 },
+                { src: hayUrl, x: 63, y: 26, w: 5.5 },
+                { src: hayUrl, x: 71, y: 24, w: 5 },
+                { src: milkCanUrl, x: 86, y: 30, w: 4.2 },
+                { src: crateUrl, x: 90, y: 38, w: 4.5 },
+                { src: chickenUrl, x: 62, y: 34, w: 3.6, anim: 'hop' },
+                { src: chickenUrl, x: 69, y: 38, w: 3.3, flip: true, anim: 'hop' },
+                { src: chickenUrl, x: 75, y: 33, w: 3.5, anim: 'graze' },
+                { src: chickenUrl, x: 84, y: 39, w: 3.6, anim: 'hop' },
+                { src: cowUrl, x: 18, y: 68, w: 6.5, anim: 'graze' },
+                { src: sheepUrl, x: 31, y: 63, w: 5, anim: 'hop' },
+                { src: sheepUrl, x: 25, y: 77, w: 4.6, flip: true, anim: 'graze' },
+                { src: troughUrl, x: 40, y: 84, w: 4.8 },
+                { src: hayUrl, x: 36, y: 71, w: 4.5 },
                 { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
-                { src: bushUrl, x: 80, y: 84, w: 4.5, anim: 'sway' },
-                { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 86, y: 46, w: 3, anim: 'sway' },
-                { src: flowerUrl, x: 90, y: 56, w: 3, anim: 'sway' },
-                { src: rockUrl, x: 8, y: 88, w: 5 },
-                { src: rockUrl, x: 88, y: 88, w: 4.5 },
-                { src: fenceStripUrl, x: 10, y: 83, w: 34 },
-                { src: fenceStripUrl, x: 45, y: 79, w: 8, flip: true },
+                { src: bushUrl, x: 47, y: 46, w: 4, anim: 'sway' },
+                { src: flowerUrl, x: 7, y: 46, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 50, y: 42, w: 3, anim: 'sway' },
+                { src: flowerUrl, x: 93, y: 54, w: 3, anim: 'sway' },
+                { src: rockUrl, x: 8, y: 90, w: 5 },
+                { src: rockUrl, x: 84, y: 91, w: 4.5 },
+                { src: fenceStripUrl, x: 10, y: 94, w: 34 },
+                { src: fenceStripUrl, x: 50, y: 94, w: 40 },
+                { src: fenceStripUrl, x: 27, y: 51.5, w: 40 },
+                { src: fenceStripUrl, x: 73, y: 15.5, w: 40 },
             ],
         }
     }
     return {
         tint: ZONE_TINTS.fish,
-        petStart: { x: 50, y: 86 },
+        petStart: { x: 50, y: 88 },
         patches: [
-            { kind: 'path', left: 18, top: 82, width: 64, height: 10 },
-            { kind: 'sand', left: 12, top: 42, width: 76, height: 46 },
-            { kind: 'water', left: 21, top: 49, width: 58, height: 34 },
-            { kind: 'plank', left: 45, top: 49, width: 13, height: 9 },
+            HORIZON_PATCH,
+            { kind: 'sand', left: 14, top: 40, width: 72, height: 50 },
+            { kind: 'pond', left: 16, top: 44, width: 68, height: 46 },
+            { kind: 'plank', left: 43, top: 78, width: 14, height: 10 },
         ],
         sprites: [
-            { src: houseUrl, x: 2, y: 30, w: 13.5 },
-            { src: treeOakUrl, x: 86, y: 22, w: 8.5, anim: 'sway' },
-            { src: treeUrl, x: 14, y: 22, w: 7.5, anim: 'sway' },
-            { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
-            { src: bushUrl, x: 36, y: 84, w: 4.5, anim: 'sway' },
-            { src: flowerUrl, x: 8, y: 42, w: 3, anim: 'sway' },
-            { src: flowerUrl, x: 12, y: 50, w: 3, anim: 'sway' },
-            { src: flowerUrl, x: 92, y: 54, w: 3, anim: 'sway' },
-            { src: reedsUrl, x: 23, y: 52, w: 4.2, anim: 'sway' },
-            { src: reedsUrl, x: 26, y: 80, w: 4.2, anim: 'sway' },
-            { src: reedsUrl, x: 76, y: 80, w: 4, anim: 'sway' },
-            { src: reedsUrl, x: 78, y: 52, w: 4, anim: 'sway' },
-            { src: lilyUrl, x: 52, y: 62, w: 4.2, anim: 'drift' },
-            { src: lilyUrl, x: 64, y: 70, w: 4, anim: 'drift' },
-            { src: lilyUrl, x: 70, y: 58, w: 3.8, anim: 'drift' },
-            { src: lilyUrl, x: 58, y: 76, w: 4, anim: 'drift' },
-            { src: rockUrl, x: 86, y: 46, w: 4.5 },
-            { src: rockUrl, x: 18, y: 78, w: 5 },
+            ...horizon,
+            { src: houseUrl, x: 5.5, y: 27, w: 13.5 },
+            { src: bushUrl, x: 40, y: 37, w: 4, anim: 'sway' },
+            { src: flowerUrl, x: 8, y: 47, w: 3, anim: 'sway' },
+            { src: flowerUrl, x: 92, y: 55, w: 3, anim: 'sway' },
+            { src: reedsUrl, x: 20, y: 51, w: 4.2, anim: 'sway' },
+            { src: reedsUrl, x: 24, y: 82, w: 4.2, anim: 'sway' },
+            { src: reedsUrl, x: 77, y: 82, w: 4, anim: 'sway' },
+            { src: reedsUrl, x: 79, y: 51, w: 4, anim: 'sway' },
+            { src: lilyUrl, x: 44, y: 58, w: 4.2, anim: 'drift' },
+            { src: lilyUrl, x: 62, y: 68, w: 4, anim: 'drift' },
+            { src: lilyUrl, x: 68, y: 56, w: 3.8, anim: 'drift' },
+            { src: lilyUrl, x: 54, y: 72, w: 4, anim: 'drift' },
+            { src: rockUrl, x: 88, y: 44, w: 4.5 },
+            { src: rockUrl, x: 18, y: 84, w: 5 },
+            { src: crateUrl, x: 10, y: 93, w: 4.5 },
+            { src: barrelUrl, x: 16, y: 92, w: 4.5 },
         ],
     }
+}
+
+function patchEdgeMesh(patch: PatchSpec): Mesh | null {
+    if (!THREE) return null
+    if (!['soil', 'pasture', 'path', 'sand'].includes(patch.kind)) return null
+    const map = buildPatchEdgeTexture().clone()
+    clonedTextures.push(map)
+    map.needsUpdate = true
+    map.repeat.set(1, 1)
+    const geometry = new THREE.BufferGeometry()
+    const pad = 1.2
+    const left = patch.left - pad
+    const top = patch.top - pad
+    const width = patch.width + pad * 2
+    const height = patch.height + pad * 2
+    const tl = pctToGround(left, top)
+    const tr = pctToGround(left + width, top)
+    const br = pctToGround(left + width, top + height)
+    const bl = pctToGround(left, top + height)
+    geometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(
+            [
+                tl.x, 0.03, tl.z,
+                tr.x, 0.03, tr.z,
+                br.x, 0.03, br.z,
+                bl.x, 0.03, bl.z,
+            ],
+            3
+        )
+    )
+    geometry.setAttribute(
+        'uv',
+        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)
+    )
+    geometry.setIndex([0, 1, 2, 0, 2, 3])
+    const material = new THREE.MeshBasicMaterial({
+        map,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+    })
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.renderOrder = -895
+    return mesh
+}
+
+function spriteShadow(spec: SpriteSpec): Mesh | null {
+    if (!THREE || spec.anim === 'drift') return null
+    const geometry = new THREE.CircleGeometry(0.5, 20)
+    geometry.rotateX(-Math.PI / 2)
+    const material = new THREE.MeshBasicMaterial({
+        map: createShadowTexture(),
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+    })
+    material.opacity = (spec.opacity ?? 1) * 0.8
+    const mesh = new THREE.Mesh(geometry, material)
+    const world = pctToGround(spec.x, spec.y + 1.2)
+    const width = (spec.w / 100) * VIEW_HEIGHT * getAspect()
+    mesh.position.set(world.x, 0.025, world.z)
+    mesh.scale.set(width * 0.95, width * 0.5, 1)
+    mesh.renderOrder = Math.round(spec.y * 10) - 2
+    return mesh
 }
 function disposeGroup(group: Group | null) {
     if (!group) return
@@ -605,13 +836,20 @@ async function rebuildZone() {
     }
     clonedTextures.forEach((texture) => texture.dispose())
     clonedTextures.length = 0
-    waterTexture = null
     fishSprite = null
     zoneGroup = new THREE.Group()
     scene.add(zoneGroup)
 
-    for (const patch of spec.patches) zoneGroup.add(patchMesh(patch))
-    for (const spriteSpec of spec.sprites) zoneGroup.add(spriteFromSpec(spriteSpec))
+    for (const patch of spec.patches) {
+        zoneGroup.add(patchMesh(patch))
+        const edge = patchEdgeMesh(patch)
+        if (edge) zoneGroup.add(edge)
+    }
+    for (const spriteSpec of spec.sprites) {
+        const shadow = spriteShadow(spriteSpec)
+        if (shadow) zoneGroup.add(shadow)
+        zoneGroup.add(spriteFromSpec(spriteSpec))
+    }
     animatedSprites = []
     for (const child of zoneGroup.children) {
         const userData = (child as Sprite).userData as {
@@ -722,20 +960,21 @@ function plotWaypoints(): PctPoint[] {
 
 function waypointsForZone(): PctPoint[] {
     if (props.tab === 'grow') {
-        return [...plotWaypoints(), { x: 26, y: 87 }, { x: 72, y: 87 }]
+        return [...plotWaypoints(), { x: 26, y: 88 }, { x: 72, y: 88 }]
     }
     if (props.tab === 'raise') {
         return [
-            { x: 73, y: 29 },
+            { x: 74, y: 31 },
             { x: 27, y: 69 },
-            { x: 41, y: 86 },
-            { x: 50, y: 87 },
+            { x: 31, y: 63 },
+            { x: 50, y: 88 },
         ]
     }
     return [
-        { x: 50, y: 66 },
-        { x: 66, y: 78 },
-        { x: 44, y: 86 },
+        { x: 50, y: 82 },
+        { x: 26, y: 80 },
+        { x: 74, y: 80 },
+        { x: 50, y: 89 },
     ]
 }
 
@@ -817,10 +1056,6 @@ function updateWater(elapsed: number) {
             sprite.material.rotation = Math.sin(elapsed * 0.9 + phase) * 0.1
             sprite.position.x = baseX + Math.sin(elapsed * 0.4 + phase) * 0.12
         }
-    }
-    if (waterTexture) {
-        waterTexture.offset.x = (elapsed * 0.025) % 1
-        waterTexture.offset.y = (elapsed * 0.012) % 1
     }
     if (fishSprite) {
         fishClock -= 1 / 60
@@ -911,13 +1146,13 @@ function setupScene() {
     clock = new THREE.Clock()
 
     groundMaterial = new THREE.MeshBasicMaterial({
-        map: makeTexture(grassUrl),
+        map: buildGroundTexture(),
         depthTest: false,
         depthWrite: false,
     })
     const grassMap = groundMaterial.map
     if (grassMap) {
-        grassMap.repeat.set(70, 70)
+        grassMap.repeat.set(34, 34)
     }
     const groundGeometry = new THREE.PlaneGeometry(220, 220)
     const ground = new THREE.Mesh(groundGeometry, groundMaterial)
@@ -983,7 +1218,7 @@ watch(
 watch(
     () => props.chickenReady,
     (ready) => {
-        if (ready) reactToReady('chicken', { x: 73, y: 29 })
+        if (ready) reactToReady('chicken', { x: 74, y: 31 })
     }
 )
 
@@ -997,7 +1232,7 @@ watch(
 watch(
     () => props.pondReady,
     (ready) => {
-        if (ready) reactToReady('pond', { x: 50, y: 66 })
+        if (ready) reactToReady('pond', { x: 50, y: 82 })
     }
 )
 
@@ -1033,7 +1268,6 @@ onBeforeUnmount(() => {
     camera = null
     petSprite = null
     petShadow = null
-    waterTexture = null
     groundMaterial = null
 })
 </script>

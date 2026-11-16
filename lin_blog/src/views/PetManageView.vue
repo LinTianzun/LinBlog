@@ -3578,7 +3578,7 @@ onUnmounted(() => {
     left: 16%;
     height: 34%;
     grid-template-columns: repeat(var(--plot-columns, 2), minmax(0, 1fr));
-    gap: 3.2%;
+    gap: 5%;
     filter: none;
 }
 
@@ -4059,10 +4059,9 @@ onUnmounted(() => {
 .pet-home-room.is-tab-raise .pet-home-pasture {
     top: 52%;
     right: auto;
-    bottom: 8%;
     left: 9%;
     width: 37%;
-    height: 33%;
+    height: 40%;
 }
 
 .pet-home-room.is-tab-raise .pet-home-pasture > b.pet-pixel-cow {
@@ -4092,7 +4091,7 @@ onUnmounted(() => {
     top: 14%;
     right: 9%;
     width: 33%;
-    height: 30%;
+    height: 28%;
 }
 
 .pet-home-room.is-tab-raise .pet-pixel-fence {
@@ -4145,10 +4144,9 @@ onUnmounted(() => {
 .pet-home-room.is-tab-fish .pet-home-pond {
     top: 42%;
     right: 12%;
-    bottom: 8%;
     left: 12%;
     width: auto;
-    height: 44%;
+    height: 50%;
 }
 
 .pet-home-room.is-tab-fish .pet-pixel-pond-dock {
@@ -4211,6 +4209,20 @@ onUnmounted(() => {
 
 /* Three.js 场景接管视觉后，DOM 只保留交互热区与作物精灵 */
 .pet-home-room.is-yard3d {
+    .pet-home-plots {
+        top: 46%;
+        right: 16%;
+        left: 16%;
+        height: 34%;
+    }
+
+    .pet-pixel-cow,
+    .pet-pixel-sheep,
+    .pet-pixel-chicken,
+    .pet-pixel-trough {
+        display: none;
+    }
+
     .pet-home-plot,
     .pet-home-plot.is-empty {
         background: transparent;
