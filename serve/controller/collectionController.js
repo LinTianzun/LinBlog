@@ -54,6 +54,140 @@ function formatCollection(row, { includeArticles = false } = {}) {
     return result
 }
 
+function longestCommonSubsequence(left, right) {
+    const rows = left.length
+    const cols = right.length
+    const dp = Array.from({ length: rows + 1 }, () => new Array(cols + 1).fill(0))
+
+    for (let row = 1; row <= rows; row += 1) {
+        for (let col = 1; col <= cols; col += 1) {
+            dp[row][col] = left[row - 1] === right[col - 1]
+                ? dp[row - 1][col - 1] + 1
+                : Math.max(dp[row - 1][col], dp[row][col - 1])
+        }
+    }
+
+    const result = []
+    let row = rows
+    let col = cols
+    while (row > 0 && col > 0) {
+        if (left[row - 1] === right[col - 1]) {
+            result.push(left[row - 1])
+            row -= 1
+            col -= 1
+        } else if (dp[row - 1][col] >= dp[row][col - 1]) {
+            row -= 1
+        } else {
+            col -= 1
+        }
+    }
+    return result.reverse()
+}
+
+function buildCollectionVersionDiff(version, current) {
+    const versionIds = (version.articleIds || []).map(Number)
+    const currentArticles = Array.isArray(current.articles) ? current.articles : []
+    const currentIds = currentArticles.map(article => Number(article.id))
+    const currentArticlesById = new Map(
+        currentArticles.map(article => [Number(article.id), article])
+    )
+    const versionArticlesById = new Map(
+        (version.articles || []).map(article => [Number(article.id), article])
+    )
+    const versionIndex = new Map(versionIds.map((id, index) => [id, index + 1]))
+    const currentIndex = new Map(currentIds.map((id, index) => [id, index + 1]))
+    const versionIdSet = new Set(versionIds)
+    const currentIdSet = new Set(currentIds)
+    const commonVersionIds = versionIds.filter(id => currentIdSet.has(id))
+    const commonCurrentIds = currentIds.filter(id => versionIdSet.has(id))
+    const stableIds = new Set(longestCommonSubsequence(commonVersionIds, commonCurrentIds))
+    const movedIds = commonCurrentIds.filter(id => !stableIds.has(id))
+
+    const metaChanges = [
+        { field: 'name', label: '系列名称', before: version.name || '', after: current.name || '' },
+        { field: 'description', label: '系列说明', before: version.description || '', after: current.description || '' },
+        { field: 'cover', label: '系列封面', before: version.cover || '', after: current.cover || '' },
+        { field: 'sort', label: '排序权重', before: String(version.sort || 0), after: String(current.sort || 0) }
+    ].filter(item => item.before !== item.after)
+
+    const articleChanges = []
+    for (const articleId of currentIds) {
+        if (!versionIdSet.has(articleId)) {
+            const article = currentArticlesById.get(articleId)
+            articleChanges.push({
+                kind: 'added',
+                id: articleId,
+                title: article?.title || `文章 #${articleId}`,
+                state: article?.state,
+                subsetName: article?.subsetName || '',
+                fromPosition: null,
+                toPosition: currentIndex.get(articleId)
+            })
+            continue
+        }
+        if (!stableIds.has(articleId)) {
+            const article = currentArticlesById.get(articleId)
+            articleChanges.push({
+                kind: 'moved',
+                id: articleId,
+                title: article?.title || `文章 #${articleId}`,
+                state: article?.state,
+                subsetName: article?.subsetName || '',
+                fromPosition: versionIndex.get(articleId),
+                toPosition: currentIndex.get(articleId)
+            })
+        }
+    }
+    for (const articleId of versionIds) {
+        if (currentIdSet.has(articleId)) continue
+        const article = versionArticlesById.get(articleId)
+        articleChanges.push({
+            kind: 'removed',
+            id: articleId,
+            title: article?.title || `文章 #${articleId}`,
+            state: article?.state,
+            subsetName: article?.subsetName || '',
+            missing: Boolean(article?.missing),
+            fromPosition: versionIndex.get(articleId),
+            toPosition: null
+        })
+    }
+
+    const added = articleChanges.filter(item => item.kind === 'added').length
+    const removed = articleChanges.filter(item => item.kind === 'removed').length
+    const moved = articleChanges.filter(item => item.kind === 'moved').length
+    const unchanged = commonCurrentIds.length - moved
+    return {
+        version: {
+            id: version.id,
+            revision: version.revision,
+            name: version.name,
+            source: version.source,
+            operatorName: version.operatorName,
+            createdAt: version.createdAt
+        },
+        current: {
+            name: current.name,
+            description: current.description || '',
+            cover: current.cover || '',
+            sort: Number(current.sort) || 0,
+            articleCount: currentIds.length,
+            publishedCount: Number(current.publishedCount) || 0,
+            updatedAt: current.updatedAt
+        },
+        metaChanges,
+        articleChanges,
+        summary: {
+            metaCount: metaChanges.length,
+            added,
+            removed,
+            moved,
+            unchanged,
+            hasChanges: metaChanges.length > 0 || articleChanges.length > 0
+        }
+    }
+}
+
 function parseCollectionId(value) {
     const id = Number(value)
     return Number.isSafeInteger(id) && id > 0 ? id : null
@@ -468,6 +602,37 @@ async function getCollectionVersion(req, res) {
     }
 }
 
+async function getCollectionVersionDiff(req, res) {
+    try {
+        if (!canViewCollection(req.user)) {
+            return res.status(403).json({ code: 403, message: '仅管理员或编辑可以查看系列版本' })
+        }
+
+        const id = parseCollectionId(req.params.id)
+        const versionId = parseCollectionId(req.params.versionId)
+        if (!id || !versionId) {
+            return res.status(400).json({ code: 400, message: '请传入有效的系列和版本ID' })
+        }
+
+        const version = await collectionModel.findCollectionVersion(id, versionId)
+        if (!version) {
+            return res.status(404).json({ code: 404, message: '版本不存在' })
+        }
+        const current = await collectionModel.findCollectionById(id)
+        if (!current) {
+            return res.status(404).json({ code: 404, message: '系列不存在' })
+        }
+
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: buildCollectionVersionDiff(version, current)
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '系列版本对比失败：' + err.message })
+    }
+}
+
 async function restoreCollectionVersion(req, res) {
     try {
         if (!canManageCollection(req.user)) {
@@ -528,5 +693,6 @@ module.exports = {
     setCollectionArticles,
     getCollectionVersions,
     getCollectionVersion,
+    getCollectionVersionDiff,
     restoreCollectionVersion
 }

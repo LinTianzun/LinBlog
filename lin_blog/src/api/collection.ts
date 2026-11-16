@@ -96,6 +96,54 @@ export interface CollectionVersionDetail {
   articles: CollectionVersionArticle[];
 }
 
+export interface CollectionVersionMetaChange {
+  field: "name" | "description" | "cover" | "sort";
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface CollectionVersionArticleChange {
+  kind: "added" | "removed" | "moved";
+  id: number;
+  title: string;
+  state?: string;
+  subsetName?: string;
+  missing?: boolean;
+  fromPosition: number | null;
+  toPosition: number | null;
+}
+
+export interface CollectionVersionDiff {
+  version: {
+    id: number;
+    revision: number;
+    name: string;
+    source: "manual" | "rollback";
+    operatorName: string;
+    createdAt: string;
+  };
+  current: {
+    name: string;
+    description: string;
+    cover: string;
+    sort: number;
+    articleCount: number;
+    publishedCount: number;
+    updatedAt: string;
+  };
+  metaChanges: CollectionVersionMetaChange[];
+  articleChanges: CollectionVersionArticleChange[];
+  summary: {
+    metaCount: number;
+    added: number;
+    removed: number;
+    moved: number;
+    unchanged: number;
+    hasChanges: boolean;
+  };
+}
+
 export interface CollectionVersionPage {
   list: CollectionVersionSummary[];
   total: number;
@@ -189,6 +237,12 @@ export function getCollectionVersions(
 export function getCollectionVersion(id: number, versionId: number) {
   return request.get<ApiResult<CollectionVersionDetail>>(
     `/collection/${id}/versions/${versionId}`
+  );
+}
+
+export function getCollectionVersionDiff(id: number, versionId: number) {
+  return request.get<ApiResult<CollectionVersionDiff>>(
+    `/collection/${id}/versions/${versionId}/diff`
   );
 }
 

@@ -373,6 +373,102 @@ test('setCollectionArticles preserves order and removes duplicate IDs', async ()
     }
 })
 
+test('getCollectionVersionDiff rejects users without collection access', async () => {
+    const res = createRes()
+    await collectionController.getCollectionVersionDiff(
+        { params: { id: '1', versionId: '2' }, user: { userId: 2, permissions: [] } },
+        res
+    )
+
+    assert.equal(res.statusCode, 403)
+    assert.equal(res.body.code, 403)
+})
+
+test('getCollectionVersionDiff returns missing-version errors', async () => {
+    const originalFind = collectionModel.findCollectionVersion
+    collectionModel.findCollectionVersion = async () => null
+
+    try {
+        const res = createRes()
+        await collectionController.getCollectionVersionDiff(
+            { params: { id: '1', versionId: '2' }, user: admin },
+            res
+        )
+
+        assert.equal(res.statusCode, 404)
+        assert.match(res.body.message, /版本不存在/)
+    } finally {
+        collectionModel.findCollectionVersion = originalFind
+    }
+})
+
+test('getCollectionVersionDiff reports metadata, additions, removals and moves', async () => {
+    const originalFindVersion = collectionModel.findCollectionVersion
+    const originalFindCollection = collectionModel.findCollectionById
+    collectionModel.findCollectionVersion = async () => ({
+        id: 2,
+        revision: 2,
+        name: '旧系列名',
+        description: '说明不变',
+        cover: '/old-cover.png',
+        sort: 5,
+        source: 'manual',
+        operatorName: '管理员',
+        createdAt: '2026-11-16T08:00:00.000Z',
+        articleIds: [11, 12, 13],
+        articles: [
+            { id: 11, title: '第一篇', state: 'published', subsetName: '随笔' },
+            { id: 12, title: '第二篇', state: 'draft', subsetName: '技术' },
+            { id: 13, title: '移出文章', state: 'published', subsetName: '随笔' }
+        ]
+    })
+    collectionModel.findCollectionById = async () => ({
+        id: 1,
+        name: '新系列名',
+        description: '说明不变',
+        cover: '/new-cover.png',
+        sort: 5,
+        publishedCount: 2,
+        updatedAt: '2026-11-16T09:00:00.000Z',
+        articles: [
+            { id: 12, title: '第二篇', state: 'published', subsetName: '技术' },
+            { id: 11, title: '第一篇', state: 'published', subsetName: '随笔' },
+            { id: 14, title: '新增文章', state: 'draft', subsetName: '生活' }
+        ]
+    })
+
+    try {
+        const res = createRes()
+        await collectionController.getCollectionVersionDiff(
+            { params: { id: '1', versionId: '2' }, user: admin },
+            res
+        )
+
+        assert.equal(res.body.code, 200)
+        assert.deepEqual(
+            res.body.data.metaChanges.map(item => item.field),
+            ['name', 'cover']
+        )
+        assert.equal(res.body.data.summary.added, 1)
+        assert.equal(res.body.data.summary.removed, 1)
+        assert.equal(res.body.data.summary.moved, 1)
+        assert.equal(res.body.data.summary.metaCount, 2)
+        assert.equal(res.body.data.summary.hasChanges, true)
+        assert.ok(res.body.data.articleChanges.some(item =>
+            item.kind === 'added' && item.id === 14 && item.toPosition === 3
+        ))
+        assert.ok(res.body.data.articleChanges.some(item =>
+            item.kind === 'removed' && item.id === 13 && item.fromPosition === 3
+        ))
+        assert.ok(res.body.data.articleChanges.some(item =>
+            item.kind === 'moved' && item.fromPosition !== item.toPosition
+        ))
+    } finally {
+        collectionModel.findCollectionVersion = originalFindVersion
+        collectionModel.findCollectionById = originalFindCollection
+    }
+})
+
 test('deleteCollection soft deletes and records the current name', async () => {
     const originalFind = collectionModel.findCollectionById
     const originalDelete = collectionModel.softDeleteCollection

@@ -225,3 +225,177 @@ test('添加文章支持服务端搜索、状态分类筛选和分页加载', as
   await expect.poll(() => requests.some(item => item.get('keyword') === '不存在的文章')).toBe(true)
   await expect(page.locator('.collection-panel-empty').filter({ hasText: '没有匹配的文章' })).toBeVisible()
 })
+
+test('版本历史可以对比当前差异', async ({ page }) => {
+  await seedSession(page, {
+    permissions: ['collection.view', 'collection.manage', 'article.create'],
+  })
+  await installApiMock(page)
+
+  await page.route(/\/api\/collection(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: 'ok',
+        data: {
+          count: 1,
+          list: [{ ...existingCollection, name: '新系列名', cover: '/new-cover.png' }],
+        },
+      }),
+    })
+  })
+
+  await page.route(/\/api\/collection\/8$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: 'ok',
+        data: {
+          ...existingCollection,
+          name: '新系列名',
+          cover: '/new-cover.png',
+          articleCount: 3,
+          publishedCount: 2,
+          articles: [
+            { ...memberArticle, id: 12, title: '第二篇' },
+            { ...memberArticle, id: 11, title: '第一篇' },
+            { ...memberArticle, id: 14, title: '新增文章' },
+          ],
+        },
+      }),
+    })
+  })
+
+  await page.route(/\/api\/collection\/8\/versions(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: 'ok',
+        data: {
+          list: [{
+            id: 2,
+            collectionId: 8,
+            revision: 2,
+            name: '旧系列名',
+            description: '旧版本说明',
+            cover: '/old-cover.png',
+            sort: 5,
+            articleCount: 3,
+            articleTitles: ['第一篇', '第二篇', '移出文章'],
+            source: 'manual',
+            operatorName: '管理员',
+            createdAt: '2026-11-16T08:00:00.000Z',
+          }],
+          total: 1,
+          page: 1,
+          pageSize: 10,
+          totalPage: 1,
+        },
+      }),
+    })
+  })
+
+  await page.route(/\/api\/collection\/8\/versions\/2\/diff$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        message: 'ok',
+        data: {
+          version: {
+            id: 2,
+            revision: 2,
+            name: '旧系列名',
+            source: 'manual',
+            operatorName: '管理员',
+            createdAt: '2026-11-16T08:00:00.000Z',
+          },
+          current: {
+            name: '新系列名',
+            description: '旧版本说明',
+            cover: '/new-cover.png',
+            sort: 5,
+            articleCount: 3,
+            publishedCount: 2,
+            updatedAt: '2026-11-16T09:00:00.000Z',
+          },
+          metaChanges: [
+            {
+              field: 'name',
+              label: '系列名称',
+              before: '旧系列名',
+              after: '新系列名',
+            },
+            {
+              field: 'cover',
+              label: '系列封面',
+              before: '/old-cover.png',
+              after: '/new-cover.png',
+            },
+          ],
+          articleChanges: [
+            {
+              kind: 'moved',
+              id: 12,
+              title: '第二篇',
+              state: 'published',
+              subsetName: '生活随笔',
+              fromPosition: 2,
+              toPosition: 1,
+            },
+            {
+              kind: 'added',
+              id: 14,
+              title: '新增文章',
+              state: 'draft',
+              subsetName: '生活随笔',
+              fromPosition: null,
+              toPosition: 3,
+            },
+            {
+              kind: 'removed',
+              id: 13,
+              title: '移出文章',
+              state: 'published',
+              subsetName: '生活随笔',
+              fromPosition: 3,
+              toPosition: null,
+            },
+          ],
+          summary: {
+            metaCount: 2,
+            added: 1,
+            removed: 1,
+            moved: 1,
+            unchanged: 1,
+            hasChanges: true,
+          },
+        },
+      }),
+    })
+  })
+
+  await page.goto('/collectionManage')
+  await expect(page.getByRole('heading', { name: '内容系列' })).toBeVisible()
+  await page.getByRole('button', { name: '版本历史' }).click()
+
+  const history = page.locator('.yk-modal__main:visible').filter({ hasText: '系列版本历史' })
+  await expect(history.getByText('旧系列名')).toBeVisible()
+  await history.getByRole('button', { name: '对比当前' }).click()
+
+  const diff = page.locator('.yk-modal__main:visible').filter({ hasText: '版本 #2 与当前对比' })
+  await expect(diff).toContainText('系列名称')
+  await expect(diff).toContainText('新增 1')
+  await expect(diff).toContainText('移除 1')
+  await expect(diff).toContainText('移动 1')
+  await expect(diff).toContainText('新增文章')
+  await expect(diff).toContainText('移出文章')
+  await expect(diff).toContainText('第 2 篇 → 第 1 篇')
+})
