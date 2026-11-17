@@ -3576,6 +3576,7 @@ onUnmounted(() => {
     top: 46%;
     right: 16%;
     left: 16%;
+    width: auto;
     height: 34%;
     grid-template-columns: repeat(var(--plot-columns, 2), minmax(0, 1fr));
     gap: 5%;
@@ -4061,7 +4062,7 @@ onUnmounted(() => {
     right: auto;
     left: 9%;
     width: 37%;
-    height: 40%;
+    height: 30%;
 }
 
 .pet-home-room.is-tab-raise .pet-home-pasture > b.pet-pixel-cow {
@@ -4213,6 +4214,7 @@ onUnmounted(() => {
         top: 46%;
         right: 16%;
         left: 16%;
+        width: auto;
         height: 34%;
     }
 

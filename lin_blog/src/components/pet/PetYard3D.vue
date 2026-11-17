@@ -216,27 +216,45 @@ function makeCanvasTexture(
 }
 
 function buildSoilTexture(): Texture {
-    const key = 'soil-patch-v2'
+    const key = 'soil-patch-v4'
     const cached = textureCache.get(key)
     if (cached) return cached
     const texture = makeCanvasTexture(96, (ctx, size) => {
-        ctx.fillStyle = '#8a5133'
+        ctx.fillStyle = '#7a4527'
         ctx.fillRect(0, 0, size, size)
-        const tones = ['#7d4629', '#96593a', '#84492c', '#a06340']
         let seed = 23
         const rand = () => {
             seed = (seed * 9301 + 49297) % 233280
             return seed / 233280
         }
+        for (let y = 3; y < size; y += 12) {
+            ctx.fillStyle = 'rgba(58, 33, 18, 0.38)'
+            ctx.fillRect(0, y, size, 2)
+            ctx.fillStyle = 'rgba(196, 140, 92, 0.16)'
+            ctx.fillRect(0, y + 2, size, 1)
+        }
+        for (let y = 5; y < size; y += 13) {
+            for (let x = 0; x < size; x += 11) {
+                if (rand() < 0.45) continue
+                ctx.fillStyle = rand() < 0.55 ? '#8a5130' : '#65391f'
+                const width = 4 + rand() * 7
+                ctx.fillRect(x + rand() * 5, y + rand() * 3, width, 3)
+            }
+        }
+        const tones = ['#734025', '#8c5433', '#7c462a', '#965c39', '#5f351d']
         for (let i = 0; i < 70; i += 1) {
             const w = 2 + rand() * 7
             const h = 1 + rand() * 3
             ctx.fillStyle = tones[(rand() * tones.length) | 0]
             ctx.fillRect(rand() * size, rand() * size, w, h)
         }
-        ctx.fillStyle = 'rgba(56, 34, 22, 0.22)'
-        for (let i = 0; i < 16; i += 1) {
+        ctx.fillStyle = 'rgba(56, 34, 22, 0.26)'
+        for (let i = 0; i < 22; i += 1) {
             ctx.fillRect(rand() * size, rand() * size, 4 + rand() * 6, 2 + rand() * 2)
+        }
+        ctx.fillStyle = 'rgba(214, 158, 104, 0.28)'
+        for (let i = 0; i < 26; i += 1) {
+            ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 3, 1)
         }
     })
     textureCache.set(key, texture)
@@ -355,18 +373,39 @@ function buildPondTexture(): Texture {
     return texture
 }
 
-function buildPatchEdgeTexture(): Texture {
-    const key = 'patch-edge'
+function buildPatchEdgeTexture(
+    variant: 'base' | 'bed' = 'base'
+): Texture {
+    const key = `patch-edge-${variant}`
     const cached = textureCache.get(key)
     if (cached) return cached
     const texture = makeCanvasTexture(128, (ctx, size) => {
+        if (variant === 'bed') {
+            ctx.save()
+            ctx.shadowColor = 'rgba(40, 26, 16, 0.45)'
+            ctx.shadowBlur = 8
+            ctx.shadowOffsetY = 2
+            ctx.strokeStyle = '#6a4028'
+            ctx.lineWidth = 5
+            ctx.beginPath()
+            ctx.roundRect(6, 6, size - 12, size - 12, 10)
+            ctx.stroke()
+            ctx.restore()
+            ctx.strokeStyle = 'rgba(206, 144, 92, 0.45)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.roundRect(12, 12, size - 24, size - 24, 7)
+            ctx.stroke()
+            return
+        }
+        const radius = 18
         ctx.save()
         ctx.shadowColor = 'rgba(46, 34, 24, 0.32)'
         ctx.shadowBlur = 10
         ctx.strokeStyle = 'rgba(58, 40, 28, 0.28)'
         ctx.lineWidth = 5
         ctx.beginPath()
-        ctx.roundRect(6, 6, size - 12, size - 12, 18)
+        ctx.roundRect(6, 6, size - 12, size - 12, radius)
         ctx.stroke()
         ctx.restore()
     })
@@ -379,9 +418,15 @@ function buildPastureTexture(): Texture {
     const cached = textureCache.get(key)
     if (cached) return cached
     const texture = makeCanvasTexture(128, (ctx, size) => {
-        ctx.fillStyle = '#8fc96a'
+        ctx.fillStyle = '#8ac565'
         ctx.fillRect(0, 0, size, size)
-        const tones = ['#7fbf58', '#9cd475', '#76b44f', '#a8dc80']
+        for (let y = 0; y < size; y += 32) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+            ctx.fillRect(0, y, size, 16)
+            ctx.fillStyle = 'rgba(52, 104, 38, 0.07)'
+            ctx.fillRect(0, y + 16, size, 16)
+        }
+        const tones = ['#79ba53', '#9bd273', '#6fb14a', '#a6da7d']
         let seed = 41
         const rand = () => {
             seed = (seed * 9301 + 49297) % 233280
@@ -391,9 +436,13 @@ function buildPastureTexture(): Texture {
             ctx.fillStyle = tones[(rand() * tones.length) | 0]
             ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 5, 1 + rand() * 3)
         }
-        ctx.fillStyle = 'rgba(64, 118, 44, 0.14)'
-        for (let i = 0; i < 18; i += 1) {
+        ctx.fillStyle = 'rgba(52, 106, 38, 0.2)'
+        for (let i = 0; i < 26; i += 1) {
             ctx.fillRect(rand() * size, rand() * size, 4 + rand() * 9, 2 + rand() * 3)
+        }
+        ctx.fillStyle = 'rgba(232, 246, 196, 0.5)'
+        for (let i = 0; i < 16; i += 1) {
+            ctx.fillRect(rand() * size, rand() * size, 1 + rand() * 2, 1)
         }
     })
     textureCache.set(key, texture)
@@ -587,12 +636,14 @@ function patchMesh(patch: PatchSpec): Mesh {
     const mesh = new THREE.Mesh(geometry, material)
     mesh.renderOrder =
         patch.kind === 'pond'
-            ? -880
+            ? -920
             : patch.kind === 'plank'
-              ? -860
+              ? -915
               : patch.kind === 'horizon'
                 ? -940
-                : -900
+                : patch.kind === 'soil'
+                  ? -910
+                  : -925
     return mesh
 }
 
@@ -624,15 +675,26 @@ function horizonTreeLine(): SpriteSpec[] {
     return horizonSprites
 }
 
+function fenceRow(centerX: number, y: number, segments: number, segWidth = 13) {
+    const total = segments * segWidth
+    const start = centerX - total / 2 + segWidth / 2
+    return Array.from({ length: segments }, (_, index) => ({
+        src: fenceStripUrl,
+        x: start + index * segWidth,
+        y,
+        w: segWidth,
+    }))
+}
+
 function buildZone(tab: PetYardTab): ZoneSpec {
     const horizon = horizonTreeLine()
     if (tab === 'grow') {
         const beds: PatchSpec[] = plotRects().map((rect) => ({
             kind: 'soil',
-            left: rect.left + 1.1,
-            top: rect.top + 1.1,
-            width: Math.max(4, rect.width - 2.2),
-            height: Math.max(4, rect.height - 2.2),
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
         }))
         return {
             tint: ZONE_TINTS.grow,
@@ -645,6 +707,7 @@ function buildZone(tab: PetYardTab): ZoneSpec {
             sprites: [
                 ...horizon,
                 { src: houseUrl, x: 5.5, y: 27, w: 13.5 },
+                ...fenceRow(50, 45.2, 5, 13.6),
                 { src: bushUrl, x: 24, y: 28, w: 4.5, anim: 'sway' },
                 { src: bushUrl, x: 72, y: 29, w: 4.5, anim: 'sway' },
                 { src: bushUrl, x: 79, y: 32, w: 4, anim: 'sway' },
@@ -659,7 +722,7 @@ function buildZone(tab: PetYardTab): ZoneSpec {
                 { src: crateUrl, x: 8, y: 93, w: 4.5 },
                 { src: barrelUrl, x: 14, y: 92, w: 4.5 },
                 { src: hayUrl, x: 82, y: 93, w: 5.5 },
-                { src: fenceStripUrl, x: 16, y: 97, w: 70 },
+                ...fenceRow(50, 97, 4, 15),
             ],
         }
     }
@@ -670,7 +733,7 @@ function buildZone(tab: PetYardTab): ZoneSpec {
             patches: [
                 HORIZON_PATCH,
                 { kind: 'sand', left: 58, top: 14, width: 33, height: 28 },
-                { kind: 'pasture', left: 9, top: 52, width: 37, height: 40 },
+                { kind: 'pasture', left: 9, top: 52, width: 37, height: 30 },
                 { kind: 'path', left: 18, top: 84, width: 64, height: 9 },
             ],
             sprites: [
@@ -687,7 +750,7 @@ function buildZone(tab: PetYardTab): ZoneSpec {
                 { src: cowUrl, x: 18, y: 68, w: 6.5, anim: 'graze' },
                 { src: sheepUrl, x: 31, y: 63, w: 5, anim: 'hop' },
                 { src: sheepUrl, x: 25, y: 77, w: 4.6, flip: true, anim: 'graze' },
-                { src: troughUrl, x: 40, y: 84, w: 4.8 },
+                { src: troughUrl, x: 40, y: 80, w: 4.8 },
                 { src: hayUrl, x: 36, y: 71, w: 4.5 },
                 { src: bushUrl, x: 22, y: 28, w: 4.5, anim: 'sway' },
                 { src: bushUrl, x: 47, y: 46, w: 4, anim: 'sway' },
@@ -696,10 +759,9 @@ function buildZone(tab: PetYardTab): ZoneSpec {
                 { src: flowerUrl, x: 93, y: 54, w: 3, anim: 'sway' },
                 { src: rockUrl, x: 8, y: 90, w: 5 },
                 { src: rockUrl, x: 84, y: 91, w: 4.5 },
-                { src: fenceStripUrl, x: 10, y: 94, w: 34 },
-                { src: fenceStripUrl, x: 50, y: 94, w: 40 },
-                { src: fenceStripUrl, x: 27, y: 51.5, w: 40 },
-                { src: fenceStripUrl, x: 73, y: 15.5, w: 40 },
+                ...fenceRow(50, 97, 4, 15),
+                ...fenceRow(27.5, 51.4, 3, 12.33),
+                ...fenceRow(27.5, 82.6, 3, 12.33),
             ],
         }
     }
@@ -736,13 +798,16 @@ function buildZone(tab: PetYardTab): ZoneSpec {
 
 function patchEdgeMesh(patch: PatchSpec): Mesh | null {
     if (!THREE) return null
-    if (!['soil', 'pasture', 'path', 'sand'].includes(patch.kind)) return null
-    const map = buildPatchEdgeTexture().clone()
+    if (!['soil', 'pasture', 'path', 'sand'].includes(patch.kind)) {
+        return null
+    }
+    const variant = patch.kind === 'soil' ? 'bed' : 'base'
+    const map = buildPatchEdgeTexture(variant).clone()
     clonedTextures.push(map)
     map.needsUpdate = true
     map.repeat.set(1, 1)
     const geometry = new THREE.BufferGeometry()
-    const pad = 1.2
+    const pad = patch.kind === 'soil' ? 0.5 : 1.2
     const left = patch.left - pad
     const top = patch.top - pad
     const width = patch.width + pad * 2
@@ -776,7 +841,7 @@ function patchEdgeMesh(patch: PatchSpec): Mesh | null {
         depthWrite: false,
     })
     const mesh = new THREE.Mesh(geometry, material)
-    mesh.renderOrder = -895
+    mesh.renderOrder = patch.kind === 'soil' ? -908 : -923
     return mesh
 }
 
