@@ -136,8 +136,8 @@ export interface HomesteadState {
   updatedAt: number
 }
 
-export const HOMESTEAD_PLOT_COUNT = 4
-export const HOMESTEAD_MAX_PLOT_COUNT = 8
+export const HOMESTEAD_PLOT_COUNT = 8
+export const HOMESTEAD_MAX_PLOT_COUNT = 12
 export const HOMESTEAD_BARN_MAX_LEVEL = 3
 export const HOMESTEAD_POND_MAX_LEVEL = 3
 export const HOMESTEAD_FISH_COOLDOWN_MS = 3 * 60_000
@@ -159,10 +159,10 @@ export const HOMESTEAD_PLOT_EXPANSIONS: readonly {
   plotCount: number
   price: number
 }[] = [
-  { plotCount: 5, price: 150 },
-  { plotCount: 6, price: 260 },
-  { plotCount: 7, price: 420 },
-  { plotCount: 8, price: 640 }
+  { plotCount: 9, price: 900 },
+  { plotCount: 10, price: 1250 },
+  { plotCount: 11, price: 1650 },
+  { plotCount: 12, price: 2150 }
 ]
 export const HOMESTEAD_BARN_UPGRADES: readonly HomesteadUpgradeDefinition[] = [
   { level: 2, price: 300 },

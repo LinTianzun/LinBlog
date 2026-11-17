@@ -194,7 +194,7 @@ test('合并小院会取较高扩建等级并合并装饰', async () => {
     })
     storedRows = [{
         homestead_state: JSON.stringify(makeState({
-            plotCount: 5,
+            plotCount: 9,
             plots: [...makeState().plots, emptyPlot()],
             barnLevel: 2,
             decorations: ['lantern'],
@@ -204,16 +204,16 @@ test('合并小院会取较高扩建等级并合并装饰', async () => {
     }]
 
     const saved = await petModel.saveHomesteadState(7, makeState({
-        plotCount: 6,
-        plots: Array.from({ length: 6 }, emptyPlot),
+        plotCount: 10,
+        plots: Array.from({ length: 10 }, emptyPlot),
         barnLevel: 1,
         pondLevel: 2,
         decorations: ['bench', 'lantern'],
         updatedAt: 1_700_000_300_000
     }))
 
-    assert.equal(saved.plotCount, 6)
-    assert.equal(saved.plots.length, 6)
+    assert.equal(saved.plotCount, 10)
+    assert.equal(saved.plots.length, 10)
     assert.equal(saved.barnLevel, 2)
     assert.equal(saved.pondLevel, 2)
     assert.deepEqual(saved.decorations.sort(), ['bench', 'lantern'])
@@ -310,8 +310,8 @@ test('非法小院存档会被拒绝或修正', async () => {
         }],
         stateVersion: 2
     })
-    assert.equal(normalized.plotCount, 8)
-    assert.equal(normalized.plots.length, 8)
+    assert.equal(normalized.plotCount, 12)
+    assert.equal(normalized.plots.length, 12)
     assert.equal(normalized.plots[0].cropId, null)
     assert.equal(normalized.inventory.radish, 0)
     assert.equal(normalized.inventory.egg, 4)

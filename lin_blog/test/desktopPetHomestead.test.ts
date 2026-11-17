@@ -92,7 +92,7 @@ const login = (id: number): void => {
 
 test('首次进入小院时动物和鱼塘都有可收产物，菜地是空地', () => {
   const state = createDefaultHomestead(NOW)
-  assert.equal(state.plots.length, 4)
+  assert.equal(state.plots.length, 8)
   assert.ok(state.plots.every((plot) => plot.cropId === null))
   assert.equal(
     isAnimalProduceReady(
@@ -205,15 +205,20 @@ test('商店购买会扣金币并增加种子或肥料库存', () => {
   )
 })
 
-test('菜地扩建会扣金币并增加空地，最高 8 块', () => {
-  let state = createDefaultHomestead(NOW)
-  state = { ...state, coins: 5_000 }
+test('菜地扩建会扣金币并增加空地，最高 12 块', () => {
+  const defaults = createDefaultHomestead(NOW)
+  let state = {
+    ...defaults,
+    coins: 10_000,
+    plotCount: 4,
+    plots: defaults.plots.slice(0, 4)
+  }
   const coinsBefore = state.coins
 
   const first = buyHomesteadPlot(state, NOW)
   assert.equal(first.changed, true)
-  assert.equal(first.state.plotCount, 5)
-  assert.equal(first.state.plots.length, 5)
+  assert.equal(first.state.plotCount, HOMESTEAD_PLOT_EXPANSIONS[0].plotCount)
+  assert.equal(first.state.plots.length, HOMESTEAD_PLOT_EXPANSIONS[0].plotCount)
   assert.equal(first.state.plots[4].cropId, null)
   assert.equal(first.state.coins, coinsBefore - HOMESTEAD_PLOT_EXPANSIONS[0].price)
 
@@ -371,7 +376,7 @@ test('非法存档会修正菜地、时间戳和仓库数量', () => {
     NOW
   )
 
-  assert.equal(normalized.plots.length, 4)
+  assert.equal(normalized.plots.length, 8)
   assert.equal(normalized.plots[0].cropId, null)
   assert.equal(normalized.plots[1].cropId, 'radish')
   assert.equal(normalized.plots[1].wateredAt, NOW - 30_000)
@@ -384,7 +389,7 @@ test('非法存档会修正菜地、时间戳和仓库数量', () => {
   )
 })
 
-test('旧存档默认四块地，新存档保留扩建等级与装饰', () => {
+test('旧存档默认八块地，新存档保留扩建等级与装饰', () => {
   const defaults = createDefaultHomestead(NOW)
   const legacy = normalizeHomestead(
     {
@@ -394,15 +399,15 @@ test('旧存档默认四块地，新存档保留扩建等级与装饰', () => {
     },
     NOW
   )
-  assert.equal(legacy.plotCount, 4)
-  assert.equal(legacy.plots.length, 4)
+  assert.equal(legacy.plotCount, 8)
+  assert.equal(legacy.plots.length, 8)
   assert.equal(legacy.barnLevel, 1)
   assert.equal(legacy.pondLevel, 1)
 
   const expanded = normalizeHomestead(
     {
       ...legacy,
-      plotCount: 6,
+      plotCount: 10,
       plots: [...legacy.plots, ...Array.from({ length: 2 }, () => ({
         cropId: null,
         plantedAt: 0,
@@ -415,8 +420,8 @@ test('旧存档默认四块地，新存档保留扩建等级与装饰', () => {
     },
     NOW
   )
-  assert.equal(expanded.plotCount, 6)
-  assert.equal(expanded.plots.length, 6)
+  assert.equal(expanded.plotCount, 10)
+  assert.equal(expanded.plots.length, 10)
   assert.equal(expanded.barnLevel, 3)
   assert.equal(expanded.pondLevel, 2)
   assert.deepEqual(expanded.decorations, ['lantern', 'bench'])
@@ -582,7 +587,7 @@ test('重置小院返回新的默认状态', () => {
     ...state,
     lastFishedAt: NOW,
     inventory: { ...state.inventory, fish: 9 },
-    plotCount: 6,
+    plotCount: 10,
     plots: [
       ...state.plots,
       { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
@@ -596,8 +601,8 @@ test('重置小院返回新的默认状态', () => {
   assert.equal(getHomesteadState(NOW).inventory.fish, 9)
   const reset = resetHomesteadState(NOW)
   assert.equal(reset.inventory.fish, 0)
-  assert.equal(reset.plotCount, 4)
-  assert.equal(reset.plots.length, 4)
+  assert.equal(reset.plotCount, 8)
+  assert.equal(reset.plots.length, 8)
   assert.equal(reset.barnLevel, 1)
   assert.equal(reset.pondLevel, 1)
   assert.deepEqual(reset.decorations, [])
@@ -636,12 +641,13 @@ test('同版本小院合并会保留两端资源、产物与订单进度', () =>
 })
 
 test('同版本合并会取较高扩建等级并合并装饰', () => {
+  const base = createDefaultHomestead(NOW)
   const local = normalizeHomestead(
     {
-      ...createDefaultHomestead(NOW),
-      plotCount: 5,
+      ...base,
+      plotCount: 9,
       plots: [
-        ...createDefaultHomestead(NOW).plots,
+        ...base.plots,
         { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 }
       ],
       barnLevel: 2,
@@ -651,9 +657,9 @@ test('同版本合并会取较高扩建等级并合并装饰', () => {
   )
   const remote = normalizeHomestead(
     {
-      ...createDefaultHomestead(NOW),
-      plotCount: 6,
-      plots: Array.from({ length: 6 }, () => ({
+      ...base,
+      plotCount: 10,
+      plots: Array.from({ length: 10 }, () => ({
         cropId: null,
         plantedAt: 0,
         wateredAt: 0,
@@ -668,8 +674,8 @@ test('同版本合并会取较高扩建等级并合并装饰', () => {
   )
   const merged = mergeHomesteads(local, remote, NOW + 20_000)
 
-  assert.equal(merged.plotCount, 6)
-  assert.equal(merged.plots.length, 6)
+  assert.equal(merged.plotCount, 10)
+  assert.equal(merged.plots.length, 10)
   assert.equal(merged.barnLevel, 2)
   assert.equal(merged.pondLevel, 2)
   assert.deepEqual(merged.decorations.sort(), ['bench', 'lantern'])

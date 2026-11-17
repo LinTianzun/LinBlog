@@ -47,7 +47,7 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
 
   const plots = page.locator('.pet-home-plot')
   const store = page.locator('.pet-homestead-store')
-  await expect(plots).toHaveCount(4, { timeout: 30_000 })
+  await expect(plots).toHaveCount(8, { timeout: 30_000 })
   await expect(store).toContainText('胡萝卜 ×3')
 
   await plots.nth(2).click()
@@ -80,7 +80,7 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
 
   const room = page.locator('[data-pet-home-zone]')
   await expect(room).toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('.pet-home-plot')).toHaveCount(4)
+  await expect(page.locator('.pet-home-plot')).toHaveCount(8)
   await expect(page.getByRole('tab', { name: '种植' })).toHaveAttribute(
     'aria-selected',
     'true'
@@ -101,7 +101,7 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
   await expect(page.locator('.pet-home-coop')).toHaveCount(0)
 
   await page.getByRole('tab', { name: '种植' }).click()
-  await expect(page.locator('.pet-home-plot')).toHaveCount(4)
+  await expect(page.locator('.pet-home-plot')).toHaveCount(8)
   await expect(page.locator('.pet-home-pond')).toHaveCount(0)
 })
 
@@ -323,7 +323,7 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
   await installApiMock(page)
   await page.goto('/petManage')
 
-  await expect(page.locator('.pet-home-plot')).toHaveCount(4, {
+  await expect(page.locator('.pet-home-plot')).toHaveCount(8, {
     timeout: 30_000,
   })
   await page.locator('.pet-homestead-business-achievements').click()
@@ -376,7 +376,7 @@ test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({
           { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
           { cropId: null, plantedAt: 0, wateredAt: 0, fertilizedAt: 0 },
         ],
-        plotCount: 4,
+        plotCount: 8,
         animals: {
           chicken: { lastProduceAt: now, lastManureAt: now },
           cow: { lastProduceAt: now, lastManureAt: now },
@@ -401,7 +401,7 @@ test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({
   await installApiMock(page)
   await page.goto('/petManage')
 
-  await expect(page.locator('.pet-home-plot')).toHaveCount(4, {
+  await expect(page.locator('.pet-home-plot')).toHaveCount(8, {
     timeout: 30_000,
   })
   await page.locator('.pet-homestead-business-shop').click()
@@ -409,13 +409,13 @@ test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({
   await modal.getByRole('tab', { name: /农场商店/ }).click()
 
   const plotCard = modal.locator('.pet-farm-shop-card').filter({
-    hasText: '菜地 4/8 块',
+    hasText: '菜地 8/12 块',
   })
   await plotCard.getByRole('button', { name: '+1 块' }).click()
   await expect(modal.locator('.pet-farm-shop-card').filter({
-    hasText: '菜地 5/8 块',
+    hasText: '菜地 9/12 块',
   })).toBeVisible()
-  await expect(modal.locator('.pet-farm-business-coins')).toContainText('4850')
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('4100')
 
   const barnCard = modal.locator('.pet-farm-shop-card').filter({
     hasText: '畜棚 Lv.1/3',
@@ -440,7 +440,7 @@ test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({
   await expect(lanternCard).toContainText('已拥有')
 
   await modal.locator('.yk-modal__close').click()
-  await expect(page.locator('.pet-home-plot')).toHaveCount(5)
+  await expect(page.locator('.pet-home-plot')).toHaveCount(9)
   await expect(page.locator('.pet-yard-decor.is-lantern')).toBeVisible()
 
   const saved = await page.evaluate(() => {
@@ -454,7 +454,7 @@ test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({
         })
       : null
   })
-  expect(saved?.plotCount).toBe(5)
+  expect(saved?.plotCount).toBe(9)
   expect(saved?.barnLevel).toBe(2)
   expect(saved?.pondLevel).toBe(2)
   expect(saved?.decorations).toContain('lantern')
