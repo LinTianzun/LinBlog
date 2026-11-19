@@ -65,6 +65,10 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
   await expect(store).toContainText('玉米 ×3')
   await expect(store).toContainText('鱼 ×2')
   await expect(page.locator('.pet-homestead-level')).toContainText('Lv.1')
+  await expect(
+    page.locator('.pet-task').filter({ hasText: '打理一次小院' })
+  ).toContainText('已完成')
+  await expect(page.locator('.pet-task-count')).toHaveText('1/4')
 
   const saved = await page.evaluate(() => {
     const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')

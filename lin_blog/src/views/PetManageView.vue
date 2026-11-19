@@ -840,6 +840,18 @@ const commitHomestead = (next: HomesteadState) => {
     }
 }
 
+const recordHomesteadDailyTask = (): boolean => {
+    const result = recordDailyTask(petVitals.value, 'homestead')
+    if (!result.completedNow) return false
+    petVitals.value = result.vitals
+    setPetVitals(result.vitals)
+    emitPetReaction('vitals-updated', {
+        message: '小院里的收获让宠物更开心了',
+    })
+    void syncPetVitalsToServer(result.vitals)
+    return true
+}
+
 const handlePlotClick = (index: number) => {
     const plot = homestead.value.plots[index]
     const crop = getHomesteadCrop(plot?.cropId)
@@ -871,9 +883,12 @@ const handlePlotClick = (index: number) => {
         )
         if (!result.changed) return
         commitHomestead(result.state)
+        const taskCompleted = recordHomesteadDailyTask()
         proxy?.$message?.({
             type: 'success',
-            message: `收获了 ${result.amount} 个${crop.name}`,
+            message: `收获了 ${result.amount} 个${crop.name}${
+                taskCompleted ? '，今日小任务完成，奖励已到账' : ''
+            }`,
         })
         return
     }
@@ -936,12 +951,15 @@ const collectHomesteadAnimal = (animalId: HomesteadAnimalId) => {
         return
     }
     commitHomestead(result.state)
+    const taskCompleted = recordHomesteadDailyTask()
     const summary = result.items
         .map((item) => `${item.item.icon}${item.item.name}`)
         .join('、')
     proxy?.$message?.({
         type: 'success',
-        message: `收起了 ${summary}`,
+        message: `收起了 ${summary}${
+            taskCompleted ? '，今日小任务完成，奖励已到账' : ''
+        }`,
     })
 }
 
@@ -968,9 +986,12 @@ const handlePondClick = () => {
         return
     }
     commitHomestead(result.state)
+    const taskCompleted = recordHomesteadDailyTask()
     proxy?.$message?.({
         type: 'success',
-        message: '钓到一条鱼，已经放进仓库',
+        message: `钓到一条鱼，已经放进仓库${
+            taskCompleted ? '，今日小任务完成，奖励已到账' : ''
+        }`,
     })
 }
 
@@ -985,6 +1006,11 @@ const tendHomesteadNow = () => {
         return
     }
     commitHomestead(result.state)
+    const produced =
+        result.harvested > 0 ||
+        result.collected.length > 0 ||
+        result.fished
+    const taskCompleted = produced ? recordHomesteadDailyTask() : false
     const parts: string[] = []
     if (result.watered) parts.push(`浇了 ${result.watered} 块地`)
     if (result.fertilized) parts.push(`施了 ${result.fertilized} 块地`)
@@ -999,7 +1025,9 @@ const tendHomesteadNow = () => {
     if (result.fished) parts.push('钓到一条鱼')
     proxy?.$message?.({
         type: 'success',
-        message: `小院忙完了：${parts.join('，')}`,
+        message: `小院忙完了：${parts.join('，')}${
+            taskCompleted ? '，今日小任务完成，奖励已到账' : ''
+        }`,
     })
 }
 
@@ -1149,6 +1177,13 @@ let unsubscribeSync: (() => void) | undefined
 const onHomesteadAutoHelp = (event: Event) => {
     const detail = (event as CustomEvent<HomesteadAutoHelpEventDetail>).detail
     homestead.value = detail?.state || getHomesteadState()
+    if (
+        detail?.task?.action === 'harvest' ||
+        detail?.task?.action === 'collect' ||
+        detail?.task?.action === 'fish'
+    ) {
+        recordHomesteadDailyTask()
+    }
 }
 
 const onHomesteadTabRequest = (event: Event) => {

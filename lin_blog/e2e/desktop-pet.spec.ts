@@ -288,7 +288,7 @@ test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) 
         celebratedAchievements: [],
         dailyTasks: {
           date: today,
-          progress: { feed: 0, publish: 0, comment: 0 },
+          progress: { feed: 0, publish: 0, comment: 0, homestead: 0 },
           rewarded: [],
         },
         updatedAt: now.getTime(),
@@ -297,13 +297,13 @@ test('宠物管理页每日任务完成后刷新仍然保留', async ({ page }) 
   })
 
   await page.goto('/petManage')
-  await expect(page.locator('.pet-task')).toHaveCount(3)
+  await expect(page.locator('.pet-task')).toHaveCount(4)
   const feedTask = page.locator('.pet-task').filter({ hasText: '喂它一次' })
   await expect(feedTask).toContainText('进行中')
 
   await page.locator('.pet-hero-actions').getByRole('button', { name: /喂一口/ }).click()
   await expect(feedTask).toContainText('已完成')
-  await expect(page.locator('.pet-task-count')).toHaveText('1/3')
+  await expect(page.locator('.pet-task-count')).toHaveText('1/4')
 
   await page.reload()
   await expect(
@@ -342,7 +342,7 @@ test('不同零食提供不同加成并共享冷却', async ({ page }) => {
         celebratedAchievements: [],
         dailyTasks: {
           date: today,
-          progress: { feed: 1, publish: 0, comment: 0 },
+          progress: { feed: 1, publish: 0, comment: 0, homestead: 0 },
           rewarded: ['feed'],
         },
         stateVersion: 1,
@@ -509,7 +509,7 @@ test('桌宠隐藏时发布事件仍会记录每日任务', async ({ page }) => 
         firstVisitAt: now.getTime() - 86_400_000,
         dailyTasks: {
           date: today,
-          progress: { feed: 0, publish: 0, comment: 0 },
+          progress: { feed: 0, publish: 0, comment: 0, homestead: 0 },
           rewarded: [],
         },
         updatedAt: now.getTime(),
@@ -574,7 +574,7 @@ test('宠物管理页展示已解锁成就与新成就标记', async ({ page }) 
         celebratedAchievements: [],
         dailyTasks: {
           date: today,
-          progress: { feed: 0, publish: 0, comment: 0 },
+          progress: { feed: 0, publish: 0, comment: 0, homestead: 0 },
           rewarded: [],
         },
         updatedAt: now.getTime(),
@@ -626,8 +626,8 @@ test('重新养一只会清空成长并提升状态版本', async ({ page }) => 
         celebratedAchievements: ['streak:3'],
         dailyTasks: {
           date: today,
-          progress: { feed: 1, publish: 1, comment: 1 },
-          rewarded: ['feed', 'publish', 'comment'],
+          progress: { feed: 1, publish: 1, comment: 1, homestead: 1 },
+          rewarded: ['feed', 'publish', 'comment', 'homestead'],
         },
         stateVersion: 5,
         updatedAt: now.getTime(),
@@ -638,7 +638,7 @@ test('重新养一只会清空成长并提升状态版本', async ({ page }) => 
   await page.goto('/petManage')
   const nameInput = page.locator('.pet-name-field input')
   await expect(nameInput).toHaveValue('团子')
-  await expect(page.locator('.pet-task-count')).toHaveText('3/3')
+  await expect(page.locator('.pet-task-count')).toHaveText('4/4')
 
   page.once('dialog', (dialog) => dialog.accept())
   await page.locator('.pet-reset-row').getByRole('button', {
@@ -646,7 +646,7 @@ test('重新养一只会清空成长并提升状态版本', async ({ page }) => 
   }).click()
 
   await expect(nameInput).toHaveValue('')
-  await expect(page.locator('.pet-task-count')).toHaveText('0/3')
+  await expect(page.locator('.pet-task-count')).toHaveText('0/4')
   await expect(page.locator('.pet-hero')).toContainText('已连续陪伴 0 天')
   await expect
     .poll(() =>

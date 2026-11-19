@@ -306,7 +306,7 @@ test('每日任务合并取同日较高进度并保留已领取记录', () => {
     ...DEFAULT_PET_VITALS,
     dailyTasks: {
       date: '2026-11-12',
-      progress: { feed: 1, publish: 0, comment: 0 },
+      progress: { feed: 1, publish: 0, comment: 0, homestead: 0 },
       rewarded: ['feed'],
     },
   })
@@ -314,8 +314,8 @@ test('每日任务合并取同日较高进度并保留已领取记录', () => {
     ...DEFAULT_PET_VITALS,
     dailyTasks: {
       date: '2026-11-12',
-      progress: { feed: 0, publish: 1, comment: 1 },
-      rewarded: ['publish'],
+      progress: { feed: 0, publish: 1, comment: 1, homestead: 1 },
+      rewarded: ['publish', 'homestead'],
     },
   })
 
@@ -325,8 +325,37 @@ test('每日任务合并取同日较高进度并保留已领取记录', () => {
     feed: 1,
     publish: 1,
     comment: 1,
+    homestead: 1,
   })
-  assert.deepEqual(merged.dailyTasks.rewarded.sort(), ['feed', 'publish'])
+  assert.deepEqual(merged.dailyTasks.rewarded.sort(), [
+    'feed',
+    'homestead',
+    'publish',
+  ])
+})
+
+test('小院收获计入每日任务且只奖励一次', () => {
+  const now = new Date('2026-11-12T09:00:00').getTime()
+  const base = normalizePetVitals({
+    ...DEFAULT_PET_VITALS,
+    mood: 50,
+    intimacy: 10,
+    firstVisitAt: 1,
+    updatedAt: now,
+  })
+
+  const first = recordDailyTask(base, 'homestead', now)
+  assert.equal(first.completedNow, true)
+  assert.equal(first.vitals.mood, 57)
+  assert.equal(first.vitals.intimacy, 12)
+  assert.equal(first.vitals.dailyTasks.progress.homestead, 1)
+  assert.deepEqual(first.vitals.dailyTasks.rewarded, ['homestead'])
+
+  const repeated = recordDailyTask(first.vitals, 'homestead', now + 60_000)
+  assert.equal(repeated.completedNow, false)
+  assert.equal(repeated.alreadyCompleted, true)
+  assert.equal(repeated.vitals.mood, first.vitals.mood)
+  assert.equal(repeated.vitals.intimacy, first.vitals.intimacy)
 })
 
 test('成就会自动解锁且庆祝记录跨设备合并', () => {
@@ -436,8 +465,8 @@ test('重新养一只会清空成长、成就与任务并提升版本', () => {
       celebratedAchievements: ['streak:3'],
       dailyTasks: {
         date: '2026-11-13',
-        progress: { feed: 1, publish: 1, comment: 1 },
-        rewarded: ['feed', 'publish', 'comment'],
+        progress: { feed: 1, publish: 1, comment: 1, homestead: 1 },
+        rewarded: ['feed', 'publish', 'comment', 'homestead'],
       },
       stateVersion: 5,
       updatedAt: now,
@@ -458,6 +487,7 @@ test('重新养一只会清空成长、成就与任务并提升版本', () => {
     feed: 0,
     publish: 0,
     comment: 0,
+    homestead: 0,
   })
   assert.equal(reset.stateVersion, now)
 })

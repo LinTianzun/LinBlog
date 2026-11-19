@@ -6,7 +6,7 @@ import {
 } from './desktopPetFood.ts'
 
 export type PetAchievementKind = 'streak' | 'interaction'
-export type DailyPetTaskKey = 'feed' | 'publish' | 'comment'
+export type DailyPetTaskKey = 'feed' | 'publish' | 'comment' | 'homestead'
 
 export interface DailyPetTasks {
   date: string
@@ -133,6 +133,13 @@ export const PET_DAILY_TASK_DEFINITIONS: readonly PetDailyTaskDefinition[] = [
     description: '在文章、图库或随笔下留下一次真诚回应。',
     icon: '💬',
     reward: { mood: 6, intimacy: 2 }
+  },
+  {
+    key: 'homestead',
+    label: '打理一次小院',
+    description: '在小院收获作物、收取动物产物，或去鱼塘钓到一条鱼。',
+    icon: '🌾',
+    reward: { mood: 7, intimacy: 2 }
   }
 ]
 
@@ -143,7 +150,7 @@ const INTERACTION_TARGETS = [10, 50, 100, 300, 500, 1000, 5000]
 
 const createEmptyDailyTasks = (date = ''): DailyPetTasks => ({
   date,
-  progress: { feed: 0, publish: 0, comment: 0 },
+  progress: { feed: 0, publish: 0, comment: 0, homestead: 0 },
   rewarded: []
 })
 
@@ -278,10 +285,14 @@ export function normalizeDailyTasks(
   const progress = {
     feed: hasDate ? intOr(rawProgress?.feed, 0, 1) : 0,
     publish: hasDate ? intOr(rawProgress?.publish, 0, 1) : 0,
-    comment: hasDate ? intOr(rawProgress?.comment, 0, 1) : 0
+    comment: hasDate ? intOr(rawProgress?.comment, 0, 1) : 0,
+    homestead: hasDate ? intOr(rawProgress?.homestead, 0, 1) : 0
   }
   const rewarded = hasDate
-    ? uniqueStringList(raw.rewarded, /^(feed|publish|comment)$/).filter(
+    ? uniqueStringList(
+        raw.rewarded,
+        /^(feed|publish|comment|homestead)$/
+      ).filter(
         (key): key is DailyPetTaskKey =>
           DAILY_TASK_KEYS.includes(key as DailyPetTaskKey) &&
           progress[key as DailyPetTaskKey] >= 1
@@ -551,7 +562,8 @@ export function mergeDailyPetTasks(
   const progress = {
     feed: Math.max(a.progress.feed, b.progress.feed),
     publish: Math.max(a.progress.publish, b.progress.publish),
-    comment: Math.max(a.progress.comment, b.progress.comment)
+    comment: Math.max(a.progress.comment, b.progress.comment),
+    homestead: Math.max(a.progress.homestead, b.progress.homestead)
   }
   const rewarded = [
     ...new Set([...a.rewarded, ...b.rewarded])
