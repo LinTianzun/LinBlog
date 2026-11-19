@@ -15,9 +15,18 @@
                     <i :style="{ width: `${level.percent}%` }" />
                 </span>
             </div>
-            <b class="pet-farm-level-xp">
-                {{ level.experience }}/{{ level.nextLevelXp }}
-            </b>
+            <div class="pet-farm-level-side">
+                <b class="pet-farm-level-xp">
+                    {{ level.experience }}/{{ level.nextLevelXp }}
+                </b>
+                <button v-if="claimableLevelRewards.length" type="button"
+                    @click="emit('claim-level-rewards')">
+                    领取 +{{ claimableLevelCoins }} 🪙
+                </button>
+                <span v-else-if="level.level > 1" class="is-claimed">
+                    升级奖励已领
+                </span>
+            </div>
         </article>
         <article v-for="item in achievementCards" :key="item.id"
             class="pet-farm-achievement"
@@ -53,6 +62,7 @@ import { computed } from 'vue'
 import {
     homesteadAchievements,
     homesteadLevelProgress,
+    homesteadLevelRewards,
     type HomesteadState,
 } from '../../utils/desktopPetHomestead'
 
@@ -62,11 +72,20 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (event: 'claim-achievement', achievementId: string): void
+    (event: 'claim-level-rewards'): void
 }>()
 
 const achievementCards = computed(() => homesteadAchievements(props.homestead))
 const level = computed(() =>
     homesteadLevelProgress(props.homestead.experience)
+)
+const claimableLevelRewards = computed(() =>
+    homesteadLevelRewards(props.homestead).filter(
+        (item) => item.unlocked && !item.claimed
+    )
+)
+const claimableLevelCoins = computed(() =>
+    claimableLevelRewards.value.reduce((sum, item) => sum + item.reward, 0)
 )
 </script>
 
@@ -147,10 +166,41 @@ const level = computed(() =>
 }
 
 .pet-farm-level-xp {
-    flex: none;
     color: #64836b;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
+}
+
+.pet-farm-level-side {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+
+    button {
+        min-height: 28px;
+        padding: 0 9px;
+        border: 0;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #5aa879, #91c95f);
+        color: #fff;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+
+        &:focus-visible {
+            outline: 2px solid #4b9769;
+            outline-offset: 2px;
+        }
+    }
+
+    .is-claimed {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 9px;
+    }
 }
 
 .pet-farm-achievement {

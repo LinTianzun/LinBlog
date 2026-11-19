@@ -127,6 +127,7 @@ export interface HomesteadState {
   ordersDay: string
   orders: HomesteadOrderState[]
   claimedAchievements: string[]
+  claimedLevelRewards: number[]
   totals: HomesteadTotals
   autoHelp: HomesteadAutoHelpState
   barnLevel: number
@@ -176,6 +177,26 @@ export const HOMESTEAD_LEVELS: readonly HomesteadLevelDefinition[] = [
   { level: 10, title: '传奇庄园主', experience: 7_500 }
 ]
 
+export const HOMESTEAD_LEVEL_REWARDS: Readonly<Record<number, number>> = {
+  2: 50,
+  3: 80,
+  4: 120,
+  5: 180,
+  6: 250,
+  7: 350,
+  8: 500,
+  9: 700,
+  10: 1_000
+}
+
+export interface HomesteadLevelReward {
+  level: number
+  title: string
+  reward: number
+  unlocked: boolean
+  claimed: boolean
+}
+
 export interface HomesteadLevelProgress {
   level: number
   title: string
@@ -222,6 +243,56 @@ export function homesteadLevelProgress(
         )
       : 100,
     isMax: !next
+  }
+}
+
+export function homesteadLevelRewards(
+  state: Pick<HomesteadState, 'experience' | 'claimedLevelRewards'>
+): HomesteadLevelReward[] {
+  const level = homesteadLevelProgress(state.experience).level
+  const claimed = new Set(state.claimedLevelRewards)
+  return HOMESTEAD_LEVELS.map((item) => ({
+    level: item.level,
+    title: item.title,
+    reward: HOMESTEAD_LEVEL_REWARDS[item.level] || 0,
+    unlocked: item.level <= level,
+    claimed: claimed.has(item.level)
+  })).filter((item) => item.reward > 0)
+}
+
+export interface HomesteadLevelRewardClaimResult {
+  state: HomesteadState
+  rewards: HomesteadLevelReward[]
+  total: number
+  changed: boolean
+}
+
+export function claimHomesteadLevelRewards(
+  state: HomesteadState,
+  now = Date.now()
+): HomesteadLevelRewardClaimResult {
+  const rewards = homesteadLevelRewards(state).filter(
+    (item) => item.unlocked && !item.claimed
+  )
+  if (!rewards.length) {
+    return { state, rewards: [], total: 0, changed: false }
+  }
+  const total = rewards.reduce((sum, item) => sum + item.reward, 0)
+  return {
+    state: {
+      ...state,
+      coins: Math.min(9_999_999, state.coins + total),
+      claimedLevelRewards: [
+        ...new Set([
+          ...state.claimedLevelRewards,
+          ...rewards.map((item) => item.level)
+        ])
+      ].sort((a, b) => a - b),
+      updatedAt: now
+    },
+    rewards,
+    total,
+    changed: true
   }
 }
 export const HOMESTEAD_SEED_PACKS: Record<
@@ -901,6 +972,20 @@ const normalizeClaimedAchievements = (value: unknown): string[] => {
   return result
 }
 
+const normalizeClaimedLevelRewards = (value: unknown): number[] => {
+  if (!Array.isArray(value)) return []
+  const valid = new Set(
+    Object.keys(HOMESTEAD_LEVEL_REWARDS).map((level) => Number(level))
+  )
+  return [
+    ...new Set(
+      value
+        .map((item) => Number(item))
+        .filter((item) => Number.isSafeInteger(item) && valid.has(item))
+    )
+  ].sort((a, b) => a - b)
+}
+
 const normalizeDecorations = (
   value: unknown
 ): HomesteadDecorationId[] => {
@@ -1001,6 +1086,7 @@ export function createDefaultHomestead(
     ordersDay: day,
     orders: createDailyOrders(day),
     claimedAchievements: [],
+    claimedLevelRewards: [],
     totals: emptyTotals(),
     autoHelp: defaultAutoHelp(now),
     barnLevel: 1,
@@ -1021,6 +1107,7 @@ const isFreshHomestead = (state: HomesteadState): boolean =>
   state.coins === HOMESTEAD_STARTING_COINS &&
   state.experience === 0 &&
   state.claimedAchievements.length === 0 &&
+  state.claimedLevelRewards.length === 0 &&
   Object.values(state.totals).every((value) => value === 0) &&
   state.autoHelp.total === 0 &&
   state.plotCount === HOMESTEAD_PLOT_COUNT &&
@@ -1138,6 +1225,9 @@ export function normalizeHomestead(
     orders,
     claimedAchievements: normalizeClaimedAchievements(
       raw.claimedAchievements
+    ),
+    claimedLevelRewards: normalizeClaimedLevelRewards(
+      raw.claimedLevelRewards
     ),
     totals: {
       harvests: intOr(rawTotals.harvests, 0),
@@ -1364,6 +1454,12 @@ export function mergeHomesteads(
           ...b.claimedAchievements
         ])
       ],
+      claimedLevelRewards: [
+        ...new Set([
+          ...a.claimedLevelRewards,
+          ...b.claimedLevelRewards
+        ])
+      ].sort((left, right) => left - right),
       totals: {
         harvests: Math.max(a.totals.harvests, b.totals.harvests),
         eggs: Math.max(a.totals.eggs, b.totals.eggs),

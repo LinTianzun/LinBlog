@@ -10,6 +10,7 @@ import {
   HOMESTEAD_FERTILIZER_PACK,
   HOMESTEAD_MAX_PLOT_COUNT,
   HOMESTEAD_LEVELS,
+  HOMESTEAD_LEVEL_REWARDS,
   HOMESTEAD_PLOT_EXPANSIONS,
   HOMESTEAD_SEED_PACKS,
   HOMESTEAD_WEATHER_EFFECTS,
@@ -23,6 +24,7 @@ import {
   buySeedPack,
   canCompleteOrder,
   claimHomesteadAchievement,
+  claimHomesteadLevelRewards,
   collectAnimal,
   completeOrder,
   createDefaultHomestead,
@@ -39,6 +41,7 @@ import {
   homesteadAchievementCurrent,
   homesteadAchievements,
   homesteadLevelProgress,
+  homesteadLevelRewards,
   homesteadBarnSpeedMultiplier,
   homesteadPondCooldownMs,
   isAnimalManureReady,
@@ -147,6 +150,38 @@ test('小院经营会累积等级经验，合并保留更高进度', () => {
   )
   assert.equal(merged.experience, 140)
   assert.equal(homesteadLevelProgress(merged.experience).level, 2)
+})
+
+test('小院升级奖励只能领取一次并随存档合并', () => {
+  const state = {
+    ...createDefaultHomestead(NOW),
+    experience: 320
+  }
+  const unlocked = homesteadLevelRewards(state)
+  assert.equal(
+    unlocked.filter((item) => item.unlocked).map((item) => item.level).join(','),
+    '2,3'
+  )
+
+  const first = claimHomesteadLevelRewards(state, NOW)
+  assert.equal(first.changed, true)
+  assert.equal(
+    first.total,
+    HOMESTEAD_LEVEL_REWARDS[2] + HOMESTEAD_LEVEL_REWARDS[3]
+  )
+  assert.equal(first.state.coins, HOMESTEAD_STARTING_COINS + first.total)
+  assert.deepEqual(first.state.claimedLevelRewards, [2, 3])
+  assert.equal(
+    claimHomesteadLevelRewards(first.state, NOW).changed,
+    false
+  )
+
+  const merged = mergeHomesteads(
+    { ...first.state, claimedLevelRewards: [2] },
+    { ...first.state, claimedLevelRewards: [3] },
+    NOW
+  )
+  assert.deepEqual(merged.claimedLevelRewards, [2, 3])
 })
 
 test('小院时段按小时正确切换', () => {

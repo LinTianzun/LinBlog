@@ -81,6 +81,7 @@ const makeState = (overrides = {}) => ({
         }
     ],
     claimedAchievements: [],
+    claimedLevelRewards: [],
     totals: { harvests: 0, eggs: 0, milk: 0, fish: 0, manure: 0 },
     autoHelp: {
         enabled: true,
@@ -103,6 +104,7 @@ test('保存小院快照时写入 JSON 与独立版本号', async () => {
     const state = makeState({
         coins: 123,
         experience: 260,
+        claimedLevelRewards: [2],
         stateVersion: 7,
         inventory: {
             radish: 3,
@@ -124,6 +126,7 @@ test('保存小院快照时写入 JSON 与独立版本号', async () => {
     assert.equal(JSON.parse(insert.params[1]).coins, 123)
     assert.equal(saved.coins, 123)
     assert.equal(saved.experience, 260)
+    assert.deepEqual(saved.claimedLevelRewards, [2])
     assert.equal(saved.stateVersion, 7)
 })
 
@@ -146,6 +149,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
                 index === 0 ? { ...order, completedAt: 1_700_000_100_000 } : order
             ),
             claimedAchievements: ['egg-basket'],
+            claimedLevelRewards: [2],
             updatedAt: 1_700_000_100_000
         })),
         homestead_version: 0
@@ -174,11 +178,13 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
             index === 1 ? { ...order, completedAt: 1_700_000_300_000 } : order
         ),
         claimedAchievements: ['first-harvest'],
+        claimedLevelRewards: [3],
         updatedAt: 1_700_000_300_000
     }))
 
     assert.equal(saved.coins, 110)
     assert.equal(saved.experience, 320)
+    assert.deepEqual(saved.claimedLevelRewards, [2, 3])
     assert.equal(saved.inventory.radish, 2)
     assert.equal(saved.inventory.tomato, 3)
     assert.equal(saved.inventory.milk, 2)

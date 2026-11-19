@@ -59,7 +59,7 @@
                     :owned-decorations="ownedDecorations"
                     :completed-order-count="completedOrderCount"
                     :claimable-order-count="claimableOrderCount"
-                    :claimable-homestead-achievement-count="claimableHomesteadAchievementCount"
+                    :claimable-homestead-achievement-count="claimableHomesteadAchievementCount + claimableHomesteadLevelRewardCount"
                     :auto-help-status="autoHelpStatus"
                     @select-tab="selectPetHomeTab"
                     @plot-click="handlePlotClick"
@@ -81,6 +81,7 @@
         <PetFarmBusiness v-model="businessOpen" v-model:panel="businessPanel"
             :homestead="homestead" @deliver-order="deliverOrder"
             @claim-achievement="claimAchievementReward"
+            @claim-level-rewards="claimLevelRewards"
             @buy-seed="buySeedNow" @buy-fertilizer="buyFertilizerNow"
             @buy-plot="buyPlotExpansionNow" @upgrade-barn="upgradeBarnNow"
             @upgrade-pond="upgradePondNow"
@@ -136,6 +137,7 @@ import {
     buySeedPack,
     canCompleteOrder,
     claimHomesteadAchievement,
+    claimHomesteadLevelRewards,
     collectAnimal,
     completeOrder,
     fertilizePlot,
@@ -147,6 +149,7 @@ import {
     getHomesteadItem,
     getHomesteadState,
     homesteadLevelProgress,
+    homesteadLevelRewards,
     getHomesteadWeather,
     harvestPlot,
     homesteadAchievements,
@@ -494,6 +497,12 @@ const claimableHomesteadAchievementCount = computed(
             (item) => item.unlocked && !item.claimed
         ).length
 )
+const claimableHomesteadLevelRewardCount = computed(
+    () =>
+        homesteadLevelRewards(homestead.value).filter(
+            (item) => item.unlocked && !item.claimed
+        ).length
+)
 
 const homesteadTendCount = computed(() => {
     let count = 0
@@ -786,6 +795,19 @@ const claimAchievementReward = (achievementId: string) => {
     proxy?.$message?.({
         type: 'success',
         message: `领取「${result.achievement?.name}」奖励，获得 ${result.achievement?.reward} 金币`,
+    })
+}
+
+const claimLevelRewards = () => {
+    const result = claimHomesteadLevelRewards(homestead.value, Date.now())
+    if (!result.changed) {
+        proxy?.$message?.({ type: 'primary', message: '升级奖励已经领过了' })
+        return
+    }
+    commitHomestead(result.state)
+    proxy?.$message?.({
+        type: 'success',
+        message: `领取 ${result.rewards.length} 个升级奖励，获得 ${result.total} 金币`,
     })
 }
 

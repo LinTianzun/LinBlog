@@ -313,6 +313,7 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
     localStorage.setItem(
       'LINBLOG_DESKTOP_PET_HOMESTEAD:u7',
       JSON.stringify({
+        experience: 320,
         plots: [],
         inventory: { radish: 0, egg: 0, milk: 0, fish: 0, fertilizer: 0 },
         totals: {
@@ -338,7 +339,11 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
   await modal.getByRole('tab', { name: /小院成就/ }).click()
 
   const cards = modal.locator('.pet-farm-achievement')
-  await expect(modal.locator('.pet-farm-level')).toContainText('小院新丁')
+  await expect(modal.locator('.pet-farm-level')).toContainText('勤劳园丁')
+  await modal.locator('.pet-farm-level').getByRole('button', {
+    name: /领取 \+130/,
+  }).click()
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('210')
   await expect(cards).toHaveCount(7)
   await expect(cards.filter({ hasText: '第一捧收成' })).toHaveClass(
     /is-unlocked/,
@@ -354,7 +359,7 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
 
   const firstHarvest = cards.filter({ hasText: '第一捧收成' })
   await firstHarvest.getByRole('button', { name: '领取' }).click()
-  await expect(modal.locator('.pet-farm-business-coins')).toContainText('100')
+  await expect(modal.locator('.pet-farm-business-coins')).toContainText('230')
   await expect(firstHarvest).toContainText('已领取')
 
   const saved = await page.evaluate(() => {
@@ -363,11 +368,13 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
       ? (JSON.parse(raw) as {
           coins?: number
           claimedAchievements?: string[]
+          claimedLevelRewards?: number[]
         })
       : null
   })
-  expect(saved?.coins).toBe(100)
+  expect(saved?.coins).toBe(230)
   expect(saved?.claimedAchievements).toContain('first-harvest')
+  expect(saved?.claimedLevelRewards).toEqual([2, 3])
 })
 
 test('小院商店可以扩建菜地、畜棚、鱼塘并购买装饰', async ({ page }) => {

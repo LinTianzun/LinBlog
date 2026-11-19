@@ -37,6 +37,7 @@ const HOMESTEAD_ACHIEVEMENT_IDS = [
     'clean-yard',
     'all-round-farmer'
 ]
+const HOMESTEAD_LEVEL_REWARD_LEVELS = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 const clampInt = (value, min, max, fallback) => {
     const number = Number(value)
@@ -181,6 +182,16 @@ const normalizeClaimedAchievements = (value) => {
     ))]
 }
 
+const normalizeClaimedLevelRewards = (value) => {
+    if (!Array.isArray(value)) return []
+    return [...new Set(value
+        .map((item) => Number(item))
+        .filter((item) =>
+            Number.isSafeInteger(item) &&
+            HOMESTEAD_LEVEL_REWARD_LEVELS.includes(item)
+        ))].sort((a, b) => a - b)
+}
+
 const normalizeHomesteadDecorations = (value) => {
     if (!Array.isArray(value)) return []
     return [...new Set(value.filter(
@@ -272,6 +283,9 @@ function normalizeHomesteadState(payload) {
         orders: normalizeHomesteadOrders(raw.orders),
         claimedAchievements: normalizeClaimedAchievements(
             raw.claimedAchievements
+        ),
+        claimedLevelRewards: normalizeClaimedLevelRewards(
+            raw.claimedLevelRewards
         ),
         totals: {
             harvests: clampInt(rawTotals.harvests, 0, 1_000_000_000, 0),
@@ -461,6 +475,7 @@ const isFreshHomesteadState = (state) =>
     state.seedStock.strawberry === 1 &&
     state.coins === 80 &&
     state.experience === 0 &&
+    state.claimedLevelRewards.length === 0 &&
     Object.values(state.totals).every((value) => value === 0) &&
     state.autoHelp.total === 0 &&
     state.plotCount === HOMESTEAD_PLOT_COUNT &&
@@ -539,6 +554,12 @@ function mergeHomesteadStates(existing, incoming) {
                 ...b.claimedAchievements
             ])
         ],
+        claimedLevelRewards: [
+            ...new Set([
+                ...a.claimedLevelRewards,
+                ...b.claimedLevelRewards
+            ])
+        ].sort((left, right) => left - right),
         totals: {
             harvests: Math.max(a.totals.harvests, b.totals.harvests),
             eggs: Math.max(a.totals.eggs, b.totals.eggs),

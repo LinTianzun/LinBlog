@@ -44,7 +44,8 @@
 
             <PetFarmAchievements v-else-if="panelModel === 'achievements'"
                 :homestead="homestead"
-                @claim-achievement="achievementId => emit('claim-achievement', achievementId)" />
+                @claim-achievement="achievementId => emit('claim-achievement', achievementId)"
+                @claim-level-rewards="emit('claim-level-rewards')" />
 
             <PetFarmShop v-else :homestead="homestead"
                 @buy-seed="cropId => emit('buy-seed', cropId)"
@@ -83,6 +84,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (event: 'deliver-order', orderId: string): void
     (event: 'claim-achievement', achievementId: string): void
+    (event: 'claim-level-rewards'): void
     (event: 'buy-seed', cropId: HomesteadCropId): void
     (event: 'buy-fertilizer'): void
     (event: 'buy-plot'): void
