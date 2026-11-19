@@ -16,7 +16,7 @@ export const PET_ONBOARDING_STEPS: readonly PetOnboardingStep[] = [
     id: 'weather',
     icon: '🌦️',
     title: '留意天气和时段',
-    body: '小院每天都有稳定天气，顶部会显示当前天气与清晨/白天/傍晚/夜晚。夜晚宠物会放慢脚步，小院也会暗下来。'
+    body: '小院每天都有稳定天气，顶部会显示天气加成：晴天作物快、阴天动物快、雨天作物更快、刮风时钓鱼冷却更短。夜晚宠物会放慢脚步，小院也会暗下来。'
   },
   {
     id: 'raise',

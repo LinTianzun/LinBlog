@@ -11,9 +11,14 @@
                     <span aria-hidden="true" />{{ petHomeStatus }}
                 </span>
                 <span class="pet-home-weather" :class="`is-${weather.id}`"
-                    :title="`${weather.description} ${dayPhase.description}`">
-                    <span aria-hidden="true">{{ weather.icon }}</span>
-                    {{ weather.label }} · {{ dayPhase.label }}
+                    :title="`${weather.description} ${dayPhase.description} ${weatherEffect.detail}`">
+                    <span class="pet-home-weather-icon" aria-hidden="true">
+                        {{ weather.icon }}
+                    </span>
+                    <span class="pet-home-weather-copy">
+                        <b>{{ weather.label }} · {{ dayPhase.label }}</b>
+                        <small>{{ weatherEffect.summary }}</small>
+                    </span>
                 </span>
             </div>
         </header>
@@ -137,6 +142,7 @@ import { computed, ref } from 'vue'
 import type { DesktopPetSettings, DesktopPetCommand } from '../../utils/desktopPet'
 import {
     HOMESTEAD_CROPS,
+    homesteadWeatherEffect,
     type HomesteadDayPhaseDefinition,
     type HomesteadCropId,
     type HomesteadState,
@@ -193,6 +199,7 @@ const props = defineProps<{
     autoHelpStatus: string
 }>()
 
+const weatherEffect = computed(() => homesteadWeatherEffect(props.weather.id))
 const onboardingOpen = ref(!isPetOnboardingCompleted())
 const onboardingStepIndex = ref(0)
 const onboardingStep = computed(
@@ -531,7 +538,7 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
 .pet-home-weather {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 7px;
     padding: 4px 9px;
     border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
     border-radius: 999px;
@@ -540,10 +547,6 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
     font-size: 10px;
     font-weight: 620;
     white-space: nowrap;
-
-    > span {
-        font-size: 11px;
-    }
 
     &.is-sunny {
         color: #b17a17;
@@ -559,6 +562,30 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
 
     &.is-windy {
         color: #4f9070;
+    }
+}
+
+.pet-home-weather-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.pet-home-weather-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    line-height: 1.15;
+
+    b {
+        font-size: 10px;
+        font-weight: 680;
+    }
+
+    small {
+        font-size: 9px;
+        font-weight: 560;
+        opacity: 0.78;
     }
 }
 

@@ -13,7 +13,8 @@ import {
   isPondReady,
   waterPlot,
   type HomesteadAnimalId,
-  type HomesteadState
+  type HomesteadState,
+  type HomesteadWeatherId
 } from './desktopPetHomestead.ts'
 
 export const HOMESTEAD_AUTO_HELP_COOLDOWN_MS = 60_000
@@ -79,10 +80,11 @@ const plotAnchor = (index: number): string => `plot-${index}`
  */
 export function findAutoHelpTask(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadAutoHelpTask | null {
   for (let index = 0; index < state.plots.length; index++) {
-    if (isPlotRipe(state.plots[index], now)) {
+    if (isPlotRipe(state.plots[index], now, weatherId)) {
       return {
         action: 'harvest',
         target: { kind: 'plot', index, anchor: plotAnchor(index) },
@@ -96,7 +98,10 @@ export function findAutoHelpTask(
   for (const animalId of ['chicken', 'cow'] as const) {
     const definition = HOMESTEAD_ANIMALS[animalId]
     const animal = state.animals[animalId]
-    const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
+    const speedMultiplier = homesteadBarnSpeedMultiplier(
+      state.barnLevel,
+      weatherId
+    )
     if (
       isAnimalProduceReady(animal, definition, now, speedMultiplier) ||
       isAnimalManureReady(animal, definition, now, speedMultiplier)
@@ -115,7 +120,7 @@ export function findAutoHelpTask(
     }
   }
 
-  if (isPondReady(state, now)) {
+  if (isPondReady(state, now, weatherId)) {
     return {
       action: 'fish',
       target: { kind: 'pond', anchor: 'pond' },
@@ -159,7 +164,10 @@ export function findAutoHelpTask(
 export function canAutoHelp(
   state: HomesteadState,
   now = Date.now(),
-  options: { ignoreCooldown?: boolean } = {}
+  options: {
+    ignoreCooldown?: boolean
+    weatherId?: HomesteadWeatherId
+  } = {}
 ): HomesteadAutoHelpAvailability {
   const used = state.autoHelp.day === homesteadDayKey(now)
     ? state.autoHelp.count
@@ -183,7 +191,7 @@ export function canAutoHelp(
   if (!options.ignoreCooldown && remainingMs > 0) {
     return { ...base, allowed: false, reason: 'cooldown' }
   }
-  if (!findAutoHelpTask(state, now)) {
+  if (!findAutoHelpTask(state, now, options.weatherId)) {
     return { ...base, allowed: false, reason: 'empty' }
   }
   return { ...base, allowed: true, reason: null }
@@ -191,13 +199,14 @@ export function canAutoHelp(
 
 export function performAutoHelp(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadAutoHelpResult | null {
   if (!state.autoHelp.enabled) return null
   const usedToday =
     state.autoHelp.day === homesteadDayKey(now) ? state.autoHelp.count : 0
   if (usedToday >= HOMESTEAD_AUTO_HELP_DAILY_LIMIT) return null
-  const task = findAutoHelpTask(state, now)
+  const task = findAutoHelpTask(state, now, weatherId)
   if (!task) return null
 
   let next = state
@@ -209,7 +218,7 @@ export function performAutoHelp(
     const plot = state.plots[task.target.index]
     const crop = getHomesteadCrop(plot?.cropId)
     if (task.action === 'harvest') {
-      const result = harvestPlot(state, task.target.index, now)
+      const result = harvestPlot(state, task.target.index, now, weatherId)
       if (result.changed && result.crop) {
         next = result.state
         emoji = result.crop.icon
@@ -217,7 +226,7 @@ export function performAutoHelp(
         changed = true
       }
     } else if (task.action === 'water' && crop) {
-      const watered = waterPlot(state, task.target.index, now)
+      const watered = waterPlot(state, task.target.index, now, weatherId)
       if (watered !== state) {
         next = watered
         emoji = '💧'
@@ -225,7 +234,12 @@ export function performAutoHelp(
         changed = true
       }
     } else if (task.action === 'fertilize' && crop) {
-      const fertilized = fertilizePlot(state, task.target.index, now)
+      const fertilized = fertilizePlot(
+        state,
+        task.target.index,
+        now,
+        weatherId
+      )
       if (fertilized !== state) {
         next = fertilized
         emoji = '🌱'
@@ -236,7 +250,7 @@ export function performAutoHelp(
   } else if (task.target.kind === 'animal') {
     const animalId = task.target.animalId
     const definition = HOMESTEAD_ANIMALS[animalId]
-    const result = collectAnimal(state, animalId, now)
+    const result = collectAnimal(state, animalId, now, weatherId)
     if (result.changed) {
       next = result.state
       const parts: string[] = []
@@ -254,7 +268,7 @@ export function performAutoHelp(
       changed = true
     }
   } else if (task.action === 'fish') {
-    const result = fishPond(state, now)
+    const result = fishPond(state, now, weatherId)
     if (result.changed) {
       next = result.state
       emoji = '🐟'
@@ -287,7 +301,8 @@ export function performAutoHelp(
 
 export function autoHelpStatusText(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): string {
   if (!state.autoHelp.enabled) {
     return '已关闭，它只会在小院里休息'
@@ -305,7 +320,7 @@ export function autoHelpStatusText(
     const seconds = Math.ceil(remaining / 1000)
     return `下次帮忙还要 ${seconds} 秒 · 今日 ${used}/${HOMESTEAD_AUTO_HELP_DAILY_LIMIT}`
   }
-  if (!findAutoHelpTask(state, now)) {
+  if (!findAutoHelpTask(state, now, weatherId)) {
     return '小院暂时没有需要忙的'
   }
   return `闲下来会去菜地、鸡舍、牛棚和鱼塘帮忙 · 今日 ${used}/${HOMESTEAD_AUTO_HELP_DAILY_LIMIT}`

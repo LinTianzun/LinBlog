@@ -254,6 +254,7 @@ import {
     performAutoHelp,
 } from '../../utils/desktopPetAutoHelp'
 import {
+    getHomesteadWeather,
     getHomesteadState,
     setHomesteadState,
 } from '../../utils/desktopPetHomestead'
@@ -2044,12 +2045,13 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
 
     const now = Date.now()
     const state = getHomesteadState()
-    const availability = canAutoHelp(state, now)
+    const weatherId = getHomesteadWeather(now).id
+    const availability = canAutoHelp(state, now, { weatherId })
     if (!availability.allowed) {
         if (manual) showBubble(autoHelpBlockedText(availability), 3400, '🐾', true)
         return false
     }
-    const task = findAutoHelpTask(state, now)
+    const task = findAutoHelpTask(state, now, weatherId)
     if (!task) return false
     const targetTab =
         task.target.kind === 'pond'
@@ -2080,7 +2082,12 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
 
         const finishedAt = Date.now()
         const latest = getHomesteadState()
-        const latestTask = findAutoHelpTask(latest, finishedAt)
+        const latestWeatherId = getHomesteadWeather(finishedAt).id
+        const latestTask = findAutoHelpTask(
+            latest,
+            finishedAt,
+            latestWeatherId
+        )
         if (
             !latestTask ||
             latestTask.action !== task.action ||
@@ -2091,7 +2098,7 @@ const runAutoHelp = async (manual = false): Promise<boolean> => {
             }
             return false
         }
-        const result = performAutoHelp(latest, finishedAt)
+        const result = performAutoHelp(latest, finishedAt, latestWeatherId)
         if (!result) {
             if (manual) showBubble('咦，好像已经被你收好啦。', 2800, '👀', true)
             return false

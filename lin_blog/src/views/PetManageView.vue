@@ -230,6 +230,7 @@ const selectPetHomeTab = (tab: PetHomeTab) => {
 }
 const nowTick = ref(Date.now())
 const homesteadWeather = computed(() => getHomesteadWeather(nowTick.value))
+const homesteadWeatherId = computed(() => homesteadWeather.value.id)
 const homesteadDayPhase = computed(() =>
     getHomesteadDayPhase(nowTick.value)
 )
@@ -293,29 +294,42 @@ const homesteadPlots = computed(() =>
             index,
             cropId: plot.cropId,
             icon: crop?.icon || '',
-            ripe: isPlotRipe(plot, nowTick.value),
+            ripe: isPlotRipe(plot, nowTick.value, homesteadWeatherId.value),
             watered: plot.wateredAt > 0,
             fertilized: plot.fertilizedAt > 0,
             canFertilize:
                 Boolean(plot.cropId) &&
                 Boolean(plot.wateredAt) &&
                 !plot.fertilizedAt &&
-                !isPlotRipe(plot, nowTick.value) &&
+                !isPlotRipe(plot, nowTick.value, homesteadWeatherId.value) &&
                 homestead.value.inventory.fertilizer > 0,
-            progress: plotProgress(plot, nowTick.value),
+            progress: plotProgress(
+                plot,
+                nowTick.value,
+                homesteadWeatherId.value
+            ),
             visualClass: pixelCropClass({
                 cropId: plot.cropId,
-                progress: plotProgress(plot, nowTick.value),
-                ripe: isPlotRipe(plot, nowTick.value),
+                progress: plotProgress(
+                    plot,
+                    nowTick.value,
+                    homesteadWeatherId.value
+                ),
+                ripe: isPlotRipe(
+                    plot,
+                    nowTick.value,
+                    homesteadWeatherId.value
+                ),
             }),
             label: `第 ${index + 1} 块菜地：${plotStatusText(
                 plot,
-                nowTick.value
+                nowTick.value,
+                homesteadWeatherId.value
             )}${
                 Boolean(plot.cropId) &&
                 Boolean(plot.wateredAt) &&
                 !plot.fertilizedAt &&
-                !isPlotRipe(plot, nowTick.value) &&
+                !isPlotRipe(plot, nowTick.value, homesteadWeatherId.value) &&
                 homestead.value.inventory.fertilizer > 0
                     ? '，点击施肥'
                     : ''
@@ -348,7 +362,8 @@ const chicken = computed(() => {
     const definition = HOMESTEAD_ANIMALS.chicken
     const animal = homestead.value.animals.chicken
     const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel
+        homestead.value.barnLevel,
+        homesteadWeatherId.value
     )
     return {
         ...definition,
@@ -371,7 +386,8 @@ const cow = computed(() => {
     const definition = HOMESTEAD_ANIMALS.cow
     const animal = homestead.value.animals.cow
     const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel
+        homestead.value.barnLevel,
+        homesteadWeatherId.value
     )
     return {
         ...definition,
@@ -391,14 +407,37 @@ const cow = computed(() => {
 })
 
 const chickenLabel = computed(
-    () => `鸡舍：${animalStatusText(homestead.value, 'chicken', nowTick.value)}`
+    () =>
+        `鸡舍：${animalStatusText(
+            homestead.value,
+            'chicken',
+            nowTick.value,
+            homesteadWeatherId.value
+        )}`
 )
 const cowLabel = computed(
-    () => `奶牛：${animalStatusText(homestead.value, 'cow', nowTick.value)}`
+    () =>
+        `奶牛：${animalStatusText(
+            homestead.value,
+            'cow',
+            nowTick.value,
+            homesteadWeatherId.value
+        )}`
 )
-const pondReady = computed(() => isPondReady(homestead.value, nowTick.value))
+const pondReady = computed(() =>
+    isPondReady(
+        homestead.value,
+        nowTick.value,
+        homesteadWeatherId.value
+    )
+)
 const pondLabel = computed(
-    () => `鱼塘：${pondStatusText(homestead.value, nowTick.value)}`
+    () =>
+        `鱼塘：${pondStatusText(
+            homestead.value,
+            nowTick.value,
+            homesteadWeatherId.value
+        )}`
 )
 
 const inventoryChips = computed(() =>
@@ -459,13 +498,14 @@ const homesteadTendCount = computed(() => {
     let count = 0
     let fertilizable = 0
     for (const plot of homestead.value.plots) {
-        if (isPlotRipe(plot, nowTick.value)) count++
+        if (isPlotRipe(plot, nowTick.value, homesteadWeatherId.value)) count++
         else if (plot.cropId && !plot.wateredAt) count++
         else if (plot.cropId && !plot.fertilizedAt) fertilizable++
     }
     count += Math.min(fertilizable, homestead.value.inventory.fertilizer)
     const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel
+        homestead.value.barnLevel,
+        homesteadWeatherId.value
     )
     for (const id of HOMESTEAD_ANIMAL_IDS) {
         const definition = HOMESTEAD_ANIMALS[id]
@@ -491,7 +531,15 @@ const homesteadTendCount = computed(() => {
             count++
         }
     }
-    if (isPondReady(homestead.value, nowTick.value)) count++
+    if (
+        isPondReady(
+            homestead.value,
+            nowTick.value,
+            homesteadWeatherId.value
+        )
+    ) {
+        count++
+    }
     return count
 })
 
@@ -525,7 +573,11 @@ const autoHelpStatus = computed(() => {
     if (!petSettings.petRoamingEnabled) {
         return '需要开启「允许自主漫游」才能自己去干活'
     }
-    return autoHelpStatusText(homestead.value, nowTick.value)
+    return autoHelpStatusText(
+        homestead.value,
+        nowTick.value,
+        homesteadWeatherId.value
+    )
 })
 
 const requestAutoHelp = () => {
@@ -764,8 +816,13 @@ const handlePlotClick = (index: number) => {
         })
         return
     }
-    if (isPlotRipe(plot, now)) {
-        const result = harvestPlot(homestead.value, index, now)
+    if (isPlotRipe(plot, now, homesteadWeatherId.value)) {
+        const result = harvestPlot(
+            homestead.value,
+            index,
+            now,
+            homesteadWeatherId.value
+        )
         if (!result.changed) return
         commitHomestead(result.state)
         proxy?.$message?.({
@@ -775,7 +832,12 @@ const handlePlotClick = (index: number) => {
         return
     }
     if (!plot.wateredAt) {
-        const next = waterPlot(homestead.value, index, now)
+        const next = waterPlot(
+            homestead.value,
+            index,
+            now,
+            homesteadWeatherId.value
+        )
         if (next === homestead.value) return
         commitHomestead(next)
         proxy?.$message?.({
@@ -785,7 +847,12 @@ const handlePlotClick = (index: number) => {
         return
     }
     if (!plot.fertilizedAt && homestead.value.inventory.fertilizer > 0) {
-        const next = fertilizePlot(homestead.value, index, now)
+        const next = fertilizePlot(
+            homestead.value,
+            index,
+            now,
+            homesteadWeatherId.value
+        )
         if (next === homestead.value) return
         commitHomestead(next)
         proxy?.$message?.({
@@ -797,18 +864,28 @@ const handlePlotClick = (index: number) => {
     proxy?.$message?.({
         type: 'primary',
         message: `${crop.name}还要 ${formatHomesteadDuration(
-            plotRemainingMs(plot, now)
+            plotRemainingMs(plot, now, homesteadWeatherId.value)
         )} 才能收获${plot.fertilizedAt ? '' : '，攒到肥料后还能再快一点'}`,
     })
 }
 
 const collectHomesteadAnimal = (animalId: HomesteadAnimalId) => {
     const now = Date.now()
-    const result = collectAnimal(homestead.value, animalId, now)
+    const result = collectAnimal(
+        homestead.value,
+        animalId,
+        now,
+        homesteadWeatherId.value
+    )
     if (!result.changed) {
         proxy?.$message?.({
             type: 'primary',
-            message: animalStatusText(homestead.value, animalId, now),
+            message: animalStatusText(
+                homestead.value,
+                animalId,
+                now,
+                homesteadWeatherId.value
+            ),
         })
         return
     }
@@ -832,11 +909,15 @@ const collectCow = () => {
 
 const handlePondClick = () => {
     const now = Date.now()
-    const result = fishPond(homestead.value, now)
+    const result = fishPond(homestead.value, now, homesteadWeatherId.value)
     if (!result.changed) {
         proxy?.$message?.({
             type: 'primary',
-            message: pondStatusText(homestead.value, now),
+            message: pondStatusText(
+                homestead.value,
+                now,
+                homesteadWeatherId.value
+            ),
         })
         return
     }
@@ -849,7 +930,7 @@ const handlePondClick = () => {
 
 const tendHomesteadNow = () => {
     const now = Date.now()
-    const result = tendHomestead(homestead.value, now)
+    const result = tendHomestead(homestead.value, now, homesteadWeatherId.value)
     if (!result.changed) {
         proxy?.$message?.({
             type: 'primary',

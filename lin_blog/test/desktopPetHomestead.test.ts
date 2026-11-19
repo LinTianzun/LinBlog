@@ -10,6 +10,7 @@ import {
   HOMESTEAD_MAX_PLOT_COUNT,
   HOMESTEAD_PLOT_EXPANSIONS,
   HOMESTEAD_SEED_PACKS,
+  HOMESTEAD_WEATHER_EFFECTS,
   HOMESTEAD_WEATHERS,
   HOMESTEAD_ORDER_COUNT,
   HOMESTEAD_STARTING_COINS,
@@ -30,6 +31,7 @@ import {
   getHomesteadState,
   getHomesteadDayPhase,
   getHomesteadWeather,
+  homesteadWeatherEffect,
   harvestPlot,
   homesteadWeatherForDay,
   homesteadAchievementCurrent,
@@ -44,6 +46,7 @@ import {
   normalizeHomestead,
   plantCrop,
   plantCropWithSeed,
+  plotEffectiveGrowMs,
   plotRemainingMs,
   plotStatusText,
   pondStatusText,
@@ -120,6 +123,55 @@ test('小院时段按小时正确切换', () => {
     )
   })
   assert.ok(HOMESTEAD_DAY_PHASES.every((phase) => phase.description))
+})
+
+test('天气加成会缩短作物、动物与钓鱼等待时间', () => {
+  assert.equal(
+    homesteadWeatherEffect('rainy'),
+    HOMESTEAD_WEATHER_EFFECTS.rainy
+  )
+  const state = plantCrop(createDefaultHomestead(NOW), 0, 'radish', NOW)
+  const plot = state.plots[0]
+  assert.ok(
+    plotEffectiveGrowMs(plot, 'rainy') < plotEffectiveGrowMs(plot)
+  )
+  assert.ok(homesteadBarnSpeedMultiplier(1, 'cloudy') < 1)
+
+  const pond = {
+    ...state,
+    lastFishedAt: NOW - HOMESTEAD_FISH_COOLDOWN_MS + 1
+  }
+  assert.equal(isPondReady(pond, NOW), false)
+  assert.equal(isPondReady(pond, NOW, 'windy'), true)
+
+  const chicken = {
+    ...state,
+    animals: {
+      ...state.animals,
+      chicken: {
+        lastProduceAt: NOW - HOMESTEAD_ANIMALS.chicken.produceMs + 1,
+        lastManureAt: NOW
+      }
+    }
+  }
+  assert.equal(
+    isAnimalProduceReady(
+      chicken.animals.chicken,
+      HOMESTEAD_ANIMALS.chicken,
+      NOW,
+      homesteadBarnSpeedMultiplier(1)
+    ),
+    false
+  )
+  assert.equal(
+    isAnimalProduceReady(
+      chicken.animals.chicken,
+      HOMESTEAD_ANIMALS.chicken,
+      NOW,
+      homesteadBarnSpeedMultiplier(1, 'cloudy')
+    ),
+    true
+  )
 })
 
 test('首次进入小院时动物和鱼塘都有可收产物，菜地是空地', () => {

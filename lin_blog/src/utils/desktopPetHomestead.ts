@@ -218,24 +218,34 @@ export const HOMESTEAD_DECORATIONS: readonly HomesteadDecorationDefinition[] =
     }
   ]
 
-export function homesteadBarnSpeedMultiplier(level: number): number {
+export function homesteadBarnSpeedMultiplier(
+  level: number,
+  weatherId?: HomesteadWeatherId
+): number {
   const normalized = Math.min(
     HOMESTEAD_BARN_MAX_LEVEL,
     Math.max(1, Math.round(Number(level) || 1))
   )
-  return 1 - (normalized - 1) * 0.15
+  const base = 1 - (normalized - 1) * 0.15
+  const weatherMultiplier = weatherId
+    ? homesteadWeatherEffect(weatherId).animalProduceMultiplier
+    : 1
+  return base / weatherMultiplier
 }
 
 export function homesteadPondCooldownMs(
-  state: Pick<HomesteadState, 'pondLevel'>
+  state: Pick<HomesteadState, 'pondLevel'>,
+  weatherId?: HomesteadWeatherId
 ): number {
   const normalized = Math.min(
     HOMESTEAD_POND_MAX_LEVEL,
     Math.max(1, Math.round(Number(state.pondLevel) || 1))
   )
-  return Math.round(
-    HOMESTEAD_FISH_COOLDOWN_MS * (1 - (normalized - 1) * 0.2)
-  )
+  const base = HOMESTEAD_FISH_COOLDOWN_MS * (1 - (normalized - 1) * 0.2)
+  const weatherMultiplier = weatherId
+    ? homesteadWeatherEffect(weatherId).pondCooldownMultiplier
+    : 1
+  return Math.round(base * weatherMultiplier)
 }
 
 export const HOMESTEAD_ACHIEVEMENTS: readonly HomesteadAchievementDefinition[] =
@@ -610,6 +620,64 @@ export const HOMESTEAD_WEATHERS: readonly HomesteadWeatherDefinition[] = [
     description: '风穿过树梢，把落叶吹得满院子跑。'
   }
 ]
+
+export interface HomesteadWeatherEffect {
+  id: HomesteadWeatherId
+  title: string
+  summary: string
+  detail: string
+  cropGrowMultiplier: number
+  animalProduceMultiplier: number
+  pondCooldownMultiplier: number
+}
+
+export const HOMESTEAD_WEATHER_EFFECTS: Record<
+  HomesteadWeatherId,
+  HomesteadWeatherEffect
+> = {
+  sunny: {
+    id: 'sunny',
+    title: '阳光正好',
+    summary: '作物生长 +15%',
+    detail: '日照充足，菜地里的作物成熟得更快。',
+    cropGrowMultiplier: 1.15,
+    animalProduceMultiplier: 1,
+    pondCooldownMultiplier: 1
+  },
+  cloudy: {
+    id: 'cloudy',
+    title: '悠闲午后',
+    summary: '动物产出 +15%',
+    detail: '天气凉爽，鸡舍和牧场里的动物更愿意活动。',
+    cropGrowMultiplier: 1,
+    animalProduceMultiplier: 1.15,
+    pondCooldownMultiplier: 1
+  },
+  rainy: {
+    id: 'rainy',
+    title: '雨水滋养',
+    summary: '作物生长 +25%',
+    detail: '雨水浸润土壤，菜地里的作物长得格外快。',
+    cropGrowMultiplier: 1.25,
+    animalProduceMultiplier: 1,
+    pondCooldownMultiplier: 1
+  },
+  windy: {
+    id: 'windy',
+    title: '顺风垂钓',
+    summary: '钓鱼冷却 -25%',
+    detail: '风把水面吹出波纹，鱼更容易上钩。',
+    cropGrowMultiplier: 1,
+    animalProduceMultiplier: 1,
+    pondCooldownMultiplier: 0.75
+  }
+}
+
+export function homesteadWeatherEffect(
+  weatherId: HomesteadWeatherId
+): HomesteadWeatherEffect {
+  return HOMESTEAD_WEATHER_EFFECTS[weatherId] || HOMESTEAD_WEATHER_EFFECTS.sunny
+}
 
 /** 同一天内天气保持稳定，跨设备也能看到同样的天气。 */
 export function homesteadWeatherForDay(
@@ -1238,20 +1306,29 @@ export function mergeHomesteads(
   )
 }
 
-export function plotEffectiveGrowMs(plot: HomesteadPlotState): number {
+export function plotEffectiveGrowMs(
+  plot: HomesteadPlotState,
+  weatherId?: HomesteadWeatherId
+): number {
   const crop = getHomesteadCrop(plot.cropId)
   if (!crop) return 0
   let multiplier = 1
   if (plot.wateredAt) multiplier -= HOMESTEAD_WATER_BONUS_RATE
   if (plot.fertilizedAt) multiplier -= HOMESTEAD_FERTILIZER_BONUS_RATE
-  return Math.round(crop.growMs * Math.max(0.4, multiplier))
+  const weatherMultiplier = weatherId
+    ? homesteadWeatherEffect(weatherId).cropGrowMultiplier
+    : 1
+  return Math.round(
+    (crop.growMs * Math.max(0.4, multiplier)) / weatherMultiplier
+  )
 }
 
 export function plotProgress(
   plot: HomesteadPlotState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): number {
-  const duration = plotEffectiveGrowMs(plot)
+  const duration = plotEffectiveGrowMs(plot, weatherId)
   if (!duration || !plot.plantedAt) return 0
   const elapsed = Math.max(0, now - plot.plantedAt)
   return Math.min(1, elapsed / duration)
@@ -1259,18 +1336,20 @@ export function plotProgress(
 
 export function plotRemainingMs(
   plot: HomesteadPlotState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): number {
-  const duration = plotEffectiveGrowMs(plot)
+  const duration = plotEffectiveGrowMs(plot, weatherId)
   if (!duration || !plot.plantedAt) return 0
   return Math.max(0, plot.plantedAt + duration - now)
 }
 
 export function isPlotRipe(
   plot: HomesteadPlotState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): boolean {
-  return Boolean(plot.cropId) && plotRemainingMs(plot, now) <= 0
+  return Boolean(plot.cropId) && plotRemainingMs(plot, now, weatherId) <= 0
 }
 
 export function animalProduceRemainingMs(
@@ -1321,19 +1400,21 @@ export function isAnimalManureReady(
 
 export function pondRemainingMs(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): number {
   return Math.max(
     0,
-    state.lastFishedAt + homesteadPondCooldownMs(state) - now
+    state.lastFishedAt + homesteadPondCooldownMs(state, weatherId) - now
   )
 }
 
 export function isPondReady(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): boolean {
-  return pondRemainingMs(state, now) <= 0
+  return pondRemainingMs(state, now, weatherId) <= 0
 }
 
 export function plantCrop(
@@ -1614,10 +1695,17 @@ export function completeOrder(
 export function waterPlot(
   state: HomesteadState,
   plotIndex: number,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadState {
   const plot = state.plots[plotIndex]
-  if (!plot?.cropId || plot.wateredAt || isPlotRipe(plot, now)) return state
+  if (
+    !plot?.cropId ||
+    plot.wateredAt ||
+    isPlotRipe(plot, now, weatherId)
+  ) {
+    return state
+  }
   const plots = state.plots.slice()
   plots[plotIndex] = { ...plot, wateredAt: now }
   return { ...state, plots, updatedAt: now }
@@ -1626,13 +1714,14 @@ export function waterPlot(
 export function fertilizePlot(
   state: HomesteadState,
   plotIndex: number,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadState {
   const plot = state.plots[plotIndex]
   if (
     !plot?.cropId ||
     plot.fertilizedAt ||
-    isPlotRipe(plot, now) ||
+    isPlotRipe(plot, now, weatherId) ||
     state.inventory.fertilizer <= 0
   ) {
     return state
@@ -1660,11 +1749,12 @@ export interface HomesteadHarvestResult {
 export function harvestPlot(
   state: HomesteadState,
   plotIndex: number,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadHarvestResult {
   const plot = state.plots[plotIndex]
   const crop = getHomesteadCrop(plot?.cropId)
-  if (!plot || !crop || !isPlotRipe(plot, now)) {
+  if (!plot || !crop || !isPlotRipe(plot, now, weatherId)) {
     return { state, crop, amount: 0, changed: false }
   }
   const plots = state.plots.slice()
@@ -1703,7 +1793,8 @@ export interface HomesteadAnimalCollectResult {
 export function collectAnimal(
   state: HomesteadState,
   animalId: HomesteadAnimalId,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadAnimalCollectResult {
   const definition = HOMESTEAD_ANIMALS[animalId]
   const animal = state.animals[animalId]
@@ -1711,7 +1802,10 @@ export function collectAnimal(
   const inventory = { ...state.inventory }
   const totals = { ...state.totals }
   const nextAnimal = { ...animal }
-  const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
+  const speedMultiplier = homesteadBarnSpeedMultiplier(
+    state.barnLevel,
+    weatherId
+  )
   let changed = false
 
   if (isAnimalProduceReady(animal, definition, now, speedMultiplier)) {
@@ -1756,9 +1850,10 @@ export interface HomesteadFishResult {
 
 export function fishPond(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadFishResult {
-  if (!isPondReady(state, now)) return { state, changed: false }
+  if (!isPondReady(state, now, weatherId)) return { state, changed: false }
   return {
     state: {
       ...state,
@@ -1786,7 +1881,8 @@ export interface HomesteadTendResult {
 
 export function tendHomestead(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): HomesteadTendResult {
   let next = state
   let watered = 0
@@ -1797,8 +1893,8 @@ export function tendHomestead(
 
   for (let index = 0; index < next.plots.length; index++) {
     let plot = next.plots[index]
-    if (isPlotRipe(plot, now)) {
-      const result = harvestPlot(next, index, now)
+    if (isPlotRipe(plot, now, weatherId)) {
+      const result = harvestPlot(next, index, now, weatherId)
       if (result.changed) {
         harvested++
         next = result.state
@@ -1806,7 +1902,7 @@ export function tendHomestead(
       continue
     }
     if (plot.cropId && !plot.wateredAt) {
-      const wateredState = waterPlot(next, index, now)
+      const wateredState = waterPlot(next, index, now, weatherId)
       if (wateredState !== next) {
         watered++
         next = wateredState
@@ -1819,7 +1915,7 @@ export function tendHomestead(
       !plot.fertilizedAt &&
       next.inventory.fertilizer > 0
     ) {
-      const fertilizedState = fertilizePlot(next, index, now)
+      const fertilizedState = fertilizePlot(next, index, now, weatherId)
       if (fertilizedState !== next) {
         fertilized++
         next = fertilizedState
@@ -1828,15 +1924,15 @@ export function tendHomestead(
   }
 
   for (const animalId of HOMESTEAD_ANIMAL_IDS) {
-    const result = collectAnimal(next, animalId, now)
+    const result = collectAnimal(next, animalId, now, weatherId)
     if (result.changed) {
       collected.push(...result.items)
       next = result.state
     }
   }
 
-  if (isPondReady(next, now)) {
-    const result = fishPond(next, now)
+  if (isPondReady(next, now, weatherId)) {
+    const result = fishPond(next, now, weatherId)
     if (result.changed) {
       fished = true
       next = result.state
@@ -1866,12 +1962,15 @@ export function formatHomesteadDuration(ms: number): string {
 
 export function plotStatusText(
   plot: HomesteadPlotState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): string {
   const crop = getHomesteadCrop(plot.cropId)
   if (!crop) return '空地，点击播种'
-  if (isPlotRipe(plot, now)) return `${crop.name}可以收获了`
-  const remaining = formatHomesteadDuration(plotRemainingMs(plot, now))
+  if (isPlotRipe(plot, now, weatherId)) return `${crop.name}可以收获了`
+  const remaining = formatHomesteadDuration(
+    plotRemainingMs(plot, now, weatherId)
+  )
   const states = [plot.wateredAt ? '已浇水' : '还没浇水']
   if (plot.fertilizedAt) states.push('已施肥')
   return `${crop.name}${states.join('，')}，${remaining}后成熟`
@@ -1880,11 +1979,15 @@ export function plotStatusText(
 export function animalStatusText(
   state: HomesteadState,
   animalId: HomesteadAnimalId,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): string {
   const definition = HOMESTEAD_ANIMALS[animalId]
   const animal = state.animals[animalId]
-  const speedMultiplier = homesteadBarnSpeedMultiplier(state.barnLevel)
+  const speedMultiplier = homesteadBarnSpeedMultiplier(
+    state.barnLevel,
+    weatherId
+  )
   const produce = isAnimalProduceReady(
     animal,
     definition,
@@ -1910,9 +2013,12 @@ export function animalStatusText(
 
 export function pondStatusText(
   state: HomesteadState,
-  now = Date.now()
+  now = Date.now(),
+  weatherId?: HomesteadWeatherId
 ): string {
-  return isPondReady(state, now)
+  return isPondReady(state, now, weatherId)
     ? '鱼塘可以钓鱼了'
-    : `鱼塘还要 ${formatHomesteadDuration(pondRemainingMs(state, now))}`
+    : `鱼塘还要 ${formatHomesteadDuration(
+        pondRemainingMs(state, now, weatherId)
+      )}`
 }
