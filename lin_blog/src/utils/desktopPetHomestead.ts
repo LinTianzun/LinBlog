@@ -177,6 +177,13 @@ export const HOMESTEAD_LEVELS: readonly HomesteadLevelDefinition[] = [
   { level: 10, title: '传奇庄园主', experience: 7_500 }
 ]
 
+export const HOMESTEAD_LEVEL_UP_EVENT = 'linblog:homestead-level-up'
+
+export interface HomesteadLevelUpDetail {
+  level: number
+  title: string
+}
+
 export const HOMESTEAD_LEVEL_REWARDS: Readonly<Record<number, number>> = {
   2: 50,
   3: 80,
@@ -890,6 +897,30 @@ export function getHomesteadDayPhase(
   if (hour >= 10 && hour < 17) return HOMESTEAD_DAY_PHASES[1]
   if (hour >= 17 && hour < 20) return HOMESTEAD_DAY_PHASES[2]
   return HOMESTEAD_DAY_PHASES[3]
+}
+
+export function homesteadAmbientLines(
+  weatherId: HomesteadWeatherId,
+  phaseId: HomesteadDayPhaseId
+): string[] {
+  const lines = [
+    '今天也要好好打理小院～',
+    '菜园闻起来香香的。',
+    '我看看有没有需要帮忙的。'
+  ]
+  const weatherLines: Record<HomesteadWeatherId, string[]> = {
+    sunny: ['阳光晒得菜叶暖洋洋的。', '这么好的太阳，作物长得真快。'],
+    cloudy: ['云层厚厚的，干活正舒服。', '鸡舍那边今天格外热闹。'],
+    rainy: ['下雨啦，菜地今天喝饱了。', '雨点落在鱼塘上，一圈一圈的。'],
+    windy: ['风把树叶吹得沙沙响。', '这种风，鱼应该很容易上钩。']
+  }
+  const phaseLines: Record<HomesteadDayPhaseId, string[]> = {
+    morning: ['清晨的小院真安静。', '先去菜地转一圈吧。'],
+    day: ['白天的小院最热闹。', '我再巡一圈就回来。'],
+    evening: ['天色暖起来了，快收尾啦。', '傍晚的风吹着真舒服。'],
+    night: ['夜里凉，我轻轻走。', '大家都睡了，我守一会儿院子。']
+  }
+  return [...lines, ...weatherLines[weatherId], ...phaseLines[phaseId]]
 }
 
 const isDayKey = (value: unknown): value is string =>

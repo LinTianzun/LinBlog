@@ -129,6 +129,7 @@ import {
     HOMESTEAD_CROPS,
     HOMESTEAD_FERTILIZER_PACK,
     HOMESTEAD_ITEMS,
+    HOMESTEAD_LEVEL_UP_EVENT,
     HOMESTEAD_SEED_PACKS,
     animalStatusText,
     buyFertilizerPack,
@@ -172,6 +173,7 @@ import {
     type HomesteadAnimalId,
     type HomesteadCropId,
     type HomesteadDecorationId,
+    type HomesteadLevelUpDetail,
     type HomesteadState,
 } from '../utils/desktopPetHomestead'
 import {
@@ -824,6 +826,17 @@ const commitHomestead = (next: HomesteadState) => {
             type: 'success',
             message: `小院升到 Lv.${nextLevel.level}「${nextLevel.title}」`,
         })
+        window.dispatchEvent(
+            new CustomEvent<HomesteadLevelUpDetail>(
+                HOMESTEAD_LEVEL_UP_EVENT,
+                {
+                    detail: {
+                        level: nextLevel.level,
+                        title: nextLevel.title,
+                    },
+                }
+            )
+        )
     }
 }
 

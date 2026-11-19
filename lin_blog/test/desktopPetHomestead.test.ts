@@ -35,6 +35,7 @@ import {
   getHomesteadState,
   getHomesteadDayPhase,
   getHomesteadWeather,
+  homesteadAmbientLines,
   homesteadWeatherEffect,
   harvestPlot,
   homesteadWeatherForDay,
@@ -109,6 +110,30 @@ test('小院每日天气稳定，不同日期按概率变化', () => {
   assert.equal(homesteadWeatherForDay('2026-11-13'), first)
   assert.ok(HOMESTEAD_WEATHERS.includes(first))
   assert.equal(getHomesteadWeather(new Date(2026, 10, 13, 12).getTime()).id, first.id)
+})
+
+test('小院宠物闲聊会随天气和时段变化', () => {
+  const sunnyDay = homesteadAmbientLines('sunny', 'day')
+  const rainyNight = homesteadAmbientLines('rainy', 'night')
+
+  assert.notDeepEqual(sunnyDay, rainyNight)
+  assert.ok(sunnyDay.some((line) => line.includes('阳光')))
+  assert.ok(rainyNight.some((line) => line.includes('雨')))
+  assert.ok(rainyNight.some((line) => line.includes('夜')))
+})
+
+test('每种天气与时段组合都有非重复的闲聊文案', () => {
+  for (const weather of HOMESTEAD_WEATHERS) {
+    for (const phase of HOMESTEAD_DAY_PHASES) {
+      const lines = homesteadAmbientLines(weather.id, phase.id)
+      assert.ok(lines.length > 0, `${weather.id}/${phase.id} 缺少文案`)
+      assert.equal(
+        new Set(lines).size,
+        lines.length,
+        `${weather.id}/${phase.id} 出现重复文案`
+      )
+    }
+  }
 })
 
 test('小院经营会累积等级经验，合并保留更高进度', () => {

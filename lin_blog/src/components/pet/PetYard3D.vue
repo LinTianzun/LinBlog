@@ -25,9 +25,12 @@ import type {
     Texture,
     WebGLRenderer,
 } from 'three'
-import type {
-    HomesteadDayPhaseDefinition,
-    HomesteadWeatherDefinition,
+import {
+    HOMESTEAD_LEVEL_UP_EVENT,
+    homesteadAmbientLines,
+    type HomesteadDayPhaseDefinition,
+    type HomesteadLevelUpDetail,
+    type HomesteadWeatherDefinition,
 } from '../../utils/desktopPetHomestead'
 import barrelUrl from '../../assets/farm/pixel/barrel.png'
 import bushUrl from '../../assets/farm/pixel/bush.png'
@@ -139,14 +142,9 @@ let petGoal: PctPoint | null = null
 let nextAmbientIn = 2.2
 let readyNotified = false
 let atmosphereOverlay: import('three').Mesh | null = null
-const AMBIENT_LINES = [
-    '今天也要好好干活～',
-    '这里的风真舒服。',
-    '菜园闻起来香香的。',
-    '我看看有没有收获。',
-    '鸡窝那边好像有动静。',
-    '池塘今天很热闹。',
-]
+const ambientLines = computed(() =>
+    homesteadAmbientLines(props.weather.id, props.dayPhase.id)
+)
 
 const PHASE_COLORS = {
     morning: 0xfff2cf,
@@ -1102,13 +1100,21 @@ function chooseAmbientGoal() {
     const next = points[(Math.random() * points.length) | 0]
     walkTo(next)
     if (Math.random() < 0.45) {
-        showBubble(AMBIENT_LINES[(Math.random() * AMBIENT_LINES.length) | 0])
+        const lines = ambientLines.value
+        showBubble(lines[(Math.random() * lines.length) | 0])
     }
 }
 
 function showBubble(text: string, duration = 2.6) {
     bubbleText.value = text
     bubbleTimer = duration
+}
+
+function handleHomesteadLevelUp(event: Event) {
+    const detail = (event as CustomEvent<HomesteadLevelUpDetail>).detail
+    if (!detail) return
+    showBubble(`升到 Lv.${detail.level}「${detail.title}」啦！`, 4.2)
+    petActionTimer = 1.4
 }
 
 function updatePet(dt: number, elapsed: number) {
@@ -1360,6 +1366,7 @@ watch(
 )
 
 onMounted(async () => {
+    window.addEventListener(HOMESTEAD_LEVEL_UP_EVENT, handleHomesteadLevelUp)
     try {
         THREE = await import('three')
     } catch {
@@ -1377,6 +1384,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     running = false
+    window.removeEventListener(HOMESTEAD_LEVEL_UP_EVENT, handleHomesteadLevelUp)
     if (frameId) cancelAnimationFrame(frameId)
     if (resizeObserver) resizeObserver.disconnect()
     if (zoneGroup && scene) {

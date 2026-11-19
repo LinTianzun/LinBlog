@@ -112,6 +112,26 @@ test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ pa
   await expect(page.locator('.pet-home-pond')).toHaveCount(0)
 })
 
+test('小院宠物会响应升级事件并现场庆祝', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await seedSession(page, { id: 7, permissions: ['pet.manage'] })
+  await installApiMock(page)
+  await page.goto('/petManage')
+
+  await expect(page.locator('.pet-yard3d')).toBeVisible({ timeout: 30_000 })
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent('linblog:homestead-level-up', {
+        detail: { level: 3, title: '勤劳园丁' },
+      })
+    )
+  })
+
+  await expect(page.locator('.pet-yard3d-bubble')).toHaveText(
+    '升到 Lv.3「勤劳园丁」啦！'
+  )
+})
+
 test('每日订单可以换金币，商店可以买种子并继续播种', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await seedSession(page, { id: 7, permissions: ['pet.manage'] })
