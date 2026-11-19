@@ -80,6 +80,7 @@
             <aside class="pet-home-hud">
                 <PetHomestead v-if="petHomeTab !== 'home'" :tab="petHomeTab"
                     :coins="homestead.coins"
+                    :level-progress="homesteadLevel"
                     :completed-orders="completedOrderCount"
                     :order-total="homestead.orders.length"
                     :claimable-orders="claimableOrderCount"
@@ -142,6 +143,7 @@ import { computed, ref } from 'vue'
 import type { DesktopPetSettings, DesktopPetCommand } from '../../utils/desktopPet'
 import {
     HOMESTEAD_CROPS,
+    homesteadLevelProgress,
     homesteadWeatherEffect,
     type HomesteadDayPhaseDefinition,
     type HomesteadCropId,
@@ -200,6 +202,9 @@ const props = defineProps<{
 }>()
 
 const weatherEffect = computed(() => homesteadWeatherEffect(props.weather.id))
+const homesteadLevel = computed(() =>
+    homesteadLevelProgress(props.homestead.experience)
+)
 const onboardingOpen = ref(!isPetOnboardingCompleted())
 const onboardingStepIndex = ref(0)
 const onboardingStep = computed(

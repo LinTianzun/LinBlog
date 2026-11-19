@@ -1,5 +1,24 @@
 <template>
     <div class="pet-farm-achievements">
+        <article class="pet-farm-level" :class="{ 'is-max': level.isMax }">
+            <span class="pet-farm-level-badge">Lv.{{ level.level }}</span>
+            <div class="pet-farm-level-copy">
+                <strong>{{ level.title }}</strong>
+                <small v-if="level.isMax">
+                    小院已达到最高等级 · 累计 {{ level.experience }} 经验
+                </small>
+                <small v-else>
+                    距离 Lv.{{ level.level + 1 }} 还差
+                    {{ level.remaining }} 经验
+                </small>
+                <span class="pet-farm-level-track" aria-hidden="true">
+                    <i :style="{ width: `${level.percent}%` }" />
+                </span>
+            </div>
+            <b class="pet-farm-level-xp">
+                {{ level.experience }}/{{ level.nextLevelXp }}
+            </b>
+        </article>
         <article v-for="item in achievementCards" :key="item.id"
             class="pet-farm-achievement"
             :class="{ 'is-unlocked': item.unlocked }">
@@ -33,6 +52,7 @@
 import { computed } from 'vue'
 import {
     homesteadAchievements,
+    homesteadLevelProgress,
     type HomesteadState,
 } from '../../utils/desktopPetHomestead'
 
@@ -45,6 +65,9 @@ const emit = defineEmits<{
 }>()
 
 const achievementCards = computed(() => homesteadAchievements(props.homestead))
+const level = computed(() =>
+    homesteadLevelProgress(props.homestead.experience)
+)
 </script>
 
 <style lang="less" scoped>
@@ -52,6 +75,82 @@ const achievementCards = computed(() => homesteadAchievements(props.homestead))
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.pet-farm-level {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px;
+    border: 1px solid color-mix(in srgb, #5aa879 28%, var(--admin-line, var(--gray1)));
+    border-radius: 13px;
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, #6cbc78 12%, transparent),
+            transparent 64%),
+        var(--admin-surface, var(--bgColor1));
+
+    &.is-max {
+        border-color: color-mix(in srgb, #e3ad43 42%, var(--admin-line, var(--gray1)));
+        background:
+            linear-gradient(135deg,
+                color-mix(in srgb, #efbd55 14%, transparent),
+                transparent 64%),
+            var(--admin-surface, var(--bgColor1));
+    }
+}
+
+.pet-farm-level-badge {
+    display: grid;
+    width: 48px;
+    height: 40px;
+    flex: none;
+    place-items: center;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #4d9364, #8bc568);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 780;
+}
+
+.pet-farm-level-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+
+    strong {
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+    }
+
+    small {
+        color: var(--admin-muted, var(--gray6));
+        font-size: 10px;
+    }
+}
+
+.pet-farm-level-track {
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, #5aa879 15%, transparent);
+
+    i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #5aa879, #a2d56b);
+        transition: width 0.35s ease;
+    }
+}
+
+.pet-farm-level-xp {
+    flex: none;
+    color: #64836b;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
 }
 
 .pet-farm-achievement {

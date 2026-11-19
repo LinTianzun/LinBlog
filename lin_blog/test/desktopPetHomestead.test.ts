@@ -5,9 +5,11 @@ import {
   HOMESTEAD_BARN_UPGRADES,
   HOMESTEAD_DAY_PHASES,
   HOMESTEAD_DECORATIONS,
+  HOMESTEAD_EXPERIENCE_REWARDS,
   HOMESTEAD_FISH_COOLDOWN_MS,
   HOMESTEAD_FERTILIZER_PACK,
   HOMESTEAD_MAX_PLOT_COUNT,
+  HOMESTEAD_LEVELS,
   HOMESTEAD_PLOT_EXPANSIONS,
   HOMESTEAD_SEED_PACKS,
   HOMESTEAD_WEATHER_EFFECTS,
@@ -36,6 +38,7 @@ import {
   homesteadWeatherForDay,
   homesteadAchievementCurrent,
   homesteadAchievements,
+  homesteadLevelProgress,
   homesteadBarnSpeedMultiplier,
   homesteadPondCooldownMs,
   isAnimalManureReady,
@@ -103,6 +106,47 @@ test('小院每日天气稳定，不同日期按概率变化', () => {
   assert.equal(homesteadWeatherForDay('2026-11-13'), first)
   assert.ok(HOMESTEAD_WEATHERS.includes(first))
   assert.equal(getHomesteadWeather(new Date(2026, 10, 13, 12).getTime()).id, first.id)
+})
+
+test('小院经营会累积等级经验，合并保留更高进度', () => {
+  let state = createDefaultHomestead(NOW)
+  assert.equal(state.experience, 0)
+  assert.equal(homesteadLevelProgress(state.experience).level, 1)
+  assert.equal(homesteadLevelProgress(120).level, 2)
+  assert.equal(
+    homesteadLevelProgress(HOMESTEAD_LEVELS[2].experience).title,
+    HOMESTEAD_LEVELS[2].title
+  )
+
+  state = plantCrop(state, 0, 'radish', NOW)
+  state = waterPlot(state, 0, NOW)
+  state = {
+    ...state,
+    inventory: { ...state.inventory, fertilizer: 1 }
+  }
+  state = fertilizePlot(state, 0, NOW)
+  state = harvestPlot(state, 0, NOW + 4 * 60_000).state
+  state = collectAnimal(state, 'chicken', NOW).state
+  state = collectAnimal(state, 'cow', NOW).state
+  state = fishPond(state, NOW).state
+
+  assert.equal(
+    state.experience,
+    HOMESTEAD_EXPERIENCE_REWARDS.water +
+      HOMESTEAD_EXPERIENCE_REWARDS.fertilize +
+      HOMESTEAD_EXPERIENCE_REWARDS.harvest +
+      (HOMESTEAD_EXPERIENCE_REWARDS.produce +
+        HOMESTEAD_EXPERIENCE_REWARDS.manure) *
+        2 +
+      HOMESTEAD_EXPERIENCE_REWARDS.fish
+  )
+  const merged = mergeHomesteads(
+    { ...state, experience: 20 },
+    { ...state, experience: 140 },
+    NOW
+  )
+  assert.equal(merged.experience, 140)
+  assert.equal(homesteadLevelProgress(merged.experience).level, 2)
 })
 
 test('小院时段按小时正确切换', () => {

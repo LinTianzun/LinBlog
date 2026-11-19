@@ -57,6 +57,7 @@ const makeState = (overrides = {}) => ({
         fertilizer: 0
     },
     coins: 80,
+    experience: 0,
     seedStock: { radish: 4, tomato: 3, corn: 2, strawberry: 1 },
     ordersDay: '2026-11-13',
     orders: [
@@ -101,6 +102,7 @@ test.beforeEach(() => {
 test('保存小院快照时写入 JSON 与独立版本号', async () => {
     const state = makeState({
         coins: 123,
+        experience: 260,
         stateVersion: 7,
         inventory: {
             radish: 3,
@@ -121,6 +123,7 @@ test('保存小院快照时写入 JSON 与独立版本号', async () => {
     assert.equal(insert.params[2], 7)
     assert.equal(JSON.parse(insert.params[1]).coins, 123)
     assert.equal(saved.coins, 123)
+    assert.equal(saved.experience, 260)
     assert.equal(saved.stateVersion, 7)
 })
 
@@ -128,6 +131,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
     storedRows = [{
         homestead_state: JSON.stringify(makeState({
             coins: 90,
+            experience: 320,
             inventory: {
                 radish: 2,
                 tomato: 0,
@@ -149,6 +153,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
 
     const saved = await petModel.saveHomesteadState(7, makeState({
         coins: 110,
+        experience: 180,
         inventory: {
             radish: 1,
             tomato: 3,
@@ -173,6 +178,7 @@ test('同版本同步会保留两端更高的资源与订单完成记录', async
     }))
 
     assert.equal(saved.coins, 110)
+    assert.equal(saved.experience, 320)
     assert.equal(saved.inventory.radish, 2)
     assert.equal(saved.inventory.tomato, 3)
     assert.equal(saved.inventory.milk, 2)

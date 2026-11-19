@@ -146,6 +146,7 @@ import {
     getHomesteadDayPhase,
     getHomesteadItem,
     getHomesteadState,
+    homesteadLevelProgress,
     getHomesteadWeather,
     harvestPlot,
     homesteadAchievements,
@@ -789,9 +790,19 @@ const claimAchievementReward = (achievementId: string) => {
 }
 
 const commitHomestead = (next: HomesteadState) => {
+    const previousLevel = homesteadLevelProgress(
+        homestead.value.experience
+    ).level
     const saved = setHomesteadState(next)
     homestead.value = saved
     void syncHomesteadToServer(saved)
+    const nextLevel = homesteadLevelProgress(saved.experience)
+    if (nextLevel.level > previousLevel) {
+        proxy?.$message?.({
+            type: 'success',
+            message: `小院升到 Lv.${nextLevel.level}「${nextLevel.title}」`,
+        })
+    }
 }
 
 const handlePlotClick = (index: number) => {
@@ -2397,6 +2408,50 @@ onUnmounted(() => {
     b {
         font-size: 15px;
         font-variant-numeric: tabular-nums;
+    }
+}
+
+.pet-homestead-level {
+    display: grid;
+    min-width: 118px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 2px 6px;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, #56a879 24%, var(--admin-line, var(--gray1)));
+    border-radius: 10px;
+    background: color-mix(in srgb, #e8f6eb 72%, var(--admin-surface, var(--bgColor1)));
+    color: #376d4b;
+    font-size: 9px;
+    line-height: 1.1;
+
+    b {
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    > span {
+        overflow: hidden;
+        color: #568265;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    > i {
+        height: 3px;
+        grid-column: 1 / -1;
+        overflow: hidden;
+        border-radius: 999px;
+        background: color-mix(in srgb, #56a879 18%, transparent);
+
+        > span {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #66b77f, #9bd36d);
+            transition: width 0.35s ease;
+        }
     }
 }
 

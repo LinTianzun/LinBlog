@@ -64,12 +64,19 @@ test('小院可以播种浇水收产物并持久化仓库', async ({ page }) => 
   await expect(store).toContainText('胡萝卜 ×5')
   await expect(store).toContainText('玉米 ×3')
   await expect(store).toContainText('鱼 ×2')
+  await expect(page.locator('.pet-homestead-level')).toContainText('Lv.1')
 
   const saved = await page.evaluate(() => {
     const raw = localStorage.getItem('LINBLOG_DESKTOP_PET_HOMESTEAD:u7')
-    return raw ? (JSON.parse(raw) as { inventory?: { radish?: number } }) : null
+    return raw
+      ? (JSON.parse(raw) as {
+          inventory?: { radish?: number }
+          experience?: number
+        })
+      : null
   })
   expect(saved?.inventory?.radish).toBe(5)
+  expect(saved?.experience).toBeGreaterThan(0)
 })
 
 test('小院可以在小屋、种植、养殖和钓鱼之间切换', async ({ page }) => {
@@ -331,6 +338,7 @@ test('小院成就展示累计进度并标记已达成项目', async ({ page }) 
   await modal.getByRole('tab', { name: /小院成就/ }).click()
 
   const cards = modal.locator('.pet-farm-achievement')
+  await expect(modal.locator('.pet-farm-level')).toContainText('小院新丁')
   await expect(cards).toHaveCount(7)
   await expect(cards.filter({ hasText: '第一捧收成' })).toHaveClass(
     /is-unlocked/,

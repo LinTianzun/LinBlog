@@ -122,6 +122,7 @@ export interface HomesteadState {
   lastFishedAt: number
   inventory: Record<HomesteadItemId, number>
   coins: number
+  experience: number
   seedStock: Record<HomesteadCropId, number>
   ordersDay: string
   orders: HomesteadOrderState[]
@@ -145,6 +146,84 @@ export const HOMESTEAD_WATER_BONUS_RATE = 0.2
 export const HOMESTEAD_FERTILIZER_BONUS_RATE = 0.2
 export const HOMESTEAD_STARTING_COINS = 80
 export const HOMESTEAD_ORDER_COUNT = 3
+export const HOMESTEAD_MAX_EXPERIENCE = 9_999_999
+export const HOMESTEAD_EXPERIENCE_REWARDS = {
+  water: 2,
+  fertilize: 3,
+  harvest: 12,
+  produce: 7,
+  manure: 4,
+  fish: 10,
+  order: 25
+} as const
+
+export interface HomesteadLevelDefinition {
+  level: number
+  title: string
+  experience: number
+}
+
+export const HOMESTEAD_LEVELS: readonly HomesteadLevelDefinition[] = [
+  { level: 1, title: '小院新丁', experience: 0 },
+  { level: 2, title: '见习农夫', experience: 120 },
+  { level: 3, title: '勤劳园丁', experience: 320 },
+  { level: 4, title: '小院管家', experience: 680 },
+  { level: 5, title: '种植能手', experience: 1_200 },
+  { level: 6, title: '养殖达人', experience: 1_900 },
+  { level: 7, title: '钓鱼行家', experience: 2_800 },
+  { level: 8, title: '四季丰收', experience: 4_000 },
+  { level: 9, title: '金牌农场主', experience: 5_500 },
+  { level: 10, title: '传奇庄园主', experience: 7_500 }
+]
+
+export interface HomesteadLevelProgress {
+  level: number
+  title: string
+  experience: number
+  currentLevelXp: number
+  nextLevelXp: number
+  remaining: number
+  percent: number
+  isMax: boolean
+}
+
+export function homesteadLevelProgress(
+  experience: number
+): HomesteadLevelProgress {
+  const xp = Math.min(
+    HOMESTEAD_MAX_EXPERIENCE,
+    Math.max(0, Math.round(Number(experience) || 0))
+  )
+  let index = 0
+  for (let cursor = 0; cursor < HOMESTEAD_LEVELS.length; cursor++) {
+    if (HOMESTEAD_LEVELS[cursor].experience > xp) break
+    index = cursor
+  }
+  const current = HOMESTEAD_LEVELS[index]
+  const next = HOMESTEAD_LEVELS[index + 1] || null
+  return {
+    level: current.level,
+    title: current.title,
+    experience: xp,
+    currentLevelXp: current.experience,
+    nextLevelXp: next?.experience ?? current.experience,
+    remaining: next ? Math.max(0, next.experience - xp) : 0,
+    percent: next
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            Math.round(
+              ((xp - current.experience) /
+                Math.max(1, next.experience - current.experience)) *
+                100
+            )
+          )
+        )
+      : 100,
+    isMax: !next
+  }
+}
 export const HOMESTEAD_SEED_PACKS: Record<
   HomesteadCropId,
   { price: number; count: number }
@@ -917,6 +996,7 @@ export function createDefaultHomestead(
     lastFishedAt: now - HOMESTEAD_FISH_COOLDOWN_MS,
     inventory: emptyInventory(),
     coins: HOMESTEAD_STARTING_COINS,
+    experience: 0,
     seedStock: { ...DEFAULT_SEED_STOCK },
     ordersDay: day,
     orders: createDailyOrders(day),
@@ -939,6 +1019,7 @@ const isFreshHomestead = (state: HomesteadState): boolean =>
       state.seedStock[crop.id] === DEFAULT_SEED_STOCK[crop.id]
   ) &&
   state.coins === HOMESTEAD_STARTING_COINS &&
+  state.experience === 0 &&
   state.claimedAchievements.length === 0 &&
   Object.values(state.totals).every((value) => value === 0) &&
   state.autoHelp.total === 0 &&
@@ -1023,6 +1104,10 @@ export function normalizeHomestead(
     raw.coins === undefined
       ? HOMESTEAD_STARTING_COINS
       : intOr(raw.coins, 0, 9_999_999)
+  const experience =
+    raw.experience === undefined
+      ? 0
+      : intOr(raw.experience, 0, HOMESTEAD_MAX_EXPERIENCE)
 
   const rawTotals = (
     raw.totals && typeof raw.totals === 'object' ? raw.totals : {}
@@ -1047,6 +1132,7 @@ export function normalizeHomestead(
     ),
     inventory,
     coins,
+    experience,
     seedStock,
     ordersDay: today,
     orders,
@@ -1268,6 +1354,7 @@ export function mergeHomesteads(
         localFresh !== remoteFresh
           ? economicSource.coins
           : Math.max(a.coins, b.coins),
+      experience: Math.max(a.experience, b.experience),
       seedStock,
       ordersDay: orderState.ordersDay,
       orders: orderState.orders,
@@ -1681,6 +1768,10 @@ export function completeOrder(
       ...state,
       inventory,
       coins: state.coins + order.reward,
+      experience: Math.min(
+        HOMESTEAD_MAX_EXPERIENCE,
+        state.experience + HOMESTEAD_EXPERIENCE_REWARDS.order
+      ),
       orders: state.orders.map((item) =>
         item.id === order.id ? { ...item, completedAt: now } : item
       ),
@@ -1708,7 +1799,15 @@ export function waterPlot(
   }
   const plots = state.plots.slice()
   plots[plotIndex] = { ...plot, wateredAt: now }
-  return { ...state, plots, updatedAt: now }
+  return {
+    ...state,
+    plots,
+    experience: Math.min(
+      HOMESTEAD_MAX_EXPERIENCE,
+      state.experience + HOMESTEAD_EXPERIENCE_REWARDS.water
+    ),
+    updatedAt: now
+  }
 }
 
 export function fertilizePlot(
@@ -1735,6 +1834,10 @@ export function fertilizePlot(
       ...state.inventory,
       fertilizer: state.inventory.fertilizer - 1
     },
+    experience: Math.min(
+      HOMESTEAD_MAX_EXPERIENCE,
+      state.experience + HOMESTEAD_EXPERIENCE_REWARDS.fertilize
+    ),
     updatedAt: now
   }
 }
@@ -1771,6 +1874,10 @@ export function harvestPlot(
         ...state.totals,
         harvests: state.totals.harvests + 1
       },
+      experience: Math.min(
+        HOMESTEAD_MAX_EXPERIENCE,
+        state.experience + HOMESTEAD_EXPERIENCE_REWARDS.harvest
+      ),
       updatedAt: now
     },
     crop,
@@ -1830,12 +1937,24 @@ export function collectAnimal(
   }
 
   if (!changed) return { state, items: [], changed: false }
+  const experienceGain = items.reduce(
+    (total, item) =>
+      total +
+      (item.item.id === 'fertilizer'
+        ? HOMESTEAD_EXPERIENCE_REWARDS.manure
+        : HOMESTEAD_EXPERIENCE_REWARDS.produce),
+    0
+  )
   return {
     state: {
       ...state,
       animals: { ...state.animals, [animalId]: nextAnimal },
       inventory,
       totals,
+      experience: Math.min(
+        HOMESTEAD_MAX_EXPERIENCE,
+        state.experience + experienceGain
+      ),
       updatedAt: now
     },
     items,
@@ -1863,6 +1982,10 @@ export function fishPond(
         fish: state.inventory.fish + 1
       },
       totals: { ...state.totals, fish: state.totals.fish + 1 },
+      experience: Math.min(
+        HOMESTEAD_MAX_EXPERIENCE,
+        state.experience + HOMESTEAD_EXPERIENCE_REWARDS.fish
+      ),
       updatedAt: now
     },
     changed: true

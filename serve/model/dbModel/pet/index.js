@@ -266,6 +266,7 @@ function normalizeHomesteadState(payload) {
         lastFishedAt: safeTimestamp(raw.lastFishedAt),
         inventory,
         coins: clampInt(raw.coins, 0, 9_999_999, 0),
+        experience: clampInt(raw.experience, 0, 9_999_999, 0),
         seedStock,
         ordersDay: normalizeDate(raw.ordersDay) || '',
         orders: normalizeHomesteadOrders(raw.orders),
@@ -459,6 +460,7 @@ const isFreshHomesteadState = (state) =>
     state.seedStock.corn === 2 &&
     state.seedStock.strawberry === 1 &&
     state.coins === 80 &&
+    state.experience === 0 &&
     Object.values(state.totals).every((value) => value === 0) &&
     state.autoHelp.total === 0 &&
     state.plotCount === HOMESTEAD_PLOT_COUNT &&
@@ -527,6 +529,7 @@ function mergeHomesteadStates(existing, incoming) {
         coins: localFresh !== remoteFresh
             ? economicSource.coins
             : Math.max(a.coins, b.coins),
+        experience: Math.max(a.experience, b.experience),
         seedStock,
         ordersDay: orderState.ordersDay,
         orders: orderState.orders,

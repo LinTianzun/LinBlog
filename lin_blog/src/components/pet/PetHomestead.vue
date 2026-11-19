@@ -3,6 +3,14 @@
         <span class="pet-homestead-coins" title="小院金币">
             <span aria-hidden="true">🪙</span><b>{{ coins }}</b>
         </span>
+        <span class="pet-homestead-level"
+            :title="`小院 Lv.${levelProgress.level} ${levelProgress.title} · ${levelProgress.experience}/${levelProgress.nextLevelXp} 经验`">
+            <b>Lv.{{ levelProgress.level }}</b>
+            <span>{{ levelProgress.title }}</span>
+            <i aria-hidden="true">
+                <span :style="{ width: `${levelProgress.percent}%` }" />
+            </i>
+        </span>
         <span class="pet-homestead-orders-progress">
             今日订单 {{ completedOrders }}/{{ orderTotal }}
         </span>
@@ -94,6 +102,7 @@ import {
     formatHomesteadDuration,
     type HomesteadCropDefinition,
     type HomesteadCropId,
+    type HomesteadLevelProgress,
 } from '../../utils/desktopPetHomestead'
 
 type PetHomesteadTab = 'home' | 'grow' | 'raise' | 'fish'
@@ -108,6 +117,7 @@ interface PetHomesteadInventoryChip {
 defineProps<{
     tab: PetHomesteadTab
     coins: number
+    levelProgress: HomesteadLevelProgress
     completedOrders: number
     orderTotal: number
     claimableOrders: number
