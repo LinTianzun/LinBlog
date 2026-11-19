@@ -51,6 +51,7 @@
         <template v-else>
             <PetYard3D v-if="scene3d !== 'fallback'" :tab="tab"
                 :plot-count="plots.length" :plot-columns="plotColumns"
+                :weather="weather" :day-phase="dayPhase"
                 :chicken-ready="chicken.eggReady || chicken.manureReady"
                 :cow-ready="cow.milkReady || cow.manureReady"
                 :pond-ready="pondReady"
@@ -172,6 +173,10 @@
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
 import PetYard3D from './PetYard3D.vue'
+import type {
+    HomesteadDayPhaseDefinition,
+    HomesteadWeatherDefinition,
+} from '../../utils/desktopPetHomestead'
 
 interface PetHomePlot {
     index: number
@@ -202,6 +207,8 @@ const scene3d = ref<'loading' | 'ready' | 'fallback'>('loading')
 const props = defineProps<{
     tab: 'home' | 'grow' | 'raise' | 'fish'
     roomClass: string[]
+    weather: HomesteadWeatherDefinition
+    dayPhase: HomesteadDayPhaseDefinition
     plots: PetHomePlot[]
     plotColumns: number
     chicken: PetHomeChicken

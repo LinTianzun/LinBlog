@@ -575,6 +575,105 @@ export function homesteadDayKey(now = Date.now()): string {
   ].join('-')
 }
 
+export type HomesteadWeatherId = 'sunny' | 'cloudy' | 'rainy' | 'windy'
+
+export interface HomesteadWeatherDefinition {
+  id: HomesteadWeatherId
+  label: string
+  icon: string
+  description: string
+}
+
+export const HOMESTEAD_WEATHERS: readonly HomesteadWeatherDefinition[] = [
+  {
+    id: 'sunny',
+    label: '晴朗',
+    icon: '☀️',
+    description: '阳光正好，小院暖洋洋的。'
+  },
+  {
+    id: 'cloudy',
+    label: '多云',
+    icon: '⛅',
+    description: '云层遮住太阳，适合慢慢打理小院。'
+  },
+  {
+    id: 'rainy',
+    label: '小雨',
+    icon: '🌧️',
+    description: '雨点落在菜叶和鱼塘上，空气湿湿润润的。'
+  },
+  {
+    id: 'windy',
+    label: '微风',
+    icon: '🍃',
+    description: '风穿过树梢，把落叶吹得满院子跑。'
+  }
+]
+
+/** 同一天内天气保持稳定，跨设备也能看到同样的天气。 */
+export function homesteadWeatherForDay(
+  day: string
+): HomesteadWeatherDefinition {
+  const roll = (hashText(`weather:${day}`) % 1000) / 10
+  if (roll < 42) return HOMESTEAD_WEATHERS[0]
+  if (roll < 68) return HOMESTEAD_WEATHERS[1]
+  if (roll < 86) return HOMESTEAD_WEATHERS[2]
+  return HOMESTEAD_WEATHERS[3]
+}
+
+export function getHomesteadWeather(
+  now = Date.now()
+): HomesteadWeatherDefinition {
+  return homesteadWeatherForDay(homesteadDayKey(now))
+}
+
+export type HomesteadDayPhaseId = 'morning' | 'day' | 'evening' | 'night'
+
+export interface HomesteadDayPhaseDefinition {
+  id: HomesteadDayPhaseId
+  label: string
+  icon: string
+  description: string
+}
+
+export const HOMESTEAD_DAY_PHASES: readonly HomesteadDayPhaseDefinition[] = [
+  {
+    id: 'morning',
+    label: '清晨',
+    icon: '🌅',
+    description: '空气微凉，适合先浇一轮水。'
+  },
+  {
+    id: 'day',
+    label: '白天',
+    icon: '☀️',
+    description: '光线正好，小院最热闹的时候。'
+  },
+  {
+    id: 'evening',
+    label: '傍晚',
+    icon: '🌇',
+    description: '天色渐暖，适合收尾和清点收获。'
+  },
+  {
+    id: 'night',
+    label: '夜晚',
+    icon: '🌙',
+    description: '小院安静下来，宠物会放慢脚步。'
+  }
+]
+
+export function getHomesteadDayPhase(
+  now = Date.now()
+): HomesteadDayPhaseDefinition {
+  const hour = new Date(now).getHours()
+  if (hour >= 5 && hour < 10) return HOMESTEAD_DAY_PHASES[0]
+  if (hour >= 10 && hour < 17) return HOMESTEAD_DAY_PHASES[1]
+  if (hour >= 17 && hour < 20) return HOMESTEAD_DAY_PHASES[2]
+  return HOMESTEAD_DAY_PHASES[3]
+}
+
 const isDayKey = (value: unknown): value is string =>
   typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
 

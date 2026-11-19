@@ -1,6 +1,12 @@
 <template>
-    <div ref="hostRef" class="pet-yard3d" aria-hidden="true">
+    <div ref="hostRef" class="pet-yard3d" aria-hidden="true"
+        :class="[`is-weather-${weather.id}`, `is-phase-${dayPhase.id}`]">
         <canvas ref="canvasRef" class="pet-yard3d-canvas" />
+        <span class="pet-yard3d-sky" aria-hidden="true" />
+        <span v-if="weather.id === 'rainy'" class="pet-yard3d-rain"
+            aria-hidden="true" />
+        <span v-else-if="weather.id === 'windy'"
+            class="pet-yard3d-leaves" aria-hidden="true" />
         <span v-if="bubbleText" class="pet-yard3d-bubble" :style="bubbleStyle">
             {{ bubbleText }}
         </span>
@@ -19,6 +25,10 @@ import type {
     Texture,
     WebGLRenderer,
 } from 'three'
+import type {
+    HomesteadDayPhaseDefinition,
+    HomesteadWeatherDefinition,
+} from '../../utils/desktopPetHomestead'
 import barrelUrl from '../../assets/farm/pixel/barrel.png'
 import bushUrl from '../../assets/farm/pixel/bush.png'
 import crateUrl from '../../assets/farm/pixel/crate.png'
@@ -77,6 +87,8 @@ const props = defineProps<{
     tab: PetYardTab
     plotCount: number
     plotColumns: number
+    weather: HomesteadWeatherDefinition
+    dayPhase: HomesteadDayPhaseDefinition
     chickenReady: boolean
     cowReady: boolean
     pondReady: boolean
@@ -126,6 +138,7 @@ let petPct: PctPoint = { x: 50, y: 60 }
 let petGoal: PctPoint | null = null
 let nextAmbientIn = 2.2
 let readyNotified = false
+let atmosphereOverlay: import('three').Mesh | null = null
 const AMBIENT_LINES = [
     '今天也要好好干活～',
     '这里的风真舒服。',
@@ -134,6 +147,13 @@ const AMBIENT_LINES = [
     '鸡窝那边好像有动静。',
     '池塘今天很热闹。',
 ]
+
+const PHASE_COLORS = {
+    morning: 0xfff2cf,
+    day: 0xffffff,
+    evening: 0xffbd94,
+    night: 0x516a97,
+} as const
 
 const textureCache = new Map<string, Texture>()
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
@@ -309,6 +329,34 @@ function buildHorizonTexture(): Texture {
     })
     textureCache.set(key, texture)
     return texture
+}
+
+function applyAtmosphere() {
+    if (!THREE || !scene || !groundMaterial) return
+    if (!atmosphereOverlay) {
+        const geometry = new THREE.PlaneGeometry(220, 220)
+        geometry.rotateX(-Math.PI / 2)
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+        })
+        atmosphereOverlay = new THREE.Mesh(geometry, material)
+        atmosphereOverlay.position.y = 0.02
+        atmosphereOverlay.renderOrder = -900
+        scene.add(atmosphereOverlay)
+    }
+    const material = atmosphereOverlay.material as import('three').MeshBasicMaterial
+    material.color.setHex(PHASE_COLORS[props.dayPhase.id])
+    material.opacity =
+        props.dayPhase.id === 'night' ? 0.46
+        : props.dayPhase.id === 'evening' ? 0.19
+        : props.dayPhase.id === 'morning' ? 0.12
+        : 0
+    if (props.weather.id === 'cloudy' && props.dayPhase.id === 'day') {
+        material.opacity = Math.max(material.opacity, 0.08)
+    }
 }
 
 function buildPondTexture(): Texture {
@@ -930,6 +978,7 @@ async function rebuildZone() {
         })
     }
     if (groundMaterial) groundMaterial.color.setHex(spec.tint)
+    applyAtmosphere()
 
     if (props.tab === 'fish') {
         const fish = spriteFromSpec({
@@ -1072,7 +1121,7 @@ function updatePet(dt: number, elapsed: number) {
         const dx = petGoal.x - petPct.x
         const dy = petGoal.y - petPct.y
         const distance = Math.hypot(dx, dy)
-        const step = 22 * dt
+        const step = (props.dayPhase.id === 'night' ? 14 : 22) * dt
         if (distance <= step) {
             petPct = { ...petGoal }
             petGoal = null
@@ -1088,7 +1137,10 @@ function updatePet(dt: number, elapsed: number) {
         nextAmbientIn -= dt
         if (petActionTimer <= 0 && nextAmbientIn <= 0) {
             chooseAmbientGoal()
-            nextAmbientIn = 2.4 + Math.random() * 2.6
+            nextAmbientIn =
+                props.dayPhase.id === 'night'
+                    ? 4.6 + Math.random() * 3.8
+                    : 2.4 + Math.random() * 2.6
         }
     }
     updatePetTransform(dt, elapsed)
@@ -1219,6 +1271,7 @@ function setupScene() {
     if (grassMap) {
         grassMap.repeat.set(34, 34)
     }
+    applyAtmosphere()
     const groundGeometry = new THREE.PlaneGeometry(220, 220)
     const ground = new THREE.Mesh(groundGeometry, groundMaterial)
     ground.name = 'pet-yard-ground'
@@ -1271,6 +1324,11 @@ watch(
         bubbleTimer = 0
         void rebuildZone()
     }
+)
+
+watch(
+    () => [props.weather.id, props.dayPhase.id],
+    () => applyAtmosphere()
 )
 
 watch(
@@ -1331,6 +1389,7 @@ onBeforeUnmount(() => {
     }
     scene = null
     camera = null
+    atmosphereOverlay = null
     petSprite = null
     petShadow = null
     groundMaterial = null
@@ -1384,9 +1443,86 @@ onBeforeUnmount(() => {
     }
 }
 
+.pet-yard3d-sky {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    pointer-events: none;
+    transition: background 0.8s ease;
+}
+
+.is-weather-sunny.is-phase-morning .pet-yard3d-sky {
+    background: linear-gradient(180deg, rgba(255, 209, 150, 0.17), rgba(255, 236, 194, 0.02) 52%);
+}
+
+.is-weather-sunny.is-phase-evening .pet-yard3d-sky {
+    background: linear-gradient(180deg, rgba(252, 134, 92, 0.22), rgba(255, 198, 126, 0.03) 55%);
+}
+
+.is-weather-cloudy .pet-yard3d-sky {
+    background: linear-gradient(180deg, rgba(164, 184, 200, 0.19), rgba(220, 230, 236, 0.02) 58%);
+}
+
+.is-weather-rainy .pet-yard3d-sky,
+.is-weather-rainy.is-phase-day .pet-yard3d-sky {
+    background: linear-gradient(180deg, rgba(95, 122, 146, 0.31), rgba(140, 168, 190, 0.05) 56%);
+}
+
+.is-weather-windy .pet-yard3d-sky {
+    background: linear-gradient(180deg, rgba(166, 214, 199, 0.14), rgba(224, 242, 228, 0.01) 56%);
+}
+
+.is-phase-night .pet-yard3d-sky {
+    background:
+        radial-gradient(circle at 24% 14%, rgba(255, 250, 216, 0.2), transparent 20%),
+        linear-gradient(180deg, rgba(29, 42, 81, 0.52), rgba(48, 62, 105, 0.09) 64%);
+}
+
+.pet-yard3d-rain {
+    position: absolute;
+    z-index: 2;
+    inset: -10%;
+    background-image:
+        linear-gradient(113deg, rgba(224, 244, 255, 0.34) 0 1px, transparent 1px 18px),
+        linear-gradient(117deg, rgba(198, 225, 242, 0.24) 0 1px, transparent 1px 27px);
+    animation: pet-yard-rain 0.5s linear infinite;
+    opacity: 0.58;
+    pointer-events: none;
+}
+
+.pet-yard3d-leaves {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    background-image:
+        radial-gradient(4px 3px at 12% 24%, #e9b968 40%, transparent 42%),
+        radial-gradient(3px 2px at 42% 52%, #d7a45a 40%, transparent 42%),
+        radial-gradient(4px 3px at 70% 32%, #e8c273 40%, transparent 42%),
+        radial-gradient(3px 2px at 84% 66%, #d19a51 40%, transparent 42%);
+    animation: pet-yard-leaves 4.6s linear infinite;
+    opacity: 0.56;
+    pointer-events: none;
+}
+
+@keyframes pet-yard-rain {
+    to {
+        transform: translate3d(-3%, 10%, 0);
+    }
+}
+
+@keyframes pet-yard-leaves {
+    to {
+        transform: translate3d(-28%, 9%, 0) rotate(38deg);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .pet-yard3d-bubble {
         transition: none;
+    }
+    .pet-yard3d-rain,
+    .pet-yard3d-leaves {
+        animation: none;
     }
 }
 </style>

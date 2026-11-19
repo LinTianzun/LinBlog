@@ -6,10 +6,44 @@
                 <h2>{{ displayPetName }} 的小院</h2>
                 <p>它会在小屋休息，也会去农场帮忙。</p>
             </div>
-            <span class="pet-home-status">
-                <span aria-hidden="true" />{{ petHomeStatus }}
-            </span>
+            <div class="pet-home-head-side">
+                <span class="pet-home-status">
+                    <span aria-hidden="true" />{{ petHomeStatus }}
+                </span>
+                <span class="pet-home-weather" :class="`is-${weather.id}`"
+                    :title="`${weather.description} ${dayPhase.description}`">
+                    <span aria-hidden="true">{{ weather.icon }}</span>
+                    {{ weather.label }} · {{ dayPhase.label }}
+                </span>
+            </div>
         </header>
+
+        <div v-if="onboardingOpen" class="pet-home-onboarding"
+            role="region" aria-label="小院新手引导" aria-live="polite">
+            <span class="pet-home-onboarding-icon" aria-hidden="true">
+                {{ onboardingStep.icon }}
+            </span>
+            <div class="pet-home-onboarding-copy">
+                <strong>{{ onboardingStep.title }}</strong>
+                <p>{{ onboardingStep.body }}</p>
+                <span class="pet-home-onboarding-dots" aria-hidden="true">
+                    <i v-for="(step, index) in PET_ONBOARDING_STEPS"
+                        :key="step.id"
+                        :class="{ 'is-active': index === onboardingStepIndex }" />
+                </span>
+            </div>
+            <div class="pet-home-onboarding-actions">
+                <button type="button" class="is-ghost"
+                    @click="finishPetOnboarding">跳过</button>
+                <button v-if="onboardingStepIndex > 0" type="button"
+                    class="is-ghost" @click="previousPetOnboardingStep">
+                    上一步
+                </button>
+                <button type="button" @click="nextPetOnboardingStep">
+                    {{ isLastOnboardingStep ? '开始打理' : '下一步' }}
+                </button>
+            </div>
+        </div>
 
         <div class="pet-home-console">
             <div class="pet-home-stage">
@@ -26,6 +60,7 @@
                 </div>
 
                 <PetHomeRoom :tab="petHomeTab" :room-class="petHomeRoomClass"
+                    :weather="weather" :day-phase="dayPhase"
                     :plots="homesteadPlots" :plot-columns="homesteadPlotColumns"
                     :chicken="chicken" :chicken-label="chickenLabel"
                     :cow="cow" :cow-label="cowLabel"
@@ -82,6 +117,9 @@
                 </div>
 
                 <div class="pet-home-footer">
+                    <button type="button" @click="openPetOnboarding">
+                        小院向导
+                    </button>
                     <button type="button" :disabled="!canEditPet" @click="emit('reset-settings')">
                         恢复默认展示
                     </button>
@@ -95,14 +133,22 @@
 </template>
 
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
 import type { DesktopPetSettings, DesktopPetCommand } from '../../utils/desktopPet'
 import {
     HOMESTEAD_CROPS,
+    type HomesteadDayPhaseDefinition,
     type HomesteadCropId,
     type HomesteadState,
+    type HomesteadWeatherDefinition,
 } from '../../utils/desktopPetHomestead'
 import type { PetFood } from '../../utils/desktopPetFood'
 import type { PetVitals } from '../../utils/desktopPetVitals'
+import {
+    PET_ONBOARDING_STEPS,
+    isPetOnboardingCompleted,
+    markPetOnboardingCompleted,
+} from '../../utils/desktopPetOnboarding'
 import PetHomeRoom from './PetHomeRoom.vue'
 import PetHomestead from './PetHomestead.vue'
 import type {
@@ -119,6 +165,8 @@ const props = defineProps<{
     tabs: readonly PetHomeTabDefinition[]
     petHomeTab: PetHomeTab
     petHomeStatus: string
+    weather: HomesteadWeatherDefinition
+    dayPhase: HomesteadDayPhaseDefinition
     petHomeRoomClass: string[]
     displayPetName: string
     petVitals: PetVitals
@@ -144,6 +192,37 @@ const props = defineProps<{
     claimableHomesteadAchievementCount: number
     autoHelpStatus: string
 }>()
+
+const onboardingOpen = ref(!isPetOnboardingCompleted())
+const onboardingStepIndex = ref(0)
+const onboardingStep = computed(
+    () => PET_ONBOARDING_STEPS[onboardingStepIndex.value]
+)
+const isLastOnboardingStep = computed(
+    () => onboardingStepIndex.value >= PET_ONBOARDING_STEPS.length - 1
+)
+
+const openPetOnboarding = () => {
+    onboardingStepIndex.value = 0
+    onboardingOpen.value = true
+}
+
+const finishPetOnboarding = () => {
+    markPetOnboardingCompleted()
+    onboardingOpen.value = false
+}
+
+const previousPetOnboardingStep = () => {
+    onboardingStepIndex.value = Math.max(0, onboardingStepIndex.value - 1)
+}
+
+const nextPetOnboardingStep = () => {
+    if (isLastOnboardingStep.value) {
+        finishPetOnboarding()
+        return
+    }
+    onboardingStepIndex.value += 1
+}
 
 const emit = defineEmits<{
     (e: 'select-tab', tab: PetHomeTab): void
@@ -438,6 +517,138 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
         border-radius: 50%;
         background: currentColor;
         box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+    }
+}
+
+.pet-home-head-side {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.pet-home-weather {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    color: var(--admin-muted, var(--gray6));
+    font-size: 10px;
+    font-weight: 620;
+    white-space: nowrap;
+
+    > span {
+        font-size: 11px;
+    }
+
+    &.is-sunny {
+        color: #b17a17;
+    }
+
+    &.is-cloudy {
+        color: #6f8098;
+    }
+
+    &.is-rainy {
+        color: #3f82ad;
+    }
+
+    &.is-windy {
+        color: #4f9070;
+    }
+}
+
+.pet-home-onboarding {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border: 1px dashed color-mix(in srgb, var(--pet-zone-accent) 42%, transparent);
+    border-radius: 14px;
+    background:
+        linear-gradient(120deg,
+            color-mix(in srgb, var(--pet-zone-accent) 9%, transparent),
+            transparent 62%),
+        var(--admin-surface, var(--bgColor1));
+}
+
+.pet-home-onboarding-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--pet-zone-accent) 14%, transparent);
+    font-size: 20px;
+}
+
+.pet-home-onboarding-copy {
+    min-width: 0;
+
+    strong {
+        display: block;
+        color: var(--admin-text, var(--gray));
+        font-size: 12px;
+        font-weight: 740;
+    }
+
+    p {
+        margin: 3px 0 0;
+        color: var(--admin-muted, var(--gray6));
+        font-size: 11px;
+        line-height: 1.55;
+    }
+}
+
+.pet-home-onboarding-dots {
+    display: inline-flex;
+    gap: 4px;
+    margin-top: 6px;
+
+    i {
+        width: 14px;
+        height: 3px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--admin-muted, var(--gray6)) 24%, transparent);
+        transition: background 0.18s ease;
+
+        &.is-active {
+            background: var(--pet-zone-accent);
+        }
+    }
+}
+
+.pet-home-onboarding-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    button {
+        min-height: 30px;
+        padding: 0 10px;
+        border: 1px solid color-mix(in srgb, var(--pet-zone-accent) 30%, transparent);
+        border-radius: 9px;
+        background: var(--pet-zone-accent);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 650;
+        cursor: pointer;
+
+        &.is-ghost {
+            border-color: transparent;
+            background: transparent;
+            color: var(--admin-muted, var(--gray6));
+        }
+
+        &:focus-visible {
+            outline: 2px solid color-mix(in srgb, var(--pet-zone-accent) 55%, transparent);
+            outline-offset: 2px;
+        }
     }
 }
 
@@ -1513,5 +1724,27 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
     box-shadow:
         inset 0 3px 0 rgba(255, 255, 255, 0.42),
         0 3px 0 rgba(83, 54, 34, 0.12);
+}
+
+@media (max-width: 720px) {
+    .pet-home-onboarding {
+        grid-template-columns: 34px minmax(0, 1fr);
+
+        .pet-home-onboarding-icon {
+            width: 34px;
+            height: 34px;
+            font-size: 18px;
+        }
+
+        .pet-home-onboarding-actions {
+            grid-column: 2;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+    }
+
+    .pet-home-head-side {
+        align-items: flex-end;
+    }
 }
 </style>

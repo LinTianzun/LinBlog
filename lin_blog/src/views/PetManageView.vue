@@ -35,6 +35,8 @@
                     :tabs="PET_HOME_TABS"
                     :pet-home-tab="petHomeTab"
                     :pet-home-status="petHomeStatus"
+                    :weather="homesteadWeather"
+                    :day-phase="homesteadDayPhase"
                     :pet-home-room-class="petHomeRoomClass"
                     :display-pet-name="displayPetName"
                     :pet-vitals="petVitals"
@@ -141,8 +143,10 @@ import {
     formatHomesteadDuration,
     getHomesteadCrop,
     getHomesteadDecoration,
+    getHomesteadDayPhase,
     getHomesteadItem,
     getHomesteadState,
+    getHomesteadWeather,
     harvestPlot,
     homesteadAchievements,
     homesteadBarnSpeedMultiplier,
@@ -225,6 +229,10 @@ const selectPetHomeTab = (tab: PetHomeTab) => {
     petHomeTab.value = tab
 }
 const nowTick = ref(Date.now())
+const homesteadWeather = computed(() => getHomesteadWeather(nowTick.value))
+const homesteadDayPhase = computed(() =>
+    getHomesteadDayPhase(nowTick.value)
+)
 const feedCooldownLeft = computed(() =>
     Math.max(
         0,

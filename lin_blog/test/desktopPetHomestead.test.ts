@@ -3,12 +3,14 @@ import test from 'node:test'
 import {
   HOMESTEAD_ANIMALS,
   HOMESTEAD_BARN_UPGRADES,
+  HOMESTEAD_DAY_PHASES,
   HOMESTEAD_DECORATIONS,
   HOMESTEAD_FISH_COOLDOWN_MS,
   HOMESTEAD_FERTILIZER_PACK,
   HOMESTEAD_MAX_PLOT_COUNT,
   HOMESTEAD_PLOT_EXPANSIONS,
   HOMESTEAD_SEED_PACKS,
+  HOMESTEAD_WEATHERS,
   HOMESTEAD_ORDER_COUNT,
   HOMESTEAD_STARTING_COINS,
   animalStatusText,
@@ -26,7 +28,10 @@ import {
   fertilizePlot,
   formatHomesteadDuration,
   getHomesteadState,
+  getHomesteadDayPhase,
+  getHomesteadWeather,
   harvestPlot,
+  homesteadWeatherForDay,
   homesteadAchievementCurrent,
   homesteadAchievements,
   homesteadBarnSpeedMultiplier,
@@ -89,6 +94,33 @@ const login = (id: number): void => {
   storage.setItem('token', `token-${id}`)
   storage.setItem('userInfo', JSON.stringify({ id }))
 }
+
+test('小院每日天气稳定，不同日期按概率变化', () => {
+  const first = homesteadWeatherForDay('2026-11-13')
+  assert.equal(homesteadWeatherForDay('2026-11-13'), first)
+  assert.ok(HOMESTEAD_WEATHERS.includes(first))
+  assert.equal(getHomesteadWeather(new Date(2026, 10, 13, 12).getTime()).id, first.id)
+})
+
+test('小院时段按小时正确切换', () => {
+  const cases: Array<[number, string]> = [
+    [4, 'night'],
+    [5, 'morning'],
+    [9, 'morning'],
+    [10, 'day'],
+    [16, 'day'],
+    [17, 'evening'],
+    [19, 'evening'],
+    [20, 'night'],
+  ]
+  cases.forEach(([hour, id]) => {
+    assert.equal(
+      getHomesteadDayPhase(new Date(2026, 10, 13, hour).getTime()).id,
+      id
+    )
+  })
+  assert.ok(HOMESTEAD_DAY_PHASES.every((phase) => phase.description))
+})
 
 test('首次进入小院时动物和鱼塘都有可收产物，菜地是空地', () => {
   const state = createDefaultHomestead(NOW)
