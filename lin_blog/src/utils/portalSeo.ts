@@ -6,16 +6,24 @@ export const PORTAL_DEFAULT_TITLE = '林知雨 · 个人刊物'
 export const PORTAL_DEFAULT_DESCRIPTION =
   '林知雨的个人博客，记录代码、摄影与日常。'
 
-export type PortalContentKind = 'article' | 'gallery' | 'diary'
+export type PortalContentKind =
+  | 'article'
+  | 'gallery'
+  | 'diary'
+  | 'series'
+  | 'note'
 
-const archivePaths: Record<PortalContentKind, string> = {
+type PortalArchiveKind = Exclude<PortalContentKind, 'series'>
+
+const archivePaths: Record<PortalArchiveKind, string> = {
   article: '/portal/articles',
   gallery: '/portal/gallery',
   diary: '/portal/diary',
+  note: '/portal/notes',
 }
 
 const archiveCopy: Record<
-  PortalContentKind,
+  PortalArchiveKind,
   { title: string; description: string }
 > = {
   article: {
@@ -29,6 +37,10 @@ const archiveCopy: Record<
   diary: {
     title: '随笔随记',
     description: '天气、照片与短句，记录日常里值得留下来的时刻。',
+  },
+  note: {
+    title: '数字花园',
+    description: '持续生长的笔记与想法，以双链串联成一张知识地图。',
   },
 }
 
@@ -60,20 +72,36 @@ function absoluteUrl(value: string | undefined, origin = browserOrigin()): strin
 }
 
 export function portalArchiveUrl(
-  kind: PortalContentKind,
+  kind: PortalArchiveKind,
   origin = browserOrigin()
 ): string {
   return new URL(archivePaths[kind], origin).toString()
 }
 
 export function portalItemUrl(
-  kind: PortalContentKind,
+  kind: PortalArchiveKind,
   id: number,
   origin = browserOrigin()
 ): string {
   const url = new URL(archivePaths[kind], origin)
   url.searchParams.set('open', String(id))
   return url.toString()
+}
+
+export function portalSeriesUrl(id: number, origin = browserOrigin()): string {
+  const url = new URL('/portal/series', origin)
+  url.searchParams.set('collection', String(id))
+  return url.toString()
+}
+
+// 与服务端 /og/:kind/:id.png 保持同一套地址规则
+export function ogImageUrl(
+  kind: PortalContentKind,
+  id?: number | null,
+  origin = browserOrigin()
+): string {
+  if (!id) return new URL('/og/home.png', origin).toString()
+  return new URL(`/og/${kind}/${id}.png`, origin).toString()
 }
 
 export function plainText(value?: string | null): string {
@@ -136,7 +164,7 @@ export function articleSeoConfig(
     seoExcerpt(article.content) ||
     PORTAL_DEFAULT_DESCRIPTION
   const image = contentImage(
-    extractArticleCover(article) || undefined,
+    extractArticleCover(article) || ogImageUrl('article', article.id, origin),
     origin
   )
 
@@ -170,7 +198,10 @@ export function gallerySeoConfig(
   const description =
     seoExcerpt(gallery.introduce) ||
     `${gallery.title}，共 ${images.length} 张摄影作品。`
-  const image = contentImage(gallery.cover || images[0], origin)
+  const image = contentImage(
+    gallery.cover || images[0] || ogImageUrl('gallery', gallery.id, origin),
+    origin
+  )
 
   return {
     title: gallery.title,
@@ -199,7 +230,10 @@ export function diarySeoConfig(
   origin = browserOrigin()
 ): PortalSeoConfig {
   const description = seoExcerpt(diary.content) || PORTAL_DEFAULT_DESCRIPTION
-  const image = contentImage(diary.picture[0], origin)
+  const image = contentImage(
+    diary.picture[0] || ogImageUrl('diary', diary.id, origin),
+    origin
+  )
 
   return {
     title: diary.title,
@@ -223,7 +257,7 @@ export function diarySeoConfig(
 }
 
 export function archiveSeoConfig(
-  kind: PortalContentKind,
+  kind: PortalArchiveKind,
   url = portalArchiveUrl(kind)
 ): PortalSeoConfig {
   const copy = archiveCopy[kind]
@@ -235,13 +269,56 @@ export function archiveSeoConfig(
   }
 }
 
+// 花园笔记：没有封面与摘要字段，分享图统一回退到服务端 /og/note/:id.png
+export interface GardenNoteSeoSource {
+  id: number
+  title: string
+  html?: string
+  updatedAt?: string | null
+  publishedAt?: string | null
+}
+
+export function noteSeoConfig(
+  note: GardenNoteSeoSource,
+  url = portalItemUrl('note', note.id),
+  origin = browserOrigin()
+): PortalSeoConfig {
+  const description =
+    seoExcerpt(note.html) || PORTAL_DEFAULT_DESCRIPTION
+  const image = ogImageUrl('note', note.id, origin)
+  const publishedTime = note.publishedAt || note.updatedAt || null
+  const modifiedTime = note.updatedAt || note.publishedAt || null
+
+  return {
+    title: note.title,
+    description,
+    url,
+    image,
+    type: 'article',
+    publishedTime,
+    modifiedTime,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: note.title,
+      description,
+      url,
+      image,
+      datePublished: publishedTime || undefined,
+      dateModified: modifiedTime || undefined,
+    },
+  }
+}
+
 export function homeSeoConfig(
-  url = portalArchiveUrl('article').replace(/\/articles$/, '')
+  url = new URL('/portal', browserOrigin()).toString(),
+  origin = browserOrigin()
 ): PortalSeoConfig {
   return {
     title: '首页',
     description: PORTAL_DEFAULT_DESCRIPTION,
     url,
+    image: ogImageUrl('article', null, origin),
     type: 'website',
   }
 }

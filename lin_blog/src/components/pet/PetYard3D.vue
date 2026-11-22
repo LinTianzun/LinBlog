@@ -23,8 +23,8 @@ import type {
     Scene,
     Sprite,
     Texture,
-    WebGLRenderer,
 } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import {
     HOMESTEAD_LEVEL_UP_EVENT,
     homesteadAmbientLines,
@@ -32,6 +32,13 @@ import {
     type HomesteadLevelUpDetail,
     type HomesteadWeatherDefinition,
 } from '../../utils/desktopPetHomestead'
+import {
+    easeOutCubic,
+    prefersReducedMotion,
+    tweenColor,
+    tweenNumber,
+    type TweenHandle,
+} from '../../utils/tween'
 import barrelUrl from '../../assets/farm/pixel/barrel.png'
 import bushUrl from '../../assets/farm/pixel/bush.png'
 import crateUrl from '../../assets/farm/pixel/crate.png'
@@ -108,8 +115,9 @@ const bubbleStyle = computed(() => ({
     top: `${bubblePos.value.y}%`,
 }))
 
-let THREE: typeof import('three') | null = null
-let renderer: WebGLRenderer | null = null
+let THREE: typeof import('three/webgpu') | null = null
+let TSL: typeof import('three/tsl') | null = null
+let renderer: WebGPURenderer | null = null
 let scene: Scene | null = null
 let camera: OrthographicCamera | null = null
 let clock: import('three').Clock | null = null
@@ -128,6 +136,10 @@ let frameId = 0
 let resizeObserver: ResizeObserver | null = null
 let buildToken = 0
 let groundMaterial: MeshBasicMaterial | null = null
+let pondWaterTime: { value: number } | null = null
+let reduceMotion = false
+let tintTween: TweenHandle | null = null
+let waterTween: TweenHandle | null = null
 let fishSprite: Sprite | null = null
 let fishClock = 0
 let animatedSprites: Array<{
@@ -619,6 +631,33 @@ function getAspect() {
     return aspectRatio
 }
 
+function patchGeometry(patch: PatchSpec, elevation: number) {
+    if (!THREE) throw new Error('three not ready')
+    const geometry = new THREE.BufferGeometry()
+    const tl = pctToGround(patch.left, patch.top)
+    const tr = pctToGround(patch.left + patch.width, patch.top)
+    const br = pctToGround(patch.left + patch.width, patch.top + patch.height)
+    const bl = pctToGround(patch.left, patch.top + patch.height)
+    geometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(
+            [
+                tl.x, elevation, tl.z,
+                tr.x, elevation, tr.z,
+                br.x, elevation, br.z,
+                bl.x, elevation, bl.z,
+            ],
+            3
+        )
+    )
+    geometry.setAttribute(
+        'uv',
+        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)
+    )
+    geometry.setIndex([0, 1, 2, 0, 2, 3])
+    return geometry
+}
+
 function patchMesh(patch: PatchSpec): Mesh {
     if (!THREE) throw new Error('three not ready')
     const texture =
@@ -649,28 +688,7 @@ function patchMesh(patch: PatchSpec): Mesh {
             Math.max(1, (patch.height / repeatScale) | 0)
         )
     }
-    const geometry = new THREE.BufferGeometry()
-    const tl = pctToGround(patch.left, patch.top)
-    const tr = pctToGround(patch.left + patch.width, patch.top)
-    const br = pctToGround(patch.left + patch.width, patch.top + patch.height)
-    const bl = pctToGround(patch.left, patch.top + patch.height)
-    geometry.setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute(
-            [
-                tl.x, 0.02, tl.z,
-                tr.x, 0.02, tr.z,
-                br.x, 0.02, br.z,
-                bl.x, 0.02, bl.z,
-            ],
-            3
-        )
-    )
-    geometry.setAttribute(
-        'uv',
-        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)
-    )
-    geometry.setIndex([0, 1, 2, 0, 2, 3])
+    const geometry = patchGeometry(patch, 0.02)
     geometry.computeVertexNormals()
     const material = new THREE.MeshBasicMaterial({
         map,
@@ -690,6 +708,49 @@ function patchMesh(patch: PatchSpec): Mesh {
                 : patch.kind === 'soil'
                   ? -910
                   : -925
+    return mesh
+}
+
+function pondWaterMesh(patch: PatchSpec, map: Texture): Mesh | null {
+    if (!THREE || !TSL) return null
+    const timeNode = TSL.uniform(0)
+    const uvNode = TSL.uv()
+    const wave = TSL.sin(
+        uvNode.x.mul(16).add(uvNode.y.mul(9)).add(timeNode.mul(1.5))
+    )
+    const cross = TSL.sin(
+        uvNode.x.mul(29).sub(uvNode.y.mul(13)).sub(timeNode.mul(2.1))
+    )
+    const ripple = wave.mul(0.5).add(0.5).mul(cross.mul(0.25).add(0.75))
+    const fade = TSL.uniform(0)
+    const material = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+    })
+    material.colorNode = TSL.mix(
+        TSL.color(0x6fd3ea),
+        TSL.color(0xe4fbff),
+        ripple
+    )
+    material.opacityNode = TSL.texture(map, uvNode).a
+        .mul(TSL.smoothstep(0.58, 0.96, ripple))
+        .mul(0.6)
+        .mul(fade)
+    pondWaterTime = timeNode
+    waterTween?.cancel()
+    waterTween = tweenNumber({
+        from: 0,
+        to: 1,
+        duration: 520,
+        ease: easeOutCubic,
+        onUpdate: (value) => {
+            fade.value = value
+        },
+    })
+    const mesh = new THREE.Mesh(patchGeometry(patch, 0.021), material)
+    mesh.renderOrder = -919
     return mesh
 }
 
@@ -930,6 +991,12 @@ function disposeGroup(group: Group | null) {
     group.clear()
 }
 
+function resetPondWater() {
+    waterTween?.cancel()
+    waterTween = null
+    pondWaterTime = null
+}
+
 async function rebuildZone() {
     if (!THREE || !scene) return
     const token = ++buildToken
@@ -947,12 +1014,26 @@ async function rebuildZone() {
     }
     clonedTextures.forEach((texture) => texture.dispose())
     clonedTextures.length = 0
+    resetPondWater()
     fishSprite = null
     zoneGroup = new THREE.Group()
     scene.add(zoneGroup)
 
     for (const patch of spec.patches) {
-        zoneGroup.add(patchMesh(patch))
+        const mesh = patchMesh(patch)
+        zoneGroup.add(mesh)
+        if (patch.kind === 'pond') {
+            const waterMap = (mesh.material as MeshBasicMaterial).map
+            if (waterMap) {
+                try {
+                    const water = pondWaterMesh(patch, waterMap)
+                    if (water) zoneGroup.add(water)
+                } catch {
+                    resetPondWater()
+                    TSL = null
+                }
+            }
+        }
         const edge = patchEdgeMesh(patch)
         if (edge) zoneGroup.add(edge)
     }
@@ -975,7 +1056,22 @@ async function rebuildZone() {
             baseY: (child as Sprite).position.y,
         })
     }
-    if (groundMaterial) groundMaterial.color.setHex(spec.tint)
+    if (groundMaterial) {
+        tintTween?.cancel()
+        if (groundMaterial.color.getHex() === spec.tint) {
+            groundMaterial.color.setHex(spec.tint)
+        } else {
+            tintTween = tweenColor({
+                from: groundMaterial.color.getHex(),
+                to: spec.tint,
+                duration: 420,
+                ease: easeOutCubic,
+                onUpdate: (hex) => {
+                    groundMaterial?.color.setHex(hex)
+                },
+            })
+        }
+    }
     applyAtmosphere()
 
     if (props.tab === 'fish') {
@@ -1252,16 +1348,23 @@ function createPet() {
     scene.add(petShadow)
 }
 
-function setupScene() {
+async function setupScene() {
     if (!THREE || !canvasRef.value || !hostRef.value) return
-    renderer = new THREE.WebGLRenderer({
+    const instance = new THREE.WebGPURenderer({
         canvas: canvasRef.value,
         antialias: false,
         alpha: true,
         powerPreference: 'low-power',
     })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer = instance
+    await instance.init()
+    if (!THREE || !canvasRef.value) {
+        void instance.dispose()
+        if (renderer === instance) renderer = null
+        return
+    }
+    instance.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    instance.outputColorSpace = THREE.SRGBColorSpace
     scene = new THREE.Scene()
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200)
     camera.position.set(0, 15, 15)
@@ -1320,6 +1423,7 @@ function animate() {
     const elapsed = clock.elapsedTime
     updatePet(dt, elapsed)
     updateWater(elapsed)
+    if (!reduceMotion && pondWaterTime) pondWaterTime.value = elapsed
     renderer.render(scene, camera)
 }
 
@@ -1367,23 +1471,39 @@ watch(
 
 onMounted(async () => {
     window.addEventListener(HOMESTEAD_LEVEL_UP_EVENT, handleHomesteadLevelUp)
+    reduceMotion = prefersReducedMotion()
     try {
-        THREE = await import('three')
+        THREE = await import('three/webgpu')
     } catch {
         emit('unavailable')
         return
     }
     try {
-        setupScene()
+        TSL = await import('three/tsl')
+    } catch {
+        TSL = null
+    }
+    try {
+        await setupScene()
+        if (!canvasRef.value || !renderer) return
         resizeObserver = new ResizeObserver(() => resize())
         if (hostRef.value) resizeObserver.observe(hostRef.value)
     } catch {
+        running = false
+        if (renderer) {
+            void renderer.dispose()
+            renderer = null
+        }
         emit('unavailable')
     }
 })
 
 onBeforeUnmount(() => {
     running = false
+    tintTween?.cancel()
+    tintTween = null
+    waterTween?.cancel()
+    waterTween = null
     window.removeEventListener(HOMESTEAD_LEVEL_UP_EVENT, handleHomesteadLevelUp)
     if (frameId) cancelAnimationFrame(frameId)
     if (resizeObserver) resizeObserver.disconnect()
@@ -1392,7 +1512,7 @@ onBeforeUnmount(() => {
         disposeGroup(zoneGroup)
     }
     if (renderer) {
-        renderer.dispose()
+        void renderer.dispose()
         renderer = null
     }
     scene = null
@@ -1401,6 +1521,9 @@ onBeforeUnmount(() => {
     petSprite = null
     petShadow = null
     groundMaterial = null
+    pondWaterTime = null
+    TSL = null
+    THREE = null
 })
 </script>
 

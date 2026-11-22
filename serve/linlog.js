@@ -24,6 +24,7 @@ const { startRecordRetention } = require('./utils/recordRetention')
 const { startSystemLogRetention } = require('./utils/systemLogRetention')
 const { startFileLifecycle } = require('./utils/fileLifecycle')
 const { startScheduledBackup } = require('./utils/dbBackup')
+const { startNewsletterDigest } = require('./utils/newsletterDigest')
 const { startArticleScheduler } = require('./utils/articleScheduler')
 const { startAiHealthCheck } = require('./utils/aiHealthCheck')
 const articleWorkflowModel = require('./model/dbModel/articleWorkflow/index')
@@ -31,6 +32,7 @@ const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
 const { applyFrontendSecurityPolicy } = require('./middleware/frontendCsp')
+const { createPortalHtmlMeta } = require('./middleware/portalHtmlMeta')
 
 app.disable('x-powered-by')
 
@@ -109,6 +111,9 @@ if (hasFrontendBuild) {
         },
     }))
 
+    // 门户详情页在返回 index.html 前注入服务端 meta，供不执行 JS 的社交爬虫读取
+    app.use(createPortalHtmlMeta(frontendIndex))
+
     app.use((req, res, next) => {
         if (!isSpaFallbackRequest(req)) return next()
         applyFrontendSecurityPolicy(res)
@@ -152,6 +157,8 @@ db.initDatabase()
             const articleScheduler = startArticleScheduler();
             // AI 模型健康巡检：定时主动探测接入模型，及时发现故障
             const aiHealthCheck = startAiHealthCheck();
+            // 邮件摘要：仅 SMTP 就绪且确有新内容时给已确认订阅者发信
+            const newsletterDigest = startNewsletterDigest({ origin: config.publicUrl });
 
             const shutdown = createGracefulShutdown({
                 server,
@@ -162,6 +169,7 @@ db.initDatabase()
                     () => databaseBackup.stop(),
                     () => articleScheduler.stop(),
                     () => aiHealthCheck.stop(),
+                    () => newsletterDigest.stop(),
                 ],
                 closeDatabase: db.closeDatabase,
             })

@@ -51,6 +51,12 @@ module.exports = (app) => {
     require('./backup')(app)
     //  门户 SEO：站点地图、robots 与 RSS
     require('./seo')(app)
+    // 门户动态分享图：文章 / 图库 / 随笔 / 系列 / 首页
+    require('./og')(app)
+    // 邮件订阅：双确认订阅与退订
+    require('./newsletter')(app)
+    // 数字花园：私人笔记、双链与公开花园
+    require('./note')(app)
     // 站点级展示设置：桌面宠物开关（公开读 / 管理写）
     require('./site')(app)
     // 登录用户的桌宠养成状态（跨设备同步）

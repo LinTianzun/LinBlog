@@ -1,4 +1,5 @@
 import type { ArticleItem } from '../api/article.ts'
+import { findSimilar, type SimilarityDoc } from './contentSimilarity.ts'
 
 const splitLabels = (label?: string | null): string[] =>
   (label || '')
@@ -54,4 +55,57 @@ export function pickRelatedArticles(
     )
     .slice(0, limit)
     .map((entry) => entry.article)
+}
+
+const toSimilarityDoc = (article: ArticleItem): SimilarityDoc => ({
+  id: article.id,
+  kind: article.classify === 'image' ? 'gallery' : 'article',
+  title: article.title,
+  description: article.introduce ?? undefined,
+  content: article.content ?? undefined,
+  labels: splitLabels(article.label),
+  subsetId: article.subsetId,
+})
+
+/**
+ * 在结构化推荐之上补一层正文相似度：
+ * 同分类/同标签仍然优先，但「标题与正文讲的是同一件事」可以越过热度排序。
+ */
+export function rankRelatedArticles(
+  current: ArticleItem,
+  candidates: ArticleItem[],
+  limit = 3
+): ArticleItem[] {
+  if (limit <= 0) return []
+  const structured = pickRelatedArticles(current, candidates, Math.max(limit * 2, 4))
+  const pool = new Map<number, ArticleItem>()
+  for (const item of [...structured, ...candidates]) {
+    if (!item || item.id === current.id || item.state === 'deleted') continue
+    pool.set(item.id, item)
+  }
+
+  const similar = findSimilar(
+    toSimilarityDoc(current),
+    [...pool.values()].map(toSimilarityDoc),
+    { limit: Math.max(limit * 2, 4), crossKind: false }
+  )
+
+  const result: ArticleItem[] = []
+  const seen = new Set<number>()
+  // 先放结构化推荐的头部，再插入相似度命中的新面孔，两边交错保持主题与新鲜度
+  for (const item of structured) {
+    if (result.length >= limit) break
+    if (seen.has(item.id)) continue
+    seen.add(item.id)
+    result.push(item)
+  }
+  for (const { doc } of similar) {
+    if (result.length >= limit) break
+    if (seen.has(doc.id)) continue
+    const article = pool.get(doc.id)
+    if (!article) continue
+    seen.add(doc.id)
+    result.push(article)
+  }
+  return result
 }

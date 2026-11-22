@@ -664,6 +664,52 @@ const tablesSql = {
     INDEX idx_db_backup_created (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库备份与演练历史';`
 
+  ,newsletter_subscriber: `CREATE TABLE IF NOT EXISTS newsletter_subscriber(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '订阅者ID',
+    email VARCHAR(190) NOT NULL COMMENT '订阅邮箱（小写存储）',
+    status ENUM('pending', 'confirmed', 'unsubscribed') NOT NULL DEFAULT 'pending' COMMENT '订阅状态',
+    token_hash CHAR(64) NULL COMMENT '确认/退订令牌哈希',
+    token_expires_at DATETIME NULL COMMENT '确认令牌过期时间',
+    source VARCHAR(32) NOT NULL DEFAULT 'portal' COMMENT '订阅来源',
+    source_ip VARCHAR(64) NULL COMMENT '最近一次订阅请求IP',
+    confirmed_at DATETIME NULL COMMENT '确认时间',
+    unsubscribed_at DATETIME NULL COMMENT '退订时间',
+    last_digest_at DATETIME NULL COMMENT '最近一次收到摘要的时间',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_newsletter_email (email),
+    INDEX idx_newsletter_status (status),
+    INDEX idx_newsletter_token (token_hash),
+    INDEX idx_newsletter_ip_time (source_ip, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='邮件订阅者';`
+
+  ,note: `CREATE TABLE IF NOT EXISTS note(
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '笔记ID',
+    title VARCHAR(150) NOT NULL COMMENT '笔记标题',
+    slug VARCHAR(160) NOT NULL COMMENT '公开地址标识',
+    content LONGTEXT NOT NULL COMMENT 'Markdown 正文',
+    state ENUM('draft', 'published') NOT NULL DEFAULT 'draft' COMMENT '状态',
+    user_id BIGINT UNSIGNED NULL COMMENT '作者ID',
+    published_at DATETIME NULL COMMENT '首次发布时间',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_note_slug (slug),
+    INDEX idx_note_state_published (state, published_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数字花园笔记';`
+
+  ,note_link: `CREATE TABLE IF NOT EXISTS note_link(
+    from_note_id BIGINT UNSIGNED NOT NULL COMMENT '来源笔记',
+    to_note_id BIGINT UNSIGNED NOT NULL COMMENT '被引用笔记',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (from_note_id, to_note_id),
+    INDEX idx_note_link_target (to_note_id),
+    FOREIGN KEY (from_note_id) REFERENCES note(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记双链索引';`
+
   ,site_setting: `CREATE TABLE IF NOT EXISTS site_setting(
     id TINYINT UNSIGNED NOT NULL,
     desktop_pet_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否在全站显示桌面宠物',
@@ -1734,7 +1780,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'content_collection_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'content_collection_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history', 'newsletter_subscriber', 'note', 'note_link'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2210,6 +2256,17 @@ async function ensureCommentReportNoteSchema(exec = query) {
 // 数据库备份历史：备份与恢复演练共用一张运行记录表，只存元数据，备份本体在磁盘。
 async function ensureDbBackupLogSchema(exec = query) {
   await exec(tablesSql.db_backup_log);
+}
+
+// 邮件订阅：双确认订阅者表，令牌只存哈希，退订状态保留用于避免重复打扰。
+async function ensureNewsletterSchema(exec = query) {
+  await exec(tablesSql.newsletter_subscriber);
+}
+
+// 数字花园：笔记与双链是独立内容形态，不复用 article 的 classify 口径。
+async function ensureNoteSchema(exec = query) {
+  await exec(tablesSql.note);
+  await exec(tablesSql.note_link);
 }
 
 // 站点展示设置：桌宠开关之外的分档配置。
@@ -2753,6 +2810,14 @@ const migrations = [
   {
     version: '20261114_scheduled_pause',
     up: ensureArticleSchedulePauseSchema
+  },
+  {
+    version: '20261122_newsletter_subscriber',
+    up: ensureNewsletterSchema
+  },
+  {
+    version: '20261122_digital_garden_note',
+    up: ensureNoteSchema
   }
 ];
 

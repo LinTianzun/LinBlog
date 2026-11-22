@@ -7,8 +7,12 @@ import {
     articleSeoConfig,
     diarySeoConfig,
     gallerySeoConfig,
+    homeSeoConfig,
+    noteSeoConfig,
+    ogImageUrl,
     plainText,
     portalItemUrl,
+    portalSeriesUrl,
 } from '../src/utils/portalSeo.ts'
 
 const origin = 'https://blog.example.com'
@@ -45,6 +49,33 @@ test('详情链接统一使用 open 查询参数并保留归档页路径', () =>
     assert.equal(
         portalItemUrl('diary', 3, origin),
         'https://blog.example.com/portal/diary?open=3'
+    )
+    assert.equal(
+        portalItemUrl('note', 5, origin),
+        'https://blog.example.com/portal/notes?open=5'
+    )
+})
+
+test('花园笔记缺少封面时回退到动态 OG 图', () => {
+    const config = noteSeoConfig(
+        {
+            id: 5,
+            title: '双链第一课',
+            html: '<p>从 [[另一篇笔记]] 开始构建知识网络。</p>',
+            updatedAt: '2026-11-20T08:00:00.000Z',
+            publishedAt: '2026-11-19T08:00:00.000Z',
+        },
+        portalItemUrl('note', 5, origin),
+        origin
+    )
+
+    assert.equal(config.image, 'https://blog.example.com/og/note/5.png')
+    assert.equal(config.type, 'article')
+    assert.equal(config.publishedTime, '2026-11-19T08:00:00.000Z')
+    assert.match(config.description || '', /另一篇笔记/)
+    assert.equal(
+        (config.jsonLd as Record<string, unknown>)['@type'],
+        'BlogPosting'
     )
 })
 
@@ -123,4 +154,38 @@ test('归档页使用稳定 canonical，而不是继承上一篇详情', () => {
     assert.equal(config.title, '文章归档')
     assert.equal(config.url, 'https://blog.example.com/portal/articles')
     assert.equal(config.type, 'website')
+})
+
+test('无封面内容回退到服务端动态 OG 图', () => {
+    const noCoverArticle = articleSeoConfig(
+        { ...article, cover: null, content: '<p>纯文字</p>' },
+        portalItemUrl('article', article.id, origin),
+        origin
+    )
+    assert.equal(noCoverArticle.image, 'https://blog.example.com/og/article/12.png')
+
+    const noCoverDiary = diarySeoConfig(
+        {
+            id: 3,
+            title: '没有配图',
+            content: '只有文字',
+            picture: [],
+            weatherId: null,
+            weatherName: '',
+            views: 0,
+            likes: 0,
+            comments: 0,
+            createdAt: '2026-10-03T08:00:00.000Z',
+        },
+        portalItemUrl('diary', 3, origin),
+        origin
+    )
+    assert.equal(noCoverDiary.image, 'https://blog.example.com/og/diary/3.png')
+})
+
+test('首页与系列分享图与服务端 /og 路由保持同一地址', () => {
+    assert.equal(homeSeoConfig(undefined, origin).image, 'https://blog.example.com/og/home.png')
+    assert.equal(ogImageUrl('series', 5, origin), 'https://blog.example.com/og/series/5.png')
+    assert.equal(ogImageUrl('series', null, origin), 'https://blog.example.com/og/home.png')
+    assert.equal(portalSeriesUrl(5, origin), 'https://blog.example.com/portal/series?collection=5')
 })

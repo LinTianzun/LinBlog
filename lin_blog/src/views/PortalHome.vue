@@ -307,6 +307,7 @@ import {
 import { extractArticleCover, parseGalleryContent, type ArticleItem } from '../api/article'
 import { weathers } from '../utils/weather'
 import { IMAGE_WIDTHS, responsiveImageAttrs } from '../utils/imageOptimization'
+import { rankRelatedArticles } from '../utils/relatedArticles'
 import {
     applyPortalSeo,
     articleSeoConfig,
@@ -442,9 +443,16 @@ const loadArticles = async () => {
     articleLoading.value = true
     try {
         // 首页只做精选预览，完整列表在文章页/图库页翻阅
-        const result = await getPublicArticles({ page: 1, pageSize: 3 })
+        // 多取几条作为相似度候选池，精选位置仍只取前三
+        const result = await getPublicArticles({ page: 1, pageSize: 8, sort: 'hot' })
         if (result.code === 200) {
-            articleList.value = result.data?.list || []
+            const list = result.data?.list || []
+            const latest = [...list]
+                .sort((a, b) => new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime())
+            const lead = latest[0]
+            articleList.value = lead
+                ? [lead, ...rankRelatedArticles(lead, list, 2).filter(item => item.id !== lead.id)]
+                : latest.slice(0, 3)
             totalArticles.value = result.data?.total || 0
         }
     } finally {

@@ -18,6 +18,10 @@
                             <component :is="item.icon" />
                         </span>
                         <span class="menu-bar-name">{{ item.name }}</span>
+                        <span v-if="item.path === 'notes' && noLinkCount > 0"
+                            class="menu-bar-badge is-warn" :aria-label="`${noLinkCount} 篇笔记还没有双链`">
+                            {{ noLinkCount > 99 ? '99+' : noLinkCount }}
+                        </span>
                         <span v-if="item.path === 'reportedComments' && pendingReportCount > 0"
                             class="menu-bar-badge" :aria-label="`${pendingReportCount} 条待处理举报`">
                             {{ pendingReportBadge }}
@@ -44,11 +48,14 @@ import {
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
 import { useSessionStore } from '../../store/session.ts'
 import { getCommentReports } from '../../api/commentReport.ts'
+import { getNotes } from '../../api/note.ts'
 import { REPORT_STATE_EVENT } from '../../utils/commentReportWorkbench.ts'
 
 const session = useSessionStore()
 const route = useRoute()
 const pendingReportCount = ref(0)
+// 花园待整理：已发布但没有任何出发/反向链接的笔记数
+const noLinkCount = ref(0)
 
 const isActive = (path: string): boolean => {
     const target = `/${path}`
@@ -82,6 +89,7 @@ const MENU_PERMISSIONS: Record<string, string[]> = {
     ],
     gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
     diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
+    notes: [],
     petManage: ['pet.manage'],
     setting: [],
 }
@@ -106,7 +114,7 @@ const menuGroups = computed(() => {
         },
         {
             label: '内容',
-            paths: ['localfile', 'article', 'draftBox', 'collectionManage', 'scheduledPublish', 'gallery', 'diary'],
+            paths: ['localfile', 'article', 'draftBox', 'collectionManage', 'scheduledPublish', 'gallery', 'diary', 'notes'],
         },
         {
             label: '系统',
@@ -144,6 +152,20 @@ const refreshPendingReports = async (): Promise<void> => {
     }
 }
 
+const refreshNoLinkNotes = async (): Promise<void> => {
+    // 后台侧栏只对登录用户渲染；请求失败静默忽略，不阻塞导航
+    try {
+        const result = await getNotes({ page: 1, pageSize: 50, state: 'published' })
+        if (result.code === 200 && result.data) {
+            noLinkCount.value = result.data.list
+                .filter(note => note.outgoingLinks === 0 && note.incomingLinks === 0)
+                .length
+        }
+    } catch {
+        // 花园提示失败不影响主导航
+    }
+}
+
 const handleReportStateChange = (): void => {
     void refreshPendingReports()
 }
@@ -151,6 +173,7 @@ const handleReportStateChange = (): void => {
 onMounted(() => {
     window.addEventListener(REPORT_STATE_EVENT, handleReportStateChange)
     void refreshPendingReports()
+    void refreshNoLinkNotes()
 })
 
 onBeforeUnmount(() => {
@@ -161,6 +184,7 @@ watch(
     () => [route.path, session.permissions.join('|'), session.isSuperAdmin],
     () => {
         void refreshPendingReports()
+        void refreshNoLinkNotes()
     }
 )
 </script>
@@ -354,6 +378,12 @@ watch(
             font-weight: 750;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+
+        &.is-warn {
+            border-color: color-mix(in srgb, var(--wcolor, #ffaa1a) 28%, transparent);
+            background: color-mix(in srgb, var(--wcolor, #ffaa1a) 12%, transparent);
+            color: var(--wcolor, #ffaa1a);
+        }
         }
 
         &-foot {

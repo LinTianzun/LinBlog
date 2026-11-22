@@ -93,6 +93,11 @@ export const navLinks: MenuItem[] = [
         icon: 'IconFillFill'
     },
     {
+        path: 'notes',
+        name: '数字花园',
+        icon: 'IconStarFill'
+    },
+    {
         path: 'petManage',
         name: '宠物管理',
         icon: 'IconHeartFill'

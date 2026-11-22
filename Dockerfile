@@ -37,6 +37,11 @@ COPY --from=server-deps /app/serve/node_modules ./serve/node_modules
 COPY serve ./serve
 COPY --from=frontend-build /app/lin_blog/dist ./lin_blog/dist
 
+# 动态 OG 图在运行时用 sharp 渲染中文标题，需要 CJK 字体
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-wqy-microhei \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /app/serve/data/files /app/serve/storage/file-backups /app/serve/storage/db-backups
 
 EXPOSE 3030

@@ -1,31 +1,31 @@
 {
-	"name": "linblog-server",
-	"version": "1.0.0",
-	"private": true,
-	"scripts": {
-		"start": "node linlog.js",
-		"dev": "node --watch linlog.js",
-		"test": "node --env-file-if-exists=.env --test test/aiController.test.js test/aiManagement.test.js test/configValidation.test.js test/frontendStatic.test.js test/appRuntime.test.js test/articleModel.test.js test/articleWorkflow.test.js test/articlePublishNotification.test.js test/collectionController.test.js test/contentHealth.test.js test/siteAnalytics.test.js test/commentSecurity.test.js test/commentBoundaries.test.js test/commentArticleFilter.test.js test/commentInteraction.test.js test/commentRoutes.test.js test/commentNotification.test.js test/coverCleanup.test.js test/coverCleanupUtil.test.js test/userSecurity.test.js test/userModelAdminGuard.test.js test/messageModel.test.js test/messageController.test.js test/authMiddleware.test.js test/uploadTicket.test.js test/rateLimit.test.js test/securityHardening.test.js test/healthSameOrigin.test.js test/ownerScopedContent.test.js test/publicReadPermissions.test.js test/dbMigration.test.js test/petState.test.js test/petHomesteadState.test.js test/normalizeBody.test.js test/imageStorage.test.js test/subsetController.test.js test/labelController.test.js test/fileController.test.js test/fileImageBinding.test.js test/maintenanceStats.test.js test/fileLifecycle.test.js test/fileOffsite.test.js test/diaryController.test.js test/diaryUpdate.test.js test/diaryWeatherFilter.test.js test/recordGovernance.test.js test/registerUsername.test.js test/changePassword.test.js test/passwordReset.test.js test/passwordResetModel.test.js test/systemLog.test.js test/loginGuard.test.js test/aiHealthAlert.test.js test/dbBackupScheduler.test.js test/overviewScope.test.js test/portalInteractions.test.js test/diaryInteraction.test.js test/diaryCommentReply.test.js test/permissionMatrix.test.js test/superAdminGuard.test.js test/viewModel.test.js test/viewStats.test.js test/portalSeo.test.js test/dbBackup.test.js test/backupController.test.js test/timeController.test.js test/integration.realDb.test.js",
-		"db:migrate": "node scripts/migrate.js",
-		"db:seed": "node scripts/seed-demo.js",
-		"db:seed-rich": "node scripts/seed-rich.js",
-		"db:backup": "node scripts/backup.js",
-		"db:restore": "node scripts/restore.js",
-		"test:integration": "node --env-file-if-exists=.env --test test/integration.realDb.test.js"
-	},
-	"dependencies": {
-		"bcrypt": "^6.0.0",
-		"cors": "^2.8.5",
-		"express": "^5.1.0",
-		"helmet": "8.1.0",
-		"jsonwebtoken": "^9.0.2",
-		"media-typer": "0.3.0",
-		"multer": "^2.5.0",
-		"mysql2": "^3.24.5",
-		"nodemailer": "7.0.0",
-		"sharp": "^0.35.5"
-	},
-	"devDependencies": {
-		"mysql": "^2.18.1"
-	}
+  "name": "linblog-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node linlog.js",
+    "dev": "node --watch linlog.js",
+    "test": "node --env-file-if-exists=.env --test test/aiController.test.js test/aiManagement.test.js test/configValidation.test.js test/frontendStatic.test.js test/appRuntime.test.js test/articleModel.test.js test/articleWorkflow.test.js test/articlePublishNotification.test.js test/collectionController.test.js test/contentHealth.test.js test/siteAnalytics.test.js test/commentSecurity.test.js test/commentBoundaries.test.js test/commentArticleFilter.test.js test/commentInteraction.test.js test/commentRoutes.test.js test/commentNotification.test.js test/coverCleanup.test.js test/coverCleanupUtil.test.js test/userSecurity.test.js test/userModelAdminGuard.test.js test/messageModel.test.js test/messageController.test.js test/authMiddleware.test.js test/uploadTicket.test.js test/rateLimit.test.js test/securityHardening.test.js test/healthSameOrigin.test.js test/ownerScopedContent.test.js test/publicReadPermissions.test.js test/dbMigration.test.js test/petState.test.js test/petHomesteadState.test.js test/normalizeBody.test.js test/imageStorage.test.js test/subsetController.test.js test/labelController.test.js test/fileController.test.js test/fileImageBinding.test.js test/maintenanceStats.test.js test/fileLifecycle.test.js test/fileOffsite.test.js test/diaryController.test.js test/diaryUpdate.test.js test/diaryWeatherFilter.test.js test/recordGovernance.test.js test/registerUsername.test.js test/changePassword.test.js test/passwordReset.test.js test/passwordResetModel.test.js test/systemLog.test.js test/loginGuard.test.js test/aiHealthAlert.test.js test/dbBackupScheduler.test.js test/overviewScope.test.js test/portalInteractions.test.js test/diaryInteraction.test.js test/diaryCommentReply.test.js test/permissionMatrix.test.js test/superAdminGuard.test.js test/viewModel.test.js test/viewStats.test.js test/portalSeo.test.js test/ogImage.test.js test/newsletter.test.js test/newsletterDigest.test.js test/noteMarkdown.test.js test/noteController.test.js test/dbBackup.test.js test/backupController.test.js test/timeController.test.js test/integration.realDb.test.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed-demo.js",
+    "db:seed-rich": "node scripts/seed-rich.js",
+    "db:backup": "node scripts/backup.js",
+    "db:restore": "node scripts/restore.js",
+    "test:integration": "node --env-file-if-exists=.env --test test/integration.realDb.test.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "media-typer": "0.3.0",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.5",
+    "nodemailer": "7.0.0",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "mysql": "^2.18.1"
+  }
 }

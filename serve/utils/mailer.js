@@ -75,7 +75,7 @@ function escapeHtml(value) {
  * 发送系统告警邮件。仅 SMTP 与收件人都已配置时真正发送，
  * 其余情况静默降级，避免巡检/备份失败被邮件故障放大。
  */
-async function sendAlertMail({ to, subject, text }) {
+async function sendAlertMail({ to, subject, text, html }) {
     if (!to) return { delivered: false, reason: 'recipient_not_configured' }
     const mailer = getTransporter()
     if (!mailer) return { delivered: false, reason: 'smtp_not_configured' }
@@ -85,8 +85,47 @@ async function sendAlertMail({ to, subject, text }) {
         to,
         subject: String(subject).slice(0, 160),
         text: String(text).slice(0, 3000),
+        html: html ? String(html).slice(0, 12000) : undefined,
     })
     return { delivered: true, development: false }
 }
 
-module.exports = { sendPasswordResetMail, sendAlertMail }
+/**
+ * 发送订阅确认邮件。SMTP 未配置时把确认链接输出到服务端日志，
+ * 便于本地联调，同时不向前端返回任何可用于伪造确认的令牌。
+ */
+async function sendNewsletterConfirmMail({ to, confirmUrl }) {
+    const mailer = getTransporter()
+    if (!mailer) {
+        console.info(`[Mail] SMTP 未配置，订阅确认链接（${to}）：${confirmUrl}`)
+        return { delivered: false, development: true }
+    }
+
+    await mailer.sendMail({
+        from: config.smtp.from,
+        to,
+        subject: '确认订阅「林知雨 · 个人刊物」',
+        text: [
+            '你好：',
+            '',
+            '感谢你愿意读这封持续更新的长信。请打开下面的链接确认订阅：',
+            confirmUrl,
+            '',
+            '链接 48 小时内有效。如果这不是你发起的操作，忽略这封邮件即可，我们不会发送任何内容。',
+        ].join('\n'),
+        html: `
+            <div style="max-width:560px;margin:0 auto;padding:32px;font-family:Arial,sans-serif;color:#222;line-height:1.7">
+                <h2 style="margin:0 0 20px">确认订阅</h2>
+                <p>你好：</p>
+                <p>感谢你愿意读这封持续更新的长信。点击下面的按钮确认订阅，之后有新文章与随笔时会收到摘要。</p>
+                <p style="margin:28px 0">
+                    <a href="${escapeHtml(confirmUrl)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background:#2b5aed;color:#fff;text-decoration:none">确认订阅</a>
+                </p>
+                <p style="color:#666;font-size:13px">链接 48 小时内有效。如果这不是你发起的操作，忽略这封邮件即可。</p>
+            </div>
+        `,
+    })
+    return { delivered: true, development: false }
+}
+
+module.exports = { sendPasswordResetMail, sendAlertMail, sendNewsletterConfirmMail }

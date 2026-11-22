@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ArticleItem } from '../src/api/article.ts'
-import { pickRelatedArticles } from '../src/utils/relatedArticles.ts'
+import { pickRelatedArticles, rankRelatedArticles } from '../src/utils/relatedArticles.ts'
 
 const makeArticle = (overrides: Partial<ArticleItem> & { id: number }): ArticleItem => ({
   userId: 1,
@@ -69,4 +69,34 @@ test('跳过已删除内容并遵守数量上限', () => {
 
   assert.deepEqual(result.map((item) => item.id), [3])
   assert.deepEqual(pickRelatedArticles(current, [makeArticle({ id: 3 })], 0), [])
+})
+
+test('正文相似度能把主题一致但分类不同的文章补进延伸阅读', () => {
+  const current = makeArticle({
+    id: 10,
+    title: '数字花园与双链',
+    introduce: '用双链把笔记连成知识网络',
+    content: '<p>Obsidian 的双链与反向链接实践</p>',
+    label: '知识管理',
+    subsetId: 3,
+  })
+  const hotButUnrelated = makeArticle({
+    id: 11,
+    title: '周末去山里拍照',
+    content: '<p>光线、雾气和一只路过的猫</p>',
+    views: 900,
+  })
+  const textMatch = makeArticle({
+    id: 12,
+    title: '再谈双链笔记',
+    introduce: '知识网络里的反向链接',
+    content: '<p>Obsidian 的双链实践与知识网络</p>',
+  })
+
+  const structured = rankRelatedArticles(current, [hotButUnrelated, textMatch], 1)
+  assert.deepEqual(structured.map((item) => item.id), [11])
+
+  const mixed = rankRelatedArticles(current, [hotButUnrelated, textMatch], 2)
+  assert.deepEqual(mixed.map((item) => item.id), [11, 12])
+  assert.deepEqual(rankRelatedArticles(current, [hotButUnrelated], 0), [])
 })

@@ -150,6 +150,14 @@ const publicMessageLimit = createRateLimit({
     message: '留言过于频繁，请稍后再试',
 })
 
+// 订阅邮件会触发外部 SMTP：按 IP 与控制邮件频率，避免被当成发信入口
+const newsletterSubscribeLimit = createRateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 3,
+    keyGenerator: ipKey,
+    message: '订阅请求过于频繁，请稍后再试',
+})
+
 const aiSuggestLimit = createRateLimit({
     windowMs: 60 * 1000,
     max: 10,
@@ -190,6 +198,7 @@ module.exports = {
     uploadLimit,
     uploadTicketLimit,
     publicMessageLimit,
+    newsletterSubscribeLimit,
     aiSuggestLimit,
     aiAskLimit,
     aiCoverLimit,

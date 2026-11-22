@@ -2,6 +2,8 @@ const config = require('../config/default')
 const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const collectionModel = require('../model/dbModel/collection/index')
+const noteModel = require('../model/dbModel/note/index')
+const { excerptMarkdown } = require('../utils/noteMarkdown')
 
 const SITE_NAME = '林知雨 · 个人刊物'
 const SITE_DESCRIPTION = '林知雨的个人博客，记录代码、摄影与日常。'
@@ -47,11 +49,13 @@ function absoluteUrl(value, origin) {
 }
 
 function itemUrl(origin, kind, id) {
-    const path = kind === 'article'
-        ? '/portal/articles'
-        : kind === 'gallery'
-            ? '/portal/gallery'
-            : '/portal/diary'
+    const paths = {
+        article: '/portal/articles',
+        gallery: '/portal/gallery',
+        diary: '/portal/diary',
+        note: '/portal/notes'
+    }
+    const path = paths[kind] || paths.article
     const url = new URL(path, origin)
     url.searchParams.set('open', String(id))
     return url.toString()
@@ -69,7 +73,7 @@ function resolveOrigin(req) {
     return `${protocol}://${host || 'localhost'}`
 }
 
-function renderSitemap({ origin, articles, diaries, collections, now = new Date() }) {
+function renderSitemap({ origin, articles, diaries, collections, notes, now = new Date() }) {
     const base = String(origin).replace(/\/+$/, '')
     const entries = [
         { loc: `${base}/portal`, lastmod: now.toISOString(), changefreq: 'daily', priority: '1.0' },
@@ -77,6 +81,7 @@ function renderSitemap({ origin, articles, diaries, collections, now = new Date(
         { loc: `${base}/portal/series`, lastmod: now.toISOString(), changefreq: 'weekly', priority: '0.7' },
         { loc: `${base}/portal/gallery`, lastmod: now.toISOString(), changefreq: 'weekly', priority: '0.8' },
         { loc: `${base}/portal/diary`, lastmod: now.toISOString(), changefreq: 'daily', priority: '0.8' },
+        { loc: `${base}/portal/notes`, lastmod: now.toISOString(), changefreq: 'weekly', priority: '0.7' },
         { loc: `${base}/portal/messages`, lastmod: now.toISOString(), changefreq: 'daily', priority: '0.5' }
     ]
 
@@ -110,6 +115,15 @@ function renderSitemap({ origin, articles, diaries, collections, now = new Date(
         })
     }
 
+    for (const note of notes || []) {
+        entries.push({
+            loc: itemUrl(base, 'note', note.id),
+            lastmod: isoDate(note.updatedAt || note.publishedAt) || now.toISOString(),
+            changefreq: 'monthly',
+            priority: '0.6'
+        })
+    }
+
     const urls = entries.map(entry => `  <url>
     <loc>${escapeXml(entry.loc)}</loc>
     <lastmod>${escapeXml(entry.lastmod)}</lastmod>
@@ -123,7 +137,7 @@ ${urls}
 </urlset>`
 }
 
-function renderFeed({ origin, articles, diaries, now = new Date() }) {
+function renderFeed({ origin, articles, diaries, notes, now = new Date() }) {
     const base = String(origin).replace(/\/+$/, '')
     const items = [
         ...(articles || []).map(article => ({
@@ -139,6 +153,13 @@ function renderFeed({ origin, articles, diaries, now = new Date() }) {
             description: excerpt(diary.content),
             publishedAt: diary.createdAt,
             category: '随笔'
+        })),
+        ...(notes || []).map(note => ({
+            title: note.title,
+            link: itemUrl(base, 'note', note.id),
+            description: excerptMarkdown(note.content, 180),
+            publishedAt: note.publishedAt,
+            category: '花园'
         }))
     ]
         .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
@@ -187,6 +208,7 @@ Disallow: /article
 Disallow: /collectionManage
 Disallow: /gallery
 Disallow: /diary
+Disallow: /notes
 Disallow: /setting
 Disallow: /editarticle
 Disallow: /editgallery
@@ -199,17 +221,19 @@ Sitemap: ${base}/sitemap.xml
 
 async function getSitemap(req, res) {
     try {
-        const [articles, diaries, collections] = await Promise.all([
+        const [articles, diaries, collections, notes] = await Promise.all([
             articleModel.listPublishedContentForFeed(5000),
             diaryModel.listPublicDiariesForFeed(5000),
-            collectionModel.findCollections({ publicOnly: true })
+            collectionModel.findCollections({ publicOnly: true }),
+            noteModel.listPublicNotes()
         ])
         res.set('Cache-Control', 'public, max-age=300, s-maxage=600')
         res.type('application/xml').send(renderSitemap({
             origin: resolveOrigin(req),
             articles,
             diaries,
-            collections
+            collections,
+            notes
         }))
     } catch (err) {
         res.status(500).type('text/plain').send(`Sitemap generation failed: ${err.message}`)
@@ -218,15 +242,17 @@ async function getSitemap(req, res) {
 
 async function getFeed(req, res) {
     try {
-        const [articles, diaries] = await Promise.all([
+        const [articles, diaries, notes] = await Promise.all([
             articleModel.listPublishedContentForFeed(FEED_LIMIT),
-            diaryModel.listPublicDiariesForFeed(FEED_LIMIT)
+            diaryModel.listPublicDiariesForFeed(FEED_LIMIT),
+            noteModel.listPublicNotes()
         ])
         res.set('Cache-Control', 'public, max-age=300, s-maxage=600')
         res.type('application/rss+xml').send(renderFeed({
             origin: resolveOrigin(req),
             articles,
-            diaries
+            diaries,
+            notes
         }))
     } catch (err) {
         res.status(500).type('text/plain').send(`RSS generation failed: ${err.message}`)

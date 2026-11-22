@@ -313,3 +313,21 @@ export function getWallMessages(params: { page?: number; pageSize?: number } = {
 export function createWallMessage(content: string) {
   return request.post<ApiResult<{ messageId: number }>>("/portal/message", { content });
 }
+
+// ===== 邮件订阅（双确认：提交后需打开邮件里的确认链接）=====
+export type NewsletterSubscribeStatus = "pending" | "confirmed";
+
+export function subscribeNewsletter(email: string) {
+  return request.post<
+    ApiResult<{ status: NewsletterSubscribeStatus }>
+  >("/newsletter/subscribe", { email, source: "portal" });
+}
+
+export interface NewsletterStatus {
+  emailConfigured: boolean;
+  intervalSeconds: number;
+}
+
+export function getNewsletterStatus() {
+  return request.get<ApiResult<NewsletterStatus>>("/newsletter/status");
+}

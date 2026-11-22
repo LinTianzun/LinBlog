@@ -87,6 +87,8 @@
             <slot />
         </main>
 
+        <PortalNewsletter />
+
         <footer class="portal-foot">
             <div class="foot-inner">
                 <div class="foot-brand">
@@ -126,6 +128,7 @@ import unityLogo from '../../assets/svg/unity.svg'
 import PortalAmbientBackground from './PortalAmbientBackground.vue'
 import { themePresets, findPreset } from '../../utils/themes'
 import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
+import PortalNewsletter from './PortalNewsletter.vue'
 import {
     getVisitorPetPreferences,
     onVisitorPetPreferencesChange,
@@ -149,6 +152,7 @@ const links = [
     { label: '系列', path: '/portal/series' },
     { label: '摄影', path: '/portal/gallery' },
     { label: '随笔', path: '/portal/diary' },
+    { label: '花园', path: '/portal/notes' },
     { label: '留言', path: '/portal/messages' }
 ]
 

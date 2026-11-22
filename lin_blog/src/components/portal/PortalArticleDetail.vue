@@ -179,7 +179,7 @@ import {
     responsiveImageAttrs,
 } from '../../utils/imageOptimization'
 import { prepareArticleContent } from '../../utils/articleReading'
-import { pickRelatedArticles } from '../../utils/relatedArticles'
+import { rankRelatedArticles } from '../../utils/relatedArticles'
 import { portalItemUrl } from '../../utils/portalSeo'
 import {
     getArticleSeries,
@@ -552,7 +552,7 @@ const loadRelatedArticles = async (current: ArticleItem) => {
                 if (item.id !== current.id) pool.set(item.id, item)
             }
         }
-        relatedArticles.value = pickRelatedArticles(current, [...pool.values()], 3)
+        relatedArticles.value = rankRelatedArticles(current, [...pool.values()], 3)
     } catch {
         if (token === relatedToken) relatedArticles.value = []
     } finally {

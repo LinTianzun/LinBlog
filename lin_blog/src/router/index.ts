@@ -38,6 +38,17 @@ const routes = [
         meta: { requiresAuth: false, hideHeader: true },
     },
     {
+        path: '/portal/notes',
+        component: () => import('../views/PortalNotes.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
+        // 邮件里的确认/退订链接落到这里展示结果
+        path: '/portal/newsletter',
+        component: () => import('../views/PortalNewsletterStatus.vue'),
+        meta: { requiresAuth: false, hideHeader: true },
+    },
+    {
         // 未知门户路径对访客可见，不能把 404 访客再送去登录页
         path: '/portal/:pathMatch(.*)*',
         component: NotFound,
@@ -199,6 +210,14 @@ const routes = [
                 }
             },
             {
+                // 数字花园：私人笔记按登录用户隔离，暂不做独立权限位
+                path: 'notes',
+                component: () => import('../views/NoteManageView.vue'),
+                meta: {
+                    requiresAuth: true,
+                }
+            },
+            {
                 path: 'petManage',
                 component: () => import('../views/PetManageView.vue'),
                 // 站点级展示与行为需要 pet.manage；养成状态由本人使用
@@ -300,6 +319,7 @@ router.afterEach((to) => {
         '/draftBox': '草稿箱',
         '/gallery': '摄影图库',
         '/diary': '随笔随记',
+        '/notes': '数字花园',
         '/petManage': '宠物管理',
         '/setting': '系统设置',
         '/loginRegister': '登录',

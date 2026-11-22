@@ -112,7 +112,14 @@ import {
     type CollectionSummary,
 } from '../api/collection'
 import { getPublicArticleById } from '../api/portal'
-import { articleSeoConfig, applyPortalSeo, portalItemUrl, type PortalSeoConfig } from '../utils/portalSeo'
+import {
+    articleSeoConfig,
+    applyPortalSeo,
+    ogImageUrl,
+    portalItemUrl,
+    portalSeriesUrl,
+    type PortalSeoConfig,
+} from '../utils/portalSeo'
 import type { ArticleItem } from '../api/article'
 
 const route = useRoute()
@@ -143,17 +150,16 @@ const seriesSeo = (collection?: CollectionDetail | null): PortalSeoConfig => {
             title: '内容系列',
             description: '按主题串联的文章系列，从第一篇开始顺序阅读。',
             url: new URL('/portal/series', window.location.origin).toString(),
+            image: ogImageUrl('series'),
             type: 'website',
         }
     }
 
-    const url = new URL('/portal/series', window.location.origin)
-    url.searchParams.set('collection', String(collection.id))
     return {
         title: collection.name,
         description: collection.description || `按顺序阅读「${collection.name}」系列。`,
-        url: url.toString(),
-        image: collection.cover || collection.articles[0]?.cover || '',
+        url: portalSeriesUrl(collection.id),
+        image: collection.cover || collection.articles[0]?.cover || ogImageUrl('series', collection.id),
         type: 'website',
     }
 }
