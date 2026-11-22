@@ -250,13 +250,13 @@ test('从待整理页升级成长文并发布后，会回到花园提示补链',
   await expect.poll(() => dialogMessages.join('\n')).toContain('暂存在本机的未发布草稿')
   await expect(page.locator('.forms-title')).toHaveValue(NOTE_TITLE)
 
+  // 发布请求可能在点击后立刻发出，用响应判断完成而不是先 click 再等请求
+  const published = page.waitForResponse(response =>
+    response.request().method() === 'PATCH'
+    && /\/api\/article\/\d+\/status$/.test(new URL(response.url()).pathname)
+  , { timeout: 20_000 })
   await page.getByRole('button', { name: '发布', exact: true }).click()
-
-  const publishRequest = page.waitForRequest(request =>
-    request.method() === 'PATCH'
-    && /\/api\/article\/\d+\/status$/.test(new URL(request.url()).pathname)
-  )
-  await publishRequest
+  await published
 
   expect(createdBodies).toHaveLength(1)
   expect(createdBodies[0].sourceNoteId).toBe(NOTE_ID)

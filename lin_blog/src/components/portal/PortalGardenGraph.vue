@@ -73,6 +73,55 @@
             </svg>
         </div>
 
+        <!-- 花园体检：从计数升级成「该连哪篇、哪些还没接上」，点孤岛可直接开新笔记 -->
+        <section v-if="nodes.length" class="graph-insights" aria-label="花园体检">
+            <div class="insight-card insight-hubs">
+                <p class="insight-label">HUBS · 从枢纽开始逛</p>
+                <p v-if="!hubs.length" class="insight-empty">还没有双链，先写下第一篇带 <code>[[标题]]</code> 的笔记。</p>
+                <template v-else>
+                    <p class="insight-copy">被引用最多的几篇，适合当作进入花园的入口。</p>
+                    <ul>
+                        <li v-for="(hub, i) in hubs" :key="hub.id">
+                            <span class="hub-rank">{{ i + 1 }}</span>
+                            <button type="button" class="hub-link" :class="{ 'is-active': focusId === hub.id }"
+                                @click="focusHub(hub.id)">
+                                {{ hub.title }}
+                            </button>
+                            <span class="hub-meta">{{ hub.incomingLinks }} 被引 · {{ hub.outgoingLinks }} 出链</span>
+                        </li>
+                    </ul>
+                </template>
+            </div>
+
+            <div class="insight-card insight-orphans">
+                <p class="insight-label">ORPHANS · 还没接上的想法</p>
+                <p v-if="!orphans.length" class="insight-empty is-ok">每篇笔记都至少有一条双链。</p>
+                <template v-else>
+                    <p class="insight-copy">
+                        {{ orphans.length }} 篇没有进出双链。挑一篇，用它的标题在新笔记里写下
+                        <code>[[{{ orphans[0].title }}]]</code> 就能接上。
+                    </p>
+                    <div class="orphan-actions">
+                        <button v-for="orphan in orphans.slice(0, 3)" :key="orphan.id" type="button"
+                            class="orphan-chip" @click="emit('open-note', orphan.id)">
+                            {{ orphan.title }}
+                        </button>
+                        <router-link class="orphan-write" :to="orphanDraftTarget">
+                            挑「{{ orphans[0].title }}」写新笔记
+                            <IconRightOutline />
+                        </router-link>
+                    </div>
+                    <button type="button" class="orphan-copy" @click="copyFirstTitle">
+                        {{ copied ? '已复制双链语法' : '复制双链语法' }}
+                    </button>
+                </template>
+            </div>
+
+            <p class="insight-foot">
+                孤岛不会被读者发现。挑一篇写下去，用 <code>[[标题]]</code> 把它接回主网。
+            </p>
+        </section>
+
         <footer class="graph-foot">
             <div class="graph-legend" aria-hidden="true">
                 <span class="legend-dot is-strong" /> 常被引用
@@ -95,9 +144,11 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { IconRightOutline } from '@yike-design/ui/es/components/svg-icon'
 import { getPublicGardenGraph, type GardenGraph } from '../../api/note'
 import {
     fitViewBox,
+    gardenInsights,
     highlightNeighbors,
     layoutGraph,
     topLinkedNodes,
@@ -207,6 +258,36 @@ const renderedEdges = computed(() => edges.value.map(edge => {
 }).filter((edge): edge is NonNullable<typeof edge> => edge !== null))
 
 const topNodes = computed(() => topLinkedNodes(nodes.value, 6))
+
+// 枢纽/孤岛都按边列表算，和图里画出的线保持同一口径
+const insights = computed(() => gardenInsights(graph.value.nodes, graph.value.edges))
+const hubs = computed(() => insights.value.hubs)
+const orphans = computed(() => insights.value.orphans)
+
+const copied = ref(false)
+
+const focusHub = (id: number) => {
+    pinnedId.value = pinnedId.value === id ? null : id
+}
+
+// 编辑器支持用 ?keyword= 预填标题，孤岛标题直接变成新笔记的起点
+const orphanDraftTarget = computed(() => {
+    const orphan = orphans.value[0]
+    if (!orphan) return '/editarticle'
+    return { path: '/editarticle', query: { keyword: `${orphan.title}的延伸` } }
+})
+
+const copyFirstTitle = async () => {
+    const orphan = orphans.value[0]
+    if (!orphan) return
+    try {
+        await navigator.clipboard.writeText(`[[${orphan.title}]]`)
+        copied.value = true
+        window.setTimeout(() => { copied.value = false }, 1600)
+    } catch {
+        // 剪贴板不可用时保持原文案，作者仍可按提示手写
+    }
+}
 
 // 过长的中文标题在节点下方只显示前 12 个字，完整标题在 aria-label 与列表里
 const shortTitle = (title: string): string => (
@@ -515,11 +596,202 @@ onMounted(() => {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-top: 10px;
-    padding-top: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
     border-top: 1px solid var(--portal-line-soft);
     color: var(--portal-text-tertiary);
     font-size: 11px;
+}
+
+.graph-insights {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    align-items: stretch;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.insight-card {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
+    border: 1px solid var(--portal-line-soft);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--portal-surface) 72%, transparent);
+}
+
+.insight-label {
+    margin: 0 0 10px;
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+}
+
+.insight-copy {
+    margin: 0 0 10px;
+    color: var(--portal-text-secondary);
+    font-size: 12px;
+    line-height: 1.75;
+
+    code,
+    .insight-empty code {
+        padding: 1px 5px;
+        border-radius: 5px;
+        background: var(--portal-accent-soft);
+        color: var(--portal-accent);
+        font-size: 11px;
+    }
+}
+
+.insight-empty {
+    margin: 0;
+    color: var(--portal-text-tertiary);
+    font-size: 12px;
+    line-height: 1.75;
+
+    &.is-ok {
+        color: var(--portal-accent);
+    }
+
+    code {
+        padding: 1px 5px;
+        border-radius: 5px;
+        background: var(--portal-accent-soft);
+        color: var(--portal-accent);
+        font-size: 11px;
+    }
+}
+
+.insight-hubs ul {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+}
+
+.hub-rank {
+    flex: 0 0 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--portal-accent-soft);
+    color: var(--portal-accent);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+}
+
+.hub-link {
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--portal-text-primary);
+    font-size: 12.5px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover,
+    &.is-active {
+        color: var(--portal-accent);
+    }
+}
+
+.hub-meta {
+    flex: none;
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.orphan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.orphan-chip {
+    max-width: 160px;
+    overflow: hidden;
+    padding: 4px 10px;
+    border: 1px solid var(--portal-line-soft);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--portal-text-secondary);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--portal-accent);
+        color: var(--portal-accent);
+    }
+}
+
+.orphan-write {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
+    font-size: 11px;
+    text-decoration: none;
+    transition: filter 0.18s ease;
+
+    &:hover {
+        filter: brightness(1.08);
+    }
+}
+
+.orphan-copy {
+    margin-top: 8px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--portal-text-tertiary);
+    font-size: 11px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--portal-accent);
+    }
+}
+
+// 底部说明横跨两列，孤岛卡片短的时候也不留下空洞
+.insight-foot {
+    grid-column: 1 / -1;
+    margin: 2px 0 0;
+    color: var(--portal-text-tertiary);
+    font-size: 11px;
+    line-height: 1.7;
+
+    code {
+        padding: 1px 5px;
+        border-radius: 5px;
+        background: var(--portal-accent-soft);
+        color: var(--portal-accent);
+        font-size: 10px;
+    }
 }
 
 .graph-legend {
@@ -587,6 +859,10 @@ onMounted(() => {
     .graph-head {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .graph-insights {
+        grid-template-columns: 1fr;
     }
 }
 </style>

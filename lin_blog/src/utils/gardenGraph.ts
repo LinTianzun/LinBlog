@@ -240,3 +240,63 @@ export function topLinkedNodes(nodes: LayoutNode[], limit = 6): LayoutNode[] {
     .sort((a, b) => b.degree - a.degree || b.incomingLinks - a.incomingLinks || a.id - b.id)
     .slice(0, limit)
 }
+
+export interface GardenHub {
+  id: number
+  title: string
+  degree: number
+  incomingLinks: number
+  outgoingLinks: number
+}
+
+/**
+ * 花园体检：按真实边列表统计。
+ * 不能用节点上的计数直接推断孤岛——计数和后端边的口径可能不同，
+ * 这里统一以 edges 为准，保证列表里点进图谱看到的是同一张网。
+ */
+export function gardenInsights(
+  nodes: GraphInputNode[],
+  edges: GraphInputEdge[]
+): { hubs: GardenHub[]; orphans: GardenHub[] } {
+  const degree = new Map<number, { incoming: number; outgoing: number }>()
+  for (const node of nodes) {
+    degree.set(Number(node.id), { incoming: 0, outgoing: 0 })
+  }
+  const seenOut = new Set<string>()
+  for (const edge of edges) {
+    const source = Number(edge.source)
+    const target = Number(edge.target)
+    if (source === target) continue
+    const from = degree.get(source)
+    const to = degree.get(target)
+    if (!from || !to) continue
+    // 同一对笔记之间只写了一条双链，不把重复的引用算成多条边
+    const key = `${source}>${target}`
+    if (seenOut.has(key)) continue
+    seenOut.add(key)
+    from.outgoing += 1
+    to.incoming += 1
+  }
+
+  const rows: GardenHub[] = nodes.map(node => {
+    const id = Number(node.id)
+    const links = degree.get(id) || { incoming: 0, outgoing: 0 }
+    return {
+      id,
+      title: node.title,
+      degree: links.incoming + links.outgoing,
+      incomingLinks: links.incoming,
+      outgoingLinks: links.outgoing,
+    }
+  })
+
+  const hubs = rows
+    .filter(row => row.degree > 0)
+    .sort((a, b) => b.incomingLinks - a.incomingLinks || b.degree - a.degree || a.id - b.id)
+    .slice(0, 3)
+  const orphans = rows
+    .filter(row => row.degree === 0)
+    .sort((a, b) => a.title.localeCompare(b.title) || a.id - b.id)
+
+  return { hubs, orphans }
+}

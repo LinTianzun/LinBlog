@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
     createRandom,
     fitViewBox,
+    gardenInsights,
     graphBounds,
     highlightNeighbors,
     layoutGraph,
@@ -92,4 +93,32 @@ test('常被引用按度数排序，忽略孤立节点', () => {
     )
     const top = topLinkedNodes(laidOut, 2)
     assert.deepEqual(top.map(node => node.id), [2, 1])
+})
+
+test('花园体检以边列表为准统计枢纽与孤岛', () => {
+    const { hubs, orphans } = gardenInsights(
+        [
+            ...nodes,
+            { id: 4, title: '孤岛', incomingLinks: 3 },
+            { id: 5, title: '另一座孤岛' },
+        ],
+        // 重复边与自环都不能把引用数算多
+        [...edges, { source: 1, target: 2 }, { source: 3, target: 3 }]
+    )
+
+    // 1 → 2 / 1 → 3 / 2 → 1 / 1 → 2（重复边）：1 被 2 引用且出链最多，是这张网的中心
+    assert.deepEqual(hubs.map(hub => [hub.id, hub.incomingLinks, hub.degree]), [
+        [1, 1, 3],
+        [2, 1, 2],
+        [3, 1, 1],
+    ])
+    // 孤岛按真实边判断：节点计数写着 3 条入链，但没有边指向它
+    assert.deepEqual(orphans.map(node => node.id), [4, 5])
+})
+
+test('没有双链时所有笔记都是孤岛，枢纽为空', () => {
+    const { hubs, orphans } = gardenInsights(nodes, [])
+    assert.deepEqual(hubs, [])
+    // 孤岛按标题排序，方便作者在列表里扫读
+    assert.deepEqual(orphans.map(node => node.title).sort(), ['入口', '双链', '花园'].sort())
 })
