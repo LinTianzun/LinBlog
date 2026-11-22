@@ -91,6 +91,68 @@
                 </div>
             </section>
 
+            <!-- 零结果搜索反哺选题：缺口直接开写，失配去补叫法或双链 -->
+            <section class="insight-card insight-gap-card" aria-labelledby="insight-gap-title">
+                <header class="insight-card-head">
+                    <div>
+                        <span class="insight-section-kicker">TOPIC GAPS</span>
+                        <h3 id="insight-gap-title">零结果搜索变成选题</h3>
+                        <p class="insight-card-desc">
+                            访客搜了却没有结果，说明这里可能有内容缺口，也可能只是叫法不一致。
+                            已和站内标题、简介、标签做过匹配：没有相关内容的直接开写，已有相近内容的补一段说明或加双链。
+                        </p>
+                    </div>
+                    <div v-if="gapSummary" class="insight-gap-meter" aria-label="选题状态分布">
+                        <span class="is-gap">{{ gapSummary.gap }} 缺口</span>
+                        <span class="is-weak">{{ gapSummary.weak }} 待补</span>
+                        <span class="is-matched">{{ gapSummary.matched }} 已有</span>
+                    </div>
+                </header>
+
+                <ul v-if="topicGaps.length" class="gap-list">
+                    <li v-for="item in topicGaps" :key="item.keyword" class="gap-row" :class="`is-${item.status}`">
+                        <div class="gap-main">
+                            <div class="gap-title-line">
+                                <span class="gap-status">{{ gapStatusLabel[item.status] }}</span>
+                                <strong class="gap-keyword">{{ item.keyword }}</strong>
+                                <span class="gap-count">{{ item.zeroResults }} 次无结果 / 共 {{ item.searches }} 次</span>
+                            </div>
+
+                            <p class="gap-action">{{ gapActionText(item) }}</p>
+
+                            <div v-if="item.related.length" class="gap-related">
+                                <span class="gap-related-label">站内相近</span>
+                                <RouterLink v-for="rel in item.related" :key="`${rel.kind}-${rel.id}`"
+                                    class="gap-related-item" :to="relatedLink(rel)" target="_blank" rel="noopener"
+                                    :title="`相似度 ${Math.round(rel.score * 100)}%`">
+                                    <span class="gap-related-kind">{{ rel.kind === 'note' ? '花园' : '文章' }}</span>
+                                    {{ rel.title }}
+                                </RouterLink>
+                            </div>
+                        </div>
+
+                        <div class="gap-tools">
+                            <RouterLink v-if="item.status === 'gap'" class="gap-tool is-primary"
+                                :to="draftLink(item.keyword)">
+                                按此题新建文章
+                            </RouterLink>
+                            <RouterLink v-else class="gap-tool"
+                                :to="{ path: '/portal/articles', query: { keyword: item.keyword } }"
+                                target="_blank" rel="noopener">
+                                看访客看到的结果
+                            </RouterLink>
+                            <button type="button" class="gap-tool" @click="copyKeyword(item.keyword)">
+                                复制关键词
+                            </button>
+                        </div>
+                    </li>
+                </ul>
+                <div v-else class="insight-empty">
+                    <strong>没有零结果搜索</strong>
+                    <p>当前周期内访客都能搜到内容。出现无结果的关键词后会自动出现在这里。</p>
+                </div>
+            </section>
+
             <div class="insight-grid">
                 <section class="insight-card" aria-label="热门搜索词">
                     <header class="insight-card-head">
@@ -164,15 +226,24 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import TopTitle from '../components/bar/TopTitle.vue'
-import { getSiteEventStats, type SiteEventStats } from '../api/siteAnalytics'
+import {
+    getSiteEventStats,
+    type SiteEventStats,
+    type TopicGap,
+    type TopicGapRelated,
+} from '../api/siteAnalytics'
 
 const periodOptions = [7, 30, 90]
 const days = ref(7)
 const stats = ref<SiteEventStats | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
+
+const proxy = getCurrentInstance()?.proxy as {
+    $message?: (options: { type: 'primary' | 'warning' | 'error'; message: string }) => void
+} | null | undefined
 
 const overviewTitle = computed(() => {
     if (!stats.value) return '正在读取站点洞察'
@@ -208,6 +279,49 @@ const maxNotFoundHits = computed(() => {
     const paths = stats.value?.notFoundPaths || []
     return Math.max(1, ...paths.map(item => item.hits))
 })
+
+const topicGaps = computed(() => stats.value?.topicGaps || [])
+
+const gapSummary = computed(() => {
+    const summary = stats.value?.summary.topicGaps
+    if (!summary || summary.total === 0) return null
+    return summary
+})
+
+const gapStatusLabel: Record<TopicGap['status'], string> = {
+    gap: '内容缺口',
+    weak: '叫法可能不一致',
+    matched: '站内已有',
+}
+
+const gapActionText = (item: TopicGap): string => {
+    if (item.status === 'gap') {
+        return '站内没有相近内容。可以直接用这个标题写一篇，或先写一段花园笔记把概念界定清楚。'
+    }
+    const first = item.related[0]
+    if (item.status === 'matched' && first) {
+        return `站内已有《${first.title}》高度相关：访客可能只是用词不同，或搜的是文章正文里的片段。可以补一段这个叫法的说明，或加同义词，让搜索更容易命中。`
+    }
+    return '只有一点相关内容。建议补一段解释这个叫法，或在相近笔记里加一条指向它的双链，把这条路径接通。'
+}
+
+const relatedLink = (item: TopicGapRelated) =>
+    item.kind === 'note'
+        ? { path: '/portal/notes', query: { open: String(item.id) } }
+        : { path: '/portal/articles', query: { open: String(item.id) } }
+
+// 新建文章页会读取 query.keyword 预填标题，避免手动复制
+const draftLink = (keyword: string) =>
+    ({ path: '/editarticle', query: { keyword } })
+
+const copyKeyword = async (keyword: string): Promise<void> => {
+    try {
+        await navigator.clipboard.writeText(keyword)
+        proxy?.$message?.({ type: 'primary', message: `已复制：${keyword}` })
+    } catch {
+        proxy?.$message?.({ type: 'warning', message: `复制失败，请手动输入：${keyword}` })
+    }
+}
 
 const meterWidth = (value: number, max: number): number => {
     if (value <= 0) return 0
@@ -646,6 +760,209 @@ onMounted(() => {
     gap: 12px;
 }
 
+.insight-card-desc {
+    max-width: 720px;
+    margin: 6px 0 0;
+    color: var(--gray6);
+    font-size: 11px;
+    line-height: 1.75;
+}
+
+.insight-gap-card {
+    background:
+        radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--orange) 8%, transparent), transparent 32%),
+        var(--bgColor1);
+}
+
+.insight-gap-meter {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+
+    span {
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 650;
+
+        &.is-gap {
+            color: var(--orange);
+            background: color-mix(in srgb, var(--orange) 12%, transparent);
+        }
+
+        &.is-weak {
+            color: var(--pcolor);
+            background: var(--pcolor1);
+        }
+
+        &.is-matched {
+            color: var(--green);
+            background: color-mix(in srgb, var(--green) 12%, transparent);
+        }
+    }
+}
+
+.gap-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gap-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--insight-line);
+    border-left-width: 3px;
+    border-radius: 12px;
+    background: var(--insight-soft);
+
+    &.is-gap {
+        border-left-color: var(--orange);
+    }
+
+    &.is-weak {
+        border-left-color: var(--pcolor);
+    }
+
+    &.is-matched {
+        border-left-color: var(--green);
+    }
+}
+
+.gap-main {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.gap-title-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.gap-status {
+    padding: 1px 7px;
+    border-radius: 5px;
+    color: var(--gray6);
+    background: color-mix(in srgb, var(--gray2) 76%, transparent);
+    font-size: 9px;
+    font-weight: 650;
+
+    .is-gap & {
+        color: var(--orange);
+        background: color-mix(in srgb, var(--orange) 12%, transparent);
+    }
+
+    .is-matched & {
+        color: var(--green);
+        background: color-mix(in srgb, var(--green) 12%, transparent);
+    }
+
+}
+
+.gap-keyword {
+    overflow: hidden;
+    color: var(--gray);
+    font-size: 14px;
+    text-overflow: ellipsis;
+}
+
+.gap-count {
+    color: var(--gray6);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.gap-action {
+    margin: 0;
+    color: var(--gray6);
+    font-size: 11px;
+    line-height: 1.7;
+}
+
+.gap-related {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+
+    &-label {
+        color: var(--gray6);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+    }
+
+    &-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        max-width: 22em;
+        overflow: hidden;
+        padding: 2px 9px;
+        border: 1px solid var(--insight-line);
+        border-radius: 999px;
+        color: var(--gray8);
+        background: var(--bgColor1);
+        font-size: 11px;
+        text-decoration: none;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:hover {
+            border-color: var(--pcolor3);
+            color: var(--pcolor);
+        }
+    }
+
+    &-kind {
+        flex: none;
+        color: var(--pcolor);
+        font-size: 9px;
+    }
+}
+
+.gap-tools {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gap-tool {
+    padding: 5px 11px;
+    border: 1px solid var(--insight-line);
+    border-radius: 8px;
+    color: var(--gray8);
+    background: var(--bgColor1);
+    font: inherit;
+    font-size: 10px;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--pcolor3);
+        color: var(--pcolor);
+    }
+
+    &.is-primary {
+        border-color: transparent;
+        color: #fff;
+        background: var(--pcolor);
+    }
+}
 .insight-rank-list {
     display: flex;
     flex-direction: column;
@@ -801,6 +1118,20 @@ onMounted(() => {
 }
 
 @media (max-width: 680px) {
+    .gap-row {
+        flex-direction: column;
+    }
+
+    .gap-tools {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+
+        .gap-tool {
+            flex: 1;
+        }
+    }
+
     .insight-hero {
         flex-direction: column;
         align-items: flex-start;

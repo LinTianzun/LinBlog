@@ -105,6 +105,8 @@ test('recordNotFoundEvent rejects invalid external paths', async () => {
 
 test('site event stats fill the requested trend window', async () => {
     const originalStats = model.getStats
+    const originalZero = model.getZeroResultTerms
+    const originalCorpus = model.listContentTitles
     // 趋势窗口以“今天”为终点，用例不能写死日期，否则跨天就会失败
     const today = new Date()
     const todayLabel = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -123,6 +125,13 @@ test('site event stats fill the requested trend window', async () => {
         notFoundPaths: [],
         trend: [{ date: todayLabel, searches: 5, notFound: 2 }]
     })
+    model.getZeroResultTerms = async () => [
+        { keyword: 'Rust 所有权', searches: 3, zeroResults: 3, lastAt: null },
+        { keyword: 'Vue 响应式原理', searches: 2, zeroResults: 1, lastAt: null }
+    ]
+    model.listContentTitles = async () => [
+        { id: 1, kind: 'article', title: 'Vue 响应式原理', description: '依赖收集', labels: ['Vue'] }
+    ]
 
     try {
         const res = createRes()
@@ -136,7 +145,15 @@ test('site event stats fill the requested trend window', async () => {
             searches: 5,
             notFound: 2
         })
+        // 零结果词按内容匹配分出缺口与失配，缺口排前面
+        assert.equal(res.body.data.topicGaps.length, 2)
+        assert.equal(res.body.data.topicGaps[0].keyword, 'Rust 所有权')
+        assert.equal(res.body.data.topicGaps[0].status, 'gap')
+        assert.equal(res.body.data.topicGaps[1].related[0].id, 1)
+        assert.deepEqual(res.body.data.summary.topicGaps, { total: 2, gap: 1, weak: 0, matched: 1 })
     } finally {
         model.getStats = originalStats
+        model.getZeroResultTerms = originalZero
+        model.listContentTitles = originalCorpus
     }
 })

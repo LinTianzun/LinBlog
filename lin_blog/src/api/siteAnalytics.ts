@@ -21,6 +21,26 @@ export interface SiteNotFoundPath {
   lastAt: string | null
 }
 
+export type TopicGapStatus = 'gap' | 'weak' | 'matched'
+
+export interface TopicGapRelated {
+  id: number
+  kind: 'article' | 'note'
+  title: string
+  score: number
+}
+
+// 零结果搜索词与既有内容的匹配结果：缺口 / 失配 / 已有
+export interface TopicGap {
+  keyword: string
+  searches: number
+  zeroResults: number
+  lastAt: string | null
+  status: TopicGapStatus
+  bestScore: number
+  related: TopicGapRelated[]
+}
+
 export interface SiteEventStats {
   generatedAt: string
   days: number
@@ -33,9 +53,11 @@ export interface SiteEventStats {
     semanticSearches: number
     notFound: number
     uniqueNotFoundPaths: number
+    topicGaps?: { total: number; gap: number; weak: number; matched: number }
   }
   searchTerms: SiteSearchTerm[]
   notFoundPaths: SiteNotFoundPath[]
+  topicGaps?: TopicGap[]
   trend: SiteTrendPoint[]
 }
 

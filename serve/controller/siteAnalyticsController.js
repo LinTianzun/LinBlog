@@ -1,4 +1,5 @@
 const siteAnalyticsModel = require('../model/dbModel/siteAnalytics/index')
+const { buildTopicGaps, summarizeTopicGaps } = require('../utils/topicGaps')
 
 const MAX_RESULT_COUNT = 1_000_000
 
@@ -88,7 +89,13 @@ async function getSiteEventStats(req, res) {
     try {
         const days = siteAnalyticsModel.normalizeDays(req.query?.days)
         const limit = siteAnalyticsModel.normalizeLimit(req.query?.limit)
-        const data = await siteAnalyticsModel.getStats(days, limit)
+        const [data, zeroRows, corpus] = await Promise.all([
+            siteAnalyticsModel.getStats(days, limit),
+            siteAnalyticsModel.getZeroResultTerms(days),
+            siteAnalyticsModel.listContentTitles()
+        ])
+        // 零结果词不占热门榜名额：单独聚合后与已有内容比对，得到「缺口 / 失配 / 已有」
+        const topicGaps = buildTopicGaps(zeroRows, corpus, { limit })
         const semanticSearches = data.summary.semanticSearches
 
         return res.json({
@@ -99,8 +106,10 @@ async function getSiteEventStats(req, res) {
                 generatedAt: new Date().toISOString(),
                 summary: {
                     ...data.summary,
-                    standardSearches: Math.max(data.summary.searches - semanticSearches, 0)
+                    standardSearches: Math.max(data.summary.searches - semanticSearches, 0),
+                    topicGaps: summarizeTopicGaps(topicGaps)
                 },
+                topicGaps,
                 trend: buildTrend(data.trend, days)
             }
         })
@@ -114,6 +123,7 @@ module.exports = {
     normalizeSearchEvent,
     normalizeNotFoundPath,
     buildTrend,
+    buildTopicGaps,
     recordSearchEvent,
     recordNotFoundEvent,
     getSiteEventStats

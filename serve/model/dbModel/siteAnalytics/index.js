@@ -127,6 +127,81 @@ async function getStats(days = DEFAULT_STATS_DAYS, limit = DEFAULT_LIMIT) {
     }
 }
 
+/**
+ * 零结果搜索词：与统计周期一致，但只取「至少一次没有结果」的词。
+ * 单独查询，避免热门词榜挤掉低频但真实存在的缺口。
+ */
+async function getZeroResultTerms(days = DEFAULT_STATS_DAYS, limit = MAX_LIMIT) {
+    const safeDays = normalizeDays(days)
+    const safeLimit = normalizeLimit(limit)
+    const windowStart = 'DATE_SUB(CURDATE(), INTERVAL ? - 1 DAY)'
+    const rows = await query(
+        `SELECT keyword,
+                COUNT(*) AS searches,
+                SUM(CASE WHEN result_count = 0 THEN 1 ELSE 0 END) AS zeroResults,
+                MAX(created_at) AS lastAt
+           FROM site_event
+          WHERE event_type = 'search'
+            AND created_at >= ${windowStart}
+          GROUP BY keyword
+         HAVING zeroResults > 0
+          ORDER BY zeroResults DESC, searches DESC, lastAt DESC
+          LIMIT ?`,
+        [safeDays, safeLimit]
+    )
+    return rows.map(row => ({
+        keyword: String(row.keyword || ''),
+        searches: Number(row.searches) || 0,
+        zeroResults: Number(row.zeroResults) || 0,
+        lastAt: row.lastAt || null
+    }))
+}
+
+/**
+ * 选题缺口需要和已有内容做匹配：只取标题、简介、标签，
+ * 不拉全文，避免站点变大后一次查询拖慢站点洞察。
+ */
+async function listContentTitles(limit = 2000) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 2000, 1), 5000)
+    const [articleRows, noteRows] = await Promise.all([
+        query(
+            `SELECT id, title, introduce, label
+               FROM article
+              WHERE state = 'published' AND classify = 'article'
+              ORDER BY updated_at DESC, id DESC
+              LIMIT ?`,
+            [safeLimit]
+        ),
+        query(
+            `SELECT id, title, content
+               FROM note
+              WHERE state = 'published'
+              ORDER BY updated_at DESC, id DESC
+              LIMIT ?`,
+            [safeLimit]
+        )
+    ])
+    return [
+        ...articleRows.map(row => ({
+            id: Number(row.id),
+            kind: 'article',
+            title: String(row.title || ''),
+            description: String(row.introduce || ''),
+            labels: String(row.label || '')
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean)
+        })),
+        ...noteRows.map(row => ({
+            id: Number(row.id),
+            kind: 'note',
+            title: String(row.title || ''),
+            description: String(row.content || '').slice(0, 300),
+            labels: []
+        }))
+    ].filter(item => item.title)
+}
+
 async function pruneEvents(days = RETENTION_DAYS, batchSize = 1000) {
     const retentionDays = Number.isSafeInteger(days) && days > 0 ? days : RETENTION_DAYS
     const size = Number.isSafeInteger(batchSize) && batchSize > 0 ? batchSize : 1000
@@ -156,5 +231,7 @@ module.exports = {
     recordSearch,
     recordNotFound,
     getStats,
+    getZeroResultTerms,
+    listContentTitles,
     pruneEvents
 }

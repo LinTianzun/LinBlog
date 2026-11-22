@@ -278,8 +278,10 @@ const stateColor = computed(() => {
 const initialForm = computed<Partial<ArticleFormData>>(() => {
     const source = loadedCopy.value
     if (!source) {
+        // 从站点洞察的选题清单点「按此题新建文章」时，用搜索词预填标题
+        const seededKeyword = typeof route.query.keyword === 'string' ? route.query.keyword.trim() : ''
         return {
-            title: '',
+            title: seededKeyword.slice(0, 150),
             subsetId: undefined,
             label: [],
             introduce: '',
