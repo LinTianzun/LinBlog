@@ -12,15 +12,28 @@
 
             <div class="garden-prose" v-html="note.html" @click="handleProseClick" />
 
-            <section v-if="note.backlinks?.length" class="garden-backlinks" aria-label="反向链接">
-                <p class="backlinks-label">指向这里的笔记 · {{ note.backlinks.length }}</p>
-                <ul>
-                    <li v-for="item in note.backlinks" :key="item.id">
-                        <button type="button" class="backlink" @click="$emit('open-note', item.id)">
-                            {{ item.title }}
-                        </button>
-                    </li>
-                </ul>
+            <!-- 双向浏览：出发链接告诉你这一篇通往哪里，反向链接告诉你从哪来 -->
+            <section v-if="note.outgoing?.length || note.backlinks?.length" class="garden-links" aria-label="双链">
+                <div v-if="note.outgoing?.length" class="garden-links-col">
+                    <p class="backlinks-label">这一篇通向 · {{ note.outgoing.length }}</p>
+                    <ul>
+                        <li v-for="item in note.outgoing" :key="item.id">
+                            <button type="button" class="backlink" @click="$emit('open-note', item.id)">
+                                {{ item.title }}
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <div v-if="note.backlinks?.length" class="garden-links-col">
+                    <p class="backlinks-label">指向这里的笔记 · {{ note.backlinks.length }}</p>
+                    <ul>
+                        <li v-for="item in note.backlinks" :key="item.id">
+                            <button type="button" class="backlink" @click="$emit('open-note', item.id)">
+                                {{ item.title }}
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </section>
 
             <!-- 没有双链但主题相近的笔记：补上「顺着想法走」的另一条路径 -->
@@ -215,6 +228,23 @@ const handleProseClick = (event: MouseEvent) => {
 .garden-backlinks {
     padding-top: 18px;
     border-top: 1px solid var(--portal-line-soft);
+}
+
+.garden-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px 32px;
+    padding-top: 18px;
+    border-top: 1px solid var(--portal-line-soft);
+
+    &-col ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
 }
 
 .backlinks-label {

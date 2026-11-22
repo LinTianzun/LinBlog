@@ -18,12 +18,12 @@
                             <component :is="item.icon" />
                         </span>
                         <span class="menu-bar-name">{{ item.name }}</span>
-                        <router-link v-if="item.path === 'notes' && noLinkCount > 0" class="menu-bar-badge is-warn"
+                        <router-link v-if="item.path === '/notes' && noLinkCount > 0" class="menu-bar-badge is-warn"
                             to="/notes/tidy" :aria-label="`${noLinkCount} 篇笔记还没有双链，打开待整理清单`"
                             :title="`${noLinkCount} 篇笔记还没有双链`" @click.stop>
                             {{ noLinkCount > 99 ? '99+' : noLinkCount }}
                         </router-link>
-                        <span v-if="item.path === 'reportedComments' && pendingReportCount > 0"
+                        <span v-if="item.path === '/reportedComments' && pendingReportCount > 0"
                             class="menu-bar-badge" :aria-label="`${pendingReportCount} 条待处理举报`">
                             {{ pendingReportBadge }}
                         </span>
@@ -59,7 +59,7 @@ const pendingReportCount = ref(0)
 const noLinkCount = ref(0)
 
 const isActive = (path: string): boolean => {
-    const target = `/${path}`
+    const target = path.startsWith('/') ? path : `/${path}`
     return route.path === target || route.path.startsWith(`${target}/`)
 }
 
@@ -111,15 +111,15 @@ const menuGroups = computed(() => {
         {
             label: '运营',
             // 权限管理紧跟用户管理：同一入口组，超级管理员改完矩阵能立刻回用户列表看成员
-            paths: ['overView', 'contentHealth', 'siteInsights', 'userManagement', 'permissionManagement', 'reportedComments', 'messages', 'systemLog', 'aiManage', 'aiPrompt'],
+            paths: ['/overView', '/contentHealth', '/siteInsights', '/userManagement', '/permissionManagement', '/reportedComments', '/messages', '/systemLog', '/aiManage', '/aiPrompt'],
         },
         {
             label: '内容',
-            paths: ['localfile', 'article', 'draftBox', 'collectionManage', 'scheduledPublish', 'gallery', 'diary', 'notes'],
+            paths: ['/localfile', '/article', '/draftBox', '/collectionManage', '/scheduledPublish', '/gallery', '/diary', '/notes'],
         },
         {
             label: '系统',
-            paths: ['petManage', 'setting'],
+            paths: ['/petManage', '/setting'],
         },
     ]
 

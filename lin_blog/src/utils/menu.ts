@@ -8,102 +8,102 @@ export interface MenuItem {
 // 全部菜单：管理员使用
 export const navLinks: MenuItem[] = [
     {
-        path: 'overView',
+        path: '/overView',
         name: '系统总览',
         icon: 'IconHomepageFill'
     },
     {
-        path: 'contentHealth',
+        path: '/contentHealth',
         name: '内容健康',
         icon: 'IconCircleCheckOutline'
     },
     {
-        path: 'siteInsights',
+        path: '/siteInsights',
         name: '站点洞察',
         icon: 'IconSearchOutline'
     },
     {
-        path: 'userManagement',
+        path: '/userManagement',
         name: '用户管理',
         icon: 'IconAvatarFill'
     },
     {
-        path: 'permissionManagement',
+        path: '/permissionManagement',
         name: '权限管理',
         icon: 'IconSecurityOutline'
     },
     {
-        path: 'systemLog',
+        path: '/systemLog',
         name: '系统日志',
         icon: 'IconStatisticsFill'
     },
     {
-        path: 'aiManage',
+        path: '/aiManage',
         name: 'AI 管理',
         icon: 'IconPaintBrushFill'
     },
     {
-        path: 'aiPrompt',
+        path: '/aiPrompt',
         name: '提示词模板',
         icon: 'IconEditFill'
     },
     {
-        path: 'reportedComments',
+        path: '/reportedComments',
         name: '举报处理',
         icon: 'IconWarningOutline'
     },
     {
-        path: 'messages',
+        path: '/messages',
         name: '回复私信',
         icon: 'IconMailOutline'
     },
     {
-        path: 'localfile',
+        path: '/localfile',
         name: '本地文件',
         icon: 'IconFolderCloseFill'
     },
     {
-        path: 'article',
+        path: '/article',
         name: '博客文章',
         icon: 'IconFileFill'
     },
     {
-        path: 'collectionManage',
+        path: '/collectionManage',
         name: '内容系列',
         icon: 'IconBookmarkFill'
     },
     {
-        path: 'scheduledPublish',
+        path: '/scheduledPublish',
         name: '定时发布',
         icon: 'IconTimeOutline'
     },
     {
-        path: 'draftBox',
+        path: '/draftBox',
         name: '草稿箱',
         icon: 'IconEditFill'
     },
     {
-        path: 'gallery',
+        path: '/gallery',
         name: '摄影图库',
         icon: 'IconImageFill'
     },
     {
-        path: 'diary',
+        path: '/diary',
         name: '随笔随记',
         icon: 'IconFillFill'
     },
     {
-        path: 'notes',
+        path: '/notes',
         name: '数字花园',
         icon: 'IconStarFill'
     },
     {
-        path: 'petManage',
+        path: '/petManage',
         name: '宠物管理',
         icon: 'IconHeartFill'
     },
     {
-        path: 'setting',
+        path: '/setting',
         name: '系统设置',
         icon: 'IconSettingsFill'
     }
@@ -121,7 +121,7 @@ export const overLink = [
 
     },
     {
-        path: 'editarticle',
+        path: '/editarticle',
         name: '博客文章',
         icon: 'IconFileFill',
         viewTo: 'article',
@@ -129,7 +129,7 @@ export const overLink = [
         bgColor: 'background:linear-gradient(180deg, #ff600829 0%, #ff60083d 100%)',
     },
     {
-        path: 'editgallery',
+        path: '/editgallery',
         name: '摄影图库',
         icon: 'IconImageFill',
         viewTo: 'gallery',
@@ -137,7 +137,7 @@ export const overLink = [
         bgColor: 'background:linear-gradient(180deg, #25df0629 0%, #25df063d 100%)',
     },
     {
-        path: 'diary',
+        path: '/diary',
         name: '随笔随记',
         icon: 'IconFillFill',
         viewTo: 'diary',

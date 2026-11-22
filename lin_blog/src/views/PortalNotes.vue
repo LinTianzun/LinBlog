@@ -60,15 +60,23 @@
                     :style="{ '--stagger': `${Math.min(i, 10) * 45}ms` }" @click="openNote(note)">
                     <span class="card-topline">
                         <span>{{ formatDate(note.publishedAt) }}</span>
-                        <span v-if="note.incomingLinks" class="card-links">
-                            {{ note.incomingLinks }} 条反向链接
-                        </span>
+                        <span v-if="note.incomingLinks" class="card-links">被 {{ note.incomingLinks }} 篇引用</span>
                         <span v-else class="card-links is-quiet">孤立笔记</span>
                     </span>
                     <span class="card-title">{{ note.title }}</span>
                     <span class="card-excerpt">{{ note.excerpt }}</span>
                     <span v-if="note.tags?.length" class="card-tags">
                         <span v-for="tag in note.tags.slice(0, 3)" :key="tag">#{{ tag }}</span>
+                    </span>
+                    <!-- 反向链接聚合：卡片上直接列出谁提到了它，不用点进详情 -->
+                    <span v-if="note.backlinks?.length" class="card-backlinks">
+                        <span class="card-backlinks-label">被</span>
+                        <span v-for="link in note.backlinks.slice(0, 2)" :key="link.id" class="card-backlinks-item">
+                            {{ link.title }}
+                        </span>
+                        <span v-if="note.backlinks.length > 2" class="card-backlinks-more">
+                            +{{ note.backlinks.length - 2 }}
+                        </span>
                     </span>
                     <span class="card-foot">
                         <span>{{ note.outgoingLinks || 0 }} 条双链</span>
@@ -441,6 +449,35 @@ watch(() => route.query.open, (value) => {
     gap: 6px;
     color: var(--portal-accent);
     font-size: 10px;
+}
+
+.card-backlinks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: var(--portal-text-tertiary);
+    font-size: 11px;
+
+    &-label {
+        flex-shrink: 0;
+    }
+
+    &-item {
+        overflow: hidden;
+        max-width: 12em;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--portal-accent) 8%, transparent);
+        color: var(--portal-text-secondary);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &-more {
+        color: var(--portal-accent);
+    }
 }
 
 .garden-tags {

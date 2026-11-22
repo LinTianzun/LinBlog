@@ -21,6 +21,8 @@ export interface GardenNote {
   outgoingLinks?: number;
   incomingLinks?: number;
   backlinks?: GardenNoteLink[];
+  // 正文里指向其它公开笔记的链接，详情接口返回
+  outgoing?: GardenNoteLink[];
   tags?: string[];
 }
 

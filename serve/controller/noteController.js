@@ -8,6 +8,7 @@ const {
     normalizeLinkTitle,
 } = require('../utils/noteMarkdown')
 const { buildTidyReport } = require('../utils/gardenTidy')
+const { groupBacklinks, groupOutgoing } = require('../utils/noteLinkIndex')
 
 const TITLE_MAX = 150
 const CONTENT_MAX = 200_000
@@ -178,6 +179,17 @@ async function getPublicGarden(_req, res) {
                 }),
             }
         }))
+        // 反向链接聚合：索引里每条笔记带上指向它的标题，门户卡片与详情共用，
+        // 打开详情时无需再等一次请求
+        const inbound = await noteModel.listBacklinksAggregated(list.map(note => note.id))
+        const byTarget = groupBacklinks(inbound)
+        const outbound = await noteModel.listOutgoingLinksAggregated(list.map(note => note.id))
+        const bySource = groupOutgoing(outbound)
+        for (const note of list) {
+            note.backlinks = byTarget.get(note.id) || []
+            note.outgoing = bySource.get(note.id) || []
+        }
+
         res.set('Cache-Control', 'no-cache')
         res.json({
             code: 200,
@@ -185,8 +197,6 @@ async function getPublicGarden(_req, res) {
             data: {
                 total: list.length,
                 list,
-                // 反向链接跟着当前打开的笔记走，放在详情接口里返回
-                backlinks: [],
             },
         })
     } catch (err) {
@@ -203,6 +213,7 @@ async function getPublicNote(req, res) {
 
         const links = await noteModel.resolvePublicLinks(note.id, note.content)
         const backlinks = await noteModel.listBacklinks(note.id)
+        const outgoing = await noteModel.listOutgoingLinks(note.id)
         res.json({
             code: 200,
             message: '查询成功',
@@ -216,6 +227,11 @@ async function getPublicNote(req, res) {
                     resolveTitle: title => links.titles[normalizeLinkTitle(title)] || null,
                 }),
                 backlinks: backlinks.map(item => ({
+                    id: Number(item.id),
+                    title: item.title,
+                    slug: item.slug,
+                })),
+                outgoing: outgoing.map(item => ({
                     id: Number(item.id),
                     title: item.title,
                     slug: item.slug,

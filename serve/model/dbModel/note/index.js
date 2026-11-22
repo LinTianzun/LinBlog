@@ -241,6 +241,59 @@ async function listBacklinks(noteId) {
 }
 
 /**
+ * 反向链接聚合：一次查出多篇笔记的入链，供花园索引批量展示，
+ * 避免逐条请求详情接口。只统计已发布的来源笔记。
+ */
+async function listBacklinksAggregated(noteIds) {
+    const ids = (Array.isArray(noteIds) ? noteIds : [])
+        .map(Number)
+        .filter(id => Number.isSafeInteger(id) && id > 0)
+    if (!ids.length) return []
+    return query(
+        `SELECT l.to_note_id AS toNoteId, s.id, s.title, s.slug
+           FROM note_link l
+           INNER JOIN note s ON s.id = l.from_note_id
+          WHERE l.to_note_id IN (?) AND s.state = 'published'
+          ORDER BY l.to_note_id ASC, s.title ASC, s.id ASC`,
+        [ids]
+    )
+}
+
+/**
+ * 出发链接聚合：当前笔记正文里指向已公开笔记的链接，
+ * 同样返回轻量 { id, title, slug }，让门户详情能双向浏览。
+ */
+async function listOutgoingLinks(noteId) {
+    return query(
+        `SELECT t.id, t.title, t.slug
+           FROM note_link l
+           INNER JOIN note t ON t.id = l.to_note_id
+          WHERE l.from_note_id = ? AND t.state = 'published'
+          ORDER BY t.title ASC, t.id ASC`,
+        [noteId]
+    )
+}
+
+/**
+ * 出发链接聚合：花园索引一次取出所有公开出链，
+ * 与反向链接一起下发，卡片点开后无需再请求详情。
+ */
+async function listOutgoingLinksAggregated(noteIds) {
+    const ids = (Array.isArray(noteIds) ? noteIds : [])
+        .map(Number)
+        .filter(id => Number.isSafeInteger(id) && id > 0)
+    if (!ids.length) return []
+    return query(
+        `SELECT l.from_note_id AS fromNoteId, t.id, t.title, t.slug
+           FROM note_link l
+           INNER JOIN note t ON t.id = l.to_note_id
+          WHERE l.from_note_id IN (?) AND t.state = 'published'
+          ORDER BY l.from_note_id ASC, t.title ASC, t.id ASC`,
+        [ids]
+    )
+}
+
+/**
  * 公开花园的图谱边：只保留两端都已发布的链接，
  * 保证图谱节点与花园索引完全一致。
  */
@@ -357,6 +410,9 @@ module.exports = {
     listPublicNotesForSearch,
     findPublicNoteById,
     listBacklinks,
+    listBacklinksAggregated,
+    listOutgoingLinks,
+    listOutgoingLinksAggregated,
     listPublicGraphEdges,
     listPublicGraphLabels,
     resolvePublicLinks,

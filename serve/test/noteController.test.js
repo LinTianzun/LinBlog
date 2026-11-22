@@ -32,6 +32,8 @@ test('笔记输入校验：标题必填、状态白名单、正文类型', () =>
 test('公开花园只返回已发布笔记，双链解析到公开目标', async () => {
     const originalList = noteModel.listPublicNotes
     const originalResolve = noteModel.resolvePublicLinks
+    const originalAggregate = noteModel.listBacklinksAggregated
+    const originalOutgoing = noteModel.listOutgoingLinksAggregated
     noteModel.listPublicNotes = async () => [{
         id: 2,
         title: '入口',
@@ -47,6 +49,13 @@ test('公开花园只返回已发布笔记，双链解析到公开目标', async
         titles: { 内页: { id: 3, title: '内页' } },
         ids: {},
     })
+    // 索引里带上每条笔记的入链，前端卡片可直接展示谁提到了它
+    noteModel.listBacklinksAggregated = async () => [
+        { toNoteId: 2, id: 3, title: '内页', slug: 'inner' },
+    ]
+    noteModel.listOutgoingLinksAggregated = async () => [
+        { fromNoteId: 2, id: 3, title: '内页', slug: 'inner' },
+    ]
 
     try {
         const res = response()
@@ -54,9 +63,13 @@ test('公开花园只返回已发布笔记，双链解析到公开目标', async
         assert.equal(res.statusCode, 200)
         assert.equal(res.body.data.total, 1)
         assert.match(res.body.data.list[0].html, /href="\/portal\/notes\?open=3"/)
+        assert.deepEqual(res.body.data.list[0].backlinks, [{ id: 3, title: '内页', slug: 'inner' }])
+        assert.deepEqual(res.body.data.list[0].outgoing, [{ id: 3, title: '内页', slug: 'inner' }])
     } finally {
         noteModel.listPublicNotes = originalList
         noteModel.resolvePublicLinks = originalResolve
+        noteModel.listBacklinksAggregated = originalAggregate
+        noteModel.listOutgoingLinksAggregated = originalOutgoing
     }
 })
 
