@@ -289,6 +289,25 @@ async function findAtricleById(articleId, userId, userType) {
 }
 
 /**
+ * 这篇文章是从哪篇花园笔记升上来的。只认已公开的笔记，
+ * 文章页可以据此把读者带回还在生长的原始笔记。
+ */
+async function findUpgradedFromNote(articleId) {
+    const id = Number(articleId)
+    if (!Number.isSafeInteger(id) || id <= 0) return null
+    const rows = await query(
+        `SELECT n.id, n.title, n.slug, n.published_at AS publishedAt, n.updated_at AS updatedAt
+           FROM note_article_upgrade u
+           INNER JOIN note n ON n.id = u.note_id AND n.state = 'published'
+          WHERE u.article_id = ?
+          ORDER BY u.created_at DESC, n.id DESC
+          LIMIT 1`,
+        [id]
+    )
+    return rows[0] || null
+}
+
+/**
  * 站点地图与 RSS 使用的已发布内容摘要。
  */
 async function listPublishedContentForFeed(limit = 5000) {
@@ -658,6 +677,7 @@ module.exports = {
     findArticlesByPage,
     countArticlesByState,
     findAtricleById,
+    findUpgradedFromNote,
     listPublishedContentForFeed,
     searchPublishedContentForAsk,
     searchPublishedContentByTerms,

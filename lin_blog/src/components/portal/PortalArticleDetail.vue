@@ -38,6 +38,18 @@
             <!-- 正文：独立阅读区，桌面端右侧目录，窄屏折叠到正文顶部 -->
             <div class="detail-layout">
                 <article class="detail-reader">
+                    <!-- 反向回流：这篇文章是从花园里一篇还在生长的笔记整理出来的 -->
+                    <aside v-if="gardenNote" class="garden-source" aria-label="来自花园">
+                        <span class="garden-source-mark" aria-hidden="true">🌱</span>
+                        <div class="garden-source-copy">
+                            <p class="garden-source-label">这篇长文来自花园</p>
+                            <p class="garden-source-title">{{ gardenNote.title }}</p>
+                        </div>
+                        <button type="button" class="garden-source-link" @click="openGardenNote">
+                            去花园读原笔记
+                            <IconRightOutline />
+                        </button>
+                    </aside>
                     <details v-if="hasOutline" class="reader-outline reader-outline--mobile">
                         <summary>本文目录 · {{ outline.length }} 节</summary>
                         <nav aria-label="文章目录">
@@ -155,6 +167,7 @@
 <script lang="ts" setup>
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { IconRightOutline } from '@yike-design/ui/es/components/svg-icon'
 import {
     extractArticleCover,
     formatArticleDate,
@@ -166,6 +179,8 @@ import {
     getLikeState,
     toggleLike,
     recordView,
+    getPublicArticleById,
+    type GardenSourceNote,
     type LikeState
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
@@ -221,6 +236,10 @@ let relatedToken = 0
 const articleSeries = ref<ArticleSeriesContext[]>([])
 const seriesLoading = ref(false)
 let seriesToken = 0
+
+// 来源笔记：文章详情接口按需返回，切换文章时清空，避免上一篇的入口残留
+const gardenNote = ref<GardenSourceNote | null>(null)
+let gardenToken = 0
 
 const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
@@ -432,6 +451,26 @@ watch(
     { immediate: true }
 )
 
+/** 来源笔记单独取详情结论：失败只是少一条回流入口，不打断文章阅读 */
+const loadGardenNote = async (articleId: number) => {
+    const token = ++gardenToken
+    gardenNote.value = null
+    try {
+        const result = await getPublicArticleById(articleId)
+        if (token !== gardenToken) return
+        gardenNote.value = result.code === 200 ? result.data?.gardenNote || null : null
+    } catch {
+        if (token === gardenToken) gardenNote.value = null
+    }
+}
+
+const openGardenNote = (): void => {
+    const note = gardenNote.value
+    if (!note) return
+    emit('close')
+    void router.push({ path: '/portal/notes', query: { open: String(note.id) } })
+}
+
 const loadArticleSeries = async (articleId: number) => {
     const token = ++seriesToken
     seriesLoading.value = true
@@ -453,8 +492,11 @@ watch(
             seriesToken += 1
             articleSeries.value = []
             seriesLoading.value = false
+            gardenToken += 1
+            gardenNote.value = null
             return
         }
+        void loadGardenNote(props.article.id)
         void loadArticleSeries(props.article.id)
     },
     { immediate: true }
@@ -714,6 +756,111 @@ watch(loadKey, async (key, previousKey) => {
 .detail-reader {
     max-width: 720px;
     margin: 0 auto;
+}
+
+// 反向回流：长文顶部提示它来自花园里的哪篇笔记
+.garden-source {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 22px;
+    padding: 14px 18px;
+    border: 1px solid color-mix(in srgb, var(--portal-accent) 30%, var(--portal-line-soft));
+    border-radius: 16px;
+    background: linear-gradient(
+        120deg,
+        color-mix(in srgb, var(--portal-accent) 10%, transparent),
+        transparent 70%
+    );
+}
+
+.garden-source-mark {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px dashed color-mix(in srgb, var(--portal-accent) 55%, transparent);
+    background: color-mix(in srgb, var(--portal-accent) 14%, transparent);
+    font-size: 14px;
+    line-height: 26px;
+    text-align: center;
+}
+
+.garden-source-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.garden-source-label {
+    margin: 0 0 2px;
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+}
+
+.garden-source-title {
+    overflow: hidden;
+    margin: 0;
+    color: var(--portal-text-primary);
+    font-family: var(--portal-serif);
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.garden-source-link {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--portal-accent);
+    background: transparent;
+    color: var(--portal-accent);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.18s ease, color 0.18s ease;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--portal-accent);
+        color: var(--portal-text-on-accent);
+        outline: 2px solid var(--portal-accent);
+        outline-offset: 2px;
+    }
+
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+@media (max-width: 640px) {
+    .garden-source {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px 12px;
+        padding: 14px 16px;
+    }
+
+    .garden-source-mark {
+        width: 26px;
+        height: 26px;
+        font-size: 13px;
+        line-height: 24px;
+    }
+
+    .garden-source-link {
+        grid-column: 1 / -1;
+        justify-self: start;
+    }
+
+    .garden-source-title {
+        white-space: normal;
+    }
 }
 
 // 阅读进度条：吸附在弹窗滚动容器顶部

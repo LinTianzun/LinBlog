@@ -123,6 +123,81 @@ test('public article endpoints ignore logged-in author scoping', async () => {
     assert.deepEqual(modelCalls[0], { id: 123, userId: null, userType: 'visitor' })
 })
 
+test('public article detail returns the garden note it grew from', async () => {
+    const articleControllerPath = path.resolve(__dirname, '../controller/articleController.js')
+    const articleModelPath = path.resolve(__dirname, '../model/dbModel/article/index.js')
+    let upgradedFor = null
+
+    Module._load = function (request, parent, isMain) {
+        if (parent && parent.filename === articleControllerPath && request === '../model/dbModel/article/index') {
+            return {
+                async findAtricleById(id) {
+                    return { id, title: '长文', state: 'published' }
+                },
+                async findUpgradedFromNote(id) {
+                    upgradedFor = id
+                    return {
+                        id: 21,
+                        title: '数字花园里的慢笔记',
+                        slug: 'slow-garden-note',
+                        publishedAt: '2026-11-20T08:00:00.000Z',
+                        updatedAt: '2026-11-21T08:00:00.000Z',
+                    }
+                },
+            }
+        }
+        return originalLoad.call(this, request, parent, isMain)
+    }
+
+    delete require.cache[articleControllerPath]
+    delete require.cache[articleModelPath]
+    const articleController = require(articleControllerPath)
+    Module._load = originalLoad
+
+    const res = makeResponse()
+    await articleController.getPublicArticleById({ params: { id: '901' } }, res)
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(upgradedFor, 901)
+    assert.equal(res.body.data.title, '长文')
+    assert.deepEqual(res.body.data.gardenNote, {
+        id: 21,
+        title: '数字花园里的慢笔记',
+        slug: 'slow-garden-note',
+        publishedAt: '2026-11-20T08:00:00.000Z',
+        updatedAt: '2026-11-21T08:00:00.000Z',
+    })
+})
+
+test('public article detail still serves the article when the source lookup fails', async () => {
+    const articleControllerPath = path.resolve(__dirname, '../controller/articleController.js')
+    const articleModelPath = path.resolve(__dirname, '../model/dbModel/article/index.js')
+
+    Module._load = function (request, parent, isMain) {
+        if (parent && parent.filename === articleControllerPath && request === '../model/dbModel/article/index') {
+            return {
+                async findAtricleById(id) {
+                    return { id, title: '长文', state: 'published' }
+                },
+                async findUpgradedFromNote() {
+                    throw new Error('note_article_upgrade 表暂时不可用')
+                },
+            }
+        }
+        return originalLoad.call(this, request, parent, isMain)
+    }
+
+    delete require.cache[articleControllerPath]
+    delete require.cache[articleModelPath]
+    const articleController = require(articleControllerPath)
+    Module._load = originalLoad
+
+    const res = makeResponse()
+    await articleController.getPublicArticleById({ params: { id: '901' } }, res)
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.gardenNote, undefined)
+})
+
 test('public subset and label routes mount optional auth', () => {
     const express = require('express')
     const app = express()

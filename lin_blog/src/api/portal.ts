@@ -111,7 +111,18 @@ export function getPublicArticles(params: ArticleListParams = {}) {
 }
 
 export function getPublicArticleById(id: number) {
-  return request.get<ApiResult<ArticleItem>>(`/public/article/${id}`);
+  return request.get<ApiResult<ArticleItem & { gardenNote?: GardenSourceNote | null }>>(
+    `/public/article/${id}`
+  );
+}
+
+// 文章详情里的来源笔记：这篇文章由哪篇公开花园笔记升级而来
+export interface GardenSourceNote {
+  id: number;
+  title: string;
+  slug: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
 }
 
 export function getPublicComments(articleId: number, page = 1, pageSize = 10) {

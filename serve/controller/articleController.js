@@ -275,7 +275,33 @@ async function getPublicArticleById(req, res) {
             return res.status(404).json({ code: 404, message: '文章不存在或未发布' })
         }
 
-        res.json({ code: 200, message: '查询成功', data: article })
+        // 来源笔记：读者读完文章可以顺着回到还在生长的花园笔记，
+        // 查询失败也不影响正文，只是少一条回流入口
+        let sourceNote = null
+        try {
+            if (typeof articleModel.findUpgradedFromNote === 'function') {
+                sourceNote = await articleModel.findUpgradedFromNote(articleId)
+            }
+        } catch {
+            sourceNote = null
+        }
+
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: sourceNote
+                ? {
+                    ...article,
+                    gardenNote: {
+                        id: Number(sourceNote.id),
+                        title: String(sourceNote.title || ''),
+                        slug: sourceNote.slug || '',
+                        publishedAt: sourceNote.publishedAt ?? null,
+                        updatedAt: sourceNote.updatedAt ?? null,
+                    },
+                }
+                : article,
+        })
     } catch (err) {
         res.status(500).json({ code: 500, message: '公开文章查询失败：' + err.message })
     }
