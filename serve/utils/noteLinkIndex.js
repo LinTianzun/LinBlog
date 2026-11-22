@@ -45,4 +45,37 @@ function groupOutgoing(rows) {
     return index
 }
 
-module.exports = { groupBacklinks, groupOutgoing }
+/**
+ * 笔记 -> 升级文章 的索引：同一篇笔记多次升级时只保留最新一条，
+ * 清单里只需要知道「现在对应哪篇文章、发布没有」。
+ */
+function groupUpgrades(rows) {
+    const index = new Map()
+    for (const row of Array.isArray(rows) ? rows : []) {
+        const noteId = Number(row.noteId ?? row.note_id)
+        const articleId = Number(row.id)
+        if (!Number.isSafeInteger(noteId) || noteId <= 0) continue
+        if (!Number.isSafeInteger(articleId) || articleId <= 0) continue
+        if (index.has(noteId)) continue
+        index.set(noteId, {
+            id: articleId,
+            title: String(row.title || ''),
+            state: row.state === 'published' ? 'published' : 'draft',
+            publishedAt: row.publishedAt ?? row.published_at ?? null,
+        })
+    }
+    return index
+}
+
+/**
+ * 判断笔记正文里是否已经有指向某篇文章的链接。
+ * 用带 open 参数的完整片段匹配，避免 open=21 命中 open=210。
+ */
+function hasArticleLink(content, articleId) {
+    const id = Number(articleId)
+    if (!Number.isSafeInteger(id) || id <= 0) return false
+    const pattern = new RegExp(`/portal/articles\\?open=${id}(?![0-9])`)
+    return pattern.test(String(content || ''))
+}
+
+module.exports = { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink }

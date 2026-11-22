@@ -294,6 +294,51 @@ async function listOutgoingLinksAggregated(noteIds) {
 }
 
 /**
+ * 记录「这篇笔记升级成了哪篇文章」。
+ * 重复升级同一篇笔记时保留最新关系，避免旧草稿挤掉新文章。
+ */
+async function recordArticleUpgrade(noteId, articleId, userId) {
+    await query(
+        `INSERT INTO note_article_upgrade (note_id, article_id, user_id)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE created_at = CURRENT_TIMESTAMP, user_id = VALUES(user_id)`,
+        [noteId, articleId, userId || null]
+    )
+}
+
+/**
+ * 批量取升级关系：待整理清单一次带出每篇笔记对应的文章状态，
+ * 文章发布后就能在清单里提示作者回笔记补链接。
+ */
+async function listUpgradedArticles(noteIds) {
+    const ids = (Array.isArray(noteIds) ? noteIds : [])
+        .map(Number)
+        .filter(id => Number.isSafeInteger(id) && id > 0)
+    if (!ids.length) return []
+    return query(
+        `SELECT u.note_id AS noteId, a.id, a.title, a.state,
+                a.published_at AS publishedAt, u.created_at AS upgradedAt
+           FROM note_article_upgrade u
+           INNER JOIN article a ON a.id = u.article_id AND a.state <> 'deleted'
+          WHERE u.note_id IN (?)
+          ORDER BY u.created_at DESC, a.id DESC`,
+        [ids]
+    )
+}
+
+async function findUpgradedArticle(noteId) {
+    return query(
+        `SELECT a.id, a.title, a.state, a.published_at AS publishedAt
+           FROM note_article_upgrade u
+           INNER JOIN article a ON a.id = u.article_id AND a.state <> 'deleted'
+          WHERE u.note_id = ?
+          ORDER BY u.created_at DESC, a.id DESC
+          LIMIT 1`,
+        [noteId]
+    )
+}
+
+/**
  * 公开花园的图谱边：只保留两端都已发布的链接，
  * 保证图谱节点与花园索引完全一致。
  */
@@ -413,6 +458,9 @@ module.exports = {
     listBacklinksAggregated,
     listOutgoingLinks,
     listOutgoingLinksAggregated,
+    recordArticleUpgrade,
+    listUpgradedArticles,
+    findUpgradedArticle,
     listPublicGraphEdges,
     listPublicGraphLabels,
     resolvePublicLinks,

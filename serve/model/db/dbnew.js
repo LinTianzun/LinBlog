@@ -710,6 +710,19 @@ const tablesSql = {
     FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记双链索引';`
 
+  // 花园笔记升级成长文的来源关系：笔记 -> 文章。
+  // 用来在文章发布后提示作者回原笔记补一条指向文章的链接，形成写作闭环。
+  ,note_article_upgrade: `CREATE TABLE IF NOT EXISTS note_article_upgrade(
+    note_id BIGINT UNSIGNED NOT NULL COMMENT '来源笔记',
+    article_id BIGINT UNSIGNED NOT NULL COMMENT '升级后的文章',
+    user_id BIGINT UNSIGNED NULL COMMENT '操作者',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (note_id, article_id),
+    INDEX idx_note_upgrade_article (article_id),
+    FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE,
+    FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记升级文章来源';`
+
   ,site_setting: `CREATE TABLE IF NOT EXISTS site_setting(
     id TINYINT UNSIGNED NOT NULL,
     desktop_pet_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否在全站显示桌面宠物',
@@ -1780,7 +1793,7 @@ async function initializeSchema() {
     await exec(createDbSql);
     await exec(`USE ${databaseIdentifier}`);
 
-    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'content_collection_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history', 'newsletter_subscriber', 'note', 'note_link'];
+    const createOrder = ['users', 'role_permission', 'password_reset_token', 'subset', 'weather', 'label', 'image', 'file', 'article', 'article_version', 'content_collection', 'content_collection_article', 'content_collection_version', 'praise', 'comment', 'diary', 'diary_praise', 'diary_comment', 'comment_praise', 'comment_report', 'message', 'record', 'site_event', 'view_log', 'system_log', 'db_backup_log', 'site_setting', 'pet_state', 'ai_model', 'ai_setting', 'ai_usage_log', 'ai_prompt_template', 'ai_prompt_binding', 'ai_prompt_history', 'newsletter_subscriber', 'note', 'note_link', 'note_article_upgrade'];
     for (const tableName of createOrder) {
       await exec(tablesSql[tableName]);
     }
@@ -2267,6 +2280,7 @@ async function ensureNewsletterSchema(exec = query) {
 async function ensureNoteSchema(exec = query) {
   await exec(tablesSql.note);
   await exec(tablesSql.note_link);
+  await exec(tablesSql.note_article_upgrade);
 }
 
 // 站点展示设置：桌宠开关之外的分档配置。

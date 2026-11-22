@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { groupBacklinks, groupOutgoing } = require('../utils/noteLinkIndex')
+const { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink } = require('../utils/noteLinkIndex')
 
 test('按目标笔记聚合入链，并保留标题与 slug', () => {
     const index = groupBacklinks([
@@ -55,4 +55,18 @@ test('出发链接按来源笔记分组，自引用与重复目标被忽略', ()
     ])
     assert.deepEqual(index.get(2), [{ id: 3, title: 'C', slug: 'c' }])
     assert.equal(groupOutgoing(undefined).size, 0)
+})
+
+test('升级关系聚合：每篇笔记只保留最新文章，断链判定按文章地址匹配', () => {
+    const rows = [
+        { noteId: 7, id: 21, title: '用花园整理技术笔记', state: 'published' },
+        { noteId: 7, id: 20, title: '用花园整理技术笔记（旧稿）', state: 'draft' },
+        { noteId: 8, id: 22, title: '另一篇', state: 'draft' },
+    ]
+    const index = groupUpgrades(rows)
+    assert.equal(index.get(7).id, 21)
+    assert.equal(index.get(8).state, 'draft')
+    assert.equal(hasArticleLink('看这里 /portal/articles?open=21', 21), true)
+    assert.equal(hasArticleLink('看这里 /portal/articles?open=210', 21), false)
+    assert.equal(hasArticleLink('', 21), false)
 })

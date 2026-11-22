@@ -32,6 +32,7 @@ Module._load = function (request, parent, isMain) {
 const articleModel = require(articleModelPath)
 Module._load = originalLoad
 const articleController = require('../controller/articleController')
+const noteModel = require('../model/dbModel/note/index')
 
 test.beforeEach(() => {
     calls.length = 0
@@ -303,6 +304,67 @@ test('visitors cannot create or mutate articles', async () => {
     assert.equal(await articleModel.deleteArticle(123, 42, 'visitor'), 0)
     assert.equal(await articleModel.updateArticleStatus(123, 'published', 42, 'visitor'), 0)
     assert.equal(calls.length, 0)
+})
+
+test('从花园笔记升级的文章只记录本人笔记来源', async () => {
+    const originalInsert = articleModel.insertArticle
+    const originalOwned = noteModel.findOwnedNote
+    const originalRecord = noteModel.recordArticleUpgrade
+    const records = []
+    articleModel.insertArticle = async () => ({ articleId: 123 })
+    noteModel.findOwnedNote = async (noteId, userId) => (
+        noteId === 9 && userId === 1 ? { id: 9 } : null
+    )
+    noteModel.recordArticleUpgrade = async (...args) => {
+        records.push(args)
+    }
+
+    function makeResponse() {
+        return {
+            statusCode: 200,
+            body: null,
+            status(code) {
+                this.statusCode = code
+                return this
+            },
+            json(body) {
+                this.body = body
+                return this
+            }
+        }
+    }
+
+    try {
+        const owned = makeResponse()
+        await articleController.createArticle({
+            body: {
+                title: '升级后的长文',
+                content: '<p>正文</p>',
+                classify: 'article',
+                sourceNoteId: 9
+            },
+            user: { userId: 1, userType: 'admin', permissions: [], isSuperAdmin: true }
+        }, owned)
+        assert.equal(owned.body.code, 200)
+        assert.deepEqual(records, [[9, 123, 1]])
+
+        const foreign = makeResponse()
+        await articleController.createArticle({
+            body: {
+                title: '别人的笔记不能挂过来',
+                content: '<p>正文</p>',
+                classify: 'article',
+                sourceNoteId: 10
+            },
+            user: { userId: 1, userType: 'admin', permissions: [], isSuperAdmin: true }
+        }, foreign)
+        assert.equal(foreign.body.code, 200)
+        assert.equal(records.length, 1)
+    } finally {
+        articleModel.insertArticle = originalInsert
+        noteModel.findOwnedNote = originalOwned
+        noteModel.recordArticleUpgrade = originalRecord
+    }
 })
 
 

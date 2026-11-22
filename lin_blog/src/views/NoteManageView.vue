@@ -9,6 +9,21 @@
         <div v-if="errorMessage" class="note-banner is-error">{{ errorMessage }}</div>
         <div v-else-if="noticeMessage" class="note-banner is-success">{{ noticeMessage }}</div>
 
+        <!-- 写作闭环：文章发布后回到这里，提示把文章链接补进笔记 -->
+        <div v-if="publishedArticle" class="note-banner is-link" role="status">
+            <span>
+                这篇文章已从笔记升级并发布：<strong>{{ publishedArticle.title }}</strong>
+            </span>
+            <span class="note-banner-actions">
+                <button v-if="!publishedArticle.linked" type="button" class="note-banner-btn" :disabled="linkingArticle"
+                    @click="appendArticleLink">
+                    {{ linkingArticle ? '正在写入…' : '补到笔记末尾' }}
+                </button>
+                <button type="button" class="note-banner-btn" @click="copyArticleSnippet">复制链接文案</button>
+                <button type="button" class="note-banner-btn is-quiet" @click="dismissPublishedArticle">关闭</button>
+            </span>
+        </div>
+
         <div class="note-shell">
             <aside class="note-sidebar" aria-label="笔记列表">
                 <header class="note-sidebar-head">
@@ -148,6 +163,7 @@ import {
     type NoteSummary,
     type OwnedNote,
 } from '../api/note'
+import { clearUpgradeIntent, readUpgradeIntent } from '../utils/upgradeIntent'
 
 type MessageOptions = {
     type: 'primary' | 'warning' | 'error'
@@ -159,6 +175,102 @@ const proxy = getCurrentInstance()?.proxy as {
 } | null | undefined
 
 const route = useRoute()
+
+// 文章发布后跳回笔记：从 query 里读出要提示的文章与链接文案
+const publishedArticle = ref<{ id: number; title: string; snippet: string; linked: boolean } | null>(null)
+const linkingArticle = ref(false)
+
+const readPublishedArticleQuery = (): void => {
+    const articleId = Number(route.query.linkArticle)
+    if (!Number.isSafeInteger(articleId) || articleId <= 0) {
+        publishedArticle.value = null
+        return
+    }
+    const noteId = Number(route.query.note)
+    // 编辑器跳转被旧文章列表逻辑抢先时，按本机记录的文章 ID 补回提示
+    let intent: ReturnType<typeof readUpgradeIntent> = null
+    if (Number.isSafeInteger(noteId) && noteId > 0) {
+        try {
+            intent = readUpgradeIntent(noteId, articleId)
+        } catch {
+            // 本机存储异常时退回 URL 参数，提示条不能因此整页失败
+            intent = null
+        }
+    }
+    if (intent) clearUpgradeIntent()
+    publishedArticle.value = {
+        id: articleId,
+        title: typeof route.query.articleTitle === 'string'
+            ? route.query.articleTitle
+            : intent?.title || '这篇文章',
+        snippet: typeof route.query.snippet === 'string'
+            ? route.query.snippet
+            : intent?.snippet || '',
+        linked: false,
+    }
+    // 正文可能还没加载，先按已有内容判断；selectNote 返回后会再校正
+    const content = form.value?.content || activeNote.value?.content || ''
+    publishedArticle.value.linked = content.includes(`/portal/articles?open=${articleId}`)
+}
+
+const dismissPublishedArticle = (): void => {
+    publishedArticle.value = null
+    void window.history.replaceState(
+        window.history.state,
+        '',
+        window.location.pathname + (route.query.note ? `?note=${route.query.note}` : '')
+    )
+}
+
+const copyArticleSnippet = async (): Promise<void> => {
+    const snippet = publishedArticle.value?.snippet
+    if (!snippet) return
+    try {
+        await navigator.clipboard.writeText(snippet)
+        notice('primary', '链接文案已复制，粘贴到笔记任意位置即可')
+    } catch {
+        notice('warning', '复制失败，请手动输入链接')
+    }
+}
+
+/** 把扩展阅读直接写进笔记正文并保存，省去手动粘贴 */
+const appendArticleLink = async (): Promise<void> => {
+    const current = publishedArticle.value
+    if (!current || !activeId.value || !form.value || linkingArticle.value) return
+    if (form.value.content.includes(`/portal/articles?open=${current.id}`)) {
+        current.linked = true
+        notice('primary', '正文里已经有指向这篇文章的链接')
+        return
+    }
+    linkingArticle.value = true
+    try {
+        // 从服务器拉最新正文再追加：编辑页跳转过来时表单可能还是上一次的旧稿
+        const latest = await getNoteById(activeId.value)
+        if (latest.code !== 200 || !latest.data) throw new Error(latest.message || '读取笔记失败')
+        const base = latest.data.content || ''
+        if (base.includes(`/portal/articles?open=${current.id}`)) {
+            publishedArticle.value!.linked = true
+            notice('primary', '正文里已经有指向这篇文章的链接')
+            return
+        }
+        const nextContent = `${base.replace(/\s*$/, '')}\n\n${current.snippet}\n`
+        const result = await updateNote(activeId.value, {
+            title: latest.data.title,
+            content: nextContent,
+            state: latest.data.state,
+        })
+        if (result.code !== 200) throw new Error(result.message || '保存失败')
+        form.value.content = nextContent
+        current.linked = true
+        notice('primary', '已在笔记末尾补上文章链接')
+        await Promise.all([loadNotes(), loadSummary()])
+        await selectNote(activeId.value)
+    } catch {
+        notice('error', '写入失败，可改用「复制链接文案」手动粘贴')
+    } finally {
+        linkingArticle.value = false
+    }
+}
 
 const notes = ref<OwnedNote[]>([])
 const summary = ref<NoteSummary>({ all: 0, draft: 0, published: 0 })
@@ -285,6 +397,12 @@ const selectNote = async (id: number) => {
                 content: result.data.content,
                 state: result.data.state,
             }
+            // 正文到了再判断链接是否已补，供发布后的提示条使用
+            if (publishedArticle.value) {
+                publishedArticle.value.linked = result.data.content.includes(
+                    `/portal/articles?open=${publishedArticle.value.id}`
+                )
+            }
         }
     } catch {
         errorMessage.value = '笔记加载失败，请稍后重试'
@@ -353,6 +471,8 @@ onMounted(() => {
     // 从待整理清单跳进来时直接打开对应笔记
     const target = Number(route.query.note)
     if (Number.isSafeInteger(target) && target > 0) void selectNote(target)
+    // 等笔记正文加载后再判断文章链接是否已经补上
+    readPublishedArticleQuery()
 })
 </script>
 
@@ -370,6 +490,60 @@ onMounted(() => {
     &.is-success {
         background: color-mix(in srgb, var(--scolor, #1fb4a2) 10%, transparent);
         color: var(--scolor, #1fb4a2);
+    }
+
+    // 发布回链提示：比普通成功提示更醒目，但不抢保存按钮的注意力
+    &.is-link {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 16px;
+        border: 1px solid var(--pcolor3);
+        background: linear-gradient(120deg, var(--pcolor1), transparent 70%);
+        color: var(--gray8);
+
+        strong {
+            color: var(--gray);
+        }
+    }
+
+    &-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    &-btn {
+        padding: 4px 12px;
+        border: 1px solid var(--pcolor3);
+        border-radius: 999px;
+        background: var(--pcolor);
+        color: #fff;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: filter 0.18s ease, opacity 0.18s ease;
+
+        &:hover:not(:disabled) {
+            filter: brightness(1.08);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: progress;
+        }
+
+        &.is-quiet {
+            border-color: var(--admin-line, var(--gray1));
+            background: transparent;
+            color: var(--gray6);
+
+            &:hover {
+                border-color: var(--pcolor3);
+                color: var(--pcolor);
+            }
+        }
     }
 }
 
@@ -783,6 +957,26 @@ onMounted(() => {
     .note-shell,
     .note-editor-body {
         grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 700px) {
+    .note-editor {
+        padding: 16px;
+    }
+
+    .note-editor-head {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+
+        h2 {
+            overflow-wrap: anywhere;
+        }
+    }
+
+    .note-editor-actions {
+        flex-wrap: wrap;
     }
 }
 </style>

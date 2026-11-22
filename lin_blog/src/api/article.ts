@@ -86,6 +86,8 @@ export interface CreateArticleParams {
   cover?: string;
   // 作者采用过 AI 结果时带上，落库后内容会被打上 AI 辅助标记
   aiFeatures?: string[];
+  // 从花园笔记升级来的文章带上来源笔记，用于发布后提示回链
+  sourceNoteId?: number;
 }
 
 export type UpdateArticleParams = Partial<CreateArticleParams> & {

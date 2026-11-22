@@ -1176,6 +1176,43 @@ export async function installApiMock(page: Page): Promise<MockState> {
       return
     }
 
+    // 新建文章（后端默认保存为草稿；发布由编辑器随后调用状态接口）
+    if (method === 'POST' && path === '/api/article') {
+      const classify = body?.classify === 'image' ? 'image' : 'article'
+      const nextId = Math.max(
+        2000,
+        ...state.articles.map(item => item.id),
+        ...state.galleries.map(item => item.id),
+      ) + 1
+      const now = new Date().toISOString()
+      const created = {
+        ...article,
+        id: nextId,
+        userId: owner.id,
+        title: String(body?.title || ''),
+        classify,
+        subsetId: typeof body?.subsetId === 'number' ? body.subsetId : null,
+        subsetName: null,
+        label: typeof body?.label === 'string' && body.label ? body.label : null,
+        introduce: typeof body?.introduce === 'string' ? body.introduce : '',
+        cover: typeof body?.cover === 'string' && body.cover ? body.cover : null,
+        content: String(body?.content || ''),
+        views: 0,
+        likes: 0,
+        comments: 0,
+        rootComments: 0,
+        replyComments: 0,
+        state: 'draft' as const,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: null,
+      }
+      if (classify === 'image') state.galleries.push(created)
+      else state.articles.push(created)
+      await fulfill({ articleId: nextId, createdAt: now })
+      return
+    }
+
     if (method === 'GET' && path === '/api/article/scheduled') {
       const classify = url.searchParams.get('classify')
       const requestedPage = Math.max(1, Number(url.searchParams.get('page') || 1))

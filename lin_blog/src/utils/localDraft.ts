@@ -5,6 +5,8 @@ export interface LocalDraft {
   label: string;
   introduce: string;
   cover: string;
+  // 从花园笔记升级来的草稿会带上来源笔记，用于发布后的回链提示
+  sourceNoteId?: number | null;
   savedAt: string;
 }
 
@@ -51,6 +53,10 @@ export function readLocalDraft(kind: string): LocalDraft | null {
       label: typeof parsed.label === "string" ? parsed.label : "",
       introduce: typeof parsed.introduce === "string" ? parsed.introduce : "",
       cover: typeof parsed.cover === "string" ? parsed.cover : "",
+      sourceNoteId:
+        typeof parsed.sourceNoteId === "number" && Number.isInteger(parsed.sourceNoteId)
+          ? parsed.sourceNoteId
+          : null,
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
     };
   } catch {

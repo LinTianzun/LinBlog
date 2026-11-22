@@ -1,5 +1,6 @@
 const articleModel = require('../model/dbModel/article/index')
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
+const noteModel = require('../model/dbModel/note/index')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getArticleScope } = require('../utils/accessControl')
@@ -79,6 +80,21 @@ async function createArticle(req, res) {
             detail: `创建${classify === 'image' ? '图库' : '文章'}「${title}」`,
             ip: req.ip || null,
         })
+
+        // 从花园笔记升级来的文章：记下来源，发布后可以提示回笔记补链接。
+        // 只接受本人笔记，避免把别人的笔记挂到自己的文章上。
+        const sourceNoteId = Number(req.body?.sourceNoteId)
+        if (Number.isSafeInteger(sourceNoteId) && sourceNoteId > 0) {
+            const note = await noteModel.findOwnedNote(sourceNoteId, userId)
+            if (note) {
+                try {
+                    await noteModel.recordArticleUpgrade(sourceNoteId, result.articleId, userId)
+                } catch (err) {
+                    // 来源关系只用于发布后的回链提示，不能反过来让文章创建失败。
+                    console.error('[Article] 记录笔记升级来源失败：', err)
+                }
+            }
+        }
 
         // AI 辅助标记：作者在编辑器里采用了 AI 结果才带上，这里只做落库标记
         const aiFeatures = normalizeAiFeatures(req.body?.aiFeatures)

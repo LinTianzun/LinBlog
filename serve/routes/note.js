@@ -8,6 +8,8 @@ module.exports = (app) => {
     // 待整理是固定路径，必须先于 /:id 挂载
     app.get('/api/note/tidy', authMiddleware, noteController.getNoteTidy)
     app.post('/api/note', authMiddleware, noteController.createNote)
+    // 升级关系固定路径，同样必须先于 /:id
+    app.get('/api/note/:id/upgrade', authMiddleware, noteController.getNoteUpgrade)
     app.get('/api/note/:id', authMiddleware, noteController.getNoteById)
     app.put('/api/note/:id', authMiddleware, noteController.updateNote)
     app.delete('/api/note/:id', authMiddleware, noteController.deleteNote)

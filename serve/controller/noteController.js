@@ -8,7 +8,7 @@ const {
     normalizeLinkTitle,
 } = require('../utils/noteMarkdown')
 const { buildTidyReport } = require('../utils/gardenTidy')
-const { groupBacklinks, groupOutgoing } = require('../utils/noteLinkIndex')
+const { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink } = require('../utils/noteLinkIndex')
 
 const TITLE_MAX = 150
 const CONTENT_MAX = 200_000
@@ -291,13 +291,58 @@ async function getNoteTidy(req, res) {
             tags: extractNoteTags(note.content),
         }))
         const suggestLimit = Math.min(Math.max(Number(limit) || 3, 1), 5)
+        const report = buildTidyReport(notes, { limit: suggestLimit })
+
+        // 升级关系：文章发布后提示回原笔记补一条指向它的链接
+        const upgradedRows = await noteModel.listUpgradedArticles(notes.map(note => note.id))
+        const upgradedByNote = groupUpgrades(upgradedRows)
+        const contentById = new Map(notes.map(note => [Number(note.id), String(note.content || '')]))
+        for (const item of [...report.orphans, ...report.brokenLinks]) {
+            const upgraded = upgradedByNote.get(item.id) || null
+            item.upgradedArticle = upgraded
+            // 正文里已经有指向这篇文章的链接时不再提示
+            item.articleLinked = upgraded ? hasArticleLink(contentById.get(item.id), upgraded.id) : false
+        }
+
         res.json({
             code: 200,
             message: '查询成功',
-            data: buildTidyReport(notes, { limit: suggestLimit }),
+            data: report,
         })
     } catch (err) {
         res.status(500).json({ code: 500, message: '待整理清单加载失败：' + err.message })
+    }
+}
+
+/**
+ * 单篇笔记的升级关系，供笔记编辑页在文章发布后提示补链接。
+ */
+async function getNoteUpgrade(req, res) {
+    try {
+        const id = noteModel.parseId(req.params.id)
+        if (!id) return res.status(400).json({ code: 400, message: '笔记ID无效' })
+        const note = await noteModel.findOwnedNote(id, req.user.userId)
+        if (!note) return res.status(404).json({ code: 404, message: '笔记不存在或无权访问' })
+
+        const rows = await noteModel.findUpgradedArticle(id)
+        const article = rows[0]
+            ? {
+                id: Number(rows[0].id),
+                title: rows[0].title,
+                state: rows[0].state,
+                publishedAt: rows[0].publishedAt,
+            }
+            : null
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: {
+                article,
+                articleLinked: article ? hasArticleLink(note.content, article.id) : false,
+            },
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '升级关系查询失败：' + err.message })
     }
 }
 
@@ -312,5 +357,6 @@ module.exports = {
     getPublicNote,
     getPublicGardenGraph,
     getNoteTidy,
+    getNoteUpgrade,
     validateNoteInput,
 }

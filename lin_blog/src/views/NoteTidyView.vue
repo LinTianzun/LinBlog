@@ -78,9 +78,13 @@
                             </div>
                             <div class="tidy-card-actions">
                                 <!-- 写作闭环：把笔记与推荐双链一起带进新建文章 -->
-                                <button type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
+                                <router-link v-if="item.upgradedArticle && item.articleLinked" class="tidy-linked"
+                                    :to="`/portal/articles?open=${item.upgradedArticle.id}`" target="_blank" rel="noopener">
+                                    链接到文章
+                                </router-link>
+                                <button v-else type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
                                     @click="upgradeToArticle(item)">
-                                    {{ upgradingId === item.id ? '准备中…' : '升级成长文' }}
+                                    {{ upgradeLabel(item) }}
                                 </button>
                                 <a v-if="item.id" class="tidy-preview" :href="`/portal/notes?open=${item.id}`"
                                     target="_blank" rel="noopener">
@@ -141,9 +145,13 @@
                                 <p class="tidy-card-excerpt">{{ item.excerpt || '空白笔记' }}</p>
                             </div>
                             <div class="tidy-card-actions">
-                                <button type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
+                                <router-link v-if="item.upgradedArticle && item.articleLinked" class="tidy-linked"
+                                    :to="`/portal/articles?open=${item.upgradedArticle.id}`" target="_blank" rel="noopener">
+                                    链接到文章
+                                </router-link>
+                                <button v-else type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
                                     @click="upgradeToArticle(item)">
-                                    {{ upgradingId === item.id ? '准备中…' : '升级成长文' }}
+                                    {{ upgradeLabel(item) }}
                                 </button>
                             </div>
                         </header>
@@ -249,8 +257,27 @@ const copyLink = async (note: TidyNote, target: TidySuggestion) => {
  * 笔记升级成长文：拉一次完整正文，把推荐笔记写成双链，
  * 落进新建文章的本机草稿再跳过去，编辑器打开即可继续。
  */
+// 已升级过但正文还没回链的笔记，按钮改成「回笔记补链接」，避免重复开新稿
+const upgradeLabel = (note: TidyNote): string => {
+    if (upgradingId.value === note.id) return '准备中…'
+    if (note.upgradedArticle) return '回笔记补链接'
+    return '升级成长文'
+}
+
 const upgradeToArticle = async (note: TidyNote) => {
     if (upgradingId.value) return
+    if (note.upgradedArticle) {
+        await router.push({
+            path: '/notes',
+            query: {
+                note: String(note.id),
+                linkArticle: String(note.upgradedArticle.id),
+                articleTitle: note.upgradedArticle.title,
+                snippet: `## 延伸阅读\n\n- [${note.upgradedArticle.title}](/portal/articles?open=${note.upgradedArticle.id})`,
+            },
+        })
+        return
+    }
     upgradingId.value = note.id
     try {
         const detail = await getNoteById(note.id)
@@ -271,6 +298,7 @@ const upgradeToArticle = async (note: TidyNote) => {
             label: '',
             introduce: note.excerpt || '',
             cover: '',
+            sourceNoteId: note.id,
         })
         proxy?.$message?.({ type: 'primary', message: '已生成文章草稿，打开编辑器继续写' })
         await router.push('/editarticle')
@@ -633,6 +661,23 @@ defineOptions({ name: 'NoteTidyView' })
     &:disabled {
         opacity: 0.6;
         cursor: progress;
+    }
+}
+
+.tidy-linked {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    border: 1px solid color-mix(in srgb, var(--scolor, #1fb4a2) 40%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--scolor, #1fb4a2) 10%, transparent);
+    color: var(--scolor, #1fb4a2);
+    font-size: 11px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.18s ease;
+
+    &:hover {
+        background: color-mix(in srgb, var(--scolor, #1fb4a2) 16%, transparent);
     }
 }
 

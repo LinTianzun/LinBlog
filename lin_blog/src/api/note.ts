@@ -153,6 +153,16 @@ export interface TidyNote {
   updatedAt: string;
   missingLinks: string[];
   suggestions: TidySuggestion[];
+  // 由这篇笔记升级成的文章（文章发布后提示回链）
+  upgradedArticle?: TidyUpgradedArticle | null;
+  articleLinked?: boolean;
+}
+
+export interface TidyUpgradedArticle {
+  id: number;
+  title: string;
+  state: NoteState;
+  publishedAt: string | null;
 }
 
 export interface TidyReport {

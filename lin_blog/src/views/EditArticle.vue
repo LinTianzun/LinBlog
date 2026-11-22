@@ -56,7 +56,7 @@
                 <yk-button v-if="canPublish && article?.state !== 'published'"
                     :loading="submitting === 'publish'" @click="submitArticle('publish')"
                     :disabled="!canEditCurrent">
-                    发布
+                    {{ submitting === 'publish' && publishingFromNote ? '发布并回链…' : '发布' }}
                 </yk-button>
                 <yk-button v-if="canPublish && article?.state === 'published'"
                     type="secondary" :loading="submitting === 'withdraw'"
@@ -196,6 +196,7 @@ import {
 import ArticleVersionPanel from '../components/article/ArticleVersionPanel.vue'
 import ConflictCompareDialog from '../components/article/ConflictCompareDialog.vue'
 import SchedulePublishDialog from '../components/article/SchedulePublishDialog.vue'
+import { markUpgradeIntent } from '../utils/upgradeIntent'
 
 const editor = defineAsyncComponent(() => import('../components/editor/editor.vue'))
 import forms from '../components/forms/forms.vue'
@@ -249,6 +250,11 @@ const adoptingRemote = ref(false)
 const keepingLocal = ref(false)
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null
+// 新建文章的本机暂存是防抖的；发布后要立刻清草稿，不能让排队中的写入把它写回来
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+// 草稿里带着来源笔记时，即使用户关掉恢复，也要记住这次是从花园升级过来的
+let upgradeDraftPending = false
+let upgradeDraftNoteId: number | null = null
 let saveInFlight = false
 let saveQueued = false
 let applyingRemote = false
@@ -259,6 +265,10 @@ const articleId = computed(() => {
     return Number.isInteger(id) && id > 0 ? id : null
 })
 const isEditing = computed(() => articleId.value !== null)
+// 升级草稿的发布按钮在加载态也保留「回链」文案，作者知道接下来会回到花园
+const publishingFromNote = computed(
+    () => !isEditing.value && (Boolean(sourceNoteId.value) || upgradeDraftPending)
+)
 const access = useContentAccess('article')
 const canPublish = access.canPublish
 const canEditCurrent = computed(() => {
@@ -355,6 +365,46 @@ const describeError = (error: unknown, fallback: string): string => {
     return error instanceof Error && error.message ? error.message : fallback
 }
 
+/**
+ * 升级草稿的来源笔记：只在内存里保留，不参与自动保存比较。
+ * 新建文章恢复本机草稿时才写入；编辑已有文章不能继承这个状态。
+ */
+const sourceNoteId = ref<number | null>(null)
+let pendingUpgrade: { noteId: number; title: string } | null = null
+// 发布收尾时编辑器可能已在卸载，仍要保留来源让收尾逻辑识别这次升级
+let publishedFromNote = false
+
+/** 从花园笔记升级来的文章，发布后提示回原笔记补一条指向文章的链接 */
+function noteLinkSnippet(articleId: number, noteTitle: string): string {
+    return `## 延伸阅读\n\n- [${noteTitle} 的完整版](/portal/articles?open=${articleId})`
+}
+
+async function afterPublishFromNote(articleId: number): Promise<void> {
+    const noteId = pendingUpgrade?.noteId || sourceNoteId.value || upgradeDraftNoteId
+    if (!noteId) return
+    const title = form.value?.title?.trim() || pendingUpgrade?.title || '这篇文章'
+    const snippet = noteLinkSnippet(articleId, title)
+    // 设置标记后，其它旧跳转再取消也不能扫掉这条意图
+    const markPublishedFromNote = (): void => {
+        publishedFromNote = true
+        pendingUpgrade = null
+    }
+    try {
+        markUpgradeIntent({ noteId, articleId, title, snippet })
+    } catch {
+        // 本机存储不可用时仍按 URL 参数完成本次跳转
+    }
+    // 先进入花园再提示：编辑器卸载时全局 toast 会被一起带走，作者看不到结果
+    const target = {
+        path: '/notes',
+        query: { note: String(noteId), linkArticle: String(articleId), articleTitle: title, snippet },
+    }
+    // 路由跳转和组件卸载有先后：从更新钩子里立刻写入，避免旧的发布流程等待期间把来源清空
+    markPublishedFromNote()
+    await router.push(target)
+    showMessage('success', '这篇笔记已升级成文章发布，可以回笔记补一条指向文章的链接')
+}
+
 const handleFormData = (data: ArticleFormData): void => {
     form.value = data
 }
@@ -373,6 +423,13 @@ function scheduleAutosave(): void {
 
 function persistLocalDraft(): void {
     if (!currentSnapshot.value || !form.value) return
+    if (persistTimer) {
+        clearTimeout(persistTimer)
+        persistTimer = null
+    }
+    // 发布收尾已经清掉草稿，但草稿可能是从别的页面恢复进来的：
+    // 这时不能再把源码写回来，否则下一次打开会误以为还有升级稿
+    if (publishedFromNote) return
     const snapshot = currentSnapshot.value
     saveStatus.value = 'saving'
     writeLocalDraft(NEW_ARTICLE_DRAFT_KIND, {
@@ -382,6 +439,7 @@ function persistLocalDraft(): void {
         label: formatArticleLabels(form.value.label),
         introduce: form.value.introduce,
         cover: form.value.cover,
+        sourceNoteId: sourceNoteId.value,
     })
     localDraftAvailable.value = true
     lastSavedSnapshot.value = {
@@ -395,13 +453,24 @@ function persistLocalDraft(): void {
 
 function restoreLocalDraft(): void {
     const draft = readLocalDraft(NEW_ARTICLE_DRAFT_KIND)
-    if (!hasLocalDraftContent(draft)) return
+    upgradeDraftPending = Boolean(draft?.sourceNoteId)
+    upgradeDraftNoteId = draft?.sourceNoteId ?? null
+    // 「丢弃本机草稿」只对新建文章开放；编辑已有文章时不继承升级稿，
+    // 也不该把按钮露出来去清掉与当前文章无关的草稿
+    localDraftAvailable.value = !isEditing.value && hasLocalDraftContent(draft)
+    if (!localDraftAvailable.value) return
+    if (!draft) return
 
     const confirmed = window.confirm(
         `检测到 ${formatWorkflowTime(draft.savedAt)} 暂存在本机的未发布草稿，是否恢复？`
     )
     if (!confirmed) return
 
+    // 确认恢复后才把升级意图带到发布收尾；页面已在 /editarticle/…，不能再用 push('/editarticle')
+    pendingUpgrade = draft.sourceNoteId
+        ? { noteId: draft.sourceNoteId, title: draft.title || '这篇文章' }
+        : null
+    upgradeDraftNoteId = null
     applyingRemote = true
     loadedCopy.value = {
         title: draft.title,
@@ -414,6 +483,14 @@ function restoreLocalDraft(): void {
         state: 'draft',
     }
     content.value = draft.content
+    sourceNoteId.value = draft.sourceNoteId ?? null
+    upgradeDraftPending = false
+    // 恢复的草稿仍是新增的「不保存历史记录」路由，追加升级标记供发布后跳回花园
+    window.history.replaceState(
+        { ...window.history.state, noteUpgrade: Boolean(sourceNoteId.value) },
+        '',
+        window.location.href
+    )
     lastSavedSnapshot.value = null
     localDraftAvailable.value = true
     saveStatus.value = 'dirty'
@@ -428,6 +505,10 @@ function discardLocalDraft(): void {
 
     clearLocalDraft(NEW_ARTICLE_DRAFT_KIND)
     localDraftAvailable.value = false
+    sourceNoteId.value = null
+    upgradeDraftPending = false
+    upgradeDraftNoteId = null
+    pendingUpgrade = null
     saveStatus.value = 'idle'
     showMessage('primary', '已丢弃本机草稿')
 }
@@ -445,6 +526,9 @@ function buildPayload(): CreateArticleParams {
         introduce: form.value.introduce.trim(),
         cover: form.value.cover.trim(),
         ...(aiFeatures.length > 0 ? { aiFeatures } : {}),
+        ...(sourceNoteId.value || pendingUpgrade || upgradeDraftNoteId
+            ? { sourceNoteId: sourceNoteId.value ?? pendingUpgrade?.noteId ?? upgradeDraftNoteId! }
+            : {}),
     }
 }
 
@@ -603,7 +687,25 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
                     actionLabel: '去看看',
                 })
             }
-            await router.push('/article')
+            if (action === 'publish' && (sourceNoteId.value || upgradeDraftPending)) {
+                const finishing = afterPublishFromNote(nextId)
+                // 已创建为草稿时也要清掉来源，避免它被后续本机编辑继续带着
+                sourceNoteId.value = null
+                upgradeDraftPending = false
+                upgradeDraftNoteId = null
+                // 路由 state 不再指向这次升级会话
+                window.history.replaceState(
+                    { ...window.history.state, noteUpgrade: false },
+                    '',
+                    window.location.href
+                )
+                await finishing
+                return
+            }
+            // 新建文章此时没有原生 id，不能再进编辑分支
+            upgradeDraftNoteId = null
+            // 发布收尾已跳去别处时，不要让旧页面的卸载再改一次地址
+            if (!publishedFromNote) await router.push('/article')
             return
         }
 
@@ -625,6 +727,14 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
                 actionPath: `/portal/articles?open=${articleId.value}`,
                 actionLabel: '去看看',
             })
+            if (sourceNoteId.value) {
+                try {
+                    await afterPublishFromNote(articleId.value!)
+                } finally {
+                    sourceNoteId.value = null
+                }
+                if (action === 'publish') return
+            }
             await loadArticle()
             return
         }
@@ -843,7 +953,8 @@ watch(
             clearAutosaveTimer()
             if (!lastSavedSnapshot.value || hasWorkflowChanges(snapshot, lastSavedSnapshot.value)) {
                 saveStatus.value = 'dirty'
-                autosaveTimer = setTimeout(persistLocalDraft, AUTOSAVE_DELAY_MS)
+                if (persistTimer) clearTimeout(persistTimer)
+                persistTimer = setTimeout(persistLocalDraft, AUTOSAVE_DELAY_MS)
             }
             return
         }

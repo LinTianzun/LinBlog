@@ -163,3 +163,85 @@ test('私人笔记详情按作者隔离，未登录以外的用户不能读到�
         noteModel.findOwnedNote = original
     }
 })
+
+test('待整理清单带出升级文章与回链状态', async () => {
+    const originalList = noteModel.listNotesForTidy
+    const originalUpgrades = noteModel.listUpgradedArticles
+    const requestedIds = []
+    noteModel.listNotesForTidy = async () => [
+        {
+            id: 1,
+            title: '已经回链的笔记',
+            content: '延伸阅读：/portal/articles?open=9',
+            state: 'published',
+            outgoingLinks: 0,
+            incomingLinks: 0,
+            updatedAt: '2026-11-22T08:00:00.000Z',
+        },
+        {
+            id: 2,
+            title: '等待回链的笔记',
+            content: '这篇还没有文章链接。',
+            state: 'published',
+            outgoingLinks: 0,
+            incomingLinks: 0,
+            updatedAt: '2026-11-22T09:00:00.000Z',
+        },
+    ]
+    noteModel.listUpgradedArticles = async (ids) => {
+        requestedIds.push(ids)
+        return [
+            { noteId: 1, id: 9, title: '第一篇长文', state: 'published', publishedAt: '2026-11-21T08:00:00.000Z' },
+            { noteId: 2, id: 10, title: '第二篇长文', state: 'draft', publishedAt: null },
+        ]
+    }
+
+    try {
+        const res = response()
+        await noteController.getNoteTidy({ query: {}, user: { userId: 1 } }, res)
+
+        assert.equal(res.statusCode, 200)
+        assert.deepEqual(requestedIds, [[1, 2]])
+        const linked = res.body.data.orphans.find(note => note.id === 1)
+        const pending = res.body.data.orphans.find(note => note.id === 2)
+        assert.equal(linked.upgradedArticle.title, '第一篇长文')
+        assert.equal(linked.articleLinked, true)
+        assert.equal(pending.upgradedArticle.id, 10)
+        assert.equal(pending.articleLinked, false)
+    } finally {
+        noteModel.listNotesForTidy = originalList
+        noteModel.listUpgradedArticles = originalUpgrades
+    }
+})
+
+test('单篇笔记升级详情返回文章与当前回链状态', async () => {
+    const originalOwned = noteModel.findOwnedNote
+    const originalUpgrade = noteModel.findUpgradedArticle
+    noteModel.findOwnedNote = async () => ({
+        id: 5,
+        title: '来源笔记',
+        content: '去读 [完整版](/portal/articles?open=21)',
+        state: 'published',
+    })
+    noteModel.findUpgradedArticle = async () => [{
+        id: 21,
+        title: '完整版',
+        state: 'published',
+        publishedAt: '2026-11-22T08:00:00.000Z',
+    }]
+
+    try {
+        const res = response()
+        await noteController.getNoteUpgrade(
+            { params: { id: '5' }, user: { userId: 1 } },
+            res
+        )
+
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.body.data.article.id, 21)
+        assert.equal(res.body.data.articleLinked, true)
+    } finally {
+        noteModel.findOwnedNote = originalOwned
+        noteModel.findUpgradedArticle = originalUpgrade
+    }
+})
