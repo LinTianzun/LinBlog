@@ -189,6 +189,7 @@ import { emitPetReaction } from '../utils/desktopPetScene'
 import {
     clearLocalDraft,
     hasLocalDraftContent,
+    NEW_ARTICLE_DRAFT_KIND,
     readLocalDraft,
     writeLocalDraft,
 } from '../utils/localDraft'
@@ -374,7 +375,7 @@ function persistLocalDraft(): void {
     if (!currentSnapshot.value || !form.value) return
     const snapshot = currentSnapshot.value
     saveStatus.value = 'saving'
-    writeLocalDraft('article-new', {
+    writeLocalDraft(NEW_ARTICLE_DRAFT_KIND, {
         title: form.value.title,
         content: content.value,
         subsetId: form.value.subsetId ?? null,
@@ -393,7 +394,7 @@ function persistLocalDraft(): void {
 }
 
 function restoreLocalDraft(): void {
-    const draft = readLocalDraft('article-new')
+    const draft = readLocalDraft(NEW_ARTICLE_DRAFT_KIND)
     if (!hasLocalDraftContent(draft)) return
 
     const confirmed = window.confirm(
@@ -425,7 +426,7 @@ function discardLocalDraft(): void {
     const confirmed = window.confirm('丢弃本机暂存草稿？此操作不可恢复。')
     if (!confirmed) return
 
-    clearLocalDraft('article-new')
+    clearLocalDraft(NEW_ARTICLE_DRAFT_KIND)
     localDraftAvailable.value = false
     saveStatus.value = 'idle'
     showMessage('primary', '已丢弃本机草稿')
@@ -593,7 +594,7 @@ async function submitArticle(action: 'save' | 'publish' | 'withdraw'): Promise<v
                     throw new Error(published.message || '文章发布失败')
                 }
             }
-            clearLocalDraft('article-new')
+            clearLocalDraft(NEW_ARTICLE_DRAFT_KIND)
             localDraftAvailable.value = false
             showMessage('success', action === 'publish' ? '文章已发布' : '文章已保存为草稿')
             if (action === 'publish') {

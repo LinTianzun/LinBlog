@@ -77,6 +77,11 @@
                                 </span>
                             </div>
                             <div class="tidy-card-actions">
+                                <!-- 写作闭环：把笔记与推荐双链一起带进新建文章 -->
+                                <button type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
+                                    @click="upgradeToArticle(item)">
+                                    {{ upgradingId === item.id ? '准备中…' : '升级成长文' }}
+                                </button>
                                 <a v-if="item.id" class="tidy-preview" :href="`/portal/notes?open=${item.id}`"
                                     target="_blank" rel="noopener">
                                     预览
@@ -135,6 +140,12 @@
                                 </router-link>
                                 <p class="tidy-card-excerpt">{{ item.excerpt || '空白笔记' }}</p>
                             </div>
+                            <div class="tidy-card-actions">
+                                <button type="button" class="tidy-upgrade" :disabled="upgradingId === item.id"
+                                    @click="upgradeToArticle(item)">
+                                    {{ upgradingId === item.id ? '准备中…' : '升级成长文' }}
+                                </button>
+                            </div>
                         </header>
                         <div class="tidy-missing">
                             <span class="tidy-missing-label">找不到的目标</span>
@@ -169,7 +180,16 @@
 
 <script lang="ts" setup>
 import { getCurrentInstance, onMounted, ref } from 'vue'
-import { getNoteTidy, type TidyNote, type TidyReport, type TidySuggestion } from '../api/note'
+import { useRouter } from 'vue-router'
+import {
+    getNoteById,
+    getNoteTidy,
+    type TidyNote,
+    type TidyReport,
+    type TidySuggestion,
+} from '../api/note'
+import { buildArticleDraft } from '../utils/noteToArticle'
+import { NEW_ARTICLE_DRAFT_KIND, writeLocalDraft } from '../utils/localDraft'
 
 const proxy = getCurrentInstance()?.proxy as {
     $message?: (options: { type: 'primary' | 'warning' | 'error'; message: string }) => void
@@ -177,6 +197,8 @@ const proxy = getCurrentInstance()?.proxy as {
 
 const loading = ref(false)
 const errorMessage = ref('')
+const upgradingId = ref<number | null>(null)
+const router = useRouter()
 // 变量名不要叫 report：Vue 的 setup 编译产物会占用部分通用标识符，
 // 之前同名导致模板里拿到 undefined，整页直接进 ErrorBoundary
 const tidy = ref<TidyReport>({
@@ -220,6 +242,42 @@ const copyLink = async (note: TidyNote, target: TidySuggestion) => {
         proxy?.$message?.({ type: 'primary', message: `已复制：${snippet}` })
     } catch {
         proxy?.$message?.({ type: 'warning', message: `复制失败，请手动输入：${snippet}` })
+    }
+}
+
+/**
+ * 笔记升级成长文：拉一次完整正文，把推荐笔记写成双链，
+ * 落进新建文章的本机草稿再跳过去，编辑器打开即可继续。
+ */
+const upgradeToArticle = async (note: TidyNote) => {
+    if (upgradingId.value) return
+    upgradingId.value = note.id
+    try {
+        const detail = await getNoteById(note.id)
+        const source = detail?.code === 200 && detail.data ? detail.data : null
+        const draft = buildArticleDraft(
+            { title: source?.title || note.title, content: source?.content || '' },
+            note.suggestions.map(item => ({ id: item.id, title: item.title }))
+        )
+        // 已有未发布的本机草稿时先确认，避免直接覆盖作者写了一半的内容
+        const hasExisting = Boolean(localStorage.getItem(`linblog.local-draft.${NEW_ARTICLE_DRAFT_KIND}`))
+        if (hasExisting && !window.confirm('新建文章里已有一份本机草稿，用这篇笔记的升级稿替换它？')) {
+            return
+        }
+        writeLocalDraft(NEW_ARTICLE_DRAFT_KIND, {
+            title: draft.title,
+            content: draft.content,
+            subsetId: null,
+            label: '',
+            introduce: note.excerpt || '',
+            cover: '',
+        })
+        proxy?.$message?.({ type: 'primary', message: '已生成文章草稿，打开编辑器继续写' })
+        await router.push('/editarticle')
+    } catch {
+        proxy?.$message?.({ type: 'error', message: '笔记读取失败，请稍后重试' })
+    } finally {
+        upgradingId.value = null
     }
 }
 
@@ -543,6 +601,38 @@ defineOptions({ name: 'NoteTidyView' })
     &:hover {
         border-color: var(--pcolor3);
         color: var(--pcolor);
+    }
+}
+
+.tidy-card-actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+// 升级成长文是这个页面的主动作，用实色与复制双链、预览区分开
+.tidy-upgrade {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--pcolor);
+    color: #fff;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    transition: filter 0.18s ease, opacity 0.18s ease;
+
+    &:hover:not(:disabled) {
+        filter: brightness(1.08);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: progress;
     }
 }
 

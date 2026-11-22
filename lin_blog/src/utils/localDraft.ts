@@ -9,6 +9,9 @@ export interface LocalDraft {
 }
 
 const STORAGE_PREFIX = "linblog.local-draft.";
+// 本机草稿的存储位置是会被前端直接读写的约定，不只供 EditArticle 使用：
+// 花园笔记「升级成长文」也写这里，新建文章页按同一 key 恢复
+export const NEW_ARTICLE_DRAFT_KIND = "article-new";
 
 function storageKey(kind: string): string {
   return `${STORAGE_PREFIX}${kind}`;
