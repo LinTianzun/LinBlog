@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = 'http://127.0.0.1:4173'
+// 用独立端口：本机常驻的开发服务器（VSCode 终端等）有时会占住默认端口，
+// 复用或抢端口都会让用例对着旧代码跑。
+const port = process.env.PLAYWRIGHT_PORT || '4174'
+const baseURL = `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: './e2e',
@@ -34,9 +37,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+    command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
     url: `${baseURL}/loginRegister`,
-    reuseExistingServer: !process.env.CI,
+    // 本地常驻的 dev server 不会可靠地拾取所有改动（例如 VSCode 终端里启动的实例），
+    // 复用会让用例对着旧代码跑；每次测试都起一个干净的实例。
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })

@@ -34,6 +34,7 @@ test('公开花园只返回已发布笔记，双链解析到公开目标', async
     const originalResolve = noteModel.resolvePublicLinks
     const originalAggregate = noteModel.listBacklinksAggregated
     const originalOutgoing = noteModel.listOutgoingLinksAggregated
+    const originalUpgrades = noteModel.listPublishedUpgradesForNotes
     noteModel.listPublicNotes = async () => [{
         id: 2,
         title: '入口',
@@ -56,6 +57,9 @@ test('公开花园只返回已发布笔记，双链解析到公开目标', async
     noteModel.listOutgoingLinksAggregated = async () => [
         { fromNoteId: 2, id: 3, title: '内页', slug: 'inner' },
     ]
+    noteModel.listPublishedUpgradesForNotes = async () => [
+        { noteId: 2, id: 901, title: '入口的长文', publishedAt: '2026-11-23T08:00:00.000Z' },
+    ]
 
     try {
         const res = response()
@@ -65,11 +69,17 @@ test('公开花园只返回已发布笔记，双链解析到公开目标', async
         assert.match(res.body.data.list[0].html, /href="\/portal\/notes\?open=3"/)
         assert.deepEqual(res.body.data.list[0].backlinks, [{ id: 3, title: '内页', slug: 'inner' }])
         assert.deepEqual(res.body.data.list[0].outgoing, [{ id: 3, title: '内页', slug: 'inner' }])
+        assert.deepEqual(res.body.data.list[0].upgradedArticle, {
+            id: 901,
+            title: '入口的长文',
+            publishedAt: '2026-11-23T08:00:00.000Z',
+        })
     } finally {
         noteModel.listPublicNotes = originalList
         noteModel.resolvePublicLinks = originalResolve
         noteModel.listBacklinksAggregated = originalAggregate
         noteModel.listOutgoingLinksAggregated = originalOutgoing
+        noteModel.listPublishedUpgradesForNotes = originalUpgrades
     }
 })
 
@@ -109,6 +119,7 @@ test('花园图谱只返回已发布节点与公开双链，ID 统一为数字',
     const originalList = noteModel.listPublicNotes
     const originalEdges = noteModel.listPublicGraphEdges
     const originalTags = noteModel.listPublicGraphLabels
+    const originalUpgrades = noteModel.listPublicArticleUpgrades
     noteModel.listPublicNotes = async () => [{
         id: '2',
         title: '入口',
@@ -121,6 +132,7 @@ test('花园图谱只返回已发布节点与公开双链，ID 统一为数字',
     }]
     noteModel.listPublicGraphEdges = async () => [{ source: '2', target: '3' }]
     noteModel.listPublicGraphLabels = async () => [{ name: '知识管理', count: 1, degree: 2 }]
+    noteModel.listPublicArticleUpgrades = async () => [{ noteId: '2', id: '901', title: '入口的长文' }]
 
     try {
         const res = response()
@@ -138,10 +150,82 @@ test('花园图谱只返回已发布节点与公开双链，ID 统一为数字',
         })
         assert.deepEqual(res.body.data.edges, [{ source: 2, target: 3 }])
         assert.deepEqual(res.body.data.tags, [{ name: '知识管理', count: 1, degree: 2 }])
+        // 文章节点用负数 ID，和笔记共用一张图；边从笔记指向文章
+        assert.deepEqual(res.body.data.articles, [{ id: -901, articleId: 901, title: '入口的长文' }])
+        assert.deepEqual(res.body.data.articleEdges, [{ source: 2, target: -901 }])
     } finally {
         noteModel.listPublicNotes = originalList
         noteModel.listPublicGraphEdges = originalEdges
         noteModel.listPublicGraphLabels = originalTags
+        noteModel.listPublicArticleUpgrades = originalUpgrades
+    }
+})
+
+test('图谱不会把指向花园外笔记的升级关系画成悬空边', async () => {
+    const originalList = noteModel.listPublicNotes
+    const originalEdges = noteModel.listPublicGraphEdges
+    const originalTags = noteModel.listPublicGraphLabels
+    const originalUpgrades = noteModel.listPublicArticleUpgrades
+    noteModel.listPublicNotes = async () => [{
+        id: 2, title: '入口', slug: 'entry', content: '# 入口',
+        publishedAt: null, updatedAt: '2026-11-22T08:00:00.000Z',
+        outgoingLinks: 0, incomingLinks: 0,
+    }]
+    noteModel.listPublicGraphEdges = async () => []
+    noteModel.listPublicGraphLabels = async () => []
+    // 3 号笔记已转为草稿，它的文章也不该出现在公开花园里
+    noteModel.listPublicArticleUpgrades = async () => [
+        { noteId: 2, id: 901, title: '入口的长文' },
+        { noteId: 3, id: 902, title: '草稿笔记的长文' },
+    ]
+
+    try {
+        const res = response()
+        await noteController.getPublicGardenGraph({}, res)
+        assert.deepEqual(res.body.data.articleEdges, [{ source: 2, target: -901 }])
+        assert.deepEqual(res.body.data.articles.map(item => item.articleId), [901])
+    } finally {
+        noteModel.listPublicNotes = originalList
+        noteModel.listPublicGraphEdges = originalEdges
+        noteModel.listPublicGraphLabels = originalTags
+        noteModel.listPublicArticleUpgrades = originalUpgrades
+    }
+})
+
+test('公开笔记详情带上已发布升级文章，草稿文章不对外露出', async () => {
+    const originalFind = noteModel.findPublicNoteById
+    const originalResolve = noteModel.resolvePublicLinks
+    const originalBacklinks = noteModel.listBacklinks
+    const originalOutgoing = noteModel.listOutgoingLinks
+    const originalUpgrades = noteModel.listPublishedUpgradesForNotes
+    noteModel.findPublicNoteById = async () => ({
+        id: 2, title: '入口', slug: 'entry', content: '# 入口',
+        publishedAt: null, updatedAt: '2026-11-22T08:00:00.000Z',
+    })
+    noteModel.resolvePublicLinks = async () => ({ titles: {}, ids: {} })
+    noteModel.listBacklinks = async () => []
+    noteModel.listOutgoingLinks = async () => []
+    noteModel.listPublishedUpgradesForNotes = async ids => (
+        ids.includes(2)
+            ? [{ noteId: 2, id: 901, title: '入口的长文', publishedAt: '2026-11-23T08:00:00.000Z' }]
+            : []
+    )
+
+    try {
+        const res = response()
+        await noteController.getPublicNote({ params: { id: '2' } }, res)
+        assert.equal(res.statusCode, 200)
+        assert.deepEqual(res.body.data.upgradedArticle, {
+            id: 901,
+            title: '入口的长文',
+            publishedAt: '2026-11-23T08:00:00.000Z',
+        })
+    } finally {
+        noteModel.findPublicNoteById = originalFind
+        noteModel.resolvePublicLinks = originalResolve
+        noteModel.listBacklinks = originalBacklinks
+        noteModel.listOutgoingLinks = originalOutgoing
+        noteModel.listPublishedUpgradesForNotes = originalUpgrades
     }
 })
 

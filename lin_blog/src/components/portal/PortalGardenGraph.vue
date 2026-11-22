@@ -5,7 +5,8 @@
                 <span class="graph-kicker">KNOWLEDGE MAP</span>
                 <h2>知识图谱</h2>
                 <p>
-                    {{ nodes.length }} 篇笔记 · {{ edges.length }} 条双链。
+                    {{ noteCount }} 篇笔记 · {{ edges.length }} 条双链。
+                    <template v-if="grownArticleCount">另有 {{ grownArticleCount }} 篇文章由笔记长成。</template>
                     悬停查看邻居，点击进入笔记。
                 </p>
             </div>
@@ -40,6 +41,7 @@
             就能在图谱里连出第一条边。
         </div>
 
+        <!-- 既有笔记双链，也有「笔记 → 文章」的成稿边：同一张网里看到想法如何长大 -->
         <div v-else class="graph-canvas">
             <svg :viewBox="viewBox" role="img" :aria-label="`知识图谱，共 ${nodes.length} 个节点`"
                 @mouseleave="hoveredId = null">
@@ -48,7 +50,8 @@
                         :x2="edge.x2" :y2="edge.y2" :class="{
                             'is-active': edge.active,
                             'is-muted': edge.muted,
-                            'is-out': edge.out
+                            'is-out': edge.out,
+                            'is-article': edge.article
                         }" />
                 </g>
 
@@ -56,17 +59,22 @@
                     <g v-for="node in placedNodes" :key="node.id" class="graph-node" :class="{
                         'is-focus': focusSet.has(node.id),
                         'is-muted': (focusId !== null && !focusSet.has(node.id)) || node.out,
-                        'is-fresh': node.fresh
+                        'is-fresh': node.fresh,
+                        'is-article': Boolean(node.article)
                     }" :transform="`translate(${node.x} ${node.y})`" tabindex="0" role="button"
-                        :aria-label="`${node.title}，${node.degree} 条连接`"
+                        :aria-label="node.article
+                            ? `文章：${node.title}，由花园笔记升级而来`
+                            : `${node.title}，${node.degree} 条连接`"
                         @mouseenter="hoveredId = node.id" @focus="hoveredId = node.id"
-                        @blur="hoveredId = null" @click="emit('open-note', node.id)"
-                        @keydown.enter.prevent="emit('open-note', node.id)"
-                        @keydown.space.prevent="emit('open-note', node.id)">
+                        @blur="hoveredId = null" @click="openNode(node)"
+                        @keydown.enter.prevent="openNode(node)"
+                        @keydown.space.prevent="openNode(node)">
                         <circle v-if="node.fresh" class="node-pulse" :r="node.radius + 4" />
                         <circle class="node-halo" :r="node.hovered ? node.radius + 7 : node.radius + 3" />
-                        <circle class="node-dot" :r="node.radius" :class="{ 'is-fresh': node.fresh }" />
-                        <text v-if="node.hovered || node.id === focusId" class="node-label" :y="node.radius + 15"
+                        <rect v-if="node.article" class="node-dot is-article" :x="-node.radius" :y="-node.radius"
+                            :width="node.radius * 2" :height="node.radius * 2" :rx="3" />
+                        <circle v-else class="node-dot" :r="node.radius" :class="{ 'is-fresh': node.fresh }" />
+                        <text v-if="node.hovered || node.id === focusId || node.article" class="node-label" :y="node.radius + 15"
                             text-anchor="middle">{{ shortTitle(node.title) }}</text>
                     </g>
                 </g>
@@ -79,7 +87,7 @@
                 <p class="insight-label">HUBS · 从枢纽开始逛</p>
                 <p v-if="!hubs.length" class="insight-empty">还没有双链，先写下第一篇带 <code>[[标题]]</code> 的笔记。</p>
                 <template v-else>
-                    <p class="insight-copy">被引用最多的几篇，适合当作进入花园的入口。</p>
+                    <p class="insight-copy">被引用最多的几篇笔记，适合当作进入花园的入口。</p>
                     <ul>
                         <li v-for="(hub, i) in hubs" :key="hub.id">
                             <span class="hub-rank">{{ i + 1 }}</span>
@@ -127,6 +135,10 @@
                 <span class="legend-dot is-strong" /> 常被引用
                 <span class="legend-dot" /> 普通笔记
                 <span class="legend-line" /> 双链
+                <template v-if="grownArticleCount">
+                    <span class="legend-article" /> 文章
+                    <span class="legend-line is-article" /> 笔记长成文章
+                </template>
             </div>
             <ul v-if="topNodes.length" class="graph-top">
                 <li v-for="node in topNodes" :key="node.id">
@@ -145,7 +157,13 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { IconRightOutline } from '@yike-design/ui/es/components/svg-icon'
-import { getPublicGardenGraph, type GardenGraph } from '../../api/note'
+import {
+    getPublicGardenGraph,
+    type GardenGraph,
+    type GardenGraphArticle,
+    type GardenGraphEdge,
+    type GardenGraphNode,
+} from '../../api/note'
 import {
     fitViewBox,
     gardenInsights,
@@ -159,18 +177,76 @@ const emit = defineEmits<{
     (e: 'open-note', id: number): void
 }>()
 
-const graph = ref<GardenGraph>({ nodes: [], edges: [], tags: [] })
+// 文章以负数 ID 合入同一张图：和笔记共用力导向布局，边就是「笔记长成文章」
+type PlotNode = GardenGraphNode & { article?: GardenGraphArticle }
+
+/**
+ * 合成图谱数据：笔记节点在前，成稿文章以负数 ID 追加在后面。
+ */
+function buildPlotGraph(data: GardenGraph): {
+    nodes: PlotNode[]
+    edges: GardenGraphEdge[]
+    articles: GardenGraphArticle[]
+} {
+    const articles = data.articles || []
+    const known = new Set(data.nodes.map(node => node.id))
+    // 只保留两端都在的边：笔记必须公开，文章必须是本次下发的公开文章
+    const articleIds = new Set(articles.map(article => article.id))
+    const articleEdges: GardenGraphEdge[] = []
+    for (const edge of data.articleEdges || []) {
+        if (!known.has(edge.source)) continue
+        if (!articleIds.has(edge.target)) continue
+        articleEdges.push(edge)
+    }
+    // 只有「被某篇笔记连着」的文章才是花园里的成稿；没有来源的节点不参与布局，
+    // 否则会被当成孤岛混进待整理提示
+    const liveArticles: GardenGraphArticle[] = []
+    for (const article of articles) {
+        const linked = articleEdges.some(function (edge) {
+            return edge.target === article.id
+        })
+        if (linked) liveArticles.push(article)
+    }
+    return {
+        nodes: [
+            ...data.nodes,
+            ...liveArticles.map(article => ({
+                id: article.id,
+                title: article.title,
+                slug: '',
+                tags: [],
+                publishedAt: null,
+                updatedAt: '',
+                outgoingLinks: 0,
+                incomingLinks: 1,
+                article,
+            })),
+        ],
+        edges: [...data.edges, ...articleEdges],
+        articles: liveArticles,
+    }
+}
+
+const graph = ref<ReturnType<typeof buildPlotGraph>>(buildPlotGraph({ nodes: [], edges: [], tags: [] }))
+const tags = ref<GardenGraph['tags']>([])
 const query = ref('')
 const hoveredId = ref<number | null>(null)
 // 点击「常被引用」列表可把焦点固定住，方便慢慢看一个局部网络
 const pinnedId = ref<number | null>(null)
 const activeTag = ref('')
-
 // 最近 30 天更新的笔记做轻量高亮，让花园的「生长」看得见
 const FRESH_DAYS = 30
 
-const tagFacets = computed(() => (graph.value.tags || []).slice(0, 12))
-const hasTagFilter = computed(() => activeTag.value !== '')
+const tagFacets = computed(() => tags.value.slice(0, 12))
+const articleById = computed(() => {
+    const map = new Map<number, GardenGraphArticle>()
+    for (const article of graph.value.articles) map.set(article.id, article)
+    return map
+})
+// 不能叫 articleCount：模板与 setup 同作用域，后面的同名 const 会遮蔽模板里的引用
+const grownArticleCount = computed(() => graph.value.articles.length)
+// 图谱标题只统计笔记，不把成稿文章算进笔记数与双链数
+const noteCount = computed(() => nodes.value.length - graph.value.articles.length)
 
 const layout = computed(() => layoutGraph(graph.value.nodes, graph.value.edges, {
     width: 960,
@@ -202,11 +278,17 @@ const isFresh = (node: LayoutNode): boolean => {
 // 标签过滤只淡化不剔除：保留整体轮廓，聚焦的标签子图仍处在原位
 const taggedNodeIds = computed(() => {
     if (!activeTag.value) return null
-    return new Set(
+    const notes = new Set(
         nodes.value
             .filter(node => node.tags.includes(activeTag.value))
             .map(node => node.id)
     )
+    // 成稿文章没有标签：只要来源笔记在筛选结果里，它也跟着亮着
+    for (const edge of edges.value) {
+        if (edge.target >= 0) continue
+        if (notes.has(edge.source)) notes.add(edge.target)
+    }
+    return notes
 })
 
 const searchMatches = computed(() => {
@@ -234,8 +316,10 @@ const positionOf = computed(() => {
 const placedNodes = computed(() => nodes.value.map(node => ({
     ...node,
     hovered: node.id === focusId.value || Boolean(searchMatches.value?.has(node.id)),
-    out: hasTagFilter.value && !taggedNodeIds.value?.has(node.id),
+    // 标签过滤只淡化不剔除：保留整体轮廓，聚焦的标签子图仍处在原位；
+    out: taggedNodeIds.value ? !taggedNodeIds.value.has(node.id) : false,
     fresh: isFresh(node),
+    article: articleById.value.get(node.id),
 })))
 
 const renderedEdges = computed(() => edges.value.map(edge => {
@@ -252,19 +336,37 @@ const renderedEdges = computed(() => edges.value.map(edge => {
         muted: focusId.value !== null
             && edge.source !== focusId.value
             && edge.target !== focusId.value,
-        out: Boolean(taggedNodeIds.value)
-            && !(taggedNodeIds.value?.has(edge.source) && taggedNodeIds.value?.has(edge.target)),
+        out: taggedNodeIds.value
+            ? !(taggedNodeIds.value.has(edge.source) && taggedNodeIds.value.has(edge.target))
+            : false,
+    // 成稿边单独着色：读者一眼能看出哪些想法已经长大成文章
+    article: edge.target < 0,
     }
 }).filter((edge): edge is NonNullable<typeof edge> => edge !== null))
 
 const topNodes = computed(() => topLinkedNodes(nodes.value, 6))
 
-// 枢纽/孤岛都按边列表算，和图里画出的线保持同一口径
-const insights = computed(() => gardenInsights(graph.value.nodes, graph.value.edges))
+// 枢纽/孤岛只看笔记之间的双链：文章节点和成稿边都不参与判断
+const insights = computed(() => gardenInsights(
+    graph.value.nodes.filter(node => !articleById.value.has(node.id)),
+    graph.value.edges.filter(edge => edge.target >= 0)
+))
 const hubs = computed(() => insights.value.hubs)
 const orphans = computed(() => insights.value.orphans)
 
 const copied = ref(false)
+
+// 笔记节点交给门户打开详情；文章节点直接进入文章阅读页
+const openNode = (node: LayoutNode) => {
+    const article = articleById.value.get(node.id)
+    if (!article) {
+        emit('open-note', node.id)
+        return
+    }
+    // 新标签页打开成稿，读者可以在花园和文章之间来回对照
+    const url = `${window.location.origin}/portal/articles?open=${article.articleId}`
+    window.open(url, '_blank', 'noopener')
+}
 
 const focusHub = (id: number) => {
     pinnedId.value = pinnedId.value === id ? null : id
@@ -314,10 +416,12 @@ const loadGraph = async () => {
     try {
         const result = await getPublicGardenGraph()
         if (result.code === 200 && result.data) {
-            graph.value = result.data
+            graph.value = buildPlotGraph(result.data)
+            tags.value = result.data.tags || []
         }
     } catch {
-        graph.value = { nodes: [], edges: [], tags: [] }
+        graph.value = buildPlotGraph({ nodes: [], edges: [], tags: [] })
+        tags.value = []
     }
 }
 
@@ -507,6 +611,16 @@ onMounted(() => {
     &.is-out {
         opacity: 0.08;
     }
+
+    // 成稿边用虚线：不是笔记之间的双链，而是这朵想法长成了正式文章
+    &.is-article {
+        stroke: color-mix(in srgb, var(--portal-accent) 60%, transparent);
+        stroke-dasharray: 3 4;
+
+        &.is-active {
+            stroke: var(--portal-accent);
+        }
+    }
 }
 
 .graph-node {
@@ -549,10 +663,26 @@ onMounted(() => {
     stroke: var(--portal-surface);
     stroke-width: 1.5;
     transition: fill 0.18s ease;
+
+    // 文章是方节点，和图里圆形的笔记区分开
+    &.is-article {
+        fill: var(--portal-surface);
+        stroke: var(--portal-accent);
+        stroke-width: 1.6;
+    }
 }
 
 .graph-node.is-focus .node-dot,
 .graph-node:hover .node-dot {
+    fill: var(--portal-accent);
+}
+
+.graph-node.is-article .node-dot {
+    fill: color-mix(in srgb, var(--portal-accent) 14%, var(--portal-surface));
+}
+
+.graph-node.is-article.is-focus .node-dot,
+.graph-node.is-article:hover .node-dot {
     fill: var(--portal-accent);
 }
 
@@ -796,11 +926,15 @@ onMounted(() => {
 
 .graph-legend {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
+    row-gap: 4px;
     gap: 6px;
+    line-height: 1.5;
 }
 
 .legend-dot {
+    flex: none;
     width: 8px;
     height: 8px;
     margin-left: 6px;
@@ -814,10 +948,27 @@ onMounted(() => {
 }
 
 .legend-line {
+    flex: none;
     width: 16px;
     height: 1px;
     margin: 0 4px 0 10px;
     background: var(--portal-text-tertiary);
+
+    &.is-article {
+        height: 0;
+        border-top: 1px dashed var(--portal-accent);
+        background: transparent;
+    }
+}
+
+.legend-article {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-left: 8px;
+    border: 1.5px solid var(--portal-accent);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--portal-accent) 14%, transparent);
 }
 
 .graph-top {

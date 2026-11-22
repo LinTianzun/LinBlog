@@ -353,6 +353,39 @@ async function listPublicGraphEdges() {
     )
 }
 
+/**
+ * 图谱里的「笔记 → 文章」边：只取升级关系，并且文章本身已发布。
+ * 对外图谱与待整理清单同一套口径：草稿文章不会出现在公开花园里。
+ */
+async function listPublicArticleUpgrades() {
+    return query(
+        `SELECT u.note_id AS noteId, a.id, a.title
+           FROM note_article_upgrade u
+           INNER JOIN note n ON n.id = u.note_id AND n.state = 'published'
+           INNER JOIN article a ON a.id = u.article_id AND a.state = 'published'
+          ORDER BY u.note_id ASC, a.id ASC`
+    )
+}
+
+/**
+ * 公开笔记列表里的升级关系：索引卡片与详情共用，
+ * 作者在花园就能看到「这篇笔记长成了哪篇文章」。
+ */
+async function listPublishedUpgradesForNotes(noteIds) {
+    const ids = (Array.isArray(noteIds) ? noteIds : [])
+        .map(Number)
+        .filter(id => Number.isSafeInteger(id) && id > 0)
+    if (!ids.length) return []
+    return query(
+        `SELECT u.note_id AS noteId, a.id, a.title, a.published_at AS publishedAt
+           FROM note_article_upgrade u
+           INNER JOIN article a ON a.id = u.article_id AND a.state = 'published'
+          WHERE u.note_id IN (?)
+          ORDER BY u.note_id ASC, a.id ASC`,
+        [ids]
+    )
+}
+
 // 图谱标签分面：按笔记正文里出现过的「#标签」统计，只统计公开笔记。
 // 度数只算公开链接，与图谱边的口径保持一致。
 async function listPublicGraphLabels() {
@@ -461,6 +494,8 @@ module.exports = {
     recordArticleUpgrade,
     listUpgradedArticles,
     findUpgradedArticle,
+    listPublicArticleUpgrades,
+    listPublishedUpgradesForNotes,
     listPublicGraphEdges,
     listPublicGraphLabels,
     resolvePublicLinks,

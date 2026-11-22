@@ -24,6 +24,14 @@ export interface GardenNote {
   // 正文里指向其它公开笔记的链接，详情接口返回
   outgoing?: GardenNoteLink[];
   tags?: string[];
+  // 这篇笔记升级出的公开文章，卡片与详情都直接给出入口
+  upgradedArticle?: GardenUpgradedArticle | null;
+}
+
+export interface GardenUpgradedArticle {
+  id: number;
+  title: string;
+  publishedAt: string | null;
 }
 
 export interface GardenData {
@@ -55,9 +63,18 @@ export interface GardenGraphEdge {
   target: number;
 }
 
+// 由笔记升级出的公开文章；id 为负数，避免和笔记节点撞号
+export interface GardenGraphArticle {
+  id: number;
+  articleId: number;
+  title: string;
+}
+
 export interface GardenGraph {
   nodes: GardenGraphNode[];
   edges: GardenGraphEdge[];
+  articles?: GardenGraphArticle[];
+  articleEdges?: GardenGraphEdge[];
   tags: { name: string; count: number; degree: number }[];
 }
 

@@ -22,6 +22,30 @@ function groupBacklinks(rows) {
 }
 
 /**
+ * 把「笔记 → 文章」的升级关系按笔记分组。
+ * 同一篇笔记升级出多篇文章时保留全部，图里会分别连到每篇文章。
+ */
+function groupUpgradedArticles(rows) {
+    const index = new Map()
+    for (const row of Array.isArray(rows) ? rows : []) {
+        const noteId = Number(row.noteId ?? row.note_id)
+        const articleId = Number(row.id)
+        if (!Number.isSafeInteger(noteId) || noteId <= 0) continue
+        if (!Number.isSafeInteger(articleId) || articleId <= 0) continue
+
+        if (!index.has(noteId)) index.set(noteId, [])
+        const list = index.get(noteId)
+        if (list.some(item => item.id === articleId)) continue
+        list.push({
+            id: articleId,
+            title: String(row.title || ''),
+            publishedAt: row.publishedAt ?? null,
+        })
+    }
+    return index
+}
+
+/**
  * 出发链接同样按来源笔记分组。
  *
  * 花园索引里每张卡片都带着自己的正文快照，点开后不会再请求详情，
@@ -78,4 +102,10 @@ function hasArticleLink(content, articleId) {
     return pattern.test(String(content || ''))
 }
 
-module.exports = { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink }
+module.exports = {
+    groupBacklinks,
+    groupOutgoing,
+    groupUpgrades,
+    groupUpgradedArticles,
+    hasArticleLink,
+}

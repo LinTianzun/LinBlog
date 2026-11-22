@@ -8,7 +8,13 @@ const {
     normalizeLinkTitle,
 } = require('../utils/noteMarkdown')
 const { buildTidyReport } = require('../utils/gardenTidy')
-const { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink } = require('../utils/noteLinkIndex')
+const {
+    groupBacklinks,
+    groupOutgoing,
+    groupUpgrades,
+    groupUpgradedArticles,
+    hasArticleLink,
+} = require('../utils/noteLinkIndex')
 
 const TITLE_MAX = 150
 const CONTENT_MAX = 200_000
@@ -189,6 +195,14 @@ async function getPublicGarden(_req, res) {
             note.backlinks = byTarget.get(note.id) || []
             note.outgoing = bySource.get(note.id) || []
         }
+        // 由笔记升级出的公开文章：卡片上直接标注「已长成文章」
+        const upgraded = groupUpgradedArticles(
+            await noteModel.listPublishedUpgradesForNotes(list.map(note => note.id))
+        )
+        for (const note of list) {
+            const article = (upgraded.get(note.id) || [])[0]
+            if (article) note.upgradedArticle = article
+        }
 
         res.set('Cache-Control', 'no-cache')
         res.json({
@@ -236,6 +250,10 @@ async function getPublicNote(req, res) {
                     title: item.title,
                     slug: item.slug,
                 })),
+                // 这篇笔记升级出的公开文章，详情里可直接跳到成稿
+                upgradedArticle: (groupUpgradedArticles(
+                    await noteModel.listPublishedUpgradesForNotes([note.id])
+                ).get(Number(note.id)) || [])[0] || null,
             },
         })
     } catch (err) {
@@ -246,11 +264,29 @@ async function getPublicNote(req, res) {
 // 花园图谱：节点=已发布笔记，边=两端都公开的双链
 async function getPublicGardenGraph(_req, res) {
     try {
-        const [notes, edges, tags] = await Promise.all([
+        const [notes, edges, tags, upgrades] = await Promise.all([
             noteModel.listPublicNotes(),
             noteModel.listPublicGraphEdges(),
             noteModel.listPublicGraphLabels(),
+            noteModel.listPublicArticleUpgrades(),
         ])
+        // 文章节点用负数 ID：与笔记共用一张图时不会和笔记 ID 冲突
+        const noteIds = new Set(notes.map(note => Number(note.id)))
+        const articles = new Map()
+        const articleEdges = []
+        for (const row of upgrades) {
+            const source = Number(row.noteId)
+            const articleId = Number(row.id)
+            if (!noteIds.has(source) || !Number.isSafeInteger(articleId) || articleId <= 0) continue
+            if (!articles.has(articleId)) {
+                articles.set(articleId, {
+                    id: -articleId,
+                    articleId,
+                    title: String(row.title || ''),
+                })
+            }
+            articleEdges.push({ source, target: -articleId })
+        }
         res.set('Cache-Control', 'no-cache')
         res.json({
             code: 200,
@@ -270,6 +306,8 @@ async function getPublicGardenGraph(_req, res) {
                     source: Number(edge.source),
                     target: Number(edge.target),
                 })),
+                articles: [...articles.values()],
+                articleEdges,
                 // 标签分面：节点上带 tags，前端可据此过滤与聚焦
                 tags,
             },

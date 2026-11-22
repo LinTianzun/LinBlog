@@ -12,6 +12,21 @@
 
             <div class="garden-prose" v-html="note.html" @click="handleProseClick" />
 
+            <!-- 从笔记长成的文章：花园里的想法整理成正式长文的唯一出口 -->
+            <section v-if="note.upgradedArticle" class="garden-upgraded" aria-label="升级成长文">
+                <span class="upgraded-mark" aria-hidden="true">→</span>
+                <div class="upgraded-copy">
+                    <p class="upgraded-label">这篇笔记长大成了文章</p>
+                    <p class="upgraded-title">{{ note.upgradedArticle.title }}</p>
+                </div>
+                <router-link class="upgraded-link"
+                    :to="{ path: '/portal/articles', query: { open: String(note.upgradedArticle.id) } }"
+                    @click="emit('close')">
+                    去读完整版
+                    <IconRightOutline />
+                </router-link>
+            </section>
+
             <!-- 双向浏览：出发链接告诉你这一篇通往哪里，反向链接告诉你从哪来 -->
             <section v-if="note.outgoing?.length || note.backlinks?.length" class="garden-links" aria-label="双链">
                 <div v-if="note.outgoing?.length" class="garden-links-col">
@@ -54,6 +69,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { IconRightOutline } from '@yike-design/ui/es/components/svg-icon'
 import type { GardenNote } from '../../api/note'
 import { findSimilar, type SimilarityDoc } from '../../utils/contentSimilarity'
 
@@ -230,6 +246,75 @@ const handleProseClick = (event: MouseEvent) => {
     border-top: 1px solid var(--portal-line-soft);
 }
 
+.garden-upgraded {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 4px 0 18px;
+    padding: 14px 18px;
+    border: 1px solid color-mix(in srgb, var(--portal-accent) 30%, var(--portal-line-soft));
+    border-radius: 16px;
+    background: linear-gradient(
+        120deg,
+        color-mix(in srgb, var(--portal-accent) 10%, transparent),
+        transparent 70%
+    );
+}
+
+.upgraded-mark {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
+    font-size: 13px;
+    line-height: 26px;
+    text-align: center;
+}
+
+.upgraded-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.upgraded-label {
+    margin: 0 0 2px;
+    color: var(--portal-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+}
+
+.upgraded-title {
+    overflow: hidden;
+    margin: 0;
+    color: var(--portal-text-primary);
+    font-family: var(--portal-serif);
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upgraded-link {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--portal-accent);
+    color: var(--portal-accent);
+    font-size: 12px;
+    text-decoration: none;
+    transition: background-color 0.18s ease, color 0.18s ease;
+
+    &:hover {
+        background: var(--portal-accent);
+        color: var(--portal-text-on-accent);
+    }
+}
+
 .garden-links {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -291,5 +376,15 @@ const handleProseClick = (event: MouseEvent) => {
 
 .garden-related .backlink {
     border-style: dashed;
+}
+
+@media (max-width: 640px) {
+    .garden-upgraded {
+        flex-wrap: wrap;
+    }
+
+    .upgraded-title {
+        white-space: normal;
+    }
 }
 </style>

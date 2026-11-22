@@ -68,6 +68,11 @@
                     <span v-if="note.tags?.length" class="card-tags">
                         <span v-for="tag in note.tags.slice(0, 3)" :key="tag">#{{ tag }}</span>
                     </span>
+                    <!-- 这篇笔记已经长成正式文章：卡片上就能看出它成熟到了哪一步 -->
+                    <span v-if="note.upgradedArticle" class="card-grown">
+                        <span class="card-grown-mark" aria-hidden="true">→</span>
+                        已长成文章 · {{ note.upgradedArticle.title }}
+                    </span>
                     <!-- 反向链接聚合：卡片上直接列出谁提到了它，不用点进详情 -->
                     <span v-if="note.backlinks?.length" class="card-backlinks">
                         <span class="card-backlinks-label">被</span>
@@ -449,6 +454,36 @@ watch(() => route.query.open, (value) => {
     gap: 6px;
     color: var(--portal-accent);
     font-size: 10px;
+}
+
+// 已长成文章的笔记：淡色标签，点卡片仍是进笔记，成稿入口在详情里
+.card-grown {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 3px 9px 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--portal-accent) 28%, var(--portal-line-soft));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--portal-accent) 8%, transparent);
+    color: var(--portal-accent);
+    font-size: 10.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-style: normal;
+}
+
+.card-grown-mark {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--portal-accent);
+    color: var(--portal-text-on-accent);
+    font-size: 9px;
+    line-height: 14px;
+    text-align: center;
 }
 
 .card-backlinks {

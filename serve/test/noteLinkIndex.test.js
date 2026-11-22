@@ -1,7 +1,13 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { groupBacklinks, groupOutgoing, groupUpgrades, hasArticleLink } = require('../utils/noteLinkIndex')
+const {
+    groupBacklinks,
+    groupOutgoing,
+    groupUpgrades,
+    groupUpgradedArticles,
+    hasArticleLink,
+} = require('../utils/noteLinkIndex')
 
 test('按目标笔记聚合入链，并保留标题与 slug', () => {
     const index = groupBacklinks([
@@ -69,4 +75,19 @@ test('升级关系聚合：每篇笔记只保留最新文章，断链判定按�
     assert.equal(hasArticleLink('看这里 /portal/articles?open=21', 21), true)
     assert.equal(hasArticleLink('看这里 /portal/articles?open=210', 21), false)
     assert.equal(hasArticleLink('', 21), false)
+})
+
+test('公开升级关系按笔记分组，保留全部文章并去重', () => {
+    const index = groupUpgradedArticles([
+        { noteId: '7', id: '21', title: 'A', publishedAt: '2026-11-01T00:00:00.000Z' },
+        { noteId: 7, id: 21, title: 'A', publishedAt: '2026-11-01T00:00:00.000Z' },
+        { noteId: 7, id: 22, title: 'B', publishedAt: null },
+        { noteId: 0, id: 23, title: '坏数据' },
+        { noteId: 8, id: 0, title: '坏数据' },
+    ])
+    assert.deepEqual(index.get(7), [
+        { id: 21, title: 'A', publishedAt: '2026-11-01T00:00:00.000Z' },
+        { id: 22, title: 'B', publishedAt: null },
+    ])
+    assert.equal(index.size, 1)
 })
