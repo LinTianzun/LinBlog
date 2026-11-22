@@ -103,8 +103,12 @@ async function listNotesForOwner({ userId, page = 1, pageSize = 20, state, keywo
     const list = await query(
         `SELECT n.id, n.title, n.slug, n.content, n.state,
                 n.published_at AS publishedAt, n.created_at AS createdAt, n.updated_at AS updatedAt,
-                (SELECT COUNT(*) FROM note_link l WHERE l.from_note_id = n.id) AS outgoingLinks,
-                (SELECT COUNT(*) FROM note_link l WHERE l.to_note_id = n.id) AS incomingLinks
+                (SELECT COUNT(*) FROM note_link l
+                   INNER JOIN note t ON t.id = l.to_note_id AND t.state = 'published'
+                  WHERE l.from_note_id = n.id) AS outgoingLinks,
+                (SELECT COUNT(*) FROM note_link l
+                   INNER JOIN note s ON s.id = l.from_note_id AND s.state = 'published'
+                  WHERE l.to_note_id = n.id) AS incomingLinks
            FROM note n WHERE ${where.join(' AND ')}
           ORDER BY n.updated_at DESC, n.id DESC
           LIMIT ? OFFSET ?`,
@@ -322,6 +326,25 @@ async function countNotesByState(userId) {
     return summary
 }
 
+// 待整理候选：作者自己的已发布笔记，带上正文用于现算相似度
+async function listNotesForTidy(userId) {
+    const rows = await query(
+        `SELECT n.id, n.title, n.slug, n.content, n.state,
+                n.published_at AS publishedAt, n.updated_at AS updatedAt,
+                (SELECT COUNT(*) FROM note_link l WHERE l.from_note_id = n.id) AS outgoingLinks,
+                (SELECT COUNT(*) FROM note_link l WHERE l.to_note_id = n.id) AS incomingLinks
+           FROM note n
+          WHERE n.user_id = ? AND n.state = 'published'
+          ORDER BY n.updated_at DESC, n.id DESC`,
+        [userId]
+    )
+    return rows.map(row => ({
+        ...row,
+        outgoingLinks: Number(row.outgoingLinks || 0),
+        incomingLinks: Number(row.incomingLinks || 0),
+    }))
+}
+
 module.exports = {
     parseId,
     createSlug,
@@ -338,4 +361,5 @@ module.exports = {
     listPublicGraphLabels,
     resolvePublicLinks,
     countNotesByState,
+    listNotesForTidy,
 }

@@ -87,7 +87,10 @@
             <slot />
         </main>
 
-        <PortalNewsletter />
+        <!-- 订阅条与页面最后一个区块之间留出呼吸位，由布局层统一，避免各页面自己补下边距 -->
+        <div class="portal-newsletter-slot">
+            <PortalNewsletter />
+        </div>
 
         <footer class="portal-foot">
             <div class="foot-inner">
@@ -713,6 +716,10 @@ const goAdmin = () => router.push('/overView')
     }
 }
 
+.portal-newsletter-slot {
+    margin-top: clamp(72px, 9vw, 128px);
+}
+
 .portal-offline {
     position: fixed;
     left: 50%;
@@ -768,7 +775,8 @@ const goAdmin = () => router.push('/overView')
 }
 
 .portal-foot {
-    margin-top: 96px;
+    // 上方已有订阅条的留白，这里收窄一点，避免底栏前出现两块等量空白
+    margin-top: 56px;
     padding: 48px 0 40px;
     border-top: 1px solid var(--portal-surface-border);
     background: var(--portal-surface-strong);
@@ -962,6 +970,10 @@ const goAdmin = () => router.push('/overView')
     // 窄屏：面板右对齐触发器，宽度按视口收敛，避免贴边溢出
     .theme-panel {
         width: min(248px, calc(100vw - 32px));
+    }
+
+    .portal-newsletter-slot {
+        margin-top: 64px;
     }
 }
 </style>

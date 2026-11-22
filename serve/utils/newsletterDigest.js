@@ -4,11 +4,15 @@ const newsletterModel = require('../model/dbModel/newsletter/index')
 const config = require('../config/default')
 const { sendAlertMail } = require('./mailer')
 const { writeSystemLog } = require('./logHelper')
+const { buildVectors, cosine } = require('./textSimilarity')
 
 const SITE_NAME = '林知雨 · 个人刊物'
 const DEFAULT_LOOKBACK_DAYS = 7
 const DEFAULT_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000
 const MAX_ITEMS = 8
+// 两篇内容相似度超过该阈值即归入同一主题；阈值偏保守，避免把不相关内容硬凑成一组
+const GROUP_THRESHOLD = 0.12
+const MAX_GROUPS = 4
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -77,6 +81,8 @@ function buildDigest({ origin, articles = [], diaries = [], since }) {
             description: item.description,
         }))
 
+    // 主题分组：把讲的是一件事的内容聚到一起，没凑够两篇的单独成组
+    const groups = groupDigestItems(items)
     return {
         title: `最近更新 · ${SITE_NAME}`,
         since,
@@ -84,33 +90,101 @@ function buildDigest({ origin, articles = [], diaries = [], since }) {
             ? `这是 ${new Date(since).toLocaleDateString('zh-CN')} 以来的更新清单。`
             : '这是订阅后的第一期更新清单。',
         items,
+        groups,
+        grouped: groups.length > 1,
     }
+}
+
+/**
+ * 按内容相似度做单链聚类（greedy single-link clustering）：
+ * 新条目与已有组内任一条相似度超过阈值就并入该组，否则自成一組。
+ * 顺序沿用摘要的发布时间倒序，保证分组结果稳定、可复现。
+ */
+function groupDigestItems(items) {
+    if (items.length === 0) return []
+    const vectors = buildVectors(items)
+    const groups = []
+
+    items.forEach((item, index) => {
+        let bestGroup = null
+        let bestScore = 0
+        groups.forEach(group => {
+            const score = Math.max(...group.members.map(member => cosine(vectors[index], vectors[member])))
+            if (score > bestScore) {
+                bestScore = score
+                bestGroup = group
+            }
+        })
+
+        if (bestGroup && bestScore >= GROUP_THRESHOLD) {
+            bestGroup.members.push(index)
+            return
+        }
+        groups.push({ members: [index] })
+    })
+
+    // 组内保持时间顺序；组之间按首篇在摘要中的位置排序，组内条目多的不因此前移
+    return groups
+        .map(group => ({
+            items: group.members.map(index => items[index]),
+            firstIndex: group.members[0],
+        }))
+        .sort((a, b) => a.firstIndex - b.firstIndex)
+        .slice(0, MAX_GROUPS)
+        .map((group, index) => ({
+            id: index + 1,
+            label: groupThemeLabel(group.items),
+            items: group.items,
+        }))
+}
+
+/**
+ * 主题名取组内首篇内容的最短标题片段：
+ * 优先沿用第一篇的标题（通常是最新一篇），过长时截断，保证邮件里可读。
+ */
+function groupThemeLabel(items) {
+    const first = items[0]
+    const title = String(first?.title || '未命名').trim()
+    return title.length > 18 ? `${title.slice(0, 17)}…` : title
 }
 
 function renderDigestText(digest, unsubUrl) {
     const lines = [digest.title, '', digest.intro]
-    for (const item of digest.items) {
-        lines.push('', `【${item.kindLabel}】${item.title}`, item.url)
-        if (item.description) lines.push(item.description)
+    for (const group of digest.groups || []) {
+        if (digest.grouped) lines.push('', `## ${group.label}`)
+        for (const item of group.items) {
+            lines.push('', `【${item.kindLabel}】${item.title}`, item.url)
+            if (item.description) lines.push(item.description)
+        }
     }
     lines.push('', '不想再收到时，打开下面的退订链接：', unsubUrl)
     return lines.join('\n')
 }
 
 function renderDigestHtml(digest, unsubUrl) {
-    const items = digest.items.map(item => `
+    const renderItem = item => `
         <li style="margin:0 0 20px">
             <div style="font-size:12px;color:#888;letter-spacing:.12em">${escapeHtml(item.kindLabel)}</div>
             <a href="${escapeHtml(item.url)}" style="color:#1f2937;font-size:17px;font-weight:600;text-decoration:none">${escapeHtml(item.title)}</a>
             <p style="margin:6px 0 0;color:#555;line-height:1.7">${escapeHtml(item.description)}</p>
         </li>
+    `
+
+    const groups = digest.groups?.length
+        ? digest.groups
+        : [{ label: '', items: digest.items }]
+    const body = groups.map(group => `
+        ${digest.grouped
+            ? `<h3 style="margin:28px 0 12px;padding-left:10px;border-left:3px solid #1fb4a2;font-size:15px">${escapeHtml(group.label)}</h3>`
+            : ''}
+        <ul style="padding:0;list-style:none">${group.items.map(renderItem).join('')}</ul>
     `).join('')
 
     return `
         <div style="max-width:620px;margin:0 auto;padding:32px 24px;font-family:Arial,sans-serif;color:#222;line-height:1.7">
             <h2 style="margin:0 0 8px">${escapeHtml(digest.title)}</h2>
             <p style="margin:0 0 24px;color:#666">${escapeHtml(digest.intro)}</p>
-            <ul style="padding:0;list-style:none">${items}</ul>
+            ${body}
             <p style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;color:#888;font-size:12px">
                 你收到这封邮件，是因为确认订阅了 ${escapeHtml(SITE_NAME)}。
                 <a href="${escapeHtml(unsubUrl)}" style="color:#888">退订</a>
@@ -194,7 +268,7 @@ async function sendDigestOnce({
             module: 'newsletter',
             targetType: 'newsletter',
             targetId: null,
-            detail: `已发送本期摘要给 ${sent} 位订阅者`,
+            detail: `已发送本期摘要给 ${sent} 位订阅者（${digest.items.length} 条内容，${digest.groups.length} 个主题）`,
         })
     }
     return { sent, skipped: recipients.length - sent, digest }
@@ -256,6 +330,7 @@ module.exports = {
     buildDigest,
     renderDigestText,
     renderDigestHtml,
+    groupDigestItems,
     collectDigestContent,
     sendDigestOnce,
     startNewsletterDigest,

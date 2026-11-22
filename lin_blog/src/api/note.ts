@@ -131,3 +131,36 @@ export function deleteNote(id: number) {
 export function getNoteSummary() {
   return request.get<ApiResult<NoteSummary>>("/note/summary");
 }
+
+export interface TidySuggestion {
+  id: number;
+  title: string;
+  excerpt: string;
+  incomingLinks: number;
+  score: number;
+  reasons: string[];
+}
+
+export interface TidyNote {
+  id: number;
+  title: string;
+  excerpt: string;
+  tags: string[];
+  outgoingLinks: number;
+  incomingLinks: number;
+  updatedAt: string;
+  missingLinks: string[];
+  suggestions: TidySuggestion[];
+}
+
+export interface TidyReport {
+  orphans: TidyNote[];
+  brokenLinks: TidyNote[];
+  summary: { published: number; orphan: number; broken: number };
+}
+
+export function getNoteTidy(limit = 3) {
+  return request.get<ApiResult<TidyReport>>("/note/tidy", {
+    params: { limit },
+  });
+}

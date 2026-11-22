@@ -8,6 +8,7 @@ process.env.LINBLOG_PUBLIC_URL = 'https://blog.example.com'
 const newsletterModel = require('../model/dbModel/newsletter/index')
 const {
     buildDigest,
+    groupDigestItems,
     renderDigestText,
     renderDigestHtml,
     sendDigestOnce,
@@ -54,6 +55,73 @@ test('摘要汇总最近文章、图库与随笔，并生成门户详情链接',
     assert.equal(digest.items[1].url, `${ORIGIN}/portal/articles?open=1`)
     assert.equal(digest.items[2].url, `${ORIGIN}/portal/gallery?open=2`)
     assert.equal(digest.items[1].description, '文章摘要')
+})
+
+test('同主题内容被聚成一组，不相关的内容单独成组', () => {
+    const items = [
+        { title: '数字花园与双链', kindLabel: '文章', url: 'a', description: '用双链把笔记连成知识网络' },
+        { title: '周末去山里拍照', kindLabel: '摄影', url: 'b', description: '光线、雾气和一只路过的猫' },
+        { title: '再谈双链笔记', kindLabel: '文章', url: 'c', description: '知识网络里的反向链接与双链实践' },
+    ]
+    const groups = groupDigestItems(items)
+    assert.equal(groups.length, 2)
+    assert.deepEqual(groups[0].items.map(item => item.url), ['a', 'c'])
+    assert.deepEqual(groups[1].items.map(item => item.url), ['b'])
+})
+
+test('摘要按主题分组渲染，单主题时不添加小标题', () => {
+    const digest = buildDigest({
+        origin: ORIGIN,
+        since: SINCE,
+        articles: [
+            {
+                id: 1,
+                title: '数字花园与双链',
+                introduce: '用双链把笔记连成知识网络',
+                classify: 'article',
+                publishedAt: '2026-11-20T08:00:00.000Z',
+            },
+            {
+                id: 2,
+                title: '周末去山里拍照',
+                introduce: '光线与雾气',
+                classify: 'image',
+                publishedAt: '2026-11-19T08:00:00.000Z',
+            },
+            {
+                id: 3,
+                title: '再谈双链笔记',
+                introduce: '知识网络里的反向链接与双链实践',
+                classify: 'article',
+                publishedAt: '2026-11-18T08:00:00.000Z',
+            },
+        ],
+    })
+
+    assert.equal(digest.grouped, true)
+    assert.equal(digest.groups.length, 2)
+    const html = renderDigestHtml(digest, 'https://example.com/unsub')
+    assert.match(html, /数字花园与双链<\/h3>/)
+    assert.match(html, /周末去山里拍照<\/h3>/)
+    assert.equal(
+        digest.groups.reduce((sum, group) => sum + group.items.length, 0),
+        digest.items.length
+    )
+
+    // 只有一组时回到平铺清单，不出现多余的小标题
+    const single = buildDigest({
+        origin: ORIGIN,
+        since: SINCE,
+        articles: [{
+            id: 4,
+            title: '单独一篇',
+            introduce: '没有同类内容',
+            classify: 'article',
+            publishedAt: '2026-11-20T08:00:00.000Z',
+        }],
+    })
+    assert.equal(single.grouped, false)
+    assert.doesNotMatch(renderDigestHtml(single, 'https://example.com/unsub'), /<h3/)
 })
 
 test('摘要邮件带退订链接并转义标题', () => {

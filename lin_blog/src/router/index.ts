@@ -1,4 +1,4 @@
-import { createWebHistory, createRouter } from 'vue-router'
+import { createWebHistory, createRouter, type RouteRecordRaw } from 'vue-router'
 
 import IndexView from '../views/IndexView.vue'
 import NotFound from '../components/NotFound.vue'
@@ -6,7 +6,7 @@ import { useSessionStore } from '../store/session'
 import { createRouteGuard } from './guard'
 import { applyPrivateSeo } from '../utils/portalSeo'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
     {
         path: '/portal',
         component: () => import('../views/PortalHome.vue'),
@@ -218,6 +218,14 @@ const routes = [
                 }
             },
             {
+                // 花园待整理清单：无链接笔记与断链，由侧栏角标进入
+                path: 'notes/tidy',
+                component: () => import('../views/NoteTidyView.vue'),
+                meta: {
+                    requiresAuth: true,
+                }
+            },
+            {
                 path: 'petManage',
                 component: () => import('../views/PetManageView.vue'),
                 // 站点级展示与行为需要 pet.manage；养成状态由本人使用
@@ -320,6 +328,7 @@ router.afterEach((to) => {
         '/gallery': '摄影图库',
         '/diary': '随笔随记',
         '/notes': '数字花园',
+        '/notes/tidy': '待整理笔记',
         '/petManage': '宠物管理',
         '/setting': '系统设置',
         '/loginRegister': '登录',

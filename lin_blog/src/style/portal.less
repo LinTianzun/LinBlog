@@ -47,9 +47,11 @@
     --portal-surface-hover: color-mix(in srgb, var(--bgColor1) 94%, transparent);
 
     // 文字层级：从 --pcolor 派生（明态主色深，用作文字）
-    --portal-text-primary: color-mix(in srgb, var(--pcolor) 92%, transparent);
-    --portal-text-secondary: color-mix(in srgb, var(--pcolor) 68%, transparent);
-    --portal-text-tertiary: color-mix(in srgb, var(--pcolor) 48%, transparent);
+    // 正文层级必须混入页面底色而不是 transparent：transparent 在 CSS 里是
+    // 透明黑，color-mix 会把文字压暗近黑，暗色主题下写成「蓝底黑字」看不清
+    --portal-text-primary: color-mix(in srgb, var(--pcolor) 92%, var(--bgColor1));
+    --portal-text-secondary: color-mix(in srgb, var(--pcolor) 68%, var(--bgColor1));
+    --portal-text-tertiary: color-mix(in srgb, var(--pcolor) 48%, var(--bgColor1));
     --portal-text-on-accent: color-mix(in srgb, var(--bgColor1) 96%, transparent);
 
     // Hero 覆盖在照片上，颜色不能跟随明暗底色反转，否则深色主题下会变成黑字。
@@ -105,9 +107,9 @@
     --portal-surface-border: color-mix(in srgb, var(--pcolor) 16%, transparent);
     --portal-surface-hover: color-mix(in srgb, var(--bgColor1) 94%, transparent);
 
-    --portal-text-primary: color-mix(in srgb, var(--pcolor9) 92%, transparent);
-    --portal-text-secondary: color-mix(in srgb, var(--pcolor9) 68%, transparent);
-    --portal-text-tertiary: color-mix(in srgb, var(--pcolor9) 48%, transparent);
+    --portal-text-primary: color-mix(in srgb, var(--pcolor9) 92%, var(--bgColor1));
+    --portal-text-secondary: color-mix(in srgb, var(--pcolor9) 68%, var(--bgColor1));
+    --portal-text-tertiary: color-mix(in srgb, var(--pcolor9) 48%, var(--bgColor1));
     --portal-text-on-accent: color-mix(in srgb, var(--bgColor1) 96%, transparent);
 
     --portal-accent-soft: color-mix(in srgb, var(--pcolor) 24%, transparent);

@@ -5,6 +5,8 @@ module.exports = (app) => {
     // 后台私人笔记：登录后按本人隔离，不开放给访客编辑
     app.get('/api/note', authMiddleware, noteController.getNotes)
     app.get('/api/note/summary', authMiddleware, noteController.getNoteSummary)
+    // 待整理是固定路径，必须先于 /:id 挂载
+    app.get('/api/note/tidy', authMiddleware, noteController.getNoteTidy)
     app.post('/api/note', authMiddleware, noteController.createNote)
     app.get('/api/note/:id', authMiddleware, noteController.getNoteById)
     app.put('/api/note/:id', authMiddleware, noteController.updateNote)

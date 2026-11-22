@@ -18,10 +18,11 @@
                             <component :is="item.icon" />
                         </span>
                         <span class="menu-bar-name">{{ item.name }}</span>
-                        <span v-if="item.path === 'notes' && noLinkCount > 0"
-                            class="menu-bar-badge is-warn" :aria-label="`${noLinkCount} 篇笔记还没有双链`">
+                        <router-link v-if="item.path === 'notes' && noLinkCount > 0" class="menu-bar-badge is-warn"
+                            to="/notes/tidy" :aria-label="`${noLinkCount} 篇笔记还没有双链，打开待整理清单`"
+                            :title="`${noLinkCount} 篇笔记还没有双链`" @click.stop>
                             {{ noLinkCount > 99 ? '99+' : noLinkCount }}
-                        </span>
+                        </router-link>
                         <span v-if="item.path === 'reportedComments' && pendingReportCount > 0"
                             class="menu-bar-badge" :aria-label="`${pendingReportCount} 条待处理举报`">
                             {{ pendingReportBadge }}

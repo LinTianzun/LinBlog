@@ -48,7 +48,7 @@
                             <span :class="['note-state', `is-${item.state}`]">
                                 {{ item.state === 'published' ? '已公开' : '草稿' }}
                             </span>
-                            <span>{{ item.outgoingLinks }} → · {{ item.incomingLinks }} ←</span>
+                            <span>{{ item.outgoingLinks || 0 }} → · {{ item.incomingLinks || 0 }} ←</span>
                         </span>
                     </button>
                 </div>
@@ -80,6 +80,7 @@
                             </p>
                         </div>
                         <div class="note-editor-actions">
+                            <router-link class="note-preview-link" to="/notes/tidy">待整理</router-link>
                             <a v-if="!isCreating && form.state === 'published'" class="note-preview-link"
                                 :href="`/portal/notes?open=${activeId}`" target="_blank" rel="noopener">
                                 预览花园
@@ -134,6 +135,7 @@
 
 <script lang="ts" setup>
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AdminPager from '../components/common/AdminPager.vue'
 import {
     createNote,
@@ -155,6 +157,8 @@ type MessageOptions = {
 const proxy = getCurrentInstance()?.proxy as {
     $message?: (options: MessageOptions) => void
 } | null | undefined
+
+const route = useRoute()
 
 const notes = ref<OwnedNote[]>([])
 const summary = ref<NoteSummary>({ all: 0, draft: 0, published: 0 })
@@ -226,9 +230,10 @@ const loadNotes = async () => {
             keyword: keyword.value.trim() || undefined,
         })
         if (result.code === 200 && result.data) {
-            notes.value = result.data.list
-            listTotal.value = result.data.total
-            totalPage.value = result.data.totalPage
+            // 接口异常时可能缺字段，列表渲染不能因为 undefined 直接崩溃
+            notes.value = Array.isArray(result.data.list) ? result.data.list : []
+            listTotal.value = Number(result.data.total) || 0
+            totalPage.value = Number(result.data.totalPage) || 0
         }
     } catch {
         notes.value = []
@@ -345,6 +350,9 @@ const handleDelete = async () => {
 onMounted(() => {
     void loadNotes()
     void loadSummary()
+    // 从待整理清单跳进来时直接打开对应笔记
+    const target = Number(route.query.note)
+    if (Number.isSafeInteger(target) && target > 0) void selectNote(target)
 })
 </script>
 

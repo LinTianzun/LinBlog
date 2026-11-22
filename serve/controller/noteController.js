@@ -7,6 +7,7 @@ const {
     extractNoteLinks,
     normalizeLinkTitle,
 } = require('../utils/noteMarkdown')
+const { buildTidyReport } = require('../utils/gardenTidy')
 
 const TITLE_MAX = 150
 const CONTENT_MAX = 200_000
@@ -262,6 +263,28 @@ async function getPublicGardenGraph(_req, res) {
     }
 }
 
+/**
+ * 花园「待整理」：只读作者自己的笔记。
+ * 列出没有任何双链的笔记与断链笔记，并给出可连接的标题建议。
+ */
+async function getNoteTidy(req, res) {
+    try {
+        const { limit } = req.query
+        const notes = (await noteModel.listNotesForTidy(req.user.userId)).map(note => ({
+            ...note,
+            tags: extractNoteTags(note.content),
+        }))
+        const suggestLimit = Math.min(Math.max(Number(limit) || 3, 1), 5)
+        res.json({
+            code: 200,
+            message: '查询成功',
+            data: buildTidyReport(notes, { limit: suggestLimit }),
+        })
+    } catch (err) {
+        res.status(500).json({ code: 500, message: '待整理清单加载失败：' + err.message })
+    }
+}
+
 module.exports = {
     getNotes,
     getNoteById,
@@ -272,5 +295,6 @@ module.exports = {
     getPublicGarden,
     getPublicNote,
     getPublicGardenGraph,
+    getNoteTidy,
     validateNoteInput,
 }

@@ -32,6 +32,22 @@
             </button>
         </div>
 
+        <div v-if="viewMode === 'list' && !loading && notes.length" class="garden-summary" role="status"
+            aria-live="polite">
+            <span>
+                <template v-if="keyword || activeTag">筛出 {{ filteredNotes.length }} 篇</template>
+                <template v-else>{{ notes.length }} 篇正在生长的笔记</template>
+            </span>
+            <span v-if="orphanCount" class="garden-summary-warn">
+                {{ orphanCount }} 篇还没接上双链
+            </span>
+            <span v-else class="garden-summary-ok">每篇都至少有一条双链</span>
+            <button v-if="keyword || activeTag" type="button" class="garden-summary-reset"
+                @click="clearFilters">
+                重置筛选
+            </button>
+        </div>
+
         <section class="garden-area">
             <PortalGardenGraph v-if="viewMode === 'map'" @open-note="openNoteById" />
 
@@ -47,6 +63,7 @@
                         <span v-if="note.incomingLinks" class="card-links">
                             {{ note.incomingLinks }} 条反向链接
                         </span>
+                        <span v-else class="card-links is-quiet">孤立笔记</span>
                     </span>
                     <span class="card-title">{{ note.title }}</span>
                     <span class="card-excerpt">{{ note.excerpt }}</span>
@@ -60,8 +77,15 @@
                 </button>
             </div>
 
-            <div v-else-if="viewMode === 'list'" class="garden-state">
-                <yk-empty :description="keyword ? '没有匹配的笔记' : '花园里还没有公开笔记'" />
+            <div v-else-if="viewMode === 'list' && (keyword || activeTag)" class="garden-state garden-empty">
+                <yk-empty description="没有匹配的笔记" />
+                <button type="button" class="garden-summary-reset" @click="clearFilters">清空筛选</button>
+            </div>
+
+            <div v-else-if="viewMode === 'list'" class="garden-state garden-empty">
+                <span class="garden-empty-mark" aria-hidden="true">🌱</span>
+                <strong>花园里还没有公开笔记</strong>
+                <p>在后台写下一篇笔记并发布后，它会先出现在这里，再慢慢被双链接进花园。</p>
             </div>
         </section>
 
@@ -104,6 +128,16 @@ const filteredNotes = computed(() => {
         return haystack.toLowerCase().includes(term)
     })
 })
+
+// 没有入链也没有出链的公开笔记，门户这里只做提示，整理入口在后台
+const orphanCount = computed(() =>
+    notes.value.filter(note => !note.incomingLinks && !(note.outgoingLinks || 0)).length
+)
+
+const clearFilters = () => {
+    keyword.value = ''
+    activeTag.value = ''
+}
 
 // 标签按出现次数排序；「按标签」按钮在全部 → 高频标签之间轮换
 const tagFacets = computed(() => {
@@ -245,7 +279,7 @@ watch(() => route.query.open, (value) => {
     padding: 7px 14px;
     border: 1px solid var(--portal-line-soft);
     border-radius: 999px;
-    background: transparent;
+    background: color-mix(in srgb, var(--portal-surface) 80%, transparent);
     color: var(--portal-text-secondary);
     font-size: 12px;
     cursor: pointer;
@@ -263,8 +297,43 @@ watch(() => route.query.open, (value) => {
     }
 }
 
+.garden-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-top: 16px;
+    color: var(--portal-text-tertiary);
+    font-size: 12px;
+
+    &-warn {
+        color: var(--portal-accent-strong);
+    }
+
+    &-ok {
+        color: var(--portal-text-secondary);
+    }
+
+    &-reset {
+        margin-left: auto;
+        padding: 3px 12px;
+        border: 1px solid var(--portal-line-soft);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--portal-text-secondary);
+        font-size: 11px;
+        cursor: pointer;
+        transition: border-color 0.18s ease, color 0.18s ease;
+
+        &:hover {
+            border-color: var(--portal-accent);
+            color: var(--portal-accent);
+        }
+    }
+}
+
 .garden-area {
-    margin-top: 44px;
+    margin-top: 34px;
     min-height: 40vh;
 }
 
@@ -272,6 +341,31 @@ watch(() => route.query.open, (value) => {
     display: grid;
     place-items: center;
     padding: 80px 0;
+}
+
+.garden-empty {
+    gap: 8px;
+    color: var(--portal-text-tertiary);
+    text-align: center;
+
+    strong {
+        color: var(--portal-text-primary);
+        font-family: var(--portal-serif);
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    p {
+        max-width: 40ch;
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.8;
+    }
+
+    &-mark {
+        font-size: 30px;
+        line-height: 1;
+    }
 }
 
 .garden-grid {
@@ -308,29 +402,35 @@ watch(() => route.query.open, (value) => {
     align-items: center;
     justify-content: space-between;
     color: var(--portal-text-tertiary);
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 0.08em;
 }
 
 .card-links {
     color: var(--portal-accent);
+
+    // 孤立笔记用弱化的斜体提示，不抢正常反链数字的注意力
+    &.is-quiet {
+        color: var(--portal-text-tertiary);
+        font-style: italic;
+    }
 }
 
 .card-title {
-    color: var(--portal-text-primary);
     font-family: var(--portal-serif);
-    font-size: 19px;
+    font-size: 20px;
     font-weight: 600;
     line-height: 1.4;
+    color: var(--portal-text-primary);
 }
 
 .card-excerpt {
     display: -webkit-box;
     overflow: hidden;
     flex: 1;
-    color: var(--portal-text-secondary);
     font-size: 13px;
     line-height: 1.75;
+    color: var(--portal-text-secondary);
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
 }
@@ -378,6 +478,20 @@ watch(() => route.query.open, (value) => {
     justify-content: space-between;
     color: var(--portal-text-tertiary);
     font-size: 11px;
+}
+
+@media (max-width: 560px) {
+    .garden-search {
+        width: 100%;
+    }
+
+    .garden-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .garden-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @keyframes garden-rise {
