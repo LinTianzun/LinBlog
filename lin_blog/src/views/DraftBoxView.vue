@@ -17,23 +17,7 @@
             </template>
         </top-title>
 
-        <section class="draft-stats" aria-label="草稿统计">
-            <div class="draft-stat">
-                <span class="draft-stat-label">草稿总数</span>
-                <strong class="draft-stat-count">{{ draftTotal }}</strong>
-                <small class="draft-stat-hint">未发布的内容</small>
-            </div>
-            <div class="draft-stat tone-article">
-                <span class="draft-stat-label">博客文章</span>
-                <strong class="draft-stat-count">{{ articleDraftCount }}</strong>
-                <small class="draft-stat-hint">文章草稿</small>
-            </div>
-            <div class="draft-stat tone-gallery">
-                <span class="draft-stat-label">摄影图库</span>
-                <strong class="draft-stat-count">{{ galleryDraftCount }}</strong>
-                <small class="draft-stat-hint">图集草稿</small>
-            </div>
-        </section>
+        <DraftSummaryCards :counts="draftCounts" />
 
         <section class="draft-panel draft-filter-panel">
             <div class="draft-filter-row">
@@ -69,47 +53,8 @@
             <yk-empty v-if="!items.length" description="这里还没有草稿，去写点什么吧" />
 
             <div v-else class="draft-list" :class="{ 'is-refreshing': loading }">
-                <article v-for="item in items" :key="item.id" class="draft-card">
-                    <div class="draft-card-main">
-                        <header class="draft-card-head">
-                            <h2 class="draft-card-title">{{ item.title }}</h2>
-                            <span class="draft-type-tag">{{ classifyLabel(item.classify) }}</span>
-                            <span v-if="item.scheduledPausedAt" class="draft-state-tag is-paused">排期已暂停</span>
-                            <span v-else-if="item.scheduledAt" class="draft-state-tag is-scheduled">已排期</span>
-                        </header>
-
-                        <p class="draft-intro">{{ item.introduce || '还没有填写简介，打开编辑器继续完善吧。' }}</p>
-
-                        <div class="draft-meta">
-                            <span class="draft-meta-item">
-                                <span class="draft-meta-label">最近更新</span>
-                                <strong class="draft-meta-value">{{ formatTime(item.updatedAt) }}</strong>
-                            </span>
-                            <span v-if="item.subsetName" class="draft-meta-item">
-                                <span class="draft-meta-label">分类</span>
-                                <strong class="draft-meta-value">{{ item.subsetName }}</strong>
-                            </span>
-                            <span v-if="item.label" class="draft-meta-item">
-                                <span class="draft-meta-label">标签</span>
-                                <strong class="draft-meta-value">{{ item.label }}</strong>
-                            </span>
-                            <span v-if="item.scheduledAt" class="draft-meta-item">
-                                <span class="draft-meta-label">计划发布</span>
-                                <strong class="draft-meta-value">{{ formatTime(item.scheduledAt) }}</strong>
-                            </span>
-                        </div>
-                    </div>
-
-                    <footer class="draft-card-actions">
-                        <yk-button size="s" type="primary" :disabled="actingId === item.id" @click="openEditor(item)">
-                            继续编辑
-                        </yk-button>
-                        <yk-button v-if="canPublish(item.classify)" size="s" type="secondary"
-                            :disabled="actingId === item.id" @click="askPublish(item)">
-                            立即发布
-                        </yk-button>
-                    </footer>
-                </article>
+                <DraftCard v-for="item in items" :key="item.id" :item="item" :acting="actingId === item.id"
+                    :can-publish="canPublish(item.classify)" @edit="openEditor" @publish="askPublish" />
 
                 <div class="draft-pagination">
                     <AdminPager v-model:page="page" v-model:page-size="pageSize" :total="total"
@@ -143,6 +88,8 @@ import { useRouter } from 'vue-router'
 import { IconRefreshOutline } from '@yike-design/ui/es/components/svg-icon'
 import TopTitle from '../components/bar/TopTitle.vue'
 import AdminPager from '../components/common/AdminPager.vue'
+import DraftCard from '../components/draft/DraftCard.vue'
+import DraftSummaryCards from '../components/draft/DraftSummaryCards.vue'
 import {
     getArticleErrorMessage,
     getArticleStateSummary,
@@ -152,7 +99,12 @@ import {
     type ArticleItem,
 } from '../api/article'
 import { useSessionStore } from '../store/session'
-import { formatWorkflowTime } from '../utils/articleWorkflow'
+import {
+    buildDraftListParams,
+    draftPublishPermission,
+    resolveDraftCounts,
+    type DraftCounts,
+} from '../utils/draftBox'
 
 const router = useRouter()
 const session = useSessionStore()
@@ -173,11 +125,9 @@ const acting = ref(false)
 const actingId = ref(0)
 const errorMessage = ref('')
 const actionError = ref('')
-const articleDraftCount = ref(0)
-const galleryDraftCount = ref(0)
+const draftCounts = ref<DraftCounts>({ article: 0, gallery: 0, total: 0 })
 const publishTarget = ref<ArticleItem | null>(null)
 
-const draftTotal = computed(() => articleDraftCount.value + galleryDraftCount.value)
 const canCreateArticle = computed(() =>
     session.canAny(['article.create', 'article.manageOwn', 'article.manageAll'])
 )
@@ -185,14 +135,8 @@ const canCreateGallery = computed(() =>
     session.canAny(['gallery.create', 'gallery.manageOwn', 'gallery.manageAll'])
 )
 
-const classifyLabel = (classify: ArticleClassify): string =>
-    classify === 'image' ? '摄影图库' : '博客文章'
-
 const canPublish = (classify: ArticleClassify): boolean =>
-    session.can(classify === 'image' ? 'gallery.publish' : 'article.publish')
-
-const formatTime = (value?: string | null): string =>
-    value ? formatWorkflowTime(value) : '暂无时间'
+    session.can(draftPublishPermission(classify))
 
 const showMessage = (type: 'primary' | 'success' | 'warning' | 'error', message: string): void => {
     proxy?.$message?.({ type, message })
@@ -210,8 +154,7 @@ const loadSummary = async (): Promise<void> => {
             getArticleStateSummary('article'),
             getArticleStateSummary('image'),
         ])
-        articleDraftCount.value = Number(articleResult.data?.draft) || 0
-        galleryDraftCount.value = Number(galleryResult.data?.draft) || 0
+        draftCounts.value = resolveDraftCounts(articleResult.data, galleryResult.data)
     } catch {
         // 统计失败不影响列表，保留 0 避免页面报错
     }
@@ -221,13 +164,12 @@ const loadDrafts = async (): Promise<void> => {
     loading.value = true
     errorMessage.value = ''
     try {
-        const result = await getArticles({
+        const result = await getArticles(buildDraftListParams({
             page: page.value,
             pageSize: pageSize.value,
-            state: 'draft',
-            ...(classifyFilter.value ? { classify: classifyFilter.value } : {}),
-            ...(keyword.value ? { keyword: keyword.value } : {}),
-        })
+            classify: classifyFilter.value,
+            keyword: keyword.value,
+        }))
         if (result.code !== 200 || !result.data) {
             throw new Error(result.message || '草稿列表加载失败')
         }
@@ -306,51 +248,13 @@ onMounted(() => {
         width: 100%;
     }
 
-    .draft-panel,
-    .draft-card,
-    .draft-stat {
+    .draft-panel {
+        display: block;
+        width: 100%;
         border: 1px solid var(--admin-line, var(--gray1));
         border-radius: var(--admin-radius, 18px);
         background: var(--admin-surface, var(--bgColor1));
         box-shadow: var(--admin-shadow-sm);
-    }
-
-    .draft-stats {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-        width: 100%;
-    }
-
-    .draft-stat {
-        display: flex;
-        min-height: 96px;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 3px;
-        padding: 14px 16px;
-    }
-
-    .draft-stat-label,
-    .draft-stat-hint {
-        color: var(--gray6);
-        font-size: 11px;
-    }
-
-    .draft-stat-count {
-        color: var(--pcolor);
-        font-size: 28px;
-        font-weight: 760;
-        font-variant-numeric: tabular-nums;
-        line-height: 1.1;
-    }
-
-    .tone-article .draft-stat-count {
-        color: @wcolor;
-    }
-
-    .tone-gallery .draft-stat-count {
-        color: @scolor;
     }
 
     .draft-filter-panel {
@@ -419,108 +323,6 @@ onMounted(() => {
         }
     }
 
-    .draft-card {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 16px;
-        align-items: center;
-        padding: 16px 18px;
-        border-left: 3px solid @wcolor;
-        transition: box-shadow 160ms ease, transform 160ms ease;
-
-        &:hover {
-            transform: translateY(-1px);
-            box-shadow: var(--admin-shadow-md);
-        }
-    }
-
-    .draft-card-main {
-        display: flex;
-        min-width: 0;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .draft-card-head {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .draft-card-title {
-        margin: 0;
-        color: var(--gray9);
-        font-size: 16px;
-        font-weight: 720;
-        line-height: 1.35;
-    }
-
-    .draft-type-tag,
-    .draft-state-tag {
-        padding: 2px 9px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 650;
-        white-space: nowrap;
-    }
-
-    .draft-type-tag {
-        color: var(--pcolor);
-        background: color-mix(in srgb, var(--pcolor) 11%, transparent);
-    }
-
-    .draft-state-tag.is-scheduled {
-        color: @scolor;
-        background: color-mix(in srgb, @scolor 12%, transparent);
-    }
-
-    .draft-state-tag.is-paused {
-        color: var(--gray6);
-        background: color-mix(in srgb, var(--gray5) 18%, transparent);
-    }
-
-    .draft-intro {
-        display: -webkit-box;
-        margin: 0;
-        overflow: hidden;
-        color: var(--gray6);
-        font-size: 13px;
-        line-height: 1.6;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-    }
-
-    .draft-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px 18px;
-    }
-
-    .draft-meta-item {
-        display: inline-flex;
-        align-items: baseline;
-        gap: 6px;
-    }
-
-    .draft-meta-label {
-        color: var(--gray5);
-        font-size: 11px;
-    }
-
-    .draft-meta-value {
-        color: var(--gray7);
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .draft-card-actions {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 8px;
-    }
-
     .draft-pagination {
         padding-top: 4px;
     }
@@ -554,18 +356,6 @@ onMounted(() => {
     }
 
     @media (max-width: 900px) {
-        .draft-stats {
-            grid-template-columns: 1fr;
-        }
-
-        .draft-card {
-            grid-template-columns: 1fr;
-        }
-
-        .draft-card-actions {
-            justify-content: flex-start;
-        }
-
         .draft-filter-spacer {
             display: none;
         }

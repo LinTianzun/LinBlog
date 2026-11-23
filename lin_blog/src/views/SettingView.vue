@@ -78,19 +78,6 @@
                             </div>
                         </div>
 
-                        <!-- 快捷入口直接放在账号资料卡下方：进入设置第一屏就能一键跳转，
-                             不再沉在系统信息分区底部 -->
-                        <div v-if="hasQuickAccess" class="set-quick-wrap">
-                            <span class="set-label">快捷入口</span>
-                            <div class="set-quick">
-                                <button v-for="entry in quickEntries" :key="entry.path" type="button"
-                                    class="set-quick-item" @click="go(entry.path)">
-                                    <component :is="entry.icon" class="set-quick-icon" />
-                                    <span>{{ entry.name }}</span>
-                                    <IconRightOutline class="set-quick-arrow" />
-                                </button>
-                            </div>
-                        </div>
                     </div>
 
                 </section>
@@ -290,11 +277,8 @@ import {
     IconCloseEyeOutline,
     IconCrownFill,
     IconEyeOutline,
-    IconFolderCloseFill,
-    IconRightOutline,
     IconSecurityOutline,
     IconSettingsFill,
-    IconStatisticsFill,
     IconSwitchOutline,
     IconLockFill,
     IconImageFill,
@@ -310,7 +294,7 @@ const sections = [
     { key: 'set-security', name: '安全', hint: '修改登录密码', icon: IconLockFill },
     { key: 'set-appearance', name: '外观与本机', hint: '主题、明暗与宠物偏好', icon: IconImageFill },
     { key: 'set-permissions', name: '我的权限', hint: '当前可操作范围', icon: IconSecurityOutline },
-    { key: 'set-system', name: '系统信息', hint: '状态与快捷入口', icon: IconSettingsFill },
+    { key: 'set-system', name: '系统信息', hint: '运行状态与备份', icon: IconSettingsFill },
 ]
 const activeSection = ref('set-profile')
 
@@ -624,8 +608,6 @@ const storage = ref<FileStorageStatus | null>(null)
 
 const canViewFiles = computed(() => session.can('file.view'))
 const canViewPermissions = computed(() => session.can('permission.view'))
-const canViewUsers = computed(() => session.can('user.view'))
-const canViewSystemLog = computed(() => session.can('systemLog.view'))
 const canViewBackup = computed(() => session.can('backup.view'))
 
 const storagePercent = computed(() =>
@@ -646,16 +628,6 @@ const formatBytes = (bytes?: number): string => {
     const scaled = value / Math.pow(1024, index)
     return `${scaled.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
-
-// 快捷入口按权限逐项显示：能进哪个后台模块才出现对应入口
-const quickEntries = computed(() => {
-    const list: { path: string; name: string; icon: unknown }[] = []
-    if (canViewUsers.value) list.push({ path: '/userManagement', name: '用户管理', icon: IconAvatarFill })
-    if (canViewSystemLog.value) list.push({ path: '/systemLog', name: '系统日志', icon: IconStatisticsFill })
-    if (canViewFiles.value) list.push({ path: '/localfile', name: '本地文件', icon: IconFolderCloseFill })
-    return list
-})
-const hasQuickAccess = computed(() => quickEntries.value.length > 0)
 
 // 数据库时间为 UTC 字符串，转为本地时间展示
 const formatDate = (value?: string | null) => {
@@ -1346,60 +1318,6 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     font-variant-numeric: tabular-nums;
 }
 
-.set-quick {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 10px;
-}
-
-.set-quick-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding-top: 18px;
-    border-top: 1px solid var(--admin-line, var(--gray1));
-}
-
-.set-quick-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    border: 1px solid var(--admin-line, var(--gray1));
-    border-radius: var(--admin-radius-sm, 12px);
-    background: var(--bgColor2);
-    color: var(--admin-text, var(--gray));
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.18s ease;
-
-    span {
-        flex: 1;
-        min-width: 0;
-        text-align: left;
-    }
-
-    &:hover {
-        border-color: var(--pcolor3);
-        background: var(--pcolor1);
-        color: var(--pcolor);
-    }
-}
-
-.set-quick-icon {
-    width: 17px;
-    height: 17px;
-    flex: none;
-    color: var(--pcolor);
-}
-
-.set-quick-arrow {
-    width: 15px;
-    height: 15px;
-    flex: none;
-    color: var(--admin-muted, var(--gray6));
-}
-
 // ── 危险区 ──
 .set-danger {
     flex-direction: row;
@@ -1510,7 +1428,6 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
 
 @media (prefers-reduced-motion: reduce) {
     .set-theme,
-    .set-quick-item,
     .set-nav-item {
         transition: none;
     }

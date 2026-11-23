@@ -129,117 +129,8 @@
             </section>
 
             <!-- 用量统计 -->
-            <section v-if="stats" class="ai-panel">
-                <header class="ai-panel-header">
-                    <div class="ai-panel-heading">
-                        <yk-title :level="4" style="margin: 0;">用量统计</yk-title>
-                        <yk-text type="secondary">近 {{ stats.days }} 天的调用量、成功率与耗时</yk-text>
-                    </div>
-                </header>
-
-                <div class="ai-stats-grid">
-                    <div class="ai-stats-window">
-                        <p class="ai-stats-window-title">近 7 天</p>
-                        <p class="ai-stats-window-total">{{ stats.summary.last7Days.total }}<span>次调用</span></p>
-                        <ul class="ai-stats-window-facts">
-                            <li><span>成功率</span><strong>{{ stats.summary.last7Days.successRate }}%</strong></li>
-                            <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last7Days.avgDurationMs) }}</strong></li>
-                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.last7Days.p50DurationMs) }}</strong></li>
-                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.last7Days.p95DurationMs) }}</strong></li>
-                            <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last7Days.totalTokens) }}</strong></li>
-                        </ul>
-                    </div>
-                    <div class="ai-stats-window">
-                        <p class="ai-stats-window-title">近 30 天</p>
-                        <p class="ai-stats-window-total">{{ stats.summary.last30Days.total }}<span>次调用</span></p>
-                        <ul class="ai-stats-window-facts">
-                            <li><span>成功率</span><strong>{{ stats.summary.last30Days.successRate }}%</strong></li>
-                            <li><span>平均耗时</span><strong>{{ formatDuration(stats.summary.last30Days.avgDurationMs) }}</strong></li>
-                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.last30Days.p50DurationMs) }}</strong></li>
-                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.last30Days.p95DurationMs) }}</strong></li>
-                            <li><span>Token 消耗</span><strong>{{ formatNumber(stats.summary.last30Days.totalTokens) }}</strong></li>
-                        </ul>
-                    </div>
-                    <div class="ai-stats-window">
-                        <p class="ai-stats-window-title">累计</p>
-                        <p class="ai-stats-window-total">{{ stats.summary.all.total }}<span>次调用</span></p>
-                        <ul class="ai-stats-window-facts">
-                            <li><span>失败次数</span><strong>{{ stats.summary.all.failed }}</strong></li>
-                            <li><span>P50 耗时</span><strong>{{ formatDuration(stats.summary.all.p50DurationMs) }}</strong></li>
-                            <li><span>P95 耗时</span><strong>{{ formatDuration(stats.summary.all.p95DurationMs) }}</strong></li>
-                            <li><span>待确认图片</span><strong>{{ stats.pending.total }} 张</strong></li>
-                            <li><span>占用空间</span><strong>{{ formatBytes(stats.pending.bytes) }}</strong></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="ai-stats-breaks">
-                    <div class="ai-stats-break">
-                        <p class="ai-stats-break-title">按模型</p>
-                        <yk-empty v-if="stats.byModel.length === 0" description="暂无数据" />
-                        <ul v-else class="ai-stats-list">
-                            <li v-for="row in stats.byModel" :key="row.modelName || 'unknown'">
-                                <div class="ai-stats-list-main">
-                                    <strong>{{ row.modelName || '未记录模型' }}</strong>
-                                    <span>{{ row.total }} 次 · 成功率 {{ row.successRate }}%</span>
-                                </div>
-                                <div class="ai-stats-list-side">
-                                    <span>{{ formatDuration(row.avgDurationMs) }}</span>
-                                    <span>{{ formatNumber(row.promptTokens + row.completionTokens) }} token</span>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="ai-stats-break">
-                        <p class="ai-stats-break-title">按功能</p>
-                        <yk-empty v-if="stats.byFeature.length === 0" description="暂无数据" />
-                        <ul v-else class="ai-stats-list">
-                            <li v-for="row in stats.byFeature" :key="row.feature">
-                                <div class="ai-stats-list-main">
-                                    <strong>{{ featureLabel(row.feature) }}</strong>
-                                    <span>{{ row.total }} 次 · 成功率 {{ row.successRate }}%</span>
-                                </div>
-                                <div class="ai-stats-list-side">
-                                    <span>平均 {{ formatDuration(row.avgDurationMs) }}</span>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="ai-stats-breaks">
-                    <div class="ai-stats-break">
-                        <p class="ai-stats-break-title">模型健康</p>
-                        <yk-empty v-if="stats.health.length === 0" description="尚未进行连通性测试" />
-                        <ul v-else class="ai-stats-list">
-                            <li v-for="row in stats.health" :key="row.modelId">
-                                <div class="ai-stats-list-main">
-                                    <strong>{{ row.modelName }}</strong>
-                                    <span>
-                                        平均 {{ formatDuration(row.avgLatencyMs) }} · 成功率 {{ row.successRate }}%
-                                        <template v-if="row.lastError"> · {{ row.lastError }}</template>
-                                    </span>
-                                </div>
-                                <div class="ai-stats-list-side">
-                                    <span>最近测试 {{ formatTime(row.lastTestAt) }}</span>
-                                    <yk-tag v-if="row.consecutiveFailures > 0" size="s" type="danger">
-                                        连续失败 {{ row.consecutiveFailures }} 次
-                                    </yk-tag>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="ai-stats-break">
-                        <p class="ai-stats-break-title">每日趋势</p>
-                        <yk-empty v-if="stats.trend.length === 0" description="暂无数据" />
-                        <div v-else class="ai-trend-chart">
-                            <LineChart :data="trendChartData" chart-height="160px" />
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 运营周报 -->
+            <AiUsageStatsSection v-if="stats" :stats="stats" />
+                <!-- 运营周报 -->
             <section class="ai-panel">
                 <header class="ai-panel-header">
                     <div class="ai-panel-heading">
@@ -579,7 +470,6 @@
 <script lang="ts" setup>
     import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
     import { useRouter } from 'vue-router'
-    import { LineChart } from '../components/echarts'
     import {
         IconAppFill,
         IconPaintBrushFill,
@@ -588,6 +478,8 @@
     } from '@yike-design/ui/es/components/svg-icon'
     import TopTitle from '../components/bar/TopTitle.vue'
     import StatCard from '../components/common/StatCard.vue'
+    import AiUsageStatsSection from '../components/ai/AiUsageStatsSection.vue'
+    import { aiFeatureLabel, formatAiDuration } from '../utils/aiManage'
     import {
         checkAllAiModels,
         createAiModel,
@@ -713,28 +605,7 @@
             : '只裁掉右下角的标识区域，成图尺寸会略微变小'
     ))
 
-    const trendChartData = computed(() => (
-        (stats.value?.trend || []).map(item => ({ date: item.day, count: item.total }))
-    ))
-
-    const featureLabel = (value: string): string => {
-        const labels: Record<string, string> = {
-            suggest: '写作建议',
-            writing: '写作辅助',
-            cover: 'AI 配图',
-            gallery: '图库策展',
-            message: '私信拟回复',
-            report: '运营周报',
-            'report-review': '举报辅助',
-            search: '语义搜索',
-            ask: '门户问答',
-            'prompt-preview': '提示词试跑',
-            'prompt-assistant': '提示词助手',
-            'image-alt': '图片描述',
-            'gallery-description': '图库批量描述',
-        }
-        return labels[value] || value
-    }
+    const featureLabel = aiFeatureLabel
 
     const statusLabel = (value: string): string => {
         const labels: Record<string, string> = {
@@ -758,28 +629,7 @@
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
     }
 
-    // 耗时按量级切换单位，避免面板上出现「1500 毫秒」这种不好读的数字
-    const formatDuration = (ms: number): string => {
-        const value = Number(ms) || 0
-        if (value <= 0) return '-'
-        if (value < 1000) return `${value} 毫秒`
-        return `${(value / 1000).toFixed(1)} 秒`
-    }
-
-    const formatNumber = (value: number): string => {
-        const num = Number(value) || 0
-        if (num < 1000) return String(num)
-        if (num < 10000) return num.toLocaleString('zh-CN')
-        return `${(num / 10000).toFixed(1)} 万`
-    }
-
-    const formatBytes = (value: number): string => {
-        const bytes = Number(value) || 0
-        if (bytes <= 0) return '0 B'
-        if (bytes < 1024) return `${bytes} B`
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-    }
+    const formatDuration = formatAiDuration
 
     // 模型级限额：未设置时说明跟随全局策略
     const modelLimitText = (item: AiModelItem): string => {
@@ -1328,112 +1178,6 @@
             align-items: start;
         }
 
-        // 用量统计：三个时间窗口并排
-        .ai-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: @space-m;
-        }
-
-        .ai-stats-window {
-            padding: 16px 18px;
-            border-radius: 14px;
-            background: var(--admin-surface-soft, var(--bgColor2));
-            border: 1px solid var(--admin-line, var(--gray1));
-        }
-
-        .ai-stats-window-title {
-            margin: 0 0 6px;
-            font-size: 12px;
-            color: var(--gray7);
-        }
-
-        .ai-stats-window-total {
-            margin: 0 0 12px;
-            font-size: 26px;
-            font-weight: 700;
-            color: var(--gray);
-            line-height: 1.1;
-
-            span {
-                margin-left: 6px;
-                font-size: 12px;
-                font-weight: 400;
-                color: var(--gray7);
-            }
-        }
-
-        .ai-stats-window-facts {
-            margin: 0;
-            padding: 0;
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-
-            li {
-                display: flex;
-                align-items: baseline;
-                justify-content: space-between;
-                gap: 12px;
-                font-size: 13px;
-                color: var(--gray7);
-
-                strong {
-                    color: var(--gray);
-                    font-weight: 600;
-                }
-            }
-        }
-
-        // 按模型 / 按功能两栏
-        .ai-stats-breaks {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: @space-l;
-            margin-top: @space-l;
-        }
-
-        .ai-trend-chart {
-            margin-top: 4px;
-            width: 100%;
-            min-width: 0;
-        }
-
-        .ai-stats-break {
-            min-width: 0;
-        }
-
-        .ai-stats-break-title {
-            margin: 0 0 10px;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--gray);
-        }
-
-        .ai-stats-list {
-            margin: 0;
-            padding: 0;
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-
-            li {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-                padding: 11px 12px;
-                border-radius: 12px;
-                transition: background @animatb;
-
-                &:hover {
-                    background: var(--admin-surface-soft, var(--bgColor2));
-                }
-            }
-        }
-
         // 运营周报
         .ai-report {
             display: flex;
@@ -1502,36 +1246,6 @@
                 line-height: 1.8;
                 color: var(--gray7);
             }
-        }
-
-        .ai-stats-list-main {
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-
-            strong {
-                color: var(--gray);
-                font-weight: 600;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            span {
-                font-size: 12px;
-                color: var(--gray7);
-            }
-        }
-
-        .ai-stats-list-side {
-            flex: none;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 4px;
-            font-size: 12px;
-            color: var(--gray7);
         }
 
         .ai-policy {
@@ -1832,21 +1546,10 @@
                 grid-template-columns: 1fr;
             }
 
-            .ai-stats-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-
-            .ai-stats-breaks {
-                grid-template-columns: 1fr;
-            }
         }
 
         @media (max-width: 720px) {
             .ai-model-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .ai-stats-grid {
                 grid-template-columns: 1fr;
             }
 

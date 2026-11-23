@@ -10,6 +10,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AdminCommentSection: typeof import('./src/components/content/AdminCommentSection.vue')['default']
     AdminPager: typeof import('./src/components/common/AdminPager.vue')['default']
+    AiUsageStatsSection: typeof import('./src/components/ai/AiUsageStatsSection.vue')['default']
     Artcle: typeof import('./src/components/article/artcle.vue')['default']
     ArtcleItem: typeof import('./src/components/article/artcleItem.vue')['default']
     ArticleVersionPanel: typeof import('./src/components/article/ArticleVersionPanel.vue')['default']
@@ -34,6 +35,8 @@ declare module 'vue' {
     DiaryDetailView: typeof import('./src/components/diary/diaryDetailView.vue')['default']
     DiaryEditor: typeof import('./src/components/diary/diaryEditor.vue')['default']
     DiaryItem: typeof import('./src/components/diary/diaryItem.vue')['default']
+    DraftCard: typeof import('./src/components/draft/DraftCard.vue')['default']
+    DraftSummaryCards: typeof import('./src/components/draft/DraftSummaryCards.vue')['default']
     Editor: typeof import('./src/components/editor/editor.vue')['default']
     EditPhoto: typeof import('./src/components/gallery/editPhoto.vue')['default']
     ErrorBoundary: typeof import('./src/components/common/ErrorBoundary.vue')['default']
