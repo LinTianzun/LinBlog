@@ -44,6 +44,13 @@
                         <div class="garden-source-copy">
                             <p class="garden-source-label">这篇长文来自花园</p>
                             <p class="garden-source-title">{{ gardenNote.title }}</p>
+                            <p v-if="gardenNoteTimeline" class="garden-source-timeline">
+                                {{ gardenNoteTimeline }}
+                            </p>
+                            <div v-if="gardenNote.tags?.length" class="garden-source-tags"
+                                aria-label="来源笔记标签">
+                                <span v-for="tag in gardenNote.tags" :key="tag">#{{ tag }}</span>
+                            </div>
                         </div>
                         <button type="button" class="garden-source-link" @click="openGardenNote">
                             去花园读原笔记
@@ -56,7 +63,7 @@
                                 <li v-for="item in gardenArticles" :key="item.id">
                                     <button type="button" @click="openGardenArticle(item.id)">
                                         <strong>{{ item.title }}</strong>
-                                        <span>{{ item.introduce || '继续读这一篇' }}</span>
+                                        <span>{{ gardenArticleMeta(item) }}</span>
                                     </button>
                                 </li>
                             </ul>
@@ -490,6 +497,25 @@ const openGardenNote = (): void => {
     void router.push({ path: '/portal/notes', query: { open: String(note.id) } })
 }
 
+const gardenNoteTimeline = computed(() => {
+    const note = gardenNote.value
+    if (!note) return ''
+    const published = note.publishedAt ? formatArticleDate(note.publishedAt) : ''
+    const updated = note.updatedAt ? formatArticleDate(note.updatedAt) : ''
+    if (published && updated && published !== updated) {
+        return `笔记 ${published} 公开 · ${updated} 更新`
+    }
+    if (updated) return `笔记更新于 ${updated}`
+    if (published) return `笔记公开于 ${published}`
+    return ''
+})
+
+const gardenArticleMeta = (item: GardenSourceArticle): string => {
+    const introduce = item.introduce || '继续读这一篇'
+    if (!item.publishedAt) return introduce
+    return `${formatArticleDate(item.publishedAt)} · ${introduce}`
+}
+
 const openGardenArticle = (articleId: number): void => {
     emit('open-related', articleId)
 }
@@ -834,6 +860,28 @@ watch(loadKey, async (key, previousKey) => {
     white-space: nowrap;
 }
 
+.garden-source-timeline {
+    margin: 4px 0 0;
+    color: var(--portal-text-tertiary);
+    font-size: 11px;
+}
+
+.garden-source-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+
+    span {
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--portal-accent) 12%, transparent);
+        color: var(--portal-accent);
+        font-size: 10px;
+        line-height: 1.7;
+    }
+}
+
 .garden-source-link {
     display: inline-flex;
     flex: none;
@@ -975,6 +1023,10 @@ watch(loadKey, async (key, previousKey) => {
 
     .garden-source-title {
         white-space: normal;
+    }
+
+    .garden-source-tags {
+        margin-top: 6px;
     }
 }
 

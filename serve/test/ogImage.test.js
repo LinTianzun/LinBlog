@@ -14,7 +14,12 @@ const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const collectionModel = require('../model/dbModel/collection/index')
 const noteModel = require('../model/dbModel/note/index')
-const { buildOgSvg, renderOgImage, wrapText } = require('../utils/ogImage')
+const {
+    buildOgSvg,
+    renderOgImage,
+    resolveOgTheme,
+    wrapText,
+} = require('../utils/ogImage')
 const {
     injectPortalMeta,
     parseMetaTarget,
@@ -60,6 +65,30 @@ test('OG 标题与摘要按画布宽度换行，长文本带省略号', () => {
     const lines = wrapText('一二三四五六七八九十一二三四五六七八九十一二三四五', 10, 2)
     assert.equal(lines.length, 2)
     assert.match(lines[1], /…$/)
+})
+
+test('OG 分享卡按标签稳定切换主题配色，无标签时回退内容类型', () => {
+    const themed = buildOgSvg({
+        title: '主题配色',
+        kind: 'article',
+        tags: ['Vue', '写作'],
+    })
+    const reordered = buildOgSvg({
+        title: '主题配色',
+        kind: 'article',
+        tags: ['写作', 'Vue'],
+    })
+    const plain = buildOgSvg({
+        title: '主题配色',
+        kind: 'article',
+    })
+
+    assert.equal(themed, reordered)
+    assert.notEqual(themed, plain)
+    assert.match(plain, /stop-color="#86efac"/)
+    assert.ok(resolveOgTheme(['Vue', '写作']))
+    assert.equal(resolveOgTheme([]), null)
+    assert.equal(resolveOgTheme(''), null)
 })
 
 test('OG 图片渲染为合法 PNG', async () => {
@@ -154,6 +183,10 @@ test('非法 ID 回落首页分享图，草稿不会出现在 OG 元信息中', 
     const etag3 = metaEtag({ title: 'A2', description: 'B', url: `${ORIGIN}/a` })
     assert.equal(etag1, etag2)
     assert.notEqual(etag1, etag3)
+    assert.notEqual(
+        metaEtag({ title: 'A', description: 'B', url: `${ORIGIN}/a`, ogThemeKey: 'vue' }),
+        metaEtag({ title: 'A', description: 'B', url: `${ORIGIN}/a`, ogThemeKey: '摄影' })
+    )
 })
 
 test('公开文章 OG 元信息包含封面、时间与 JSON-LD', async () => {
@@ -165,6 +198,7 @@ test('公开文章 OG 元信息包含封面、时间与 JSON-LD', async () => {
             content: '',
             cover: '/api/uploads/cover.webp',
             classify: 'article',
+            label: 'Vue, 写作',
             state: 'published',
             publishedAt: '2026-10-01T08:00:00.000Z',
             updatedAt: '2026-10-02T08:00:00.000Z',
@@ -175,6 +209,7 @@ test('公开文章 OG 元信息包含封面、时间与 JSON-LD', async () => {
     assert.equal(meta.title, '文章 <标题>')
     assert.equal(meta.description, '一段 摘要')
     assert.equal(meta.image, `${ORIGIN}/api/uploads/cover.webp`)
+    assert.equal(meta.ogThemeKey, 'vue|写作')
     assert.equal(meta.jsonLd['@type'], 'BlogPosting')
     assert.match(renderMetaTags(meta), /article:published_time" content="2026-10-01T08:00:00\.000Z"/)
 })

@@ -93,6 +93,15 @@ test('同源长文查询只取已发布文章并排除当前文章', async () =>
     assert.deepEqual(queryCall.values, [21, 901, 12])
 })
 
+test('来源笔记查询带出正文供标签提取', async () => {
+    await articleModel.findUpgradedFromNote(901)
+
+    const queryCall = calls.find(call => call.sql.includes('FROM note_article_upgrade'))
+    assert.ok(queryCall)
+    assert.match(queryCall.sql, /n\.content/)
+    assert.deepEqual(queryCall.values, [901])
+})
+
 test('new articles persist their authenticated owner', async () => {
     await articleModel.insertArticle({
         userId: 42,

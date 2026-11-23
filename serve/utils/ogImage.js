@@ -50,6 +50,75 @@ const PALETTES = {
     },
 }
 
+// 文章主题色：由标签集合稳定映射，站点仍保持统一的深色阅读气质
+const OG_THEME_PALETTES = [
+    {
+        start: '#0b1c2c',
+        end: '#1c3f5a',
+        accent: '#7dd3fc',
+        glow: '#38bdf8',
+    },
+    {
+        start: '#0f1f1a',
+        end: '#1f4a38',
+        accent: '#86efac',
+        glow: '#34d399',
+    },
+    {
+        start: '#171127',
+        end: '#38265c',
+        accent: '#c4b5fd',
+        glow: '#8b5cf6',
+    },
+    {
+        start: '#1f1310',
+        end: '#4a231b',
+        accent: '#fdba74',
+        glow: '#fb923c',
+    },
+    {
+        start: '#24101a',
+        end: '#4c2131',
+        accent: '#f9a8d4',
+        glow: '#ec4899',
+    },
+    {
+        start: '#1b1710',
+        end: '#443720',
+        accent: '#fcd34d',
+        glow: '#f59e0b',
+    },
+]
+
+function normalizeThemeTags(value) {
+    const source = Array.isArray(value) ? value : String(value || '').split(',')
+    const seen = new Set()
+    const tags = []
+    for (const item of source) {
+        const tag = String(item || '').trim().toLowerCase()
+        if (!tag || seen.has(tag)) continue
+        seen.add(tag)
+        tags.push(tag)
+    }
+    return tags.sort()
+}
+
+function hashThemeKey(value) {
+    const text = String(value || '')
+    let hash = 2166136261
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index)
+        hash = Math.imul(hash, 16777619)
+    }
+    return hash >>> 0
+}
+
+function resolveOgTheme(value) {
+    const tags = normalizeThemeTags(value)
+    if (tags.length === 0) return null
+    return OG_THEME_PALETTES[hashThemeKey(tags.join('|')) % OG_THEME_PALETTES.length]
+}
+
 function escapeXml(value) {
     return String(value ?? '')
         .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
@@ -170,8 +239,14 @@ function buildOgSvg({
     date,
     url,
     label,
+    tags,
+    themeKey,
 } = {}) {
-    const palette = PALETTES[kind] || PALETTES.home
+    const basePalette = PALETTES[kind] || PALETTES.home
+    const themePalette = resolveOgTheme(themeKey || tags)
+    const palette = themePalette
+        ? { ...themePalette, label: basePalette.label }
+        : basePalette
     const titleLines = wrapText(plainText(title) || SITE_NAME, 13, 3)
     const descriptionLines = wrapText(
         plainText(description) || DEFAULT_DESCRIPTION,
@@ -255,7 +330,10 @@ module.exports = {
     HEIGHT,
     SITE_NAME,
     DEFAULT_DESCRIPTION,
+    OG_THEME_PALETTES,
     buildOgSvg,
+    resolveOgTheme,
+    hashThemeKey,
     renderOgImage,
     escapeXml,
     plainText,

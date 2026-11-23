@@ -296,7 +296,8 @@ async function findUpgradedFromNote(articleId) {
     const id = Number(articleId)
     if (!Number.isSafeInteger(id) || id <= 0) return null
     const rows = await query(
-        `SELECT n.id, n.title, n.slug, n.published_at AS publishedAt, n.updated_at AS updatedAt
+        `SELECT n.id, n.title, n.slug, n.content,
+                n.published_at AS publishedAt, n.updated_at AS updatedAt
            FROM note_article_upgrade u
            INNER JOIN note n ON n.id = u.note_id AND n.state = 'published'
           WHERE u.article_id = ?

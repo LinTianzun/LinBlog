@@ -5,6 +5,7 @@ const GARDEN_NOTE = {
   id: 21,
   title: '花园里还没写完的那页',
   slug: 'unfinished-page',
+  tags: ['数字花园', '写作'],
   publishedAt: '2026-11-10T08:00:00.000Z',
   updatedAt: '2026-11-18T08:00:00.000Z',
 }
@@ -15,6 +16,7 @@ const SIBLING_ARTICLE = {
   title: '同一页笔记长出的另一种写法',
   introduce: '从同一个花园想法延伸出来的第二篇长文。',
   content: '<p>这是同源笔记衍生出的另一篇文章。</p>',
+  publishedAt: '2026-11-22T08:00:00.000Z',
 }
 
 async function mockArticleDetail(
@@ -42,6 +44,8 @@ test('文章详情展示来源花园笔记，点击回到花园并打开原笔�
   await expect(source).toBeVisible()
   await expect(source).toContainText('这篇长文来自花园')
   await expect(source.locator('.garden-source-title')).toHaveText(GARDEN_NOTE.title)
+  await expect(source.locator('.garden-source-timeline')).toHaveText('笔记 2026-11-10 公开 · 2026-11-18 更新')
+  await expect(source.locator('.garden-source-tags span')).toHaveText(['#数字花园', '#写作'])
 
   await source.getByRole('button', { name: '去花园读原笔记' }).click()
 
@@ -95,6 +99,7 @@ test('文章页把同一来源笔记的多篇长文收拢成可展开入口', as
   const series = detail.locator('.garden-source-series')
   await expect(series.locator('summary')).toContainText('同源长文 · 共 2 篇')
   await series.locator('summary').click()
+  await expect(series.locator('button span')).toContainText('2026-11-22 · 从同一个花园想法延伸出来的第二篇长文。')
   await series.getByRole('button', { name: new RegExp(SIBLING_ARTICLE.title) }).click()
 
   await expect(detail.getByRole('heading', { name: SIBLING_ARTICLE.title })).toBeVisible()

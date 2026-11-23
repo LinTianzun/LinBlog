@@ -76,6 +76,7 @@ async function buildImage(meta) {
         title: meta.title,
         description: meta.description,
         kind: meta.imageKind,
+        themeKey: meta.ogThemeKey,
         date: meta.modifiedTime || meta.publishedTime,
         url: meta.url,
     })

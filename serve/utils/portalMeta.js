@@ -59,6 +59,16 @@ function isoDate(value) {
     return Number.isNaN(date.getTime()) ? '' : date.toISOString()
 }
 
+function articleThemeKey(item) {
+    const labels = String(item.label || '')
+        .split(',')
+        .map(label => label.trim().toLowerCase())
+        .filter(Boolean)
+    const subset = String(item.subsetName || '').trim().toLowerCase()
+    if (subset) labels.push(subset)
+    return [...new Set(labels)].sort().join('|')
+}
+
 function itemUrl(origin, kind, id) {
     const archive = KIND_ARCHIVES[kind] || KIND_ARCHIVES.article
     const url = new URL(archive.path, origin)
@@ -172,6 +182,7 @@ function contentMeta(kind, item, origin) {
             image: absoluteUrl(articleCover(item), origin) || new URL(ogImagePath('article', item.id), origin).toString(),
             imageKind: 'article',
             imageId: item.id,
+            ogThemeKey: articleThemeKey(item),
             type: 'article',
             publishedTime: isoDate(item.publishedAt || item.createdAt),
             modifiedTime: isoDate(item.updatedAt || item.createdAt),
@@ -345,7 +356,15 @@ function injectPortalMeta(html, meta) {
 
 function metaEtag(meta) {
     if (!meta) return ''
-    const raw = [meta.title, meta.description, meta.url, meta.image, meta.modifiedTime || '', meta.publishedTime || '']
+    const raw = [
+        meta.title,
+        meta.description,
+        meta.url,
+        meta.image,
+        meta.ogThemeKey || '',
+        meta.modifiedTime || '',
+        meta.publishedTime || '',
+    ]
         .join('\n')
     let hash = 2166136261
     for (let index = 0; index < raw.length; index += 1) {

@@ -5,6 +5,7 @@ const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getArticleScope } = require('../utils/accessControl')
 const { cleanupCover, extractUploadsFilename } = require('../utils/coverCleanup')
+const { extractNoteTags } = require('../utils/noteMarkdown')
 
 // AI 辅助环节白名单：只接受这几个标记，避免前端传脏值写进数据库
 const AI_FEATURE_SET = new Set(['suggest', 'writing', 'cover', 'gallery', 'image-alt'])
@@ -307,6 +308,7 @@ async function getPublicArticleById(req, res) {
                         id: Number(sourceNote.id),
                         title: String(sourceNote.title || ''),
                         slug: sourceNote.slug || '',
+                        tags: extractNoteTags(sourceNote.content).slice(0, 8),
                         publishedAt: sourceNote.publishedAt ?? null,
                         updatedAt: sourceNote.updatedAt ?? null,
                     },

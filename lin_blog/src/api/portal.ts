@@ -128,6 +128,7 @@ export interface GardenSourceNote {
   id: number;
   title: string;
   slug: string;
+  tags?: string[];
   publishedAt: string | null;
   updatedAt: string | null;
 }

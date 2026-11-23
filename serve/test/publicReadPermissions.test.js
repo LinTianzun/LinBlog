@@ -140,6 +140,7 @@ test('public article detail returns the garden note it grew from', async () => {
                         id: 21,
                         title: '数字花园里的慢笔记',
                         slug: 'slow-garden-note',
+                        content: '这是一页还在生长的笔记。\n\n#数字花园 #写作',
                         publishedAt: '2026-11-20T08:00:00.000Z',
                         updatedAt: '2026-11-21T08:00:00.000Z',
                     }
@@ -174,6 +175,7 @@ test('public article detail returns the garden note it grew from', async () => {
         id: 21,
         title: '数字花园里的慢笔记',
         slug: 'slow-garden-note',
+        tags: ['数字花园', '写作'],
         publishedAt: '2026-11-20T08:00:00.000Z',
         updatedAt: '2026-11-21T08:00:00.000Z',
     })
