@@ -80,7 +80,8 @@ export function findNewIncomingConversations(
 
 export function isDocumentVisible(): boolean {
   return typeof document === 'undefined'
-    || document.visibilityState !== 'hidden'
+    ? false
+    : document.visibilityState !== 'hidden'
 }
 
 export function emitMessageStateChange(): void {

@@ -77,6 +77,20 @@
                                 </yk-text>
                             </div>
                         </div>
+
+                        <!-- 快捷入口直接放在账号资料卡下方：进入设置第一屏就能一键跳转，
+                             不再沉在系统信息分区底部 -->
+                        <div v-if="hasQuickAccess" class="set-quick-wrap">
+                            <span class="set-label">快捷入口</span>
+                            <div class="set-quick">
+                                <button v-for="entry in quickEntries" :key="entry.path" type="button"
+                                    class="set-quick-item" @click="go(entry.path)">
+                                    <component :is="entry.icon" class="set-quick-icon" />
+                                    <span>{{ entry.name }}</span>
+                                    <IconRightOutline class="set-quick-arrow" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                 </section>
@@ -240,18 +254,6 @@
                         <DatabaseBackupPanel />
                     </div>
 
-                    <!-- 快捷入口 -->
-                    <div v-if="hasQuickAccess" class="set-card">
-                        <span class="set-label" style="margin-bottom: 12px">快捷入口</span>
-                        <div class="set-quick">
-                            <button v-for="entry in quickEntries" :key="entry.path" type="button"
-                                class="set-quick-item" @click="go(entry.path)">
-                                <component :is="entry.icon" class="set-quick-icon" />
-                                <span>{{ entry.name }}</span>
-                                <IconRightOutline class="set-quick-arrow" />
-                            </button>
-                        </div>
-                    </div>
                 </section>
 
                 <!-- ── 危险区 ── -->
@@ -1348,6 +1350,14 @@ onUnmounted(() => window.removeEventListener('scroll', syncActiveSection))
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
+}
+
+.set-quick-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 18px;
+    border-top: 1px solid var(--admin-line, var(--gray1));
 }
 
 .set-quick-item {

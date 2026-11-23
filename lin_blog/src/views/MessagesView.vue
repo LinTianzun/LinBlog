@@ -175,6 +175,7 @@ import {
     isDocumentVisible,
     mergeMessagePage,
 } from '../utils/messageRealtime'
+import { useVisibilityPolling } from '../composables/useVisibilityPolling'
 
 const PAGE_SIZE = 50
 const route = useRoute()
@@ -208,7 +209,6 @@ const aiReplyError = ref('')
 const aiReplySuggestion = ref<{ replies: string[]; degraded?: boolean; modelName?: string } | null>(null)
 const threadRef = ref<HTMLElement | null>(null)
 const pendingNewCount = ref(0)
-let conversationTimer: number | undefined
 let conversationPolling = false
 let activityInitialized = false
 const activitySnapshot = new Map<number, string>()
@@ -502,13 +502,6 @@ const loadEarlier = async (): Promise<void> => {
     }
 }
 
-const stopConversationPolling = (): void => {
-    if (conversationTimer !== undefined) {
-        window.clearInterval(conversationTimer)
-        conversationTimer = undefined
-    }
-}
-
 const pollConversations = async (): Promise<void> => {
     if (
         conversationPolling
@@ -567,22 +560,11 @@ const pollConversations = async (): Promise<void> => {
     }
 }
 
-const startConversationPolling = (): void => {
-    stopConversationPolling()
-    if (!isDocumentVisible()) return
-    conversationTimer = window.setInterval(() => {
-        void pollConversations()
-    }, MESSAGE_POLL_INTERVAL)
-}
-
-const handleConversationVisibility = (): void => {
-    if (isDocumentVisible()) {
-        void pollConversations()
-        startConversationPolling()
-    } else {
-        stopConversationPolling()
-    }
-}
+// 会话列表轮询：interval 与可见性统一交给 composable，恢复可见时立即刷新一次
+const { resume: startConversationPolling, pause: stopConversationPolling } = useVisibilityPolling(
+    () => pollConversations(),
+    { intervalMs: MESSAGE_POLL_INTERVAL }
+)
 
 const handleMessageStateChange = (): void => {
     if (isDocumentVisible()) void pollConversations()
@@ -660,7 +642,6 @@ const applyAiReply = (reply: string): void => {
 onMounted(() => {
     void loadConversations().finally(startConversationPolling)
     window.addEventListener('focus', pollConversations)
-    document.addEventListener('visibilitychange', handleConversationVisibility)
     window.addEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 
@@ -675,7 +656,6 @@ watch(() => route.query.userId, () => {
 onUnmounted(() => {
     stopConversationPolling()
     window.removeEventListener('focus', pollConversations)
-    document.removeEventListener('visibilitychange', handleConversationVisibility)
     window.removeEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 </script>

@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts" setup>
-import { toRefs, ref, computed, onMounted, onUnmounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
+import { toRefs, ref, computed, onMounted, watch, getCurrentInstance, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import type { InformationProps } from './reply.ts'
 import type { ReplyDat } from '../../utils/interface'
@@ -45,8 +45,8 @@ import {
 import {
     MESSAGE_POLL_INTERVAL,
     emitMessageStateChange,
-    isDocumentVisible,
 } from '../../utils/messageRealtime.ts'
+import { useVisibilityPolling } from '../../composables/useVisibilityPolling'
 
 type MessageOptions = {
     type: 'primary' | 'error'
@@ -88,7 +88,6 @@ const page = ref(1)
 const loading = ref(false)
 const messages = ref<MessageItem[]>([])
 const markingAll = ref(false)
-let drawerTimer: number | undefined
 let drawerPolling = false
 
 // 当前页未读数
@@ -127,20 +126,12 @@ const fetchMessages = async (showSpinner = true, reportError = true): Promise<vo
     }
 }
 
-const stopDrawerPolling = (): void => {
-    if (drawerTimer !== undefined) {
-        window.clearInterval(drawerTimer)
-        drawerTimer = undefined
-    }
-}
-
 const pollMessages = async (): Promise<void> => {
     if (
         drawerPolling
         || loading.value
         || !active.value
         || page.value !== 1
-        || !isDocumentVisible()
     ) {
         return
     }
@@ -152,22 +143,14 @@ const pollMessages = async (): Promise<void> => {
     }
 }
 
-const startDrawerPolling = (): void => {
-    stopDrawerPolling()
-    if (!active.value || !isDocumentVisible()) return
-    drawerTimer = window.setInterval(() => {
-        void pollMessages()
-    }, MESSAGE_POLL_INTERVAL)
-}
-
-const handleDrawerVisibilityChange = (): void => {
-    if (isDocumentVisible() && active.value) {
-        void pollMessages()
-        startDrawerPolling()
-    } else {
-        stopDrawerPolling()
+// 抽屉只在打开且停在第一页时轮询；interval 与可见性统一交给 composable
+const { resume: startDrawerPolling, pause: stopDrawerPolling } = useVisibilityPolling(
+    () => pollMessages(),
+    {
+        intervalMs: MESSAGE_POLL_INTERVAL,
+        enabled: () => active.value && page.value === 1,
     }
-}
+)
 
 // 适配 reply.vue 的展示结构
 const formatMessage = (item: MessageItem): ReplyDat => ({
@@ -286,16 +269,7 @@ watch(effectivePageSize, () => {
 })
 
 onMounted(() => {
-    document.addEventListener('visibilitychange', handleDrawerVisibilityChange)
-    if (active.value) {
-        void fetchMessages()
-        startDrawerPolling()
-    }
-})
-
-onUnmounted(() => {
-    stopDrawerPolling()
-    document.removeEventListener('visibilitychange', handleDrawerVisibilityChange)
+    if (active.value) void fetchMessages()
 })
 </script>
 

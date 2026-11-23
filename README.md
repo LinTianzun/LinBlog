@@ -40,7 +40,7 @@ LinBlog 是一套「前台门户 + 后台管理」一体化的个人博客系统
 * **定时发布以服务器时区为准**：计划时间的展示、解析与到期判定统一使用服务器时区，不再依赖浏览器时区。浏览器时区与实际挂钟不一致时（如容器 `TZ=UTC`、DevTools 时区覆盖），「1 小时后」依然得到正确时刻；后端另用 `GET /api/time/now` 把服务器时间与偏移下发给前端。
 * **数据库备份与恢复演练**：图片以 `MEDIUMBLOB` 存在数据库里，附件目录备份无法恢复站点，因此服务内置数据库逻辑备份（每天定时导出 gzip JSONL、按保留份数自动清理），并提供「隔离恢复演练」——还原到 `linlog_drill_<随机>` 临时库校验后自动删库。后台「系统设置 → 系统信息 → 数据库备份」支持手动备份、下载、删除与清理过期。详见 [Documentation/数据库备份与恢复.md](Documentation/数据库备份与恢复.md)。
 * **部署监控与安全加固**：`/healthz` 存活检查（不查库，避免 DB 抖动触发容器重启）、`/readyz` 就绪检查（DB 未连通返回 503）、`GET /api/health/runtime` 运行时信息（内存、运行时间、连接池占用）；公开写接口统一走同源校验中间件，前端带 CSP meta。连接池大小与获取超时可用 `LINBLOG_DB_CONNECTION_LIMIT` / `LINBLOG_DB_ACQUIRE_TIMEOUT_MS` 调整。
-* **自动化回归与错误边界**：后端 700 项测试，前端 261 项纯函数单测，Playwright 167 条端到端回归，GitHub Actions 在 push/PR 时自动跑四层回归并上传报告。任一后台页面渲染异常时由 `ErrorBoundary` 兜住，展示可重试卡片而不是整站白屏；未捕获的异步异常统一进 `app.config.errorHandler` 落日志。
+* **自动化回归与错误边界**：后端 700 项测试，前端 262 项纯函数单测，Playwright 167 条端到端回归，GitHub Actions 在 push/PR 时自动跑四层回归并上传报告。任一后台页面渲染异常时由 `ErrorBoundary` 兜住，展示可重试卡片而不是整站白屏；未捕获的异步异常统一进 `app.config.errorHandler` 落日志。
 
 ## 项目结构与当前状态
 

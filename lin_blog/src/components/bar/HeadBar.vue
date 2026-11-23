@@ -65,11 +65,8 @@ import NotificationDrawer from '../notification/NotificationDrawer.vue'
 import { getNotificationUnreadCount, getUnreadCount } from '../../api/message'
 import { useThemeDark } from '../../utils/themeMode'
 import { useSessionStore } from '../../store/session'
-import {
-    MESSAGE_POLL_INTERVAL,
-    MESSAGE_STATE_EVENT,
-    isDocumentVisible,
-} from '../../utils/messageRealtime'
+import { MESSAGE_POLL_INTERVAL, MESSAGE_STATE_EVENT } from '../../utils/messageRealtime'
+import { useVisibilityPolling } from '../../composables/useVisibilityPolling'
 import { emitPetReaction } from '../../utils/desktopPetScene'
 import { logError } from '../../utils/clientLogger'
 
@@ -151,7 +148,6 @@ const unreadPulse = ref(false)
 const inboxTitle = computed(() =>
     hasUnread.value ? `私信 · ${unreadCount.value} 条未读` : '私信'
 )
-let unreadTimer: number | undefined
 let unreadPulseTimer: number | undefined
 let unreadFetching = false
 let unreadInitialized = false
@@ -167,13 +163,6 @@ const noticeTitle = computed(() =>
 let noticePulseTimer: number | undefined
 let noticeFetching = false
 let noticeInitialized = false
-
-const stopUnreadPolling = (): void => {
-    if (unreadTimer !== undefined) {
-        window.clearInterval(unreadTimer)
-        unreadTimer = undefined
-    }
-}
 
 const pulseInbox = (): void => {
     unreadPulse.value = true
@@ -228,35 +217,20 @@ const fetchUnread = async () => {
     }
 }
 
-const startUnreadPolling = (): void => {
-    stopUnreadPolling()
-    if (
-        !headerMounted
-        || !isDocumentVisible()
-        || !localStorage.getItem('token')
-    ) {
-        return
-    }
-    void fetchUnread()
-    void fetchNoticeUnread()
-    unreadTimer = window.setInterval(() => {
-        void fetchUnread()
-        void fetchNoticeUnread()
-    }, MESSAGE_POLL_INTERVAL)
-}
-
-const handleVisibilityChange = (): void => {
-    if (isDocumentVisible()) {
-        startUnreadPolling()
-    } else {
-        stopUnreadPolling()
-    }
-}
-
 const handleMessageStateChange = (): void => {
     void fetchUnread()
     void fetchNoticeUnread()
 }
+
+// 未读数轮询：interval、可见性与窗口聚焦统一交给 composable，
+// 登录态等业务前置条件由 fetchUnread / fetchNoticeUnread 自行判断
+const { resume: startUnreadPolling, pause: stopUnreadPolling } = useVisibilityPolling(
+    () => {
+        void fetchUnread()
+        void fetchNoticeUnread()
+    },
+    { intervalMs: MESSAGE_POLL_INTERVAL, enabled: () => headerMounted && Boolean(localStorage.getItem('token')) }
+)
 
 const openInbox = () => {
     changeActive(true)
@@ -324,12 +298,9 @@ onMounted(() => {
         }
     }
 
-    startUnreadPolling()
-
     window.addEventListener('user:avatar-change', onAvatarChange)
-    window.addEventListener('focus', startUnreadPolling)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
+    startUnreadPolling()
 })
 
 onUnmounted(() => {
@@ -338,8 +309,6 @@ onUnmounted(() => {
     if (unreadPulseTimer !== undefined) window.clearTimeout(unreadPulseTimer)
     if (noticePulseTimer !== undefined) window.clearTimeout(noticePulseTimer)
     window.removeEventListener('user:avatar-change', onAvatarChange)
-    window.removeEventListener('focus', startUnreadPolling)
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
 })
 
