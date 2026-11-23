@@ -15,6 +15,7 @@
  * 再用像素特征确认，而不是全图找亮斑——这样既快又不会把夜景灯光误当成徽标。
  */
 const sharp = require('sharp')
+const { logger } = require('./logger')
 
 // 徽标文字块相对图片高度的比例（实测：88x28 文字块 / 768 高）
 const BADGE = {
@@ -208,7 +209,7 @@ async function removeWatermark(buffer, mimeType, options = {}) {
         return { buffer: cleaned, mimeType, removed: true }
     } catch (err) {
         // 去水印失败不该让整次生成失败：原图照常返回
-        console.warn('[AI] 去除水印失败，保留原图：', err?.message || err)
+        logger.warn('[AI] 去除水印失败，保留原图', null, err?.message || err)
         return { buffer, mimeType, removed: false }
     }
 }

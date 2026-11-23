@@ -1,5 +1,6 @@
 const commentModel = require('../model/dbModel/comment/index')
 const articleModel = require('../model/dbModel/article/index') // 用于校验文章是否存在
+const { logger } = require('../utils/logger.js')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { query } = require('../model/db/dbnew')
 const { writeSystemLog } = require('../utils/logHelper')
@@ -230,7 +231,7 @@ async function createComment(req, res) {
         }
         await Promise.all(targets.map(target =>
             notifyComment({ ...target, senderId: userId })
-                .catch((notifyError) => console.warn('[Comment] 发送站内评论通知失败：', notifyError.message))
+                .catch((notifyError) => logger.warn('[Comment] 发送站内评论通知失败', null, notifyError))
         ))
 
         res.status(201).json({

@@ -1,3 +1,4 @@
+const { logger } = require('./logger.js')
 const {
     SUPER_ADMIN_EMAIL,
     ROLES,
@@ -138,7 +139,7 @@ async function refreshPermissionCache() {
             permissionCache = map
             return map
         } catch (err) {
-            console.warn('[Permission] 读取角色权限失败，使用默认权限矩阵：', err.message)
+            logger.warn('[Permission] 读取角色权限失败，使用默认权限矩阵', null, err)
             if (!permissionCache) permissionCache = map
             return permissionCache
         } finally {

@@ -366,7 +366,7 @@ import {
 } from '../api/commentReport'
 import { deleteInteractionComment, type CommentReportReason } from '../api/comment'
 import { reviewCommentReport, type AiReportReview } from '../api/ai'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
 import { COMMENT_REPORT_REASONS, commentReportReasonLabel } from '../utils/commentReport'
 import {
     REPORT_RANGE_OPTIONS,

@@ -143,7 +143,7 @@ import {
 } from '../../api/file'
 import './fileTrash.less'
 import AdminPager from '../common/AdminPager.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 
 const props = defineProps<{ visible: boolean }>()
 

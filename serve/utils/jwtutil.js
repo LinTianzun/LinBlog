@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken')
 const config = require('../config/default')
+const { logger } = require('./logger.js')
 
 function getJwtSecret() {
     const secret = config.jwt.secret
@@ -28,7 +29,7 @@ function generateToken(payload) {
             { expiresIn: config.jwt.expiresIn }
         )
     } catch (err) {
-        console.error('Token 生成失败：', err.message)
+        logger.error('Token 生成失败', null, err)
         throw err
     }
 }
@@ -60,7 +61,7 @@ function verifyToken(token) {
             errorMsg = 'Token 尚未生效'
         }
 
-        console.error(errorMsg + '：', err.message)
+        logger.error(errorMsg, null, err)
         throw new Error(errorMsg)
     }
 }

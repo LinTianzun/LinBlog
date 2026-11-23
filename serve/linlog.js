@@ -30,6 +30,7 @@ const { startAiHealthCheck } = require('./utils/aiHealthCheck')
 const articleWorkflowModel = require('./model/dbModel/articleWorkflow/index')
 const { createGracefulShutdown } = require('./utils/gracefulShutdown')
 const { refreshPermissionCache } = require('./utils/accessControl')
+const { logger } = require('./utils/logger')
 const { isSpaFallbackRequest } = require('./utils/frontendStatic')
 const { applyFrontendSecurityPolicy } = require('./middleware/frontendCsp')
 const { createPortalHtmlMeta } = require('./middleware/portalHtmlMeta')
@@ -37,7 +38,7 @@ const { createPortalHtmlMeta } = require('./middleware/portalHtmlMeta')
 app.disable('x-powered-by')
 
 for (const warning of config.configWarnings || []) {
-    console.warn(`[Config] ${warning}`)
+    logger.warn(`配置警告：${warning}`)
 }
 
 // 反向代理部署时按配置信任代理头，保证 req.ip 是真实客户端 IP
@@ -123,7 +124,7 @@ if (hasFrontendBuild) {
         })
     })
 } else if (process.env.NODE_ENV === 'production') {
-    console.warn(`[Server] 未找到前端构建产物：${frontendIndex}`)
+    logger.warn(`未找到前端构建产物：${frontendIndex}`)
 }
 
 // 9. 统一 404 与异常响应
@@ -139,14 +140,14 @@ db.initDatabase()
         // 会永远留在待发布队列并在到点被重复发布，启动时清一次。
         try {
             const healed = await articleWorkflowModel.clearStaleSchedules();
-            if (healed > 0) console.log(`[Server] 已清理 ${healed} 条残留的定时发布计划`);
+            if (healed > 0) logger.info(`已清理 ${healed} 条残留的定时发布计划`);
         } catch (err) {
-            console.warn('[Server] 清理残留定时发布计划失败：', err.message);
+            logger.warn('清理残留定时发布计划失败', null, err);
         }
 
         const port = config.port;
         const server = app.listen(port, () => {
-            console.log(`[Server] 服务已启动，访问地址：http://localhost:${port}`);
+            logger.info(`服务已启动，访问地址：http://localhost:${port}`);
             // 访问记录按保留期滚动清理，避免 record 表无限增长
             const recordRetention = startRecordRetention();
             const systemLogRetention = startSystemLogRetention();
@@ -177,17 +178,17 @@ db.initDatabase()
             process.once('SIGINT', () => void shutdown('SIGINT'))
             process.once('SIGTERM', () => void shutdown('SIGTERM'))
             process.once('uncaughtException', (err) => {
-                console.error('[Server] 未捕获异常：', err)
+                logger.error('未捕获异常', null, err)
                 void shutdown('uncaughtException', err)
             })
             process.on('unhandledRejection', (reason) => {
                 const err = reason instanceof Error ? reason : new Error(String(reason))
-                console.error('[Server] 未处理的 Promise 拒绝：', err)
+                logger.error('未处理的 Promise 拒绝', null, err)
                 void shutdown('unhandledRejection', err)
             })
         });
     })
     .catch((err) => {
-        console.error('[Server] 数据库初始化失败，服务无法启动：', err);
+        logger.error('数据库初始化失败，服务无法启动', null, err);
         process.exit(1);
     });

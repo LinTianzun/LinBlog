@@ -1,6 +1,40 @@
 const { query } = require('../../db/dbnew')
 const labelModel = require('../label/index')
 
+/**
+ * 把普通关键词转换成 MySQL 全文检索的布尔查询。
+ * 多个词用空格分隔时按「包含任意一个词」匹配，加引号可按短语精确匹配；
+ * 引号/星号交给用户自己控制，这里只处理空格与默认 AND 语义。
+ * @param {string} keyword - 用户输入的检索词
+ * @returns {string} BOOLEAN MODE 查询串
+ */
+function buildFullTextBooleanQuery(keyword) {
+    const raw = String(keyword || '').trim()
+    if (!raw) return ''
+    // 保留用户显式写下的布尔操作符（+ - ~ < > ( )），
+    // 其余普通词默认加 + 表示必须命中；带引号的短语整体保留。
+    const terms = raw.match(/"[^"]*"|[^\s"]+/g) || []
+    return terms
+        .map(term => (/^[+\-~<>()]/.test(term) ? term : `+${term}`))
+        .join(' ')
+}
+
+/**
+ * ngram 分词器默认按 2 字切词，单字关键词查不到结果，
+ * 此时退回 LIKE 语义，避免「猫」「AI」这类短词直接搜空。
+ */
+function isFullTextSearchable(keyword) {
+    const raw = String(keyword || '').replace(/["\s]/g, '')
+    return raw.length >= 2
+}
+
+/**
+ * 转义 LIKE 中的通配符，保证用户输入的 % 与 _ 按字面匹配。
+ */
+function escapeLikeTerm(keyword) {
+    return String(keyword || '').replace(/[\\%_]/g, char => `\\${char}`)
+}
+
 function normalizeAccess(access) {
     if (access && typeof access === 'object') {
         return {
@@ -111,14 +145,19 @@ async function findArticlesByPage(params) {
 
     //  筛选条件：标题、简介、标签或正文关键词
     if (keyword) {
-        whereClause += ` AND (
-            a.title LIKE ?
-            OR a.introduce LIKE ?
-            OR a.label LIKE ?
-            OR a.content LIKE ?
-        )`
-        const searchTerm = `%${keyword}%`
-        whereParams.push(searchTerm, searchTerm, searchTerm, searchTerm)
+        if (isFullTextSearchable(keyword)) {
+            whereClause += ' AND MATCH(a.title, a.introduce, a.label, a.content) AGAINST(? IN BOOLEAN MODE)'
+            whereParams.push(buildFullTextBooleanQuery(keyword))
+        } else {
+            whereClause += ` AND (
+                a.title LIKE ?
+                OR a.introduce LIKE ?
+                OR a.label LIKE ?
+                OR a.content LIKE ?
+            )`
+            const searchTerm = `%${escapeLikeTerm(keyword)}%`
+            whereParams.push(searchTerm, searchTerm, searchTerm, searchTerm)
+        }
     }
 
     // 排序：sort=hot 按浏览量倒序（热度），默认按创建时间倒序
@@ -378,20 +417,37 @@ async function searchPublishedContentForAsk(keyword, limit = 6) {
     const term = String(keyword || '').trim()
     if (!term) return []
 
-    const like = `%${term}%`
-    const rows = await query(
-        `SELECT id, title, introduce, content, classify, subset_id AS subsetId,
-                published_at AS publishedAt
-         FROM article
-         WHERE state = 'published'
-           AND (title LIKE ? OR introduce LIKE ? OR content LIKE ? OR label LIKE ?)
-         ORDER BY
-            (CASE WHEN title LIKE ? THEN 0 ELSE 1 END),
-            (CASE WHEN introduce LIKE ? THEN 0 ELSE 1 END),
-            COALESCE(published_at, created_at) DESC
-         LIMIT ?`,
-        [like, like, like, like, like, like, safeLimit]
-    )
+    const useFullText = isFullTextSearchable(term)
+    const like = `%${escapeLikeTerm(term)}%`
+    const rows = useFullText
+        ? await query(
+            `SELECT id, title, introduce, content, classify, subset_id AS subsetId,
+                    published_at AS publishedAt,
+                    MATCH(title, introduce, label, content) AGAINST(? IN BOOLEAN MODE) AS relevance
+             FROM article
+             WHERE state = 'published'
+               AND MATCH(title, introduce, label, content) AGAINST(? IN BOOLEAN MODE)
+             ORDER BY relevance DESC, COALESCE(published_at, created_at) DESC
+             LIMIT ?`,
+            [
+                buildFullTextBooleanQuery(term),
+                buildFullTextBooleanQuery(term),
+                safeLimit
+            ]
+        )
+        : await query(
+            `SELECT id, title, introduce, content, classify, subset_id AS subsetId,
+                    published_at AS publishedAt
+             FROM article
+             WHERE state = 'published'
+               AND (title LIKE ? OR introduce LIKE ? OR content LIKE ? OR label LIKE ?)
+             ORDER BY
+                (CASE WHEN title LIKE ? THEN 0 ELSE 1 END),
+                (CASE WHEN introduce LIKE ? THEN 0 ELSE 1 END),
+                COALESCE(published_at, created_at) DESC
+             LIMIT ?`,
+            [like, like, like, like, like, like, safeLimit]
+        )
 
     return (rows || []).map(row => ({
         id: Number(row.id),
@@ -417,22 +473,33 @@ async function searchPublishedContentByTerms(terms, limit = 20) {
         .slice(0, 6)
     if (list.length === 0) return []
 
+    // 先用全文索引收窄候选集，再只在候选行上计算分字段权重，
+    // 避免在 LONGTEXT 正文上做全表 LIKE 扫描。
+    const useFullText = list.every(term => isFullTextSearchable(term))
     const scoreParts = []
     const scoreParams = []
     for (const term of list) {
+        const like = `%${escapeLikeTerm(term)}%`
         scoreParts.push(
             '(CASE WHEN a.title LIKE ? THEN 8 ELSE 0 END)',
             '(CASE WHEN a.introduce LIKE ? THEN 4 ELSE 0 END)',
             '(CASE WHEN a.label LIKE ? THEN 3 ELSE 0 END)',
             '(CASE WHEN a.content LIKE ? THEN 1 ELSE 0 END)'
         )
-        scoreParams.push(term, term, term, term)
+        scoreParams.push(like, like, like, like)
     }
 
-    const whereClause = list
-        .map(() => '(a.title LIKE ? OR a.introduce LIKE ? OR a.label LIKE ? OR a.content LIKE ?)')
-        .join(' OR ')
-    const whereParams = list.flatMap(term => [term, term, term, term])
+    const whereSql = useFullText
+        ? 'a.state = \'published\' AND MATCH(a.title, a.introduce, a.label, a.content) AGAINST(? IN BOOLEAN MODE)'
+        : `a.state = 'published' AND (${list
+            .map(() => '(a.title LIKE ? OR a.introduce LIKE ? OR a.label LIKE ? OR a.content LIKE ?)')
+            .join(' OR ')})`
+    const whereParams = useFullText
+        ? [list.map(term => buildFullTextBooleanQuery(term)).join(' ')]
+        : list.flatMap(term => {
+            const like = `%${escapeLikeTerm(term)}%`
+            return [like, like, like, like]
+        })
 
     const rows = await query(
         `SELECT id, title, introduce, label, cover, classify, subset_id AS subsetId,
@@ -440,7 +507,7 @@ async function searchPublishedContentByTerms(terms, limit = 20) {
                 published_at AS publishedAt, created_at AS createdAt,
                 ${scoreParts.join(' + ')} AS score
          FROM article a
-         WHERE a.state = 'published' AND (${whereClause})
+         WHERE ${whereSql}
          ORDER BY score DESC, COALESCE(a.published_at, a.created_at) DESC, a.id DESC
          LIMIT ?`,
         [...scoreParams, ...whereParams, safeLimit]
@@ -459,7 +526,7 @@ async function searchPublishedContentByTerms(terms, limit = 20) {
         comments: Number(row.comments) || 0,
         publishedAt: row.publishedAt,
         createdAt: row.createdAt,
-        score: Number(row.score) || 0
+            score: Number(row.score) || 0
     }))
 }
 
@@ -718,6 +785,7 @@ async function updateArticleStatus(articleId, state, userId, userType) {
 }
 
 module.exports = {
+    buildFullTextBooleanQuery,
     findAtricleStateById,
     findArticlesByPage,
     countArticlesByState,

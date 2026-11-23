@@ -12,6 +12,7 @@ const backupModel = require('../model/dbModel/backup/index')
 const { writeSystemLog } = require('./logHelper')
 const { notifySuperAdmin } = require('./notificationHelper')
 const mailer = require('./mailer')
+const { logger } = require('./logger.js')
 
 const DEFAULT_BACKUP_DIR = path.resolve(
     process.env.LINBLOG_DB_BACKUP_DIR || path.join(__dirname, '..', 'storage', 'db-backups')
@@ -577,7 +578,7 @@ async function pruneOldBackups(options = {}) {
             removed.push(backup.filename)
         } catch (err) {
             if (err.code !== 'ENOENT') {
-                console.warn(`[DBBackup] 删除过期备份 ${backup.filename} 失败：`, err.message)
+                logger.warn('[DBBackup] 删除过期备份失败', { filename: backup.filename }, err)
             }
         }
     }

@@ -73,7 +73,7 @@
 import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import fileItem from './filesItem.vue'
 import { useSubsetStore } from '../../store/subset.ts'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import { useResponsiveGridPageSize } from '../../utils/responsivePageSize.ts'
 import AdminPager from '../common/AdminPager.vue'
 import type { FileData } from '../../utils/interface.ts'

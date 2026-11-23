@@ -866,16 +866,19 @@ export async function installApiMock(page: Page): Promise<MockState> {
     }
 
     if (method === 'POST' && path === '/api/user/login') {
+      // 登录同样要回放 seedSession 的账号，否则权限跳转用例会拿到
+      // 固定普通用户权限，与首屏 /api/permission/me 的会话不一致。
+      const session = { permissions: [...state.session.permissions], isSuperAdmin: state.session.isSuperAdmin }
       await fulfill({
         token: 'mock-token',
         userInfo: {
           id: 7,
           username: '普通用户',
           mail: 'user@example.com',
-          user_type: 'normal',
+          user_type: session.isSuperAdmin ? 'admin' : 'normal',
           imgurl: null,
-          permissions: ['article.create', 'comment.create', 'comment.like', 'comment.report'],
-          isSuperAdmin: false,
+          permissions: session.permissions,
+          isSuperAdmin: session.isSuperAdmin,
         },
       }, { message: '登录成功' })
       return

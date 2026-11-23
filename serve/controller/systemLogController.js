@@ -125,7 +125,7 @@ async function pruneLogs(req, res) {
         const result = await systemLogModel.pruneLogs(Number.isFinite(days) ? days : undefined)
         writeSystemLog({
             userId: req.user.userId,
-            action: 'delete',
+            action: 'system',
             module: 'system',
             targetType: 'system_log',
             detail: `清理超过 ${result.retentionDays} 天的系统日志，删除 ${result.deleted} 条`,

@@ -164,7 +164,7 @@ import {
     type ConversationUser,
     type MessageItem,
 } from '../api/message'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
 import {
     MESSAGE_POLL_INTERVAL,
     MESSAGE_STATE_EVENT,

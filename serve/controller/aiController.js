@@ -6,9 +6,11 @@ const aiModel = require('../model/dbModel/ai/index')
 const articleModel = require('../model/dbModel/article/index')
 const fileModel = require('../model/dbModel/file/index')
 const imageModel = require('../model/dbModel/image/index')
+const { readImageBytes } = require('../utils/imageStorage')
 const messageModel = require('../model/dbModel/message/index')
 const recordModel = require('../model/dbModel/record/index')
 const commentInteractionModel = require('../model/dbModel/commentInteraction/index')
+const { logger } = require('../utils/logger')
 const { hasPermission } = require('../utils/accessControl')
 
 /**
@@ -28,7 +30,7 @@ async function answerPublicQuestion(req, res, options = {}) {
     try {
         aiConfig = options.aiConfig || await aiClient.getActiveAiConfig()
     } catch (err) {
-        console.warn('[AI] 读取门户问答模型配置失败：', err?.message || err)
+        logger.warn('[AI] 读取门户问答模型配置失败', null, err?.message || err)
     }
     if (!aiConfig) {
         return res.status(503).json({ code: 503, message: 'AI 问答暂未开启，请稍后再试' })
@@ -94,7 +96,7 @@ async function answerPublicQuestion(req, res, options = {}) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
             return res.status(503).json({ code: 503, message: 'AI 问答暂未开启，请稍后再试' })
         }
-        console.error('[AI] 门户问答失败：', err?.message || err)
+        logger.error('[AI] 门户问答失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 问答暂时不可用，请稍后重试' })
     }
 }
@@ -117,7 +119,7 @@ async function searchPublicContent(req, res, options = {}) {
     try {
         aiConfig = options.aiConfig || await aiClient.getActiveAiConfig()
     } catch (err) {
-        console.warn('[AI] 读取语义搜索模型配置失败：', err?.message || err)
+        logger.warn('[AI] 读取语义搜索模型配置失败', null, err?.message || err)
     }
 
     const startedAt = Date.now()
@@ -148,7 +150,7 @@ async function searchPublicContent(req, res, options = {}) {
             })
         } catch (err) {
             // 扩展失败不阻塞搜索：直接按原关键词检索即可
-            console.warn('[AI] 语义搜索关键词扩展失败：', err?.message || err)
+            logger.warn('[AI] 语义搜索关键词扩展失败', null, err?.message || err)
         }
     }
 
@@ -168,7 +170,7 @@ async function searchPublicContent(req, res, options = {}) {
             }
         })
     } catch (err) {
-        console.error('[AI] 语义搜索失败：', err?.message || err)
+        logger.error('[AI] 语义搜索失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '语义搜索失败，请稍后重试' })
     }
 }
@@ -243,7 +245,7 @@ async function suggestMessageReply(req, res, options = {}) {
         if (err?.code === 'AI_PARSE_ERROR') {
             return res.status(503).json({ code: 503, message: 'AI 没有返回可用的回复建议，请稍后重试' })
         }
-        console.error('[AI] 生成私信回复建议失败：', err?.message || err)
+        logger.error('[AI] 生成私信回复建议失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -319,7 +321,7 @@ async function generateOperationsReport(req, res, options = {}) {
         if (err?.code === 'AI_PARSE_ERROR') {
             return res.status(503).json({ code: 503, message: 'AI 没有返回可用的周报，请稍后重试' })
         }
-        console.error('[AI] 生成运营周报失败：', err?.message || err)
+        logger.error('[AI] 生成运营周报失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -376,7 +378,7 @@ async function suggestArticleMeta(req, res) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
             return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
         }
-        console.error('[AI] 生成建议失败：', err?.message || err)
+        logger.error('[AI] 生成建议失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -459,7 +461,7 @@ async function reviewReport(req, res, options = {}) {
         if (err?.code === 'AI_PARSE_ERROR') {
             return res.status(503).json({ code: 503, message: 'AI 没有返回可用的判断建议，请稍后重试' })
         }
-        console.error('[AI] 举报辅助判断失败：', err?.message || err)
+        logger.error('[AI] 举报辅助判断失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -529,7 +531,7 @@ async function suggestGalleryCuration(req, res) {
         if (err?.code === 'AI_PARSE_ERROR') {
             return res.status(503).json({ code: 503, message: 'AI 没有返回可用的策展建议，请稍后重试' })
         }
-        console.error('[AI] 生成图库策展建议失败：', err?.message || err)
+        logger.error('[AI] 生成图库策展建议失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -596,7 +598,7 @@ async function rewriteArticleText(req, res) {
         if (err?.code === 'AI_EMPTY_TEXT') {
             return res.status(400).json({ code: 400, message: '请先选择或填写正文，再使用 AI 写作辅助' })
         }
-        console.error('[AI] 生成写作辅助失败：', err?.message || err)
+        logger.error('[AI] 生成写作辅助失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 服务暂时不可用，请稍后重试' })
     }
 }
@@ -664,7 +666,7 @@ async function generateCover(req, res) {
         if (err?.code === 'AI_NOT_CONFIGURED') {
             return res.status(503).json({ code: 503, message: 'AI 功能未配置' })
         }
-        console.error('[AI] 生成封面失败：', err?.message || err)
+        logger.error('[AI] 生成封面失败', null, err?.message || err)
         return res.status(503).json({ code: 503, message: 'AI 封面生成失败，请稍后重试' })
     }
 }
@@ -696,7 +698,7 @@ async function confirmCover(req, res) {
             data: { url }
         })
     } catch (err) {
-        console.error('[AI] 保存封面失败：', err?.message || err)
+        logger.error('[AI] 保存封面失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: 'AI 封面保存失败，请稍后重试' })
     }
 }
@@ -715,9 +717,9 @@ async function loadImageBuffers(urls) {
     const results = []
     let totalBytes = 0
 
-    const appendImage = (image, url) => {
+    const appendImage = async (image, url) => {
         const mimeType = String(image?.mime_type || '')
-        const buffer = Buffer.isBuffer(image?.data) ? image.data : null
+        const buffer = image ? await readImageBytes(image).catch(() => null) : null
         if (!buffer || buffer.length === 0 || !IMAGE_MIME_TYPES.has(mimeType)) return
         if (buffer.length > MAX_DESCRIBE_IMAGE_BYTES) return
         if (totalBytes + buffer.length > MAX_DESCRIBE_TOTAL_BYTES) return
@@ -740,7 +742,7 @@ async function loadImageBuffers(urls) {
             const filename = url.slice('/api/uploads/'.length).split(/[?#]/)[0]
             if (!/^[A-Za-z0-9._-]+$/.test(filename)) continue
             const rows = await imageModel.findActiveImageByFilename(filename)
-            appendImage(rows?.[0], url)
+            await appendImage(rows?.[0], url)
             continue
         }
 
@@ -749,7 +751,7 @@ async function loadImageBuffers(urls) {
             const binding = await fileModel.findFileById(Number(fileMatch[1]))
             if (binding?.source_image_id && binding.status === 1) {
                 const image = await imageModel.findImageById(Number(binding.source_image_id))
-                appendImage(image, url)
+                await appendImage(image, url)
             }
         }
     }
@@ -833,7 +835,7 @@ async function describeImageSet(req, res) {
         if (err?.code === 'AI_VISION_UNSUPPORTED') {
             return res.status(400).json({ code: 400, message: '当前文本模型不支持看图，请先在 AI 策略里切换多模态模型' })
         }
-        console.error('[AI] 图片理解失败：', err?.message || err)
+        logger.error('[AI] 图片理解失败', null, err?.message || err)
         await recordAiCall({
             req,
             feature: mode === 'gallery' ? 'gallery-description' : 'image-alt',

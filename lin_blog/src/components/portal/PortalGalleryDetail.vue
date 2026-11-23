@@ -78,7 +78,7 @@ import {
     type LikeState
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import ContentDetailHero from '../content/ContentDetailHero.vue'
 import ContentStatBar from '../content/ContentStatBar.vue'
 import ContentPhotoStage from '../content/ContentPhotoStage.vue'

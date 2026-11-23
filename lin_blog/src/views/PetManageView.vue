@@ -90,18 +90,8 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { getSiteSettings, updateSiteSettings } from '../api/site'
-import {
-    DEFAULT_DESKTOP_PET_SETTINGS,
-    broadcastDesktopPetSettings,
-    getDesktopPetSettings,
-    normalizeDesktopPetSettings,
-    sendDesktopPetCommand,
-    setDesktopPetSettings,
-    type DesktopPetSettings,
-} from '../utils/desktopPet'
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue'
+import { sendDesktopPetCommand } from '../utils/desktopPet'
 import {
     getPetFood,
     getSelectedPetFoodId,
@@ -124,11 +114,8 @@ import {
     type PetVitals,
 } from '../utils/desktopPetVitals'
 import {
-    HOMESTEAD_ANIMALS,
-    HOMESTEAD_ANIMAL_IDS,
     HOMESTEAD_CROPS,
     HOMESTEAD_FERTILIZER_PACK,
-    HOMESTEAD_ITEMS,
     HOMESTEAD_LEVEL_UP_EVENT,
     HOMESTEAD_SEED_PACKS,
     animalStatusText,
@@ -136,7 +123,6 @@ import {
     buyHomesteadDecoration,
     buyHomesteadPlot,
     buySeedPack,
-    canCompleteOrder,
     claimHomesteadAchievement,
     claimHomesteadLevelRewards,
     collectAnimal,
@@ -147,22 +133,13 @@ import {
     getHomesteadCrop,
     getHomesteadDecoration,
     getHomesteadDayPhase,
-    getHomesteadItem,
     getHomesteadState,
     homesteadLevelProgress,
-    homesteadLevelRewards,
     getHomesteadWeather,
     harvestPlot,
-    homesteadAchievements,
-    homesteadBarnSpeedMultiplier,
-    isAnimalManureReady,
-    isAnimalProduceReady,
     isPlotRipe,
-    isPondReady,
     plantCropWithSeed,
-    plotProgress,
     plotRemainingMs,
-    plotStatusText,
     pondStatusText,
     resetHomesteadState,
     setHomesteadState,
@@ -194,7 +171,9 @@ import {
     autoHelpStatusText,
     type HomesteadAutoHelpEventDetail,
 } from '../utils/desktopPetAutoHelp'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
+import { usePetDisplaySettings } from '../composables/usePetDisplaySettings'
+import { usePetHomesteadView } from '../composables/usePetHomesteadView'
 import PetCompanionPanel from '../components/pet/PetCompanionPanel.vue'
 import PetDisplaySettings from '../components/pet/PetDisplaySettings.vue'
 import PetHomePanel from '../components/pet/PetHomePanel.vue'
@@ -204,12 +183,24 @@ import {
     type PetHomeTab,
 } from '../components/pet/petManageTypes'
 
-const router = useRouter()
 const proxy = getCurrentInstance()?.proxy
 const session = useSessionStore()
 
 const canEditPet = computed(() => session.can('pet.manage'))
-const petSettings = reactive<DesktopPetSettings>({ ...getDesktopPetSettings() })
+const {
+    petSettings,
+    resetSettings: resetPetSettings,
+    go,
+} = usePetDisplaySettings({
+    canEdit: () => canEditPet.value,
+    onSaved: () => {
+        emitPetReaction('settings-saved', {
+            message: '桌宠设置已保存',
+            actionPath: '/petManage',
+            actionLabel: '去宠物管理',
+        })
+    },
+})
 const petVitals = ref<PetVitals>(getPetVitals())
 const homestead = ref<HomesteadState>(getHomesteadState())
 const selectedSeedId = ref<HomesteadCropId>('radish')
@@ -293,267 +284,23 @@ const completedDailyTaskCount = computed(
 )
 const displayPetName = computed(() => petVitals.value.name || '小 Lin')
 
-const homesteadPlots = computed(() =>
-    homestead.value.plots.map((plot, index) => {
-        const crop = getHomesteadCrop(plot.cropId)
-        return {
-            index,
-            cropId: plot.cropId,
-            icon: crop?.icon || '',
-            ripe: isPlotRipe(plot, nowTick.value, homesteadWeatherId.value),
-            watered: plot.wateredAt > 0,
-            fertilized: plot.fertilizedAt > 0,
-            canFertilize:
-                Boolean(plot.cropId) &&
-                Boolean(plot.wateredAt) &&
-                !plot.fertilizedAt &&
-                !isPlotRipe(plot, nowTick.value, homesteadWeatherId.value) &&
-                homestead.value.inventory.fertilizer > 0,
-            progress: plotProgress(
-                plot,
-                nowTick.value,
-                homesteadWeatherId.value
-            ),
-            visualClass: pixelCropClass({
-                cropId: plot.cropId,
-                progress: plotProgress(
-                    plot,
-                    nowTick.value,
-                    homesteadWeatherId.value
-                ),
-                ripe: isPlotRipe(
-                    plot,
-                    nowTick.value,
-                    homesteadWeatherId.value
-                ),
-            }),
-            label: `第 ${index + 1} 块菜地：${plotStatusText(
-                plot,
-                nowTick.value,
-                homesteadWeatherId.value
-            )}${
-                Boolean(plot.cropId) &&
-                Boolean(plot.wateredAt) &&
-                !plot.fertilizedAt &&
-                !isPlotRipe(plot, nowTick.value, homesteadWeatherId.value) &&
-                homestead.value.inventory.fertilizer > 0
-                    ? '，点击施肥'
-                    : ''
-            }`,
-        }
-    })
-)
-
-const pixelCropClass = (plot: {
-    cropId: string | null
-    progress: number
-    ripe: boolean
-}) => {
-    const visualCrop =
-        plot.cropId === 'radish'
-            ? 'carrot'
-            : plot.cropId === 'strawberry'
-              ? 'tomato'
-              : plot.cropId || 'cabbage'
-    const stage = plot.ripe
-        ? 3
-        : Math.min(2, Math.max(0, Math.floor(plot.progress * 3)))
-    return {
-        [`is-${visualCrop}`]: true,
-        [`is-stage-${stage}`]: true,
-    }
-}
-
-const chicken = computed(() => {
-    const definition = HOMESTEAD_ANIMALS.chicken
-    const animal = homestead.value.animals.chicken
-    const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel,
-        homesteadWeatherId.value
-    )
-    return {
-        ...definition,
-        eggReady: isAnimalProduceReady(
-            animal,
-            definition,
-            nowTick.value,
-            speedMultiplier
-        ),
-        manureReady: isAnimalManureReady(
-            animal,
-            definition,
-            nowTick.value,
-            speedMultiplier
-        ),
-    }
-})
-
-const cow = computed(() => {
-    const definition = HOMESTEAD_ANIMALS.cow
-    const animal = homestead.value.animals.cow
-    const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel,
-        homesteadWeatherId.value
-    )
-    return {
-        ...definition,
-        milkReady: isAnimalProduceReady(
-            animal,
-            definition,
-            nowTick.value,
-            speedMultiplier
-        ),
-        manureReady: isAnimalManureReady(
-            animal,
-            definition,
-            nowTick.value,
-            speedMultiplier
-        ),
-    }
-})
-
-const chickenLabel = computed(
-    () =>
-        `鸡舍：${animalStatusText(
-            homestead.value,
-            'chicken',
-            nowTick.value,
-            homesteadWeatherId.value
-        )}`
-)
-const cowLabel = computed(
-    () =>
-        `奶牛：${animalStatusText(
-            homestead.value,
-            'cow',
-            nowTick.value,
-            homesteadWeatherId.value
-        )}`
-)
-const pondReady = computed(() =>
-    isPondReady(
-        homestead.value,
-        nowTick.value,
-        homesteadWeatherId.value
-    )
-)
-const pondLabel = computed(
-    () =>
-        `鱼塘：${pondStatusText(
-            homestead.value,
-            nowTick.value,
-            homesteadWeatherId.value
-        )}`
-)
-
-const inventoryChips = computed(() =>
-    HOMESTEAD_ITEMS.filter(
-        (item) => homestead.value.inventory[item.id] > 0
-    ).map((item) => ({
-        ...item,
-        count: homestead.value.inventory[item.id],
-    }))
-)
-
-const orderCards = computed(() =>
-    homestead.value.orders.map((order, index) => {
-        const items = order.requirements.map((requirement) => {
-            const item = getHomesteadItem(requirement.itemId)
-            const have = homestead.value.inventory[requirement.itemId]
-            return {
-                ...item,
-                need: requirement.count,
-                have,
-                enough: have >= requirement.count,
-            }
-        })
-        return {
-            ...order,
-            index,
-            items,
-            completed: order.completedAt > 0,
-            canComplete: canCompleteOrder(homestead.value, order),
-        }
-    })
-)
-const completedOrderCount = computed(
-    () => orderCards.value.filter((order) => order.completed).length
-)
-const claimableOrderCount = computed(
-    () => orderCards.value.filter((order) => order.canComplete).length
-)
-const homesteadPlotColumns = computed(() =>
-    homestead.value.plotCount > 6 ? 4 : homestead.value.plotCount > 4 ? 3 : 2
-)
-const ownedDecorations = computed(() =>
-    homestead.value.decorations
-        .map((id) => getHomesteadDecoration(id))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-)
-const homesteadAchievementCards = computed(() =>
-    homesteadAchievements(homestead.value)
-)
-const claimableHomesteadAchievementCount = computed(
-    () =>
-        homesteadAchievementCards.value.filter(
-            (item) => item.unlocked && !item.claimed
-        ).length
-)
-const claimableHomesteadLevelRewardCount = computed(
-    () =>
-        homesteadLevelRewards(homestead.value).filter(
-            (item) => item.unlocked && !item.claimed
-        ).length
-)
-
-const homesteadTendCount = computed(() => {
-    let count = 0
-    let fertilizable = 0
-    for (const plot of homestead.value.plots) {
-        if (isPlotRipe(plot, nowTick.value, homesteadWeatherId.value)) count++
-        else if (plot.cropId && !plot.wateredAt) count++
-        else if (plot.cropId && !plot.fertilizedAt) fertilizable++
-    }
-    count += Math.min(fertilizable, homestead.value.inventory.fertilizer)
-    const speedMultiplier = homesteadBarnSpeedMultiplier(
-        homestead.value.barnLevel,
-        homesteadWeatherId.value
-    )
-    for (const id of HOMESTEAD_ANIMAL_IDS) {
-        const definition = HOMESTEAD_ANIMALS[id]
-        const animal = homestead.value.animals[id]
-        if (
-            isAnimalProduceReady(
-                animal,
-                definition,
-                nowTick.value,
-                speedMultiplier
-            )
-        ) {
-            count++
-        }
-        if (
-            isAnimalManureReady(
-                animal,
-                definition,
-                nowTick.value,
-                speedMultiplier
-            )
-        ) {
-            count++
-        }
-    }
-    if (
-        isPondReady(
-            homestead.value,
-            nowTick.value,
-            homesteadWeatherId.value
-        )
-    ) {
-        count++
-    }
-    return count
-})
+const {
+    homesteadPlots,
+    chicken,
+    cow,
+    chickenLabel,
+    cowLabel,
+    pondReady,
+    pondLabel,
+    inventoryChips,
+    completedOrderCount,
+    claimableOrderCount,
+    homesteadPlotColumns,
+    ownedDecorations,
+    claimableHomesteadAchievementCount,
+    claimableHomesteadLevelRewardCount,
+    homesteadTendCount,
+} = usePetHomesteadView(homestead, nowTick, homesteadWeatherId)
 
 const autoHelpEnabled = computed({
     get: () => homestead.value.autoHelp.enabled,
@@ -1090,87 +837,6 @@ const resetPetGrowth = () => {
     })
 }
 
-const snapshotPetSettings = (): DesktopPetSettings => ({ ...petSettings })
-const isSamePetSettings = (a: DesktopPetSettings, b: DesktopPetSettings) =>
-    a.desktopPetEnabled === b.desktopPetEnabled &&
-    a.petSize === b.petSize &&
-    a.petScale === b.petScale &&
-    a.petActivity === b.petActivity &&
-    a.petRoamingEnabled === b.petRoamingEnabled &&
-    a.petDragEnabled === b.petDragEnabled &&
-    a.petBubbleEnabled === b.petBubbleEnabled &&
-    a.petOpacity === b.petOpacity &&
-    a.petAutoSleepEnabled === b.petAutoSleepEnabled &&
-    a.petHomeCorner === b.petHomeCorner &&
-    a.petScope === b.petScope
-
-let lastSavedPetSettings: DesktopPetSettings = { ...petSettings }
-let petSaveTimer: number | undefined
-let petSaving = false
-let petRevision = 0
-
-const flushPetSettings = async () => {
-    if (petSaving) return
-    const payload = snapshotPetSettings()
-    if (isSamePetSettings(payload, lastSavedPetSettings)) return
-    const revision = petRevision
-    petSaving = true
-    try {
-        const res = await updateSiteSettings(payload)
-        if (res?.code !== 200) throw new Error(res?.message || '保存失败')
-        lastSavedPetSettings = payload
-        setDesktopPetSettings(payload)
-        proxy?.$message?.({ type: 'success', message: '桌宠设置已保存' })
-        emitPetReaction('settings-saved', {
-            message: '桌宠设置已保存',
-            actionPath: '/petManage',
-            actionLabel: '去宠物管理',
-        })
-    } catch {
-        if (petRevision === revision) {
-            Object.assign(petSettings, lastSavedPetSettings)
-            broadcastDesktopPetSettings(lastSavedPetSettings)
-        }
-        proxy?.$message?.({ type: 'error', message: '桌宠设置保存失败，请稍后重试' })
-    } finally {
-        petSaving = false
-        if (
-            petRevision !== revision &&
-            !isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)
-        ) {
-            window.clearTimeout(petSaveTimer)
-            petSaveTimer = window.setTimeout(() => void flushPetSettings(), 120)
-        }
-    }
-}
-
-watch(
-    petSettings,
-    () => {
-        if (!canEditPet.value) {
-            Object.assign(petSettings, lastSavedPetSettings)
-            return
-        }
-        if (isSamePetSettings(snapshotPetSettings(), lastSavedPetSettings)) return
-        petRevision++
-        broadcastDesktopPetSettings(snapshotPetSettings())
-        window.clearTimeout(petSaveTimer)
-        petSaveTimer = window.setTimeout(() => void flushPetSettings(), 350)
-    },
-    { deep: true }
-)
-
-const resetPetSettings = () => {
-    if (!canEditPet.value) return
-    if (!window.confirm('恢复默认桌宠设置？当前尺寸、范围与行为会重置。')) return
-    Object.assign(petSettings, { ...DEFAULT_DESKTOP_PET_SETTINGS })
-    proxy?.$message?.({ type: 'primary', message: '已恢复默认设置，正在保存' })
-}
-
-const go = (path: string) => {
-    router.push(path)
-}
-
 let unsubscribeReaction: (() => void) | undefined
 let unsubscribeSync: (() => void) | undefined
 
@@ -1221,20 +887,6 @@ onMounted(() => {
     })
 })
 
-onMounted(async () => {
-    try {
-        const res = await getSiteSettings()
-        if (res?.code === 200 && res.data) {
-            const next = normalizeDesktopPetSettings(res.data)
-            lastSavedPetSettings = { ...next }
-            Object.assign(petSettings, next)
-            setDesktopPetSettings(next)
-        }
-    } catch {
-        // 读取失败时沿用本机缓存，表单仍可继续使用
-    }
-})
-
 onUnmounted(() => {
     window.removeEventListener(HOMESTEAD_AUTO_HELP_EVENT, onHomesteadAutoHelp)
     window.removeEventListener(HOMESTEAD_TAB_EVENT, onHomesteadTabRequest)
@@ -1243,7 +895,6 @@ onUnmounted(() => {
     unsubscribeReaction?.()
     unsubscribeSync?.()
     window.clearInterval(feedClockTimer)
-    window.clearTimeout(petSaveTimer)
 })
 </script>
 

@@ -127,6 +127,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SchedulePublishDialog: typeof import('./src/components/article/SchedulePublishDialog.vue')['default']
     SelectField: typeof import('./src/components/common/SelectField.vue')['default']
+    SettingsAppearanceSection: typeof import('./src/components/setting/SettingsAppearanceSection.vue')['default']
     StatCard: typeof import('./src/components/common/StatCard.vue')['default']
     Subset: typeof import('./src/components/subset/subset.vue')['default']
     SubsetManage: typeof import('./src/components/subset/subsetManage.vue')['default']

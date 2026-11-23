@@ -47,9 +47,9 @@ test('request logs redact credentials and mask client addresses', () => {
 
     const messages = []
     const logger = {
-        info: (message) => messages.push(message),
-        warn: (message) => messages.push(message),
-        error: (message) => messages.push(message),
+        info: (message, meta) => messages.push({ message, meta }),
+        warn: (message, meta) => messages.push({ message, meta }),
+        error: (message, meta) => messages.push({ message, meta }),
     }
     const req = {
         headers: {},
@@ -61,6 +61,7 @@ test('request logs redact credentials and mask client addresses', () => {
     const res = new EventEmitter()
     res.statusCode = 201
     res.setHeader = () => {}
+    res.requestId = 'test-request-id'
 
     requestContext(req, res, () => {})
     const times = [100, 112]
@@ -68,11 +69,12 @@ test('request logs redact credentials and mask client addresses', () => {
     res.emit('finish')
 
     assert.equal(messages.length, 1)
-    assert.match(messages[0], /ticket=REDACTED/)
-    assert.match(messages[0], /token=REDACTED/)
-    assert.match(messages[0], /ip=198\.51\.100\.\*/)
-    assert.match(messages[0], /user=7/)
-    assert.doesNotMatch(messages[0], /plain-ticket|jwt-value|198\.51\.100\.23/)
+    const meta = messages[0].meta
+    assert.match(meta.path, /ticket=REDACTED/)
+    assert.match(meta.path, /token=REDACTED/)
+    assert.equal(meta.ip, '198.51.100.*')
+    assert.equal(meta.userId, 7)
+    assert.doesNotMatch(JSON.stringify(meta), /plain-ticket|jwt-value|198\.51\.100\.23/)
 })
 
 test('security headers and unified errors are returned consistently', async () => {

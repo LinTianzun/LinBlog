@@ -1,4 +1,6 @@
 const db = require('../../db/dbnew')
+const fsp = require('node:fs/promises')
+const { readImageBytes, externalPath } = require('../../../utils/imageStorage')
 
 function createImage({ filename, mimeType, size, checksum, data, userId }) {
     return db.query(
@@ -11,7 +13,7 @@ function createImage({ filename, mimeType, size, checksum, data, userId }) {
 
 function findActiveImageByFilename(filename) {
     return db.query(
-        `SELECT id, filename, mime_type, size, checksum, data, user_id
+        `SELECT id, filename, mime_type, size, checksum, data, storage_backend, storage_key, user_id
          FROM image
          WHERE filename = ? AND status = 1
          LIMIT 1`,
@@ -21,7 +23,8 @@ function findActiveImageByFilename(filename) {
 
 function findImageById(id) {
     return db.query(
-        `SELECT id, filename, mime_type, size, checksum, data, user_id, status, created_at
+        `SELECT id, filename, mime_type, size, checksum, data, storage_backend, storage_key,
+                user_id, status, created_at
          FROM image
          WHERE id = ?
          LIMIT 1`,
@@ -46,11 +49,21 @@ function restoreImageById(id) {
 }
 
 // 彻底删除：从库里移除二进制本体，不可恢复。
-function deleteImageById(id) {
-    return db.query(
-        'DELETE FROM image WHERE id = ?',
+async function deleteImageById(id) {
+    const rows = await db.query(
+        'SELECT checksum, storage_backend, storage_key FROM image WHERE id = ?',
         [id]
     )
+    const image = rows?.[0]
+    const result = await db.query('DELETE FROM image WHERE id = ?', [id])
+    if (image && String(image.storage_backend || 'db') === 'disk') {
+        try {
+            await fsp.unlink(externalPath(image.storage_key))
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err
+        }
+    }
+    return result
 }
 
 // 统计一张图片仍被业务数据引用的数量：文章封面/内容（含未发布的工作稿）、

@@ -6,7 +6,7 @@ const MODULES = ['user', 'article', 'collection', 'gallery', 'diary', 'file', 'c
 const EXPORT_MAX_ROWS = 100000
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 // 高风险操作：权限矩阵、数据库备份、宠物站点设置，以及任何删除动作
-const RISK_FILTER_SQL = "(l.module IN ('permission', 'backup', 'pet') OR l.action = 'delete')"
+const RISK_FILTER_SQL = "(l.module IN ('permission', 'backup', 'pet') OR l.action = 'delete' OR l.target_type = 'system_log')"
 
 function normalizeDateText(value) {
     const trimmed = String(value || '').trim()

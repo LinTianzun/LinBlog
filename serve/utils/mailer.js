@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer')
 const config = require('../config/default')
+const { logger } = require('./logger')
 
 let transporter = null
 let transporterKey = ''
@@ -31,7 +32,7 @@ function getTransporter() {
 async function sendPasswordResetMail({ to, username, resetUrl }) {
     const mailer = getTransporter()
     if (!mailer) {
-        console.info(`[Mail] SMTP 未配置，密码重置链接（${to}）：${resetUrl}`)
+        logger.info('[Mail] SMTP 未配置，密码重置链接', { to, url: resetUrl })
         return { delivered: false, development: true }
     }
 
@@ -97,7 +98,7 @@ async function sendAlertMail({ to, subject, text, html }) {
 async function sendNewsletterConfirmMail({ to, confirmUrl }) {
     const mailer = getTransporter()
     if (!mailer) {
-        console.info(`[Mail] SMTP 未配置，订阅确认链接（${to}）：${confirmUrl}`)
+        logger.info('[Mail] SMTP 未配置，订阅确认链接', { to, url: confirmUrl })
         return { delivered: false, development: true }
     }
 

@@ -39,7 +39,7 @@ import { useRouter } from 'vue-router'
 import reply from './reply.vue'
 import type { ReplyDat } from '../../utils/interface'
 import AdminPager from '../common/AdminPager.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import {
     deleteComment,
     getRequestErrorMessage,

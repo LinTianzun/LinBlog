@@ -369,6 +369,19 @@
     outline-offset: 3px;
 }
 
+// 输入框的聚焦反馈由组件自己的边框色表达（1px accent 边框），
+// 再叠加上面的全局焦点环会变成“双圈蓝框”。输入框内部元素同样交给组件处理。
+.portal-layout :where(.yk-input__inner, .yk-input__widget, .yk-text-area, .yk-text-area *):focus-visible {
+    outline: none;
+}
+
+// 组件会把聚焦状态的类挂到 .yk-input__inner 上，类选择器优先级高于按钮的 secondary 样式，
+// 所以焦点态用同源的选择器补回浅色底，避免只剩一圈蓝边漂在白底上。
+.portal-layout .yk-input__inner--primary--focus,
+.portal-layout .yk-input__inner--primary--focus:hover {
+    background: var(--portal-surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .portal-reveal {
         animation: none;

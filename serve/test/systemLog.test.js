@@ -266,7 +266,7 @@ test('getLogsByPage orders by created_at with the requested direction', async ()
         assert.match(advancedSql, /l\.ip LIKE \?/)
         assert.match(advancedSql, /l\.target_type = \?/)
         assert.match(advancedSql, /l\.target_id = \?/)
-        assert.match(advancedSql, /l\.module IN \('permission', 'backup', 'pet'\) OR l\.action = 'delete'/)
+        assert.match(advancedSql, /l\.module IN \('permission', 'backup', 'pet'\) OR l\.action = 'delete' OR l\.target_type = 'system_log'/)
     } finally {
         delete require.cache[path.resolve(__dirname, '../model/dbModel/systemLog/index.js')]
         if (originalModule) require.cache[dbPath] = originalModule
@@ -306,7 +306,13 @@ test('exportLogs returns BOM CSV and forwards filters', async () => {
 
 test('pruneLogs requires backup.manage and reports deleted count', async () => {
     const originalPrune = systemLogModel.pruneLogs
+    const originalInsert = systemLogModel.insertLog
+    const capturedSystemLogs = []
     systemLogModel.pruneLogs = async () => ({ deleted: 8, retentionDays: 90 })
+    systemLogModel.insertLog = async (payload) => {
+        capturedSystemLogs.push(payload)
+        return { insertId: 1 }
+    }
 
     try {
         const denied = createRes()
@@ -324,7 +330,12 @@ test('pruneLogs requires backup.manage and reports deleted count', async () => {
         }, res)
         assert.equal(res.body.code, 200)
         assert.equal(res.body.data.deleted, 8)
+        const pruneLogs = capturedSystemLogs.filter(log => log.targetType === 'system_log')
+        assert.equal(pruneLogs.length, 1)
+        assert.equal(pruneLogs[0].module, 'system')
+        assert.equal(pruneLogs[0].action, 'system')
     } finally {
         systemLogModel.pruneLogs = originalPrune
+        systemLogModel.insertLog = originalInsert
     }
 })

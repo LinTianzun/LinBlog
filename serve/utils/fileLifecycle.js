@@ -1,6 +1,7 @@
 const fileModel = require('../model/dbModel/file/index')
 const imageModel = require('../model/dbModel/image/index')
 const fileStorage = require('./fileStorage')
+const { logger } = require('./logger.js')
 const { defaultOffsite } = require('./fileOffsite')
 const { getBackupCapacity } = require('./fileCapacity')
 
@@ -135,10 +136,12 @@ async function runFileLifecycleCleanup(options = {}) {
 
     const capacity = await getBackupCapacity({ storage, offsite })
     if (!dryRun && capacity.level !== 'ok') {
-        console.warn(
-            `[FileLifecycle] 备份区使用率 ${capacity.usedPercent}% 已达到${capacity.level === 'critical' ? '上限' : '告警阈值'}：`
-            + `${capacity.usedBytes}/${capacity.maxBytes} bytes`
-        )
+        logger.warn('备份区使用率超过阈值', {
+            level: capacity.level,
+            usedPercent: capacity.usedPercent,
+            usedBytes: capacity.usedBytes,
+            maxBytes: capacity.maxBytes,
+        })
     }
 
     return {
@@ -161,20 +164,22 @@ function startFileLifecycle() {
         try {
             const result = await runFileLifecycleCleanup()
             if (result.removedOrphans || result.movedLegacyFiles || result.expiredRecords) {
-                console.log(
-                    `[FileLifecycle] 孤儿 ${result.removedOrphans}，迁移备份 ${result.movedLegacyFiles}，`
-                    + `清理过期备份 ${result.removedExpiredBackups}，过期记录 ${result.expiredRecords}`
-                )
+                logger.info('文件生命周期清理完成', {
+                    removedOrphans: result.removedOrphans,
+                    movedLegacyFiles: result.movedLegacyFiles,
+                    removedExpiredBackups: result.removedExpiredBackups,
+                    expiredRecords: result.expiredRecords,
+                })
             }
         } catch (err) {
-            console.error('[FileLifecycle] 清理失败：', err.message)
+            logger.error('[FileLifecycle] 清理失败', null, err)
         }
 
         interval = setInterval(async () => {
             try {
                 await runFileLifecycleCleanup()
             } catch (err) {
-                console.error('[FileLifecycle] 定时清理失败：', err.message)
+                logger.error('[FileLifecycle] 定时清理失败', null, err)
             }
         }, DAY_MS)
         if (interval.unref) interval.unref()

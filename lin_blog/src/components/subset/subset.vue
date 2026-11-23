@@ -48,7 +48,7 @@
     import { createSubset } from '../../api/subset'
     import { useSubsetStore } from '../../store/subset.ts'
     import subsetManage from './subsetManage.vue'
-    import { useSessionStore } from '../../store/session.ts'
+    import { useSessionStore } from '../../store/session'
 
     const session = useSessionStore()
 

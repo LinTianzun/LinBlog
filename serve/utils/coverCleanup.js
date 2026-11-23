@@ -1,4 +1,5 @@
 const imageModel = require('../model/dbModel/image/index')
+const { logger } = require('./logger.js')
 
 const uploadsUrlPattern = /^\/api\/uploads\/([A-Za-z0-9._-]+)$/
 
@@ -18,10 +19,10 @@ async function cleanupCover(coverUrl) {
     try {
         const result = await imageModel.deactivateImageIfUnreferenced(filename)
         if (result.deactivated) {
-            console.log(`[Article] 已清理无引用封面图片 ${filename}`)
+            logger.info(`[Article] 已清理无引用封面图片 ${filename}`)
         }
     } catch (err) {
-        console.warn('[Article] 清理封面图片失败：', err.message)
+        logger.warn('[Article] 清理封面图片失败', null, err)
     }
 }
 

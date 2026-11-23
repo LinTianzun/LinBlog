@@ -280,7 +280,7 @@ import TopTitle from '../components/bar/TopTitle.vue'
 import StatCard from '../components/common/StatCard.vue'
 import AdminPager from '../components/common/AdminPager.vue'
 import { getAllUsers, createUser, updateUser, deleteUser, updateUserStatus , type UserInfo, type CreateUserParams, type UpdateUserParams } from '../api/user'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
 import { logError } from '../utils/clientLogger'
 
 const proxy: any = getCurrentInstance()?.proxy

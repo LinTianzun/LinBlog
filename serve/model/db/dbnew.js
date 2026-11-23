@@ -193,7 +193,9 @@ const tablesSql = {
     mime_type VARCHAR(32) NOT NULL COMMENT '图片 MIME 类型',
     size INT UNSIGNED NOT NULL COMMENT '图片大小（字节）',
     checksum CHAR(64) NOT NULL COMMENT 'SHA-256 内容哈希',
-    data MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）',
+    data MEDIUMBLOB NULL COMMENT '图片二进制内容（外置存储后为 NULL）',
+    storage_backend VARCHAR(16) NOT NULL DEFAULT 'db' COMMENT '二进制存储方式：db-数据库，disk-磁盘',
+    storage_key VARCHAR(255) NULL COMMENT '外置存储键名',
     user_id BIGINT UNSIGNED NULL COMMENT '上传用户ID',
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
@@ -261,7 +263,7 @@ const tablesSql = {
     INDEX idx_classify (classify),
     INDEX idx_state (state),
     INDEX idx_created_at (created_at),
-    FULLTEXT INDEX ft_title_intro (title, introduce)
+    FULLTEXT INDEX ft_article_search (title, introduce, label, content) WITH PARSER ngram
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章/图片集表';`,
 
   article_version: `CREATE TABLE IF NOT EXISTS article_version(
@@ -1923,7 +1925,9 @@ async function ensureImageStorageSchema(exec = query) {
     ['mime_type', "VARCHAR(32) NOT NULL COMMENT '图片 MIME 类型'"],
     ['size', "INT UNSIGNED NOT NULL COMMENT '图片大小（字节）'"],
     ['checksum', "CHAR(64) NOT NULL COMMENT 'SHA-256 内容哈希'"],
-    ['data', "MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）'"],
+    ['data', "MEDIUMBLOB NULL COMMENT '图片二进制内容（外置存储后为 NULL）'"],
+    ['storage_backend', "VARCHAR(16) NOT NULL DEFAULT 'db' COMMENT '二进制存储方式：db-数据库，disk-磁盘'"],
+    ['storage_key', "VARCHAR(255) NULL COMMENT '外置存储键名'"],
     ['user_id', "BIGINT UNSIGNED NULL COMMENT '上传用户ID'"],
     ['status', "TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-已删除'"],
     ['created_at', "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间'"]
@@ -1938,7 +1942,7 @@ async function ensureImageStorageSchema(exec = query) {
   if (columnTypes.has('data') && columnTypes.get('data') !== 'mediumblob') {
     await exec(`
       ALTER TABLE image
-      MODIFY COLUMN data MEDIUMBLOB NOT NULL COMMENT '图片二进制内容（最大 16MB）'
+      MODIFY COLUMN data MEDIUMBLOB NULL COMMENT '图片二进制内容（外置存储后为 NULL）'
     `)
   }
 
@@ -2025,6 +2029,19 @@ async function ensureImageStorageSchema(exec = query) {
   }
 
   await importLegacyImageFiles(exec)
+}
+
+// 图片二进制外置：新增存储方式与键名两列。
+// 实际把 BLOB 落盘由 scripts/migrate-image-storage.js 分批执行，这里只补列。
+async function ensureImageExternalSchema(exec = query) {
+  await ensureColumn(exec, 'image', 'storage_backend', {
+    definition: "VARCHAR(16) NOT NULL DEFAULT 'db'",
+    comment: '二进制存储方式：db-数据库，disk-磁盘'
+  });
+  await ensureColumn(exec, 'image', 'storage_key', {
+    definition: 'VARCHAR(255) NULL',
+    comment: '外置存储键名'
+  });
 }
 
 async function ensureSubsetSoftDeleteSchema(exec = query) {
@@ -2457,6 +2474,31 @@ async function ensureArticleSchedulePauseSchema(exec = query) {
   });
 }
 
+// 文章搜索原来在 title/introduce/label/content 上做 %LIKE%，
+// 无法利用 FULLTEXT 索引；这里补齐 ngram 全文索引，
+// 让中英文短词都能命中，并把正文匹配从整表扫描变成索引扫描。
+async function ensureArticleFullTextSchema(exec = query) {
+  // 旧版本只给标题/简介建过 FULLTEXT，新查询用不到它；
+  // 保留会让每次写入多维护一份索引，先移除再补 4 列 ngram 索引。
+  const [legacyIndex] = await exec(
+    `SELECT INDEX_NAME
+       FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'article'
+        AND INDEX_NAME = 'ft_title_intro'
+      LIMIT 1`
+  )
+  if (legacyIndex) {
+    await exec('ALTER TABLE article DROP INDEX ft_title_intro')
+  }
+  await ensureIndex(
+    exec,
+    'article',
+    'ft_article_search',
+    `ALTER TABLE article ADD FULLTEXT INDEX ft_article_search (title, introduce, label, content) WITH PARSER ngram`
+  );
+}
+
 // message 表同时承载私信会话与门户留言，用 channel 记录来源。
 // 门户展示按发送者只取第一条私信，后续聊天不会因此再次公开。
 async function ensureMessageChannelSchema(exec = query) {
@@ -2824,6 +2866,14 @@ const migrations = [
   {
     version: '20261114_scheduled_pause',
     up: ensureArticleSchedulePauseSchema
+  },
+  {
+    version: '20261123_article_fulltext',
+    up: ensureArticleFullTextSchema
+  },
+  {
+    version: '20261123_image_external',
+    up: ensureImageExternalSchema
   },
   {
     version: '20261122_newsletter_subscriber',

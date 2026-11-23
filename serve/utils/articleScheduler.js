@@ -1,4 +1,5 @@
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
+const { logger } = require('./logger.js')
 const { writeSystemLog } = require('./logHelper')
 const { cleanupCover } = require('./coverCleanup')
 const {
@@ -49,7 +50,7 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                         title: row.title || result.title,
                         classify: row.classify,
                     }).catch((notifyError) => {
-                        console.warn(`[ArticleScheduler] 文章 ${row.id} 发布成功通知失败：`, notifyError.message)
+                        logger.warn('[ArticleScheduler] 文章发布成功通知失败', { articleId: row.id }, notifyError)
                     })
 
                     // 封面清理属于发布后的附属动作，失败不应把已成功的发布标记为失败，
@@ -58,11 +59,11 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                         try {
                             await cleanupCover(result.previousCover)
                         } catch (cleanupError) {
-                            console.warn(`[ArticleScheduler] 文章 ${row.id} 旧封面清理失败：`, cleanupError.message)
+                            logger.warn('[ArticleScheduler] 旧封面清理失败', { articleId: row.id }, cleanupError)
                         }
                     }
                 } catch (err) {
-                    console.error(`[ArticleScheduler] 文章 ${row.id} 定时发布失败：`, err.message)
+                    logger.error('[ArticleScheduler] 定时发布失败', { articleId: row.id }, err)
                     if (!notifiedFailures.has(Number(row.id))) {
                         notifiedFailures.add(Number(row.id))
                         writeSystemLog({
@@ -80,13 +81,13 @@ function startArticleScheduler({ intervalMs = DEFAULT_INTERVAL_MS } = {}) {
                             classify: row.classify,
                             errorMessage: err.message,
                         }).catch((notifyError) => {
-                            console.warn(`[ArticleScheduler] 文章 ${row.id} 发布失败通知发送失败：`, notifyError.message)
+                            logger.warn('[ArticleScheduler] 发布失败通知发送失败', { articleId: row.id }, notifyError)
                         })
                     }
                 }
             }
         } catch (err) {
-            console.error('[ArticleScheduler] 扫描定时发布失败：', err.message)
+            logger.error('[ArticleScheduler] 扫描定时发布失败', null, err)
         } finally {
             running = false
         }

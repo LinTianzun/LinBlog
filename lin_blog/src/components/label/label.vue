@@ -44,7 +44,7 @@ import { createLabel } from '../../api/label.ts'
 import { useLabelStore } from '../../store/label.ts'
 import type { LabelData } from '../../utils/interface.ts'
 import labelManage from './labelManage.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 
 type MessageOptions = {
     type: 'primary' | 'warning'

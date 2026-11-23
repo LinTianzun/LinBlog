@@ -3,6 +3,8 @@ const multer = require('multer')
 const imageModel = require('../model/dbModel/image/index')
 const fileModel = require('../model/dbModel/file/index')
 const subsetModel = require('../model/dbModel/subset/index')
+const { readImageBytes } = require('../utils/imageStorage')
+const { logger } = require('../utils/logger')
 const {
     parseVariantRequest,
     readVariantCache,
@@ -83,7 +85,7 @@ async function persistImageBuffer({ buffer, mimetype, userId }) {
             subsetId = await subsetModel.ensureResourceSubset('内容图片', 95)
         } catch (subsetErr) {
             // 找不到资源分组时先归入未分类，不影响图片本身。
-            console.warn('[Upload] 查询图片分组失败，归入未分类：', subsetErr.message)
+            logger.warn('[Upload] 查询图片分组失败，归入未分类', null, subsetErr)
         }
 
         await fileModel.insertImageBinding({
@@ -95,7 +97,7 @@ async function persistImageBuffer({ buffer, mimetype, userId }) {
         })
     } catch (bindErr) {
         // 聚合登记失败不影响图片本身可用，只记录日志。
-        console.warn('[Upload] 登记到本地文件失败：', bindErr.message)
+        logger.warn('[Upload] 登记到本地文件失败', null, bindErr)
     }
 
     return { filename, url: `/api/uploads/${filename}` }
@@ -114,7 +116,7 @@ async function saveImage(req, res, file) {
             data: { url }
         })
     } catch (err) {
-        console.error('[Upload] 保存图片失败：', err)
+        logger.error('[Upload] 保存图片失败', null, err)
         const status = err?.status || 500
         const message = status === 415 ? err.message : '图片保存失败，请稍后重试'
         return sendUploadError(res, status, message)
@@ -172,7 +174,7 @@ async function getImage(req, res) {
     try {
         rows = await imageModel.findActiveImageByFilename(filename)
     } catch (err) {
-        console.error('[Upload] 查询图片失败：', err)
+        logger.error('[Upload] 查询图片失败', null, err)
         return res.status(503).json({ code: 503, message: '图片服务暂时不可用' })
     }
 
@@ -181,17 +183,18 @@ async function getImage(req, res) {
         return res.status(404).json({ code: 404, message: '图片不存在' })
     }
 
+    const imageBytes = await readImageBytes(image)
     if (!variantRequest) {
         return sendImage(req, res, {
             version: image.checksum || `${image.filename}-${image.size}`,
-            data: image.data,
+            data: imageBytes,
             mimeType: image.mime_type,
         })
     }
 
     try {
         const version = image.checksum || `${image.filename}-${image.size}`
-        const variant = await createVariant(image.data, variantRequest.width, cacheKey, version)
+        const variant = await createVariant(imageBytes, variantRequest.width, cacheKey, version)
         return sendImage(req, res, {
             version,
             data: variant.data,
@@ -200,10 +203,10 @@ async function getImage(req, res) {
         })
     } catch (error) {
         // 缩略图生成失败时仍返回原图，优先保证内容可读。
-        console.error(`[Upload] 生成缩略图失败（${filename}）：`, error)
+        logger.error(`[Upload] 生成缩略图失败（${filename}）：`, null, error)
         return sendImage(req, res, {
             version: image.checksum || `${image.filename}-${image.size}`,
-            data: image.data,
+            data: imageBytes,
             mimeType: image.mime_type,
         })
     }

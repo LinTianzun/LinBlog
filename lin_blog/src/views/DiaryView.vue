@@ -14,7 +14,7 @@
     import diary from '../components/diary/diary.vue'
     import diaryEditor from '../components/diary/diaryEditor.vue'
     import type { DiaryData } from '../utils/interface'
-    import { useSessionStore } from '../store/session.ts'
+    import { useSessionStore } from '../store/session'
 
     const keyword = ref('')
     const session = useSessionStore()

@@ -121,7 +121,7 @@ import { computed, getCurrentInstance, ref, watch } from 'vue'
 import ContentCommentThread from './ContentCommentThread.vue'
 import CommentReportDialog from './CommentReportDialog.vue'
 import { buildCommentThreads } from './comment.ts'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import { emitPetReaction } from '../../utils/desktopPetScene'
 import {
     createComment,

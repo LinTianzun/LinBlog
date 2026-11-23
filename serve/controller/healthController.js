@@ -1,5 +1,6 @@
 const db = require('../model/db/dbnew')
 const config = require('../config/default')
+const { logger } = require('../utils/logger.js')
 const { authMiddleware } = require('../middleware/auth')
 const { hasPermission } = require('../utils/accessControl')
 
@@ -17,7 +18,7 @@ async function pingDatabase() {
         return true
     } catch (err) {
         lastPing = { ok: false, at: now }
-        console.error('[Health] 数据库连通性检查失败：', err.message)
+        logger.error('[Health] 数据库连通性检查失败', null, err)
         return false
     }
 }

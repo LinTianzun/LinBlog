@@ -5,6 +5,7 @@ const { generateToken } = require('../utils/jwtutil')
 const { formatPaginationParams } = require('../utils/paginationUtil')   // 引入封装的分页工具
 const { writeSystemLog } = require('../utils/logHelper')
 const loginGuard = require('../utils/loginGuard')
+const { logger } = require('../utils/logger')
 const {
     SUPER_ADMIN_EMAIL,
     isSuperAdmin,
@@ -245,7 +246,7 @@ async function createUser(req, res) {
             }
         });
     } catch (err) {
-        console.error('管理员创建用户失败：', err);
+        logger.error('管理员创建用户失败', null, err);
 
         return res.status(500).json({
             code: 500,
@@ -478,7 +479,7 @@ async function updateUser(req, res) {
             }
         });
     } catch (error) {
-        console.error('编辑用户失败：', error);
+        logger.error('编辑用户失败', null, error);
 
         return res.status(500).json({
             code: 500,
@@ -618,7 +619,7 @@ async function updateUserStatus(req, res) {
             data: { id: userId, status }
         });
     } catch (error) {
-        console.error('修改用户状态失败：', error);
+        logger.error('修改用户状态失败', null, error);
 
         return res.status(500).json({
             code: 500,
@@ -733,7 +734,7 @@ async function deleteUser(req, res) {
             data: { id: userId }
         });
     } catch (error) {
-        console.error('删除用户失败：', error);
+        logger.error('删除用户失败', null, error);
 
         // 用户存在文章等关联数据时，数据库外键可能阻止删除
         if (

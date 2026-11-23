@@ -1,4 +1,5 @@
 const recordModel = require('../model/dbModel/record/index')
+const { logger } = require('../utils/logger.js')
 const { parseUserAgent } = require('../utils/ua')
 const { resolvePosition } = require('../utils/geoip')
 
@@ -41,7 +42,7 @@ module.exports = function recordMiddleware(req, res, next) {
                 path: req.path,
             })
         } catch (err) {
-            console.error('[Record] 写入访问记录失败：', err.message)
+            logger.error('[Record] 写入访问记录失败', null, err)
         }
     })()
 

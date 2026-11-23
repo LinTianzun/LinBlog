@@ -1,4 +1,5 @@
 const { redactUrl } = require('./security')
+const { logger } = require('../utils/logger')
 
 function requestIdOf(req) {
     return req.requestId || '-'
@@ -34,7 +35,7 @@ function classifyError(err) {
 }
 
 function createErrorHandler(options = {}) {
-    const logger = options.logger || console
+    const errorLogger = options.logger || logger
 
     return function errorHandler(err, req, res, next) {
         if (res.headersSent) {
@@ -51,11 +52,14 @@ function createErrorHandler(options = {}) {
             err?.code || err?.type || '-',
         ].join(' ')
 
-        if (failure.status >= 500) {
-            logger.error(detail, err?.stack || err)
-        } else {
-            logger.warn(detail)
+        const meta = {
+            requestId: requestIdOf(req),
+            method: req.method,
+            path: redactUrl(req.originalUrl || req.url),
+            status: failure.status,
         }
+        if (failure.status >= 500) errorLogger.error(detail, meta, err)
+        else errorLogger.warn(detail, meta)
 
         res.setHeader('Cache-Control', 'no-store')
         return res.status(failure.status).json({

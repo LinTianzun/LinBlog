@@ -1,3 +1,4 @@
+const { logger } = require('./logger')
 const systemLogModel = require('../model/dbModel/systemLog/index')
 
 const ACTION_SET = new Set(systemLogModel.ACTIONS)
@@ -31,10 +32,10 @@ function writeSystemLog(payload) {
             detail,
             ip: payload.ip == null ? null : String(payload.ip).slice(0, 64),
         }).catch((err) => {
-            console.error('[SystemLog] 写入失败：', err.message)
+            logger.error('[SystemLog] 写入失败', null, err)
         })
     } catch (err) {
-        console.error('[SystemLog] 记录异常：', err.message)
+        logger.error('[SystemLog] 记录异常', null, err)
     }
 }
 

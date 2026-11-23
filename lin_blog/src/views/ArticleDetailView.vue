@@ -195,7 +195,7 @@ import {
     type CommentItem,
 } from '../api/comment'
 import { useSubsetStore } from '../store/subset'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
 import { useContentAccess } from '../utils/contentAccess.ts'
 import { emitPetReaction } from '../utils/desktopPetScene'
 import ContentDetailHero from '../components/content/ContentDetailHero.vue'

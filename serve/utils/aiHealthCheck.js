@@ -1,4 +1,5 @@
 const aiModel = require('../model/dbModel/ai/index')
+const { logger } = require('./logger')
 const { writeSystemLog } = require('./logHelper')
 const { notifySuperAdmin } = require('./notificationHelper')
 const { sendAlertMail } = require('./mailer')
@@ -60,7 +61,7 @@ async function probeModel(model, { recordHealth = true } = {}) {
             try {
                 health = await aiModel.recordModelHealth(model.id, { ok: false, error: reason })
             } catch (recordError) {
-                console.warn('[AI] 记录模型健康状态失败：', recordError?.message || recordError)
+                logger.warn('[AI] 记录模型健康状态失败', null, recordError?.message || recordError)
             }
         }
         return { ok: false, latencyMs: Date.now() - startedAt, error: reason, health }
@@ -105,7 +106,7 @@ async function runHealthCheck({ models = null, source = 'manual' } = {}) {
             try {
                 await notifySuperAdmin({ content: detail })
             } catch (notifyError) {
-                console.warn('[AI] 发送模型健康站内通知失败：', notifyError?.message || notifyError)
+                logger.warn('[AI] 发送模型健康站内通知失败', null, notifyError?.message || notifyError)
             }
 
             const alertRecipient = process.env.LINBLOG_AI_ALERT_EMAIL
@@ -117,7 +118,7 @@ async function runHealthCheck({ models = null, source = 'manual' } = {}) {
                         text: detail,
                     })
                 } catch (mailError) {
-                    console.warn('[AI] 发送模型健康告警邮件失败：', mailError?.message || mailError)
+                    logger.warn('[AI] 发送模型健康告警邮件失败', null, mailError?.message || mailError)
                 }
             }
         }
@@ -127,9 +128,12 @@ async function runHealthCheck({ models = null, source = 'manual' } = {}) {
 
     const failed = results.filter(item => !item.ok)
     if (failed.length > 0) {
-        console.warn(
-            `[AI] 模型巡检（${source}）：${failed.length}/${results.length} 个模型不可用（${failed.map(item => item.modelName).join('、')}）`
-        )
+        logger.warn('AI 模型巡检发现不可用模型', {
+            source,
+            failed: failed.length,
+            total: results.length,
+            models: failed.map(item => item.modelName),
+        })
     }
 
     return {
@@ -155,7 +159,7 @@ function startAiHealthCheck({ intervalMs = DEFAULT_INTERVAL_MS, runOnceAtStart =
         try {
             await runHealthCheck({ source: 'scheduled' })
         } catch (err) {
-            console.error('[AI] 模型健康巡检失败：', err?.message || err)
+            logger.error('[AI] 模型健康巡检失败', null, err?.message || err)
         } finally {
             running = false
         }

@@ -13,7 +13,7 @@ import StatCard from '../common/StatCard.vue'
 import { overLink } from '../../utils/menu.ts'
 import { getOverviewSummary, type OverviewSummary } from '../../api/overview'
 import { resolveMenuIcon } from '../../utils/menuIcons.ts'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 
 // overLink 里存的是图标名字符串，这里转成真正的组件，否则卡片渲染不出图标
 const iconOf = (name: string) => resolveMenuIcon(name)

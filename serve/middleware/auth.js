@@ -1,5 +1,6 @@
 const { verifyToken } = require('../utils/jwtutil')
 const userModel = require('../model/dbModel/users/index')
+const { logger } = require('../utils/logger')
 const { consumeUploadTicket } = require('../utils/uploadTicket')
 const { isSuperAdmin, getPermissionsForUser } = require('../utils/accessControl')
 
@@ -39,7 +40,7 @@ async function resolveAuthUserById(userId, req, res, next) {
         }
         return next()
     } catch (err) {
-        console.error('[Auth] 查询用户失败：', err)
+        logger.error('[Auth] 查询用户失败', null, err)
         return res.status(503).json({ code: 503, message: '认证服务暂时不可用，请稍后重试' })
     }
 }
@@ -103,7 +104,7 @@ async function resolveAuthUser(req) {
             status: 200
         }
     } catch (err) {
-        console.error('[Auth] 查询用户失败：', err)
+        logger.error('[Auth] 查询用户失败', null, err)
         return { user: null, reason: '认证服务暂时不可用，请稍后重试', status: 503 }
     }
 }
@@ -121,7 +122,7 @@ async function authMiddleware(req, res, next) {
         req.user = user
         return next()
     } catch (err) {
-        console.error('[Auth] 认证中间件异常：', err)
+        logger.error('[Auth] 认证中间件异常', null, err)
         return res.status(500).json({
             code: 500,
             message: '认证服务内部错误'
@@ -156,7 +157,7 @@ async function optionalAuthMiddleware(req, res, next) {
         req.user = user
         return next()
     } catch (err) {
-        console.error('[Auth] 可选认证中间件异常：', err)
+        logger.error('[Auth] 可选认证中间件异常', null, err)
         return res.status(500).json({ code: 500, message: '认证服务内部错误' })
     }
 }

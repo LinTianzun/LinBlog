@@ -9,8 +9,10 @@ const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const fileStorage = require('../utils/fileStorage')
+const { readImageBytes } = require('../utils/imageStorage')
 const { runFileLifecycleCleanup } = require('../utils/fileLifecycle')
 const offsiteStorage = require('../utils/fileOffsite').defaultOffsite
+const { logger } = require('../utils/logger')
 const { getBackupCapacity } = require('../utils/fileCapacity')
 const {
     parseVariantRequest,
@@ -144,7 +146,7 @@ async function getFiles(req, res) {
                 owners = await fileModel.findContentOwnersByFileIds(imageFileIds)
             } catch (err) {
                 // 归属查询失败不影响列表本身，只是不展示引用来源
-                console.warn('[File] 查询内容图片归属失败：', err.message)
+                logger.warn('[File] 查询内容图片归属失败', null, err)
             }
         }
         const ownersByFile = new Map()
@@ -303,7 +305,7 @@ async function uploadFile(req, res) {
                 }
             })
         } catch (err) {
-            console.error('[Upload] 保存文件记录失败：', err)
+            logger.error('[Upload] 保存文件记录失败', null, err)
             fs.unlink(req.file.path, () => {})
             return sendUploadError(res, 500, '文件保存失败，请稍后重试')
         }
@@ -337,7 +339,7 @@ async function downloadFile(req, res) {
                 'Content-Disposition',
                 `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}`
             )
-            return res.end(image.data)
+            return res.end(await readImageBytes(image))
         }
 
         if (/^https?:\/\//i.test(String(file.url))) {
@@ -360,7 +362,7 @@ async function downloadFile(req, res) {
         )
         fs.createReadStream(filePath).pipe(res)
     } catch (err) {
-        console.error('[File] 下载失败：', err)
+        logger.error('[File] 下载失败', null, err)
         if (!res.headersSent) {
             res.status(500).json({ code: 500, message: '文件下载失败' })
         }
@@ -446,12 +448,12 @@ async function getRawImage(req, res) {
                 width: variantRequest.width
             })
         } catch (err) {
-            console.error(`[File] 生成缩略图失败（${file.file_name}）：`, err)
+            logger.error(`[File] 生成缩略图失败（${file.file_name}）：`, null, err)
             const data = fs.readFileSync(filePath)
             return sendImage(req, res, { version, data, mimeType })
         }
     } catch (err) {
-        console.error('[File] 读取图片失败：', err)
+        logger.error('[File] 读取图片失败', null, err)
         if (!res.headersSent) {
             res.status(500).json({ code: 500, message: '图片读取失败' })
         }
@@ -468,10 +470,11 @@ async function sendDatabaseImage(req, res, imageId, variantRequest) {
     }
 
     const version = image.checksum || `${image.filename}-${image.size}`
+    const imageBytes = await readImageBytes(image)
     if (!variantRequest) {
         return sendImage(req, res, {
             version,
-            data: image.data,
+            data: imageBytes,
             mimeType: image.mime_type
         })
     }
@@ -488,7 +491,7 @@ async function sendDatabaseImage(req, res, imageId, variantRequest) {
     }
 
     try {
-        const variant = await createVariant(image.data, variantRequest.width, cacheKey, version)
+        const variant = await createVariant(imageBytes, variantRequest.width, cacheKey, version)
         return sendImage(req, res, {
             version,
             data: variant.data,
@@ -496,10 +499,10 @@ async function sendDatabaseImage(req, res, imageId, variantRequest) {
             width: variantRequest.width
         })
     } catch (err) {
-        console.error(`[File] 生成内容图片缩略图失败（${image.filename}）：`, err)
+        logger.error(`[File] 生成内容图片缩略图失败（${image.filename}）：`, null, err)
         return sendImage(req, res, {
             version,
-            data: image.data,
+            data: imageBytes,
             mimeType: image.mime_type
         })
     }
@@ -621,14 +624,14 @@ async function deleteFiles(req, res) {
                     const synced = await offsiteStorage.syncFromBackup(file.url)
                     offsiteFailedCount += synced.failed.length
                     if (synced.failed.length > 0) {
-                        console.warn(`[File] 异地备份部分失败 ${file.url}：`, synced.failed)
+                        logger.warn('[File] 异地备份部分失败', { url: file.url, failed: synced.failed })
                     }
                 } else if (result.reason !== 'missing') {
                     backupFailedCount += 1
                 }
             } catch (err) {
                 backupFailedCount += 1
-                console.error(`[File] 备份文件失败 ${file.url}：`, err.message)
+                logger.error('[File] 备份文件失败', { url: file.url }, err)
             }
         }
 

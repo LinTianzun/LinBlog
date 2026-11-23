@@ -1,4 +1,5 @@
 const systemLogModel = require('../model/dbModel/systemLog/index')
+const { logger } = require('./logger')
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const FIRST_RUN_DELAY_MS = 60 * 1000
@@ -15,11 +16,11 @@ async function pruneOnce() {
     try {
         const result = await systemLogModel.pruneLogs(days)
         if (result.deleted > 0) {
-            console.log(`[SystemLog] 已清理 ${result.deleted} 条超过 ${days} 天的系统日志`)
+            logger.info(`[SystemLog] 已清理 ${result.deleted} 条超过 ${days} 天的系统日志`)
         }
         return result
     } catch (err) {
-        console.error('[SystemLog] 清理系统日志失败：', err.message)
+        logger.error('[SystemLog] 清理系统日志失败', null, err)
         return { deleted: 0, retentionDays: days }
     }
 }

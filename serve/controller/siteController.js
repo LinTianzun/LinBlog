@@ -1,4 +1,5 @@
 const siteModel = require('../model/dbModel/site/index')
+const { logger } = require('../utils/logger')
 const { writeSystemLog } = require('../utils/logHelper')
 
 const PET_SETTING_LABELS = {
@@ -26,7 +27,7 @@ async function getSettings(_req, res) {
             data: settings
         })
     } catch (err) {
-        console.error('[Site] 读取站点设置失败：', err)
+        logger.error('[Site] 读取站点设置失败', null, err)
         return res.status(500).json({
             code: 500,
             message: '读取站点设置失败',
@@ -119,7 +120,7 @@ async function updateSettings(req, res) {
             data: settings
         })
     } catch (err) {
-        console.error('[Site] 保存站点设置失败：', err)
+        logger.error('[Site] 保存站点设置失败', null, err)
         return res.status(500).json({
             code: 500,
             message: '保存站点设置失败',

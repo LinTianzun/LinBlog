@@ -2,6 +2,7 @@ const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const collectionModel = require('../model/dbModel/collection/index')
 const noteModel = require('../model/dbModel/note/index')
+const { logger } = require('../utils/logger.js')
 const { renderOgImage } = require('../utils/ogImage')
 const { resolveOrigin } = require('./seoController')
 const {
@@ -110,12 +111,12 @@ function createImageHandler(kind) {
             const rendered = await buildImage(meta)
             return sendImage(res, rendered.image, rendered.etag)
         } catch (err) {
-            console.warn('[OG] 图片生成失败：', err.message)
+            logger.warn('[OG] 图片生成失败', null, err)
             try {
                 const fallback = await buildImage(null)
                 return sendImage(res, fallback.image, fallback.etag)
             } catch (fallbackError) {
-                console.error('[OG] 默认图片生成失败：', fallbackError.message)
+                logger.error('[OG] 默认图片生成失败', null, fallbackError)
                 return res.status(500).type('text/plain').send('OG image unavailable')
             }
         }

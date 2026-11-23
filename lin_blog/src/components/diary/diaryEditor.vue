@@ -159,7 +159,7 @@ import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import type { DiaryData } from '../../utils/interface'
 import MediaPickerDialog from '../common/MediaPickerDialog.vue'
 import ImageSourceActions from '../common/ImageSourceActions.vue'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import { getAiFeatures, markAiFeature, resetAiFeatures } from '../../utils/aiMarker.ts'
 
 type DiaryForm = {

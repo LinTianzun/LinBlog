@@ -6,6 +6,7 @@ const { hasPermission } = require('../utils/accessControl')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const dbBackup = require('../utils/dbBackup')
 const config = require('../config/default')
+const { logger } = require('../utils/logger')
 
 /**
  * 备份总览：磁盘文件、保留策略、容量与最近一次成功/失败/演练。
@@ -91,7 +92,7 @@ async function createBackup(req, res) {
             durationMs: result.durationMs,
             triggerType: 'manual',
             status: 'success',
-        }).catch((err) => console.error('[DBBackup] 写入备份历史失败：', err.message))
+        }).catch((err) => logger.error('[DBBackup] 写入备份历史失败', null, err))
 
         writeSystemLog({
             userId: req.user.userId,
@@ -261,7 +262,7 @@ async function runRestoreDrill(req, res) {
             await dropDatabase(drillDatabase)
         } catch (err) {
             cleaned = false
-            console.error('[DBBackup] 清理演练库失败：', err.message)
+            logger.error('[DBBackup] 清理演练库失败', null, err)
         }
 
         await backupModel.insertLog({
@@ -273,7 +274,7 @@ async function runRestoreDrill(req, res) {
             durationMs: result.durationMs,
             triggerType: 'manual',
             status: 'success',
-        }).catch((err) => console.error('[DBBackup] 写入演练历史失败：', err.message))
+        }).catch((err) => logger.error('[DBBackup] 写入演练历史失败', null, err))
 
         writeSystemLog({
             userId: req.user.userId,
@@ -373,7 +374,7 @@ async function recordFailure({ req, error, triggerType, kind = 'backup', filenam
         triggerType,
         status: 'failed',
         errorMessage: error.message,
-    }).catch((logErr) => console.error('[DBBackup] 写入失败历史失败：', logErr.message))
+    }).catch((logErr) => logger.error('[DBBackup] 写入失败历史失败', null, logErr))
 
     writeSystemLog({
         userId: req.user.userId,

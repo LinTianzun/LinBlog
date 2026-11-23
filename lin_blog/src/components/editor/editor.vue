@@ -75,7 +75,7 @@ import { colors } from './colors.js'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { Node as SlateNode, Transforms, type BaseSelection } from 'slate'
 import { CODE_HIGHLIGHT_LANGS } from './slimCodeHighlightCore'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import {
     describeAiImages,
     rewriteArticleText,

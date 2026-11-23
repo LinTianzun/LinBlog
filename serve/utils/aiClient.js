@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 const config = require('../config/default')
 const aiModel = require('../model/dbModel/ai/index')
+const { logger } = require('./logger')
 const { getDefaultTemplate, renderTemplate } = require('./aiPromptTemplates')
 const { removeWatermark } = require('./aiWatermark')
 
@@ -47,7 +48,7 @@ async function getActiveAiConfig({ purpose = 'chat' } = {}) {
         dbModel = await getRoutedModelConfig(purpose)
     } catch (err) {
         // 路由配置读取失败时继续使用默认模型，不能让 AI 功能整体不可用
-        console.warn('[AI] 读取任务模型路由失败，回退默认模型：', err?.message || err)
+        logger.warn('[AI] 读取任务模型路由失败，回退默认模型', null, err?.message || err)
     }
     if (!dbModel) {
         dbModel = await aiModel.getActiveModelConfig()
@@ -102,7 +103,7 @@ async function getAiConfigChain(primary, chainFn = null) {
         }
     } catch (err) {
         // 取候选失败不影响主流程：只是这次没有降级可用
-        console.warn('[AI] 读取降级候选模型失败：', err?.message || err)
+        logger.warn('[AI] 读取降级候选模型失败', null, err?.message || err)
     }
 
     return chain
@@ -153,7 +154,7 @@ async function resolvePromptTemplate(key, variables = {}) {
         const rendered = renderTemplate(content, variables).trim()
         return rendered || fallback
     } catch (err) {
-        console.warn('[AI] 读取提示词模板失败，回退默认提示词：', err?.message || err)
+        logger.warn('[AI] 读取提示词模板失败，回退默认提示词', null, err?.message || err)
         return fallback
     }
 }
@@ -587,12 +588,13 @@ async function runWithFallback(chain, run) {
                         error: error?.message || '模型调用失败'
                     })
                 } catch (recordError) {
-                    console.warn('[AI] 记录模型失败状态出错：', recordError?.message || recordError)
+                    logger.warn('[AI] 记录模型失败状态出错', null, recordError?.message || recordError)
                 }
             }
-            console.warn(
-                `[AI] 模型「${aiConfig.name || aiConfig.model}」调用失败（${error.message}），自动降级到下一个模型`
-            )
+            logger.warn('AI 模型调用失败，自动降级到下一个模型', {
+                model: aiConfig.name || aiConfig.model,
+                reason: error.message,
+            })
         }
     }
 
@@ -659,7 +661,7 @@ async function getImageProcessOptions() {
             mode: settings.watermarkMode === 'crop-resize' ? 'crop-resize' : 'crop'
         }
     } catch (err) {
-        console.warn('[AI] 读取图片处理策略失败，按默认去除标识：', err?.message || err)
+        logger.warn('[AI] 读取图片处理策略失败，按默认去除标识', null, err?.message || err)
         return { enabled: true, mode: 'crop' }
     }
 }
@@ -688,7 +690,7 @@ function providerError(status) {
 async function logProviderFailure(response, scene) {
     try {
         const text = await response.text()
-        if (text) console.warn(`[AI] ${scene}返回 HTTP ${response.status}：`, text.slice(0, 300))
+        if (text) logger.warn(`[AI] ${scene}返回 HTTP ${response.status}：`, { detail: text.slice(0, 300) })
     } catch {
         // 读取错误详情失败不影响主流程
     }
@@ -1203,7 +1205,7 @@ async function assistPromptTemplate({
             return { ...parsed, usage: raw.usage, outputChars: parsed.content.length }
         } catch (err) {
             if (err?.code === 'AI_PARSE_ERROR') {
-                console.warn('[AI] 提示词助手解析失败，模型输出片段：', String(raw.text || '').slice(0, 200))
+                logger.warn('[AI] 提示词助手解析失败，模型输出片段：', { detail: String(raw.text || '').slice(0, 200) })
             }
             throw err
         }

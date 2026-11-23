@@ -45,12 +45,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
     navLinks
-} from '../../utils/menu.ts'
-import { resolveMenuIcon } from '../../utils/menuIcons.ts'
-import { useSessionStore } from '../../store/session.ts'
-import { getCommentReports } from '../../api/commentReport.ts'
-import { getNotes } from '../../api/note.ts'
-import { REPORT_STATE_EVENT } from '../../utils/commentReportWorkbench.ts'
+} from '../../utils/menu'
+import { resolveMenuIcon } from '../../utils/menuIcons'
+import { useSessionStore } from '../../store/session'
+import { getCommentReports } from '../../api/commentReport'
+import { getNotes } from '../../api/note'
+import { REPORT_STATE_EVENT } from '../../utils/commentReportWorkbench'
+import { hasMenuPermission } from '../../utils/menuPermissions'
 
 const session = useSessionStore()
 const route = useRoute()
@@ -67,37 +68,9 @@ const pendingReportBadge = computed(() =>
     pendingReportCount.value > 99 ? '99+' : String(pendingReportCount.value)
 )
 
-// 菜单权限映射：入口是否出现完全由权限矩阵决定，不再按角色挑选候选集
-// 总览是全站统计，按 overview.viewAll 收窄；系统设置对所有登录用户开放
-const MENU_PERMISSIONS: Record<string, string[]> = {
-    overView: ['overview.viewAll'],
-    contentHealth: ['contentHealth.view'],
-    siteInsights: ['siteInsights.view'],
-    userManagement: ['user.view'],
-    permissionManagement: ['permission.view'],
-    systemLog: ['systemLog.view'],
-    aiManage: ['ai.manage'],
-    aiPrompt: ['ai.manage'],
-    reportedComments: ['comment.moderate'],
-    messages: ['message.private'],
-    localfile: ['file.view'],
-    article: ['article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll'],
-    collectionManage: ['collection.view', 'collection.manage'],
-    scheduledPublish: ['schedule.manage'],
-    draftBox: [
-        'article.viewAll', 'article.create', 'article.manageOwn', 'article.manageAll',
-        'gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll',
-    ],
-    gallery: ['gallery.viewAll', 'gallery.create', 'gallery.manageOwn', 'gallery.manageAll'],
-    diary: ['diary.viewAll', 'diary.create', 'diary.manageOwn', 'diary.manageAll'],
-    notes: [],
-    petManage: ['pet.manage'],
-    setting: [],
-}
-
+// 菜单权限映射见 utils/menuPermissions.ts（模块级常量，避免 setup 时序问题）
 const hasMenuAccess = (path: string): boolean => {
-    const required = MENU_PERMISSIONS[path] || []
-    return required.length === 0 || required.some(key => session.can(key))
+    return hasMenuPermission(path, session.can)
 }
 
 const visibleLinks = computed(() => {

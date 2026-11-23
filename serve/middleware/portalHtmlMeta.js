@@ -4,6 +4,7 @@ const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const collectionModel = require('../model/dbModel/collection/index')
 const noteModel = require('../model/dbModel/note/index')
+const { logger } = require('../utils/logger.js')
 const { resolveOrigin } = require('../controller/seoController')
 const {
     parseMetaTarget,
@@ -62,7 +63,7 @@ function createPortalHtmlMeta(indexFile) {
         try {
             meta = await resolvePortalMeta(target, resolveOrigin(req))
         } catch (err) {
-            console.warn('[PortalMeta] 读取公开内容失败，回退默认页面：', err.message)
+            logger.warn('[PortalMeta] 读取公开内容失败，回退默认页面', null, err)
         }
 
         applyFrontendSecurityPolicy(res)

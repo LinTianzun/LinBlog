@@ -25,6 +25,7 @@ if (!targetDb) {
     process.env.LINBLOG_FILE_STORAGE_DIR = path.join(integrationRoot, 'files')
     process.env.LINBLOG_FILE_BACKUP_DIR = path.join(integrationRoot, 'backups')
     process.env.LINBLOG_FILE_BACKUP_MIRROR_DIR = path.join(integrationRoot, 'mirror')
+    process.env.LINBLOG_IMAGE_EXTERNAL_DIR = path.join(integrationRoot, 'image-external')
 
     const db = require('../model/db/dbnew')
     const userModel = require('../model/dbModel/users/index')
@@ -36,6 +37,7 @@ if (!targetDb) {
     const fileController = require('../controller/fileController')
     const uploadController = require('../controller/uploadController')
     const fileStorage = require('../utils/fileStorage')
+    const imageStorage = require('../utils/imageStorage')
 
     const ids = {}
 
@@ -354,6 +356,38 @@ if (!targetDb) {
         assert.equal(rows[0].mime_type, 'image/jpeg')
         assert.equal(Number(rows[0].size), payload.length)
         assert.ok(Buffer.from(rows[0].data).equals(payload))
+    })
+
+    test('migrated image keeps serving after the blob moves to disk', async () => {
+        const payload = Buffer.from('integration-external-image-bytes')
+        await imageModel.createImage({
+            filename: 'it-external.png',
+            mimeType: 'image/png',
+            size: payload.length,
+            checksum: 'c'.repeat(64),
+            data: payload,
+            userId: ids.admin
+        })
+
+        const [row] = await imageModel.findActiveImageByFilename('it-external.png')
+        const key = await imageStorage.writeExternalFile(row)
+        assert.equal(await imageStorage.markImageExternal(row), true)
+
+        const migrated = await imageModel.findActiveImageByFilename('it-external.png')
+        assert.equal(migrated[0].storage_backend, 'disk')
+        assert.equal(migrated[0].storage_key, key)
+        assert.equal(migrated[0].data, null)
+        assert.ok((await imageStorage.readImageBytes(migrated[0])).equals(payload))
+
+        const res = response()
+        res.setHeader = () => {}
+        res.end = (data) => { res.body = data }
+        await uploadController.getImage(
+            { params: { filename: 'it-external.png' }, query: {}, headers: {} },
+            res
+        )
+        assert.equal(res.statusCode, 200)
+        assert.ok(Buffer.from(res.body).equals(payload))
     })
 
     test('file soft-delete and restore preserve lifecycle timestamps', async () => {

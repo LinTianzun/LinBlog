@@ -1,6 +1,7 @@
 const articleModel = require('../model/dbModel/article/index')
 const articleWorkflowModel = require('../model/dbModel/articleWorkflow/index')
 const noteModel = require('../model/dbModel/note/index')
+const { logger } = require('../utils/logger')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission, getArticleScope } = require('../utils/accessControl')
@@ -92,7 +93,7 @@ async function createArticle(req, res) {
                     await noteModel.recordArticleUpgrade(sourceNoteId, result.articleId, userId)
                 } catch (err) {
                     // 来源关系只用于发布后的回链提示，不能反过来让文章创建失败。
-                    console.error('[Article] 记录笔记升级来源失败：', err)
+                    logger.error('[Article] 记录笔记升级来源失败', null, err)
                 }
             }
         }

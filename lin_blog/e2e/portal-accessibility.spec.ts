@@ -33,6 +33,33 @@ test('当前导航项带 aria-current', async ({ page }) => {
   await expect(page.locator('.foot-links a[aria-current="page"]')).toHaveText('文章')
 })
 
+test('文章页搜索框聚焦时只保留组件自身的一圈边框', async ({ page }) => {
+  await installApiMock(page)
+  await page.goto('/portal/articles')
+
+  const input = page.locator('.filter-search .yk-input__widget').first()
+  await expect(input).toBeVisible({ timeout: 30_000 })
+  // 点击搜索是鼠标操作，也会让输入框保持焦点，这里复现用户看到的“点击后双圈蓝框”
+  await input.click()
+  await input.fill('看海')
+  await page.locator('.filter-search button[aria-label="搜索"]').click()
+  await input.click()
+
+  const styles = await input.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const inner = el.closest('.yk-input__inner')
+    return {
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+      innerBorder: inner ? getComputedStyle(inner).borderColor : '',
+      innerFocus: Boolean(inner?.classList.contains('yk-input__inner--primary--focus')),
+    }
+  })
+  expect(styles.innerFocus).toBe(true)
+  // 组件已经把焦点表达为边框色，额外再画一圈 outline 就会变成双层框
+  expect(styles.outlineStyle).toBe('none')
+})
+
 test('主题选择器支持方向键浏览与 Enter 选择', async ({ page }) => {
   await installApiMock(page)
   await page.goto('/portal')

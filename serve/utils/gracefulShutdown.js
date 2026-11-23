@@ -4,9 +4,10 @@ function createGracefulShutdown(options) {
         cleanupTasks = [],
         closeDatabase,
         timeoutMs = 10_000,
-        logger = console,
+        logger,
         exit = (code) => process.exit(code),
     } = options
+    const shutdownLogger = logger || require('./logger').logger
 
     let shutdownPromise = null
 
@@ -15,13 +16,13 @@ function createGracefulShutdown(options) {
 
         shutdownPromise = (async () => {
             const exitCode = fatalError ? 1 : 0
-            logger.info(`[Server] 收到 ${signal}，开始优雅退出`)
+            shutdownLogger.info(`收到 ${signal}，开始优雅退出`)
 
             for (const task of cleanupTasks) {
                 try {
                     task()
                 } catch (err) {
-                    logger.error('[Server] 停止后台任务失败：', err)
+                    shutdownLogger.error('停止后台任务失败', null, err)
                 }
             }
 
@@ -50,14 +51,14 @@ function createGracefulShutdown(options) {
                 await Promise.race([closing, deadline])
                 if (closeDatabase) await closeDatabase()
             } catch (err) {
-                logger.error('[Server] 优雅退出失败：', err)
+                shutdownLogger.error('优雅退出失败', null, err)
                 exit(1)
                 return
             } finally {
                 clearTimeout(timeout)
             }
 
-            logger.info('[Server] 服务已停止')
+            shutdownLogger.info('服务已停止')
             exit(exitCode)
         })()
 

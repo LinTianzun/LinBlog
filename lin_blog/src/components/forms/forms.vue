@@ -160,7 +160,7 @@
 import { ref, watch, onMounted, computed, getCurrentInstance } from 'vue'
 import { useSubsetStore } from '../../store/subset.ts'
 import { useLabelStore } from '../../store/label.ts'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import { buildImageUploadUrl } from '../../utils/uploadUrl.ts'
 import { getRequestErrorMessage } from '../../api/file.ts'
 import {

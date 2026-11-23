@@ -1,5 +1,6 @@
 const crypto = require('node:crypto')
 const helmet = require('helmet')
+const { logger } = require('../utils/logger')
 
 const SENSITIVE_QUERY_KEYS = new Set([
     'access_token',
@@ -100,7 +101,7 @@ function permissionsPolicy(req, res, next) {
 }
 
 function createRequestLogger(options = {}) {
-    const logger = options.logger || console
+    const logger = options.logger || require('../utils/logger').logger
     const now = options.now || Date.now
 
     return function requestLogger(req, res, next) {
@@ -108,19 +109,19 @@ function createRequestLogger(options = {}) {
 
         res.once('finish', () => {
             const status = res.statusCode
-            const message = [
-                `[HTTP] ${req.requestId || '-'}`,
-                req.method,
-                redactUrl(req.originalUrl || req.url),
+            const meta = {
+                requestId: req.requestId || '-',
+                method: req.method,
+                path: redactUrl(req.originalUrl || req.url),
                 status,
-                `${Math.max(0, now() - startedAt)}ms`,
-                `ip=${maskIp(req.ip || req.socket?.remoteAddress)}`,
-                `user=${req.user?.userId ?? '-'}`,
-            ].join(' ')
-
-            if (status >= 500) logger.error(message)
-            else if (status >= 400) logger.warn(message)
-            else logger.info(message)
+                durationMs: Math.max(0, now() - startedAt),
+                ip: maskIp(req.ip || req.socket?.remoteAddress),
+                userId: req.user?.userId ?? null,
+            }
+            const message = `HTTP ${req.method} ${meta.path} ${status}`
+            if (status >= 500) logger.error(message, meta)
+            else if (status >= 400) logger.warn(message, meta)
+            else logger.info(message, meta)
         })
 
         next()

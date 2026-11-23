@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt')
 const config = require('../config/default')
 const passwordResetModel = require('../model/dbModel/passwordReset/index')
+const { logger } = require('../utils/logger')
 const { sendPasswordResetMail } = require('../utils/mailer')
 const { writeSystemLog } = require('../utils/logHelper')
 
@@ -46,7 +47,7 @@ async function requestPasswordReset(req, res) {
             })
         } catch (err) {
             // 邮件失败不暴露账号状态；立即作废令牌，允许用户稍后重新申请
-            console.error('[PasswordReset] 邮件发送失败：', err.message)
+            logger.error('[PasswordReset] 邮件发送失败', null, err)
             await passwordResetModel.revokeToken(token)
         }
 
@@ -62,7 +63,7 @@ async function requestPasswordReset(req, res) {
 
         return res.json({ code: 200, message: REQUEST_MESSAGE })
     } catch (err) {
-        console.error('[PasswordReset] 申请失败：', err)
+        logger.error('[PasswordReset] 申请失败', null, err)
         return res.status(500).json({ code: 500, message: '重置邮件发送失败，请稍后重试' })
     }
 }
@@ -79,7 +80,7 @@ async function validatePasswordResetToken(req, res) {
             data: { username: record.username, expiresInMinutes: passwordResetModel.TOKEN_TTL_MINUTES },
         })
     } catch (err) {
-        console.error('[PasswordReset] 校验令牌失败：', err)
+        logger.error('[PasswordReset] 校验令牌失败', null, err)
         return res.status(500).json({ code: 500, message: '校验重置链接失败，请稍后重试' })
     }
 }
@@ -124,7 +125,7 @@ async function resetPassword(req, res) {
 
         return res.json({ code: 200, message: '密码已重置，请使用新密码登录' })
     } catch (err) {
-        console.error('[PasswordReset] 重置失败：', err)
+        logger.error('[PasswordReset] 重置失败', null, err)
         return res.status(500).json({ code: 500, message: '密码重置失败，请稍后重试' })
     }
 }

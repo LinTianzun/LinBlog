@@ -122,7 +122,7 @@ import {
     deleteInteractionComment,
     type CommentReportReason,
 } from '../../api/comment'
-import { useSessionStore } from '../../store/session.ts'
+import { useSessionStore } from '../../store/session'
 import { emitPetReaction } from '../../utils/desktopPetScene'
 
 type CommentRow = PortalComment | DiaryComment

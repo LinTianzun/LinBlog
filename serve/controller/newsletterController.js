@@ -1,5 +1,6 @@
 const config = require('../config/default')
 const newsletterModel = require('../model/dbModel/newsletter/index')
+const { logger } = require('../utils/logger.js')
 const { sendNewsletterConfirmMail } = require('../utils/mailer')
 const { writeSystemLog } = require('../utils/logHelper')
 
@@ -62,7 +63,7 @@ async function subscribe(req, res) {
                 confirmUrl: buildNewsletterUrl(req, 'confirm', subscriber.token),
             })
         } catch (mailError) {
-            console.warn('[Newsletter] 确认邮件发送失败：', mailError.message)
+            logger.warn('[Newsletter] 确认邮件发送失败', null, mailError)
             return res.status(503).json({
                 code: 503,
                 message: '确认邮件发送失败，请稍后再试',
@@ -95,7 +96,7 @@ async function confirm(req, res) {
         const result = await newsletterModel.confirmSubscriber(req.query?.token)
         redirectTo(req, res, result ? 'confirmed' : 'invalid')
     } catch (err) {
-        console.error('[Newsletter] 确认订阅失败：', err.message)
+        logger.error('[Newsletter] 确认订阅失败', null, err)
         redirectTo(req, res, 'error')
     }
 }
@@ -105,7 +106,7 @@ async function unsubscribe(req, res) {
         const result = await newsletterModel.unsubscribeSubscriber(req.query?.token)
         redirectTo(req, res, result ? 'unsubscribed' : 'invalid')
     } catch (err) {
-        console.error('[Newsletter] 退订失败：', err.message)
+        logger.error('[Newsletter] 退订失败', null, err)
         redirectTo(req, res, 'error')
     }
 }

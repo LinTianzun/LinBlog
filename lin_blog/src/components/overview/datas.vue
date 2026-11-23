@@ -57,7 +57,7 @@
     import { computed, ref, onMounted } from 'vue'
     import { LineChart, PieChart } from '../echarts/index.ts'
     import { getVisitStats, getTopPaths, type VisitPoint, type PieItem, type TopPathItem } from '../../api/overview.ts'
-    import { useSessionStore } from '../../store/session.ts'
+    import { useSessionStore } from '../../store/session'
     import { logError } from '../../utils/clientLogger'
 
     const session = useSessionStore()

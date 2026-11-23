@@ -168,14 +168,20 @@ test('article list supports keyword and uncategorized filters', async () => {
 
     assert.match(
         calls[0].sql,
-        /a\.subset_id IS NULL AND \(\s*a\.title LIKE \?\s*OR a\.introduce LIKE \?\s*OR a\.label LIKE \?\s*OR a\.content LIKE \?\s*\)/
+        /a\.subset_id IS NULL AND MATCH\(a\.title, a\.introduce, a\.label, a\.content\) AGAINST\(\? IN BOOLEAN MODE\)/
     )
     assert.deepEqual(calls[0].values, [
-        'deleted', '%联调%', '%联调%', '%联调%', '%联调%', 10, 0
+        'deleted', '+联调', 10, 0
     ])
     assert.deepEqual(calls[1].values, [
-        'deleted', '%联调%', '%联调%', '%联调%', '%联调%'
+        'deleted', '+联调'
     ])
+})
+
+test('article fulltext search keeps multi-keyword boolean mode semantics', async () => {
+    assert.equal(articleModel.buildFullTextBooleanQuery('  联调  写作  '), '+联调 +写作')
+    assert.equal(articleModel.buildFullTextBooleanQuery('"联调 写作"'), '+"联调 写作"')
+    assert.equal(articleModel.buildFullTextBooleanQuery(''), '')
 })
 
 test('article controller normalizes keyword and passes list filters to the model', async () => {
@@ -205,10 +211,10 @@ test('article controller normalizes keyword and passes list filters to the model
     assert.equal(res.statusCode, 200)
     assert.match(
         calls[0].sql,
-        /a\.subset_id IS NULL AND \(\s*a\.title LIKE \?\s*OR a\.introduce LIKE \?\s*OR a\.label LIKE \?\s*OR a\.content LIKE \?\s*\)/
+        /a\.subset_id IS NULL AND MATCH\(a\.title, a\.introduce, a\.label, a\.content\) AGAINST\(\? IN BOOLEAN MODE\)/
     )
     assert.deepEqual(calls[0].values, [
-        'deleted', '%联调%', '%联调%', '%联调%', '%联调%', 10, 0
+        'deleted', '+联调', 10, 0
     ])
 })
 

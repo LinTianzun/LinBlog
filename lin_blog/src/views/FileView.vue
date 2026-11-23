@@ -55,7 +55,7 @@ import subset from '../components/subset/subset.vue'
 import files from '../components/files/files.vue'
 import fileTrash from '../components/files/fileTrash.vue'
 import { useSubsetStore } from '../store/subset'
-import { useSessionStore } from '../store/session.ts'
+import { useSessionStore } from '../store/session'
 import { getFileUploadUrl, getRequestErrorMessage } from '../api/file'
 import { createUploadTicket } from '../utils/uploadUrl.ts'
 

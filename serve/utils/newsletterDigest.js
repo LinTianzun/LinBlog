@@ -2,6 +2,7 @@ const articleModel = require('../model/dbModel/article/index')
 const diaryModel = require('../model/dbModel/diary/index')
 const newsletterModel = require('../model/dbModel/newsletter/index')
 const config = require('../config/default')
+const { logger } = require('./logger.js')
 const { sendAlertMail } = require('./mailer')
 const { writeSystemLog } = require('./logHelper')
 const { buildVectors, cosine } = require('./textSimilarity')
@@ -250,13 +251,13 @@ async function sendDigestOnce({
             })
             // SMTP 未配置时 sendAlertMail 会静默降级，这里不能把“未发送”记成成功
             if (delivery?.delivered === false) {
-                console.warn(`[Newsletter] 摘要未发送（${recipient.id}）：${delivery.reason || 'unknown'}`)
+                logger.warn('[Newsletter] 摘要未发送', { recipientId: recipient.id, reason: delivery.reason || 'unknown' })
                 continue
             }
             sentIds.push(recipient.id)
             sent += 1
         } catch (err) {
-            console.warn(`[Newsletter] 摘要发送失败（${recipient.id}）：`, err.message)
+            logger.warn('[Newsletter] 摘要发送失败', { recipientId: recipient.id, reason: err.message })
         }
     }
 
@@ -304,7 +305,7 @@ function startNewsletterDigest({
             if (recipients.length === 0) return
             await sendDigest({ origin, since: windowStart, sendMail })
         } catch (err) {
-            console.warn('[Newsletter] 摘要任务失败：', err.message)
+            logger.warn('[Newsletter] 摘要任务失败', null, err)
         } finally {
             running = false
         }

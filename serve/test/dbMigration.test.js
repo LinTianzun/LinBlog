@@ -15,6 +15,8 @@ const SITE_EVENT_MIGRATION = ['2026', '1113_site_event'].join('')
 const SCHEDULED_PAUSE_MIGRATION = ['2026', '1114_scheduled_pause'].join('')
 const NEWSLETTER_MIGRATION = '20261122_newsletter_subscriber'
 const NOTE_MIGRATION = '20261122_digital_garden_note'
+const ARTICLE_FULLTEXT_MIGRATION = '20261123_article_fulltext'
+const IMAGE_EXTERNAL_MIGRATION = '20261123_image_external'
 
 // 已应用列表：用例通过「除目标迁移外全部已应用」来隔离单个迁移。
 // 新增迁移后同步补进这里，否则待执行迁移会多出一个导致 appliedCount 断言失败。
@@ -68,7 +70,9 @@ const ALL_MIGRATIONS = [
     SITE_EVENT_MIGRATION,
     SCHEDULED_PAUSE_MIGRATION,
     NEWSLETTER_MIGRATION,
-    NOTE_MIGRATION
+    NOTE_MIGRATION,
+    ARTICLE_FULLTEXT_MIGRATION,
+    IMAGE_EXTERNAL_MIGRATION
 ]
 
 // 除 exclude 外全部视为已应用
@@ -1048,7 +1052,7 @@ test('scheduled pause migration adds the pause marker to article', async () => {
         if (sql === 'SELECT version FROM schema_migrations') {
             return appliedExcept(SCHEDULED_PAUSE_MIGRATION)
         }
-        if (sql.includes('information_schema.COLUMNS')) return []
+    if (sql.includes('information_schema.COLUMNS')) return []
         return []
     }
 
@@ -1100,4 +1104,57 @@ test('digital garden migration creates note and link tables', async () => {
     assert.deepEqual(result, { appliedCount: 1 })
     assert.ok(calls.some(call => call.sql.includes('CREATE TABLE IF NOT EXISTS note(')))
     assert.ok(calls.some(call => call.sql.includes('CREATE TABLE IF NOT EXISTS note_link(')))
+})
+
+test('article fulltext migration creates the ngram search index', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(ARTICLE_FULLTEXT_MIGRATION)
+        }
+        if (sql.includes('information_schema')) return []
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    assert.ok(calls.some(call =>
+        call.sql.includes('ALTER TABLE article ADD FULLTEXT INDEX ft_article_search')
+        && call.sql.includes('(title, introduce, label, content)')
+        && call.sql.includes('WITH PARSER ngram')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === ARTICLE_FULLTEXT_MIGRATION
+    ))
+})
+
+test('image external migration adds storage backend columns', async () => {
+    const calls = []
+    const exec = async (sql, values = []) => {
+        calls.push({ sql, values })
+        if (sql === 'SELECT version FROM schema_migrations') {
+            return appliedExcept(IMAGE_EXTERNAL_MIGRATION)
+        }
+        return []
+    }
+
+    const result = await db.runMigrations(exec)
+    assert.deepEqual(result, { appliedCount: 1 })
+
+    const columnCalls = calls.filter(call => call.sql.startsWith('ALTER TABLE image ADD COLUMN'))
+    assert.ok(columnCalls.some(call =>
+        call.sql.includes('storage_backend')
+        && call.values?.includes('二进制存储方式：db-数据库，disk-磁盘')
+    ))
+    assert.ok(columnCalls.some(call =>
+        call.sql.includes('storage_key')
+        && call.values?.includes('外置存储键名')
+    ))
+    assert.ok(calls.some(call =>
+        call.sql === 'INSERT INTO schema_migrations (version) VALUES (?)'
+        && call.values[0] === IMAGE_EXTERNAL_MIGRATION
+    ))
 })

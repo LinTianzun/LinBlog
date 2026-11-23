@@ -1,4 +1,5 @@
 const diaryInteractionModel = require('../model/dbModel/diaryInteraction/index')
+const { logger } = require('../utils/logger.js')
 const { formatPaginationParams } = require('../utils/paginationUtil')
 const { writeSystemLog } = require('../utils/logHelper')
 const { hasPermission } = require('../utils/accessControl')
@@ -166,7 +167,7 @@ async function createComment(req, res) {
         }
         await Promise.all(targets.map(target =>
             notifyComment({ ...target, senderId: userId })
-                .catch((notifyError) => console.warn('[Diary] 发送站内评论通知失败：', notifyError.message))
+                .catch((notifyError) => logger.warn('[Diary] 发送站内评论通知失败', null, notifyError))
         ))
 
         res.status(201).json({

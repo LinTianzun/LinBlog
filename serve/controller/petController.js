@@ -1,4 +1,5 @@
 const petModel = require('../model/dbModel/pet/index')
+const { logger } = require('../utils/logger')
 
 const getUserId = (req) => {
     const userId = Number(req.user?.userId)
@@ -15,7 +16,7 @@ async function getState(req, res) {
         res.set('Cache-Control', 'no-store')
         res.json({ code: 200, message: '查询成功', data: state })
     } catch (err) {
-        console.error('[Pet] 读取养成状态失败：', err)
+        logger.error('[Pet] 读取养成状态失败', null, err)
         res.status(500).json({ code: 500, message: '读取桌宠状态失败' })
     }
 }
@@ -30,7 +31,7 @@ async function saveState(req, res) {
         res.set('Cache-Control', 'no-store')
         res.json({ code: 200, message: '保存成功', data: state })
     } catch (err) {
-        console.error('[Pet] 保存养成状态失败：', err)
+        logger.error('[Pet] 保存养成状态失败', null, err)
         res.status(500).json({ code: 500, message: '保存桌宠状态失败' })
     }
 }
@@ -45,7 +46,7 @@ async function getHomestead(req, res) {
         res.set('Cache-Control', 'no-store')
         res.json({ code: 200, message: '查询成功', data: state })
     } catch (err) {
-        console.error('[Pet] 读取小院状态失败：', err)
+        logger.error('[Pet] 读取小院状态失败', null, err)
         res.status(500).json({ code: 500, message: '读取小院状态失败' })
     }
 }
@@ -63,7 +64,7 @@ async function saveHomestead(req, res) {
         res.set('Cache-Control', 'no-store')
         res.json({ code: 200, message: '保存成功', data: state })
     } catch (err) {
-        console.error('[Pet] 保存小院状态失败：', err)
+        logger.error('[Pet] 保存小院状态失败', null, err)
         res.status(500).json({ code: 500, message: '保存小院状态失败' })
     }
 }

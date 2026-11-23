@@ -3,6 +3,7 @@ const aiClient = require('../utils/aiClient')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 const { probeModel, runHealthCheck, getLastCheckedAt } = require('../utils/aiHealthCheck')
 const uploadController = require('./uploadController')
+const { logger } = require('../utils/logger')
 const { writeSystemLog } = require('../utils/logHelper')
 
 function toInt(value, fallback = 0) {
@@ -99,7 +100,7 @@ async function getModels(req, res) {
         const list = await aiModel.listModels()
         return res.json({ code: 200, message: '获取 AI 模型列表成功', data: { list } })
     } catch (err) {
-        console.error('[AI] 获取模型列表失败：', err?.message || err)
+        logger.error('[AI] 获取模型列表失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取 AI 模型列表失败' })
     }
 }
@@ -127,7 +128,7 @@ async function createModel(req, res) {
         })
         return res.status(201).json({ code: 201, message: 'AI 模型已创建', data: model })
     } catch (err) {
-        console.error('[AI] 创建模型失败：', err?.message || err)
+        logger.error('[AI] 创建模型失败', null, err?.message || err)
         if (err?.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({ code: 400, message: '模型名称已存在' })
         }
@@ -167,7 +168,7 @@ async function updateModel(req, res) {
         })
         return res.json({ code: 200, message: 'AI 模型已更新', data: model })
     } catch (err) {
-        console.error('[AI] 更新模型失败：', err?.message || err)
+        logger.error('[AI] 更新模型失败', null, err?.message || err)
         if (err?.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({ code: 400, message: '模型名称已存在' })
         }
@@ -193,7 +194,7 @@ async function deleteModel(req, res) {
         })
         return res.json({ code: 200, message: 'AI 模型已删除' })
     } catch (err) {
-        console.error('[AI] 删除模型失败：', err?.message || err)
+        logger.error('[AI] 删除模型失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '删除 AI 模型失败' })
     }
 }
@@ -250,13 +251,13 @@ async function testModel(req, res) {
             }
         })
     } catch (err) {
-        console.error('[AI] 连通性测试失败：', err?.message || err)
+        logger.error('[AI] 连通性测试失败', null, err?.message || err)
         const reason = err?.message || '无法连接到模型服务'
         // 记录失败状态：健康表写失败不影响测试结论
         try {
             await aiModel.recordModelHealth(modelId, { ok: false, error: reason })
         } catch (recordError) {
-            console.warn('[AI] 记录模型健康状态失败：', recordError?.message || recordError)
+            logger.warn('[AI] 记录模型健康状态失败', null, recordError?.message || recordError)
         }
         logAiManageAction(req, {
             action: 'ai',
@@ -299,7 +300,7 @@ async function checkAllModels(req, res) {
             }
         })
     } catch (err) {
-        console.error('[AI] 模型巡检失败：', err?.message || err)
+        logger.error('[AI] 模型巡检失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '模型巡检失败，请稍后重试' })
     }
 }
@@ -319,7 +320,7 @@ async function getHealthStatus(req, res) {
             }
         })
     } catch (err) {
-        console.error('[AI] 获取模型健康状态失败：', err?.message || err)
+        logger.error('[AI] 获取模型健康状态失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取模型健康状态失败' })
     }
 }
@@ -336,7 +337,7 @@ async function getPromptTemplates(req, res) {
         ])
         return res.json({ code: 200, message: '获取提示词模板成功', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 获取提示词模板失败：', err?.message || err)
+        logger.error('[AI] 获取提示词模板失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取提示词模板失败' })
     }
 }
@@ -385,7 +386,7 @@ async function createPromptTemplate(req, res) {
         ])
         return res.json({ code: 200, message: '自定义提示词已创建', data: { created, list, bindings } })
     } catch (err) {
-        console.error('[AI] 创建提示词模板失败：', err?.message || err)
+        logger.error('[AI] 创建提示词模板失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '创建提示词模板失败' })
     }
 }
@@ -462,7 +463,7 @@ async function previewPromptTemplate(req, res) {
         if (err?.code === 'AI_INVALID_PROMPT_FEATURE') {
             return res.status(400).json({ code: 400, message: '提示词所属功能不存在' })
         }
-        console.error('[AI] 提示词试跑失败：', err?.message || err)
+        logger.error('[AI] 提示词试跑失败', null, err?.message || err)
         await recordAiCall({
             req,
             feature: 'prompt-preview',
@@ -511,7 +512,7 @@ async function savePreviewImage(req, res) {
             data: { url }
         })
     } catch (err) {
-        console.error('[AI] 保存提示词试跑图片失败：', err?.message || err)
+        logger.error('[AI] 保存提示词试跑图片失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '试跑图片保存失败，请稍后重试' })
     }
 }
@@ -591,7 +592,7 @@ async function assistPromptTemplate(req, res) {
         if (err?.code === 'AI_INVALID_PROMPT_FEATURE') {
             return res.status(400).json({ code: 400, message: '提示词所属功能不存在' })
         }
-        console.error('[AI] 提示词助手失败：', err?.message || err)
+        logger.error('[AI] 提示词助手失败', null, err?.message || err)
         await recordAiCall({
             req,
             feature: 'prompt-assistant',
@@ -658,7 +659,7 @@ async function updatePromptTemplate(req, res) {
         const bindings = await aiModel.listPromptBindings()
         return res.json({ code: 200, message: '提示词模板已保存', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 保存提示词模板失败：', err?.message || err)
+        logger.error('[AI] 保存提示词模板失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '保存提示词模板失败' })
     }
 }
@@ -687,7 +688,7 @@ async function selectPromptTemplate(req, res) {
         ])
         return res.json({ code: 200, message: '已切换使用该提示词', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 选用提示词模板失败：', err?.message || err)
+        logger.error('[AI] 选用提示词模板失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '选用提示词模板失败' })
     }
 }
@@ -719,7 +720,7 @@ async function deletePromptTemplate(req, res) {
         ])
         return res.json({ code: 200, message: '自定义提示词已删除', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 删除提示词模板失败：', err?.message || err)
+        logger.error('[AI] 删除提示词模板失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '删除提示词模板失败' })
     }
 }
@@ -747,7 +748,7 @@ async function resetPromptTemplate(req, res) {
         })
         return res.json({ code: 200, message: '已恢复默认提示词', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 恢复默认提示词失败：', err?.message || err)
+        logger.error('[AI] 恢复默认提示词失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '恢复默认提示词失败' })
     }
 }
@@ -758,7 +759,7 @@ async function getPromptHistory(req, res) {
         const list = await aiModel.listPromptHistory(key)
         return res.json({ code: 200, message: '获取提示词历史成功', data: { list } })
     } catch (err) {
-        console.error('[AI] 获取提示词历史失败：', err?.message || err)
+        logger.error('[AI] 获取提示词历史失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取提示词历史失败' })
     }
 }
@@ -790,7 +791,7 @@ async function restorePromptHistory(req, res) {
         ])
         return res.json({ code: 200, message: '提示词已回滚到历史版本', data: { list, bindings } })
     } catch (err) {
-        console.error('[AI] 回滚提示词历史失败：', err?.message || err)
+        logger.error('[AI] 回滚提示词历史失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '回滚提示词历史失败' })
     }
 }
@@ -800,7 +801,7 @@ async function getSettings(req, res) {
         const settings = await aiModel.getSettings()
         return res.json({ code: 200, message: '获取 AI 用量策略成功', data: settings })
     } catch (err) {
-        console.error('[AI] 获取用量策略失败：', err?.message || err)
+        logger.error('[AI] 获取用量策略失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取 AI 用量策略失败' })
     }
 }
@@ -825,7 +826,7 @@ async function updateSettings(req, res) {
             current = await aiModel.getSettings()
         } catch (err) {
             // 读取旧策略失败不应阻塞本次保存；缺省按未指定路由处理
-            console.warn('[AI] 读取现有策略失败，按未指定模型路由保存：', err?.message || err)
+            logger.warn('[AI] 读取现有策略失败，按未指定模型路由保存', null, err?.message || err)
         }
         chatModelId = toOptionalId(req.body?.chatModelId, current.chatModelId)
         imageModelId = toOptionalId(req.body?.imageModelId, current.imageModelId)
@@ -878,7 +879,7 @@ async function updateSettings(req, res) {
         })
         return res.json({ code: 200, message: 'AI 策略已保存', data: settings })
     } catch (err) {
-        console.error('[AI] 保存 AI 策略失败：', err?.message || err)
+        logger.error('[AI] 保存 AI 策略失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '保存 AI 策略失败' })
     }
 }
@@ -889,7 +890,7 @@ async function getUsage(req, res) {
         const list = await aiModel.listUsage(limit)
         return res.json({ code: 200, message: '获取 AI 调用记录成功', data: { list } })
     } catch (err) {
-        console.error('[AI] 获取调用记录失败：', err?.message || err)
+        logger.error('[AI] 获取调用记录失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取 AI 调用记录失败' })
     }
 }
@@ -914,7 +915,7 @@ async function getUsageStats(req, res) {
             data: { summary, byModel, byFeature, trend, pending, health, days }
         })
     } catch (err) {
-        console.error('[AI] 获取用量统计失败：', err?.message || err)
+        logger.error('[AI] 获取用量统计失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取 AI 用量统计失败' })
     }
 }
@@ -949,7 +950,7 @@ async function importFromEnv(req, res) {
             data: result.model
         })
     } catch (err) {
-        console.error('[AI] 导入环境变量配置失败：', err?.message || err)
+        logger.error('[AI] 导入环境变量配置失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '导入环境变量配置失败' })
     }
 }
@@ -969,7 +970,7 @@ async function getMyUsage(req, res) {
             }
         })
     } catch (err) {
-        console.error('[AI] 获取个人用量失败：', err?.message || err)
+        logger.error('[AI] 获取个人用量失败', null, err?.message || err)
         return res.status(500).json({ code: 500, message: '获取个人用量失败' })
     }
 }

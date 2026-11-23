@@ -12,7 +12,8 @@
             <slot name="custom" />
             <yk-space size="s" v-if="isSearch">
                 <yk-button type="secondary" v-show="SearchData" @click="cancelSearch">取消搜索</yk-button>
-                <yk-input-search :key="searchInputKey" placeholder="搜索标题、用户或关键词"
+                <yk-input-search :key="searchInputKey" class="top-title-search"
+                    placeholder="搜索标题、用户或关键词"
                     @search="search">
                     <template #suffix>
                         <yk-button type="secondary" aria-label="搜索">
@@ -67,6 +68,29 @@
         width: 100%;
         justify-content: space-between;
         align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
         box-sizing: border-box;
+    }
+
+    // yk-input-search 自带的内部提交按钮没有描边样式，与外部搜索按钮并排时
+    // 会露出一个裸方块；这里只保留输入框 + 一个统一的搜索按钮。
+    .top-title-search :deep(.yk-input__button),
+    .top-title-search :deep(.yk-input__buttons) {
+        display: none;
+    }
+
+    .top-title-search :deep(.yk-input__widget) {
+        min-width: 220px;
+    }
+
+    @media (max-width: 720px) {
+        .top-title-actions {
+            width: 100%;
+        }
+
+        .top-title-search :deep(.yk-input__widget) {
+            min-width: 0;
+        }
     }
 </style>

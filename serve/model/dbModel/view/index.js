@@ -1,4 +1,5 @@
 const { query } = require('../../db/dbnew')
+const { logger } = require('../../../utils/logger')
 
 // 浏览量统计：article/image 计到 article.views，diary 计到 diary.views。
 // 同一访客（登录用户按 userId，游客按 IP）对同一目标在去重窗口内只计一次，防止刷量。
@@ -64,7 +65,7 @@ async function pruneViewLogs(targetType, targetId) {
             [targetType, targetId, RETENTION_DAYS]
         )
     } catch (err) {
-        console.warn('[View] 清理过期浏览记录失败：', err.message)
+        logger.warn('[View] 清理过期浏览记录失败', null, err)
     }
 }
 

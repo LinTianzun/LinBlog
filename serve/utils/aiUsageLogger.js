@@ -1,5 +1,6 @@
 const aiModel = require('../model/dbModel/ai/index')
 const systemLogModel = require('../model/dbModel/systemLog/index')
+const { logger } = require('./logger')
 
 async function recordAiCall({
     req,
@@ -33,7 +34,7 @@ async function recordAiCall({
             outputChars
         })
     } catch (err) {
-        console.warn('[AI] 写入调用记录失败：', err?.message || err)
+        logger.warn('[AI] 写入调用记录失败', null, err?.message || err)
     }
 
     try {
@@ -49,7 +50,7 @@ async function recordAiCall({
             ip
         })
     } catch (err) {
-        console.warn('[AI] 写入系统日志失败：', err?.message || err)
+        logger.warn('[AI] 写入系统日志失败', null, err?.message || err)
     }
 }
 

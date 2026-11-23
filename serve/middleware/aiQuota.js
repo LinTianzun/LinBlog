@@ -1,5 +1,6 @@
 const aiClient = require('../utils/aiClient')
 const aiModel = require('../model/dbModel/ai/index')
+const { logger } = require('../utils/logger')
 const { hasPermission } = require('../utils/accessControl')
 const { recordAiCall } = require('../utils/aiUsageLogger')
 
@@ -83,7 +84,7 @@ function aiQuota(feature) {
 
             return next()
         } catch (err) {
-            console.error('[AI] 用量检查失败：', err)
+            logger.error('[AI] 用量检查失败', null, err)
             return res.status(503).json({
                 code: 503,
                 message: 'AI 用量服务暂时不可用，请稍后重试'
