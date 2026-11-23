@@ -144,6 +144,16 @@ test('public article detail returns the garden note it grew from', async () => {
                         updatedAt: '2026-11-21T08:00:00.000Z',
                     }
                 },
+                async listPublishedArticlesBySourceNote(noteId, excludeId) {
+                    assert.equal(noteId, 21)
+                    assert.equal(excludeId, 901)
+                    return [{
+                        id: 902,
+                        title: '同一篇笔记的另一篇长文',
+                        introduce: '从同一个想法延伸出的另一种写法。',
+                        publishedAt: '2026-11-22T08:00:00.000Z',
+                    }]
+                },
             }
         }
         return originalLoad.call(this, request, parent, isMain)
@@ -167,6 +177,12 @@ test('public article detail returns the garden note it grew from', async () => {
         publishedAt: '2026-11-20T08:00:00.000Z',
         updatedAt: '2026-11-21T08:00:00.000Z',
     })
+    assert.deepEqual(res.body.data.gardenArticles, [{
+        id: 902,
+        title: '同一篇笔记的另一篇长文',
+        introduce: '从同一个想法延伸出的另一种写法。',
+        publishedAt: '2026-11-22T08:00:00.000Z',
+    }])
 })
 
 test('public article detail still serves the article when the source lookup fails', async () => {

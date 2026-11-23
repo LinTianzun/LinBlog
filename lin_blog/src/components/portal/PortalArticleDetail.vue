@@ -49,6 +49,18 @@
                             去花园读原笔记
                             <IconRightOutline />
                         </button>
+                        <!-- 同一来源笔记可能长出多篇长文，这里收拢成可展开的聚合入口 -->
+                        <details v-if="gardenArticles.length" class="garden-source-series">
+                            <summary>同源长文 · 共 {{ gardenArticles.length + 1 }} 篇</summary>
+                            <ul>
+                                <li v-for="item in gardenArticles" :key="item.id">
+                                    <button type="button" @click="openGardenArticle(item.id)">
+                                        <strong>{{ item.title }}</strong>
+                                        <span>{{ item.introduce || '继续读这一篇' }}</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </details>
                     </aside>
                     <details v-if="hasOutline" class="reader-outline reader-outline--mobile">
                         <summary>本文目录 · {{ outline.length }} 节</summary>
@@ -181,6 +193,7 @@ import {
     recordView,
     getPublicArticleById,
     type GardenSourceNote,
+    type GardenSourceArticle,
     type LikeState
 } from '../../api/portal'
 import PortalCommentSection from './PortalCommentSection.vue'
@@ -239,6 +252,7 @@ let seriesToken = 0
 
 // 来源笔记：文章详情接口按需返回，切换文章时清空，避免上一篇的入口残留
 const gardenNote = ref<GardenSourceNote | null>(null)
+const gardenArticles = ref<GardenSourceArticle[]>([])
 let gardenToken = 0
 
 const router = useRouter()
@@ -455,12 +469,17 @@ watch(
 const loadGardenNote = async (articleId: number) => {
     const token = ++gardenToken
     gardenNote.value = null
+    gardenArticles.value = []
     try {
         const result = await getPublicArticleById(articleId)
         if (token !== gardenToken) return
         gardenNote.value = result.code === 200 ? result.data?.gardenNote || null : null
+        gardenArticles.value = result.code === 200 ? result.data?.gardenArticles || [] : []
     } catch {
-        if (token === gardenToken) gardenNote.value = null
+        if (token === gardenToken) {
+            gardenNote.value = null
+            gardenArticles.value = []
+        }
     }
 }
 
@@ -469,6 +488,10 @@ const openGardenNote = (): void => {
     if (!note) return
     emit('close')
     void router.push({ path: '/portal/notes', query: { open: String(note.id) } })
+}
+
+const openGardenArticle = (articleId: number): void => {
+    emit('open-related', articleId)
 }
 
 const loadArticleSeries = async (articleId: number) => {
@@ -494,6 +517,7 @@ watch(
             seriesLoading.value = false
             gardenToken += 1
             gardenNote.value = null
+            gardenArticles.value = []
             return
         }
         void loadGardenNote(props.article.id)
@@ -761,6 +785,7 @@ watch(loadKey, async (key, previousKey) => {
 // 反向回流：长文顶部提示它来自花园里的哪篇笔记
 .garden-source {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 14px;
     margin: 0 0 22px;
@@ -837,6 +862,92 @@ watch(loadKey, async (key, previousKey) => {
     }
 }
 
+.garden-source-series {
+    width: 100%;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px dashed color-mix(in srgb, var(--portal-accent) 24%, var(--portal-line-soft));
+
+    summary {
+        width: fit-content;
+        color: var(--portal-accent);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        list-style: none;
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+
+        &::before {
+            content: '＋';
+            display: inline-block;
+            margin-right: 5px;
+            transition: transform 0.18s ease;
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--portal-accent);
+            outline-offset: 3px;
+            border-radius: 4px;
+        }
+    }
+
+    &[open] summary::before {
+        transform: rotate(45deg);
+    }
+
+    ul {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    button {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        border: 1px solid var(--portal-line-soft);
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--portal-surface) 82%, transparent);
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 0.18s ease, background-color 0.18s ease;
+
+        strong {
+            color: var(--portal-text-primary);
+            font-family: var(--portal-serif);
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        span {
+            overflow: hidden;
+            color: var(--portal-text-tertiary);
+            font-size: 11px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        &:hover,
+        &:focus-visible {
+            border-color: color-mix(in srgb, var(--portal-accent) 40%, var(--portal-line-soft));
+            background: color-mix(in srgb, var(--portal-accent) 8%, transparent);
+            outline: 2px solid var(--portal-accent);
+            outline-offset: 2px;
+        }
+    }
+}
+
 @media (max-width: 640px) {
     .garden-source {
         display: grid;
@@ -856,6 +967,10 @@ watch(loadKey, async (key, previousKey) => {
     .garden-source-link {
         grid-column: 1 / -1;
         justify-self: start;
+    }
+
+    .garden-source-series {
+        grid-column: 1 / -1;
     }
 
     .garden-source-title {

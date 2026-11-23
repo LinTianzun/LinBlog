@@ -97,14 +97,18 @@
                         <div v-if="item.suggestions.length" class="tidy-suggest">
                             <p class="tidy-suggest-label">建议连向</p>
                             <ul>
-                                <li v-for="s in item.suggestions" :key="s.id">
+                                <li v-for="s in item.suggestions" :key="s.key || s.id">
                                     <span class="tidy-suggest-title">{{ s.title }}</span>
                                     <span class="tidy-suggest-meta">
                                         <span v-for="reason in s.reasons" :key="reason" class="tidy-chip">{{ reason }}</span>
                                         <span v-if="!s.reasons.length" class="tidy-chip is-quiet">标题相近</span>
-                                        <span class="tidy-ref">{{ s.incomingLinks }} 处引用</span>
+                                        <span v-if="s.kind !== 'article'" class="tidy-ref">{{ s.incomingLinks }} 处引用</span>
                                     </span>
-                                    <button type="button" class="tidy-copy" @click="copyLink(item, s)">
+                                    <a v-if="s.kind === 'article' && s.url" class="tidy-copy" :href="s.url"
+                                        target="_blank" rel="noopener">
+                                        打开长文
+                                    </a>
+                                    <button v-else type="button" class="tidy-copy" @click="copyLink(item, s)">
                                         复制双链
                                     </button>
                                 </li>
@@ -166,14 +170,18 @@
                         <div v-if="item.suggestions.length" class="tidy-suggest">
                             <p class="tidy-suggest-label">也许想连的是</p>
                             <ul>
-                                <li v-for="s in item.suggestions" :key="s.id">
+                                <li v-for="s in item.suggestions" :key="s.key || s.id">
                                     <span class="tidy-suggest-title">{{ s.title }}</span>
                                     <span class="tidy-suggest-meta">
                                         <span v-for="reason in s.reasons" :key="reason" class="tidy-chip">{{ reason }}</span>
                                         <span v-if="!s.reasons.length" class="tidy-chip is-quiet">标题相近</span>
-                                        <span class="tidy-ref">{{ s.incomingLinks }} 处引用</span>
+                                        <span v-if="s.kind !== 'article'" class="tidy-ref">{{ s.incomingLinks }} 处引用</span>
                                     </span>
-                                    <button type="button" class="tidy-copy" @click="copyLink(item, s)">
+                                    <a v-if="s.kind === 'article' && s.url" class="tidy-copy" :href="s.url"
+                                        target="_blank" rel="noopener">
+                                        打开长文
+                                    </a>
+                                    <button v-else type="button" class="tidy-copy" @click="copyLink(item, s)">
                                         复制双链
                                     </button>
                                 </li>
@@ -242,9 +250,11 @@ const loadTidy = async () => {
 
 // 复制的是可直接粘贴到正文的双链语法，而不是给外部用的 URL
 const copyLink = async (note: TidyNote, target: TidySuggestion) => {
-    const snippet = note.missingLinks.includes(target.title)
-        ? `[[${target.title}]]`
-        : `[${target.title}](note://${target.id})`
+    const snippet = target.kind === 'article' && target.url
+        ? `[${target.title}](${target.url})`
+        : note.missingLinks.includes(target.title)
+            ? `[[${target.title}]]`
+            : `[${target.title}](note://${target.id})`
     try {
         await navigator.clipboard.writeText(snippet)
         proxy?.$message?.({ type: 'primary', message: `已复制：${snippet}` })
@@ -747,6 +757,8 @@ defineOptions({ name: 'NoteTidyView' })
 }
 
 .tidy-copy {
+    display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
     padding: 3px 12px;
     border: 1px solid var(--pcolor3);
@@ -754,6 +766,7 @@ defineOptions({ name: 'NoteTidyView' })
     background: transparent;
     color: var(--pcolor);
     font-size: 11px;
+    text-decoration: none;
     cursor: pointer;
     transition: background-color 0.18s ease;
 

@@ -71,6 +71,62 @@ test('待整理清单：识别孤立笔记与断链，并附推荐', () => {
     assert.equal(report.summary.broken, 1)
 })
 
+test('已发布文章可作为推荐目标，并保留长文标记', () => {
+    const current = note({
+        id: 1,
+        title: '从双链到门户',
+        content: '花园里的想法后来整理成了完整长文',
+        tags: ['花园'],
+    })
+    const report = buildTidyReport(
+        [current],
+        {
+            limit: 2,
+            articles: [{
+                id: 9,
+                title: '从双链到门户：完整版',
+                content: '把花园里的想法整理成完整长文，讲清知识网络',
+                tags: ['花园'],
+                kind: 'article',
+            }],
+        }
+    )
+
+    assert.equal(report.orphans.length, 1)
+    const suggestion = report.orphans[0].suggestions.find(item => item.id === 9)
+    assert.ok(suggestion)
+    assert.equal(suggestion.kind, 'article')
+    assert.equal(suggestion.key, 'article:9')
+    assert.equal(suggestion.url, '/portal/articles?open=9')
+    assert.ok(suggestion.reasons.includes('长文'))
+})
+
+test('已链接的长文不再推荐，笔记与文章同 ID 时仍能同时区分', () => {
+    const current = note({
+        id: 1,
+        title: '双链与长文',
+        content: '已经写过 [完整版](/portal/articles?open=9)',
+        tags: ['花园'],
+        linkedArticleIds: [9],
+    })
+    const pool = [
+        { ...note({ id: 9, title: '同名笔记', content: '双链与长文' }), kind: 'note' },
+        { ...note({ id: 9, title: '双链与长文完整版', content: '双链与长文' }), kind: 'article' },
+    ]
+
+    const suggestions = suggestTargets(current, pool, 5)
+    assert.ok(suggestions.some(item => item.key === 'note:9'))
+    assert.ok(!suggestions.some(item => item.key === 'article:9'))
+
+    // 文章与当前笔记同 ID 时不能被「排除自己」误伤
+    const sameId = suggestTargets(
+        note({ id: 9, title: '双链与长文', content: '标题相近' }),
+        [{ ...note({ id: 9, title: '双链与长文完整版', content: '标题相近' }), kind: 'article' }],
+        3
+    )
+    assert.ok(sameId.some(item => item.key === 'article:9'))
+})
+
 test('没有待整理内容时返回空清单', () => {
     const report = buildTidyReport([
         note({ id: 1, title: '甲', content: '[[乙]]', outgoingLinks: 1 }),

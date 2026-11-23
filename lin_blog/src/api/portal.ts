@@ -111,7 +111,14 @@ export function getPublicArticles(params: ArticleListParams = {}) {
 }
 
 export function getPublicArticleById(id: number) {
-  return request.get<ApiResult<ArticleItem & { gardenNote?: GardenSourceNote | null }>>(
+  return request.get<
+    ApiResult<
+      ArticleItem & {
+        gardenNote?: GardenSourceNote | null;
+        gardenArticles?: GardenSourceArticle[];
+      }
+    >
+  >(
     `/public/article/${id}`
   );
 }
@@ -123,6 +130,14 @@ export interface GardenSourceNote {
   slug: string;
   publishedAt: string | null;
   updatedAt: string | null;
+}
+
+// 与当前文章同源的其他长文，用于文章页的「同源长文」聚合入口
+export interface GardenSourceArticle {
+  id: number;
+  title: string;
+  introduce: string;
+  publishedAt: string | null;
 }
 
 export function getPublicComments(articleId: number, page = 1, pageSize = 10) {

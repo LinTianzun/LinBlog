@@ -1,4 +1,5 @@
 const noteModel = require('../model/dbModel/note/index')
+const articleModel = require('../model/dbModel/article/index')
 const { writeSystemLog } = require('../utils/logHelper')
 const {
     renderMarkdown,
@@ -329,7 +330,26 @@ async function getNoteTidy(req, res) {
             tags: extractNoteTags(note.content),
         }))
         const suggestLimit = Math.min(Math.max(Number(limit) || 3, 1), 5)
-        const report = buildTidyReport(notes, { limit: suggestLimit })
+
+        // 已发布长文也作为推荐目标：孤立笔记可以先连到相关文章，再继续生长成双链网络
+        let articleCandidates = []
+        if (typeof articleModel?.listPublishedArticlesForTidy === 'function') {
+            try {
+                articleCandidates = await articleModel.listPublishedArticlesForTidy(req.user.userId)
+            } catch {
+                articleCandidates = []
+            }
+        }
+        const report = buildTidyReport(notes, {
+            limit: suggestLimit,
+            articles: articleCandidates.map(article => ({
+                ...article,
+                tags: String(article.label || '')
+                    .split(',')
+                    .map(tag => tag.trim())
+                    .filter(Boolean),
+            })),
+        })
 
         // 升级关系：文章发布后提示回原笔记补一条指向它的链接
         const upgradedRows = await noteModel.listUpgradedArticles(notes.map(note => note.id))

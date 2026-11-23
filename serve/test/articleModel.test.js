@@ -82,6 +82,17 @@ test('article state summary aggregates counts per state and uncategorized', asyn
     assert.match(calls[1].sql, /a\.subset_id IS NULL/)
 })
 
+test('同源长文查询只取已发布文章并排除当前文章', async () => {
+    await articleModel.listPublishedArticlesBySourceNote(21, 901, 12)
+
+    const queryCall = calls.find(call => call.sql.includes('FROM note_article_upgrade'))
+    assert.ok(queryCall)
+    assert.match(queryCall.sql, /a\.state = 'published'/)
+    assert.match(queryCall.sql, /a\.classify = 'article'/)
+    assert.match(queryCall.sql, /a\.id <> \?/)
+    assert.deepEqual(queryCall.values, [21, 901, 12])
+})
+
 test('new articles persist their authenticated owner', async () => {
     await articleModel.insertArticle({
         userId: 42,

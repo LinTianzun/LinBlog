@@ -153,9 +153,14 @@ export function getNoteSummary() {
 
 export interface TidySuggestion {
   id: number;
+  /** 笔记与文章 ID 可能重复，列表渲染用它做稳定键 */
+  key?: string;
   title: string;
   excerpt: string;
   incomingLinks: number;
+  /** note 是花园笔记；article 是已经发布的长文 */
+  kind?: "note" | "article";
+  url?: string | null;
   score: number;
   reasons: string[];
 }

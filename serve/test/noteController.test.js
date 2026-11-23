@@ -6,6 +6,7 @@ process.env.LINBLOG_ALLOWED_ORIGINS = 'https://blog.example.com'
 process.env.LINBLOG_PUBLIC_URL = 'https://blog.example.com'
 
 const noteModel = require('../model/dbModel/note/index')
+const articleModel = require('../model/dbModel/article/index')
 const noteController = require('../controller/noteController')
 
 function response() {
@@ -251,6 +252,7 @@ test('私人笔记详情按作者隔离，未登录以外的用户不能读到�
 test('待整理清单带出升级文章与回链状态', async () => {
     const originalList = noteModel.listNotesForTidy
     const originalUpgrades = noteModel.listUpgradedArticles
+    const originalArticles = articleModel.listPublishedArticlesForTidy
     const requestedIds = []
     noteModel.listNotesForTidy = async () => [
         {
@@ -279,6 +281,7 @@ test('待整理清单带出升级文章与回链状态', async () => {
             { noteId: 2, id: 10, title: '第二篇长文', state: 'draft', publishedAt: null },
         ]
     }
+    articleModel.listPublishedArticlesForTidy = async () => []
 
     try {
         const res = response()
@@ -295,6 +298,80 @@ test('待整理清单带出升级文章与回链状态', async () => {
     } finally {
         noteModel.listNotesForTidy = originalList
         noteModel.listUpgradedArticles = originalUpgrades
+        articleModel.listPublishedArticlesForTidy = originalArticles
+    }
+})
+
+test('待整理推荐池包含已发布文章，并标注长文入口', async () => {
+    const originalList = noteModel.listNotesForTidy
+    const originalUpgrades = noteModel.listUpgradedArticles
+    const originalArticles = articleModel.listPublishedArticlesForTidy
+    noteModel.listNotesForTidy = async () => [{
+        id: 1,
+        title: '从双链到门户',
+        content: '花园里的想法后来整理成了完整长文',
+        state: 'published',
+        outgoingLinks: 0,
+        incomingLinks: 0,
+        updatedAt: '2026-11-22T08:00:00.000Z',
+    }]
+    noteModel.listUpgradedArticles = async () => []
+    articleModel.listPublishedArticlesForTidy = async () => [{
+        id: 9,
+        title: '从双链到门户：完整版',
+        introduce: '一篇完整长文',
+        content: '把花园里的想法整理成完整长文，讲清知识网络',
+        label: '花园,写作',
+        publishedAt: '2026-11-21T08:00:00.000Z',
+        updatedAt: '2026-11-21T08:00:00.000Z',
+    }]
+
+    try {
+        const res = response()
+        await noteController.getNoteTidy({ query: {}, user: { userId: 1 } }, res)
+
+        assert.equal(res.statusCode, 200)
+        const suggestion = res.body.data.orphans[0].suggestions.find(item => item.id === 9)
+        assert.ok(suggestion)
+        assert.equal(suggestion.kind, 'article')
+        assert.equal(suggestion.url, '/portal/articles?open=9')
+        assert.ok(suggestion.reasons.includes('长文'))
+    } finally {
+        noteModel.listNotesForTidy = originalList
+        noteModel.listUpgradedArticles = originalUpgrades
+        articleModel.listPublishedArticlesForTidy = originalArticles
+    }
+})
+
+test('文章推荐查询失败时待整理清单仍正常返回', async () => {
+    const originalList = noteModel.listNotesForTidy
+    const originalUpgrades = noteModel.listUpgradedArticles
+    const originalArticles = articleModel.listPublishedArticlesForTidy
+    noteModel.listNotesForTidy = async () => [{
+        id: 1,
+        title: '孤岛笔记',
+        content: '还没有任何链接',
+        state: 'published',
+        outgoingLinks: 0,
+        incomingLinks: 0,
+        updatedAt: '2026-11-22T08:00:00.000Z',
+    }]
+    noteModel.listUpgradedArticles = async () => []
+    articleModel.listPublishedArticlesForTidy = async () => {
+        throw new Error('article table unavailable')
+    }
+
+    try {
+        const res = response()
+        await noteController.getNoteTidy({ query: {}, user: { userId: 1 } }, res)
+
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.body.data.orphans.length, 1)
+        assert.deepEqual(res.body.data.orphans[0].suggestions, [])
+    } finally {
+        noteModel.listNotesForTidy = originalList
+        noteModel.listUpgradedArticles = originalUpgrades
+        articleModel.listPublishedArticlesForTidy = originalArticles
     }
 })
 

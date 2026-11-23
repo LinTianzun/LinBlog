@@ -278,12 +278,23 @@ async function getPublicArticleById(req, res) {
         // 来源笔记：读者读完文章可以顺着回到还在生长的花园笔记，
         // 查询失败也不影响正文，只是少一条回流入口
         let sourceNote = null
+        let sourceArticles = []
         try {
             if (typeof articleModel.findUpgradedFromNote === 'function') {
                 sourceNote = await articleModel.findUpgradedFromNote(articleId)
             }
         } catch {
             sourceNote = null
+        }
+        if (sourceNote && typeof articleModel.listPublishedArticlesBySourceNote === 'function') {
+            try {
+                sourceArticles = await articleModel.listPublishedArticlesBySourceNote(
+                    sourceNote.id,
+                    articleId
+                )
+            } catch {
+                sourceArticles = []
+            }
         }
 
         res.json({
@@ -299,6 +310,12 @@ async function getPublicArticleById(req, res) {
                         publishedAt: sourceNote.publishedAt ?? null,
                         updatedAt: sourceNote.updatedAt ?? null,
                     },
+                    gardenArticles: sourceArticles.map(item => ({
+                        id: Number(item.id),
+                        title: String(item.title || ''),
+                        introduce: String(item.introduce || ''),
+                        publishedAt: item.publishedAt ?? null,
+                    })),
                 }
                 : article,
         })

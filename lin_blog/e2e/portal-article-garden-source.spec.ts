@@ -9,6 +9,14 @@ const GARDEN_NOTE = {
   updatedAt: '2026-11-18T08:00:00.000Z',
 }
 
+const SIBLING_ARTICLE = {
+  ...article,
+  id: 922,
+  title: '同一页笔记长出的另一种写法',
+  introduce: '从同一个花园想法延伸出来的第二篇长文。',
+  content: '<p>这是同源笔记衍生出的另一篇文章。</p>',
+}
+
 async function mockArticleDetail(
   page: import('@playwright/test').Page,
   data: Record<string, unknown>,
@@ -58,4 +66,39 @@ test('普通文章或来源笔记查询失败时不显示回流区块', async ({
   detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
   await expect(detail).toBeVisible()
   await expect(detail.locator('.garden-source')).toHaveCount(0)
+})
+
+test('文章页把同一来源笔记的多篇长文收拢成可展开入口', async ({ page }) => {
+  await installApiMock(page)
+  await mockArticleDetail(page, {
+    ...article,
+    gardenNote: GARDEN_NOTE,
+    gardenArticles: [{
+      id: SIBLING_ARTICLE.id,
+      title: SIBLING_ARTICLE.title,
+      introduce: SIBLING_ARTICLE.introduce,
+      publishedAt: SIBLING_ARTICLE.publishedAt,
+    }],
+  })
+  await page.route(new RegExp(`/api/public/article/${SIBLING_ARTICLE.id}$`), async route => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 200, message: 'ok', data: SIBLING_ARTICLE }),
+    })
+  })
+
+  await page.goto(`/portal/articles?open=${article.id}`)
+  const detail = page.locator(modalRootClass).filter({ hasText: '文章阅读' })
+  await expect(detail).toBeVisible()
+
+  const series = detail.locator('.garden-source-series')
+  await expect(series.locator('summary')).toContainText('同源长文 · 共 2 篇')
+  await series.locator('summary').click()
+  await series.getByRole('button', { name: new RegExp(SIBLING_ARTICLE.title) }).click()
+
+  await expect(detail.getByRole('heading', { name: SIBLING_ARTICLE.title })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`open=${SIBLING_ARTICLE.id}`))
+  // 新文章没有来源关系时，上一页的聚合入口不会残留
+  await expect(detail.locator('.garden-source-series')).toHaveCount(0)
 })

@@ -308,6 +308,27 @@ async function findUpgradedFromNote(articleId) {
 }
 
 /**
+ * 同一篇花园笔记长出来的其他长文。文章页用它把同源文章收拢成一组，
+ * 读者不必回到花园再重新找一遍。
+ */
+async function listPublishedArticlesBySourceNote(noteId, excludeArticleId = 0, limit = 12) {
+    const id = Number(noteId)
+    if (!Number.isSafeInteger(id) || id <= 0) return []
+    const exclude = Number(excludeArticleId) || 0
+    const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24)
+    return query(
+        `SELECT a.id, a.title, a.introduce, a.published_at AS publishedAt
+           FROM note_article_upgrade u
+           INNER JOIN article a ON a.id = u.article_id
+                AND a.state = 'published' AND a.classify = 'article'
+          WHERE u.note_id = ? AND a.id <> ?
+          ORDER BY u.created_at ASC, a.id ASC
+          LIMIT ?`,
+        [id, exclude, safeLimit]
+    )
+}
+
+/**
  * 站点地图与 RSS 使用的已发布内容摘要。
  */
 async function listPublishedContentForFeed(limit = 5000) {
@@ -321,6 +342,29 @@ async function listPublishedContentForFeed(limit = 5000) {
          ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
          LIMIT ?`,
         [safeLimit]
+    )
+}
+
+/**
+ * 待整理推荐候选：已发布长文。花园笔记可以连向相关长文，
+ * 让还在生长的想法也能接到已经整理完成的表达。
+ */
+async function listPublishedArticlesForTidy(userId, limit = 60) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 60, 1), 120)
+    const filters = ["a.state = 'published'", "a.classify = 'article'"]
+    const params = []
+    if (Number.isSafeInteger(Number(userId)) && Number(userId) > 0) {
+        filters.push('(a.user_id = ? OR a.user_id IS NULL)')
+        params.push(Number(userId))
+    }
+    return query(
+        `SELECT a.id, a.title, a.introduce, a.content,
+                a.label, a.published_at AS publishedAt, a.updated_at AS updatedAt
+           FROM article a
+          WHERE ${filters.join(' AND ')}
+          ORDER BY COALESCE(a.published_at, a.updated_at) DESC, a.id DESC
+          LIMIT ?`,
+        [...params, safeLimit]
     )
 }
 
@@ -678,7 +722,9 @@ module.exports = {
     countArticlesByState,
     findAtricleById,
     findUpgradedFromNote,
+    listPublishedArticlesBySourceNote,
     listPublishedContentForFeed,
+    listPublishedArticlesForTidy,
     searchPublishedContentForAsk,
     searchPublishedContentByTerms,
     findArticleMutationAccess,
