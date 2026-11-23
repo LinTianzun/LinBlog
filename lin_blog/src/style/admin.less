@@ -201,12 +201,8 @@
     border-radius: 10px;
 }
 
-// 搜索框等输入类控件聚焦时组件自身会切换边框色，再叠加全局焦点环就会出现第二圈线条；
-// 因此焦点环只作用于非输入控件，输入框的聚焦反馈仍由边框色表达。
-#app:not(.is-portal) .index-view :focus-visible:not(.yk-input__inner):not(.yk-input__widget):not(.yk-text-area):not(.yk-text-area *) {
-    outline: 2px solid var(--pcolor4);
-    outline-offset: 2px;
-}
+// 键盘焦点环统一由 style/focus.less 提供（输入类控件已在那里排除），
+// 避免后台与门户各维护一份例外名单。
 
 // 工具提示与下拉弹层：内容自适应 + 上限约束。
 // 组件默认宽度会继承某些父级布局状态，拉伸窗口后偶发被拉得很长（刷新才恢复），

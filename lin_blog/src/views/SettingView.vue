@@ -4,10 +4,13 @@
 
         <div class="set-shell">
             <!-- 左：分区导航 -->
-            <nav class="set-nav" aria-label="设置分区">
-                <button v-for="section in sections" :key="section.key" type="button" class="set-nav-item"
+            <nav ref="navRef" class="set-nav" aria-label="设置分区">
+                <button v-for="(section, index) in sections" :key="section.key" type="button" class="set-nav-item"
                     :class="{ 'is-active': activeSection === section.key }"
-                    @click="scrollToSection(section.key)">
+                    :aria-current="activeSection === section.key ? 'true' : undefined"
+                    :tabindex="index === activeNavIndex ? 0 : -1"
+                    @click="scrollToSection(section.key)"
+                    @keydown="onNavKeydown($event, index)">
                     <component :is="section.icon" class="set-nav-icon" />
                     <span class="set-nav-copy">
                         <strong>{{ section.name }}</strong>
@@ -19,7 +22,7 @@
             <!-- 右：分区内容 -->
             <div class="set-content">
                 <!-- ── 账号资料 ── -->
-                <section id="set-profile" class="set-section">
+                <section id="set-profile" class="set-section" tabindex="-1">
                     <div class="set-card set-profile">
                         <div class="set-profile-banner">
                             <span class="set-profile-banner-glow" aria-hidden="true" />
@@ -79,7 +82,7 @@
                 </section>
 
                 <!-- ── 安全 ── -->
-                <section id="set-security" class="set-section">
+                <section id="set-security" class="set-section" tabindex="-1">
                     <header class="set-section-head">
                         <yk-title :level="4" style="margin: 0">安全</yk-title>
                         <yk-text type="secondary">修改密码后需要重新登录</yk-text>
@@ -148,7 +151,7 @@
                 <SettingsAppearanceSection v-model:preset-id="activePresetId" v-model:edge-level="edgeLevel" />
 
                 <!-- ── 我的权限 ── -->
-                <section id="set-permissions" class="set-section">
+                <section id="set-permissions" class="set-section" tabindex="-1">
                     <header class="set-section-head">
                         <yk-title :level="4" style="margin: 0">我的权限</yk-title>
                         <yk-text type="secondary">
@@ -187,7 +190,7 @@
                 </section>
 
                 <!-- ── 系统信息 ── -->
-                <section id="set-system" class="set-section">
+                <section id="set-system" class="set-section" tabindex="-1">
                     <header class="set-section-head">
                         <yk-title :level="4" style="margin: 0">系统信息</yk-title>
                         <yk-text type="secondary">运行状态与版本</yk-text>
@@ -252,7 +255,7 @@
                 </section>
 
                 <!-- ── 危险区 ── -->
-                <section id="set-danger" class="set-section">
+                <section id="set-danger" class="set-section" tabindex="-1">
                     <div class="set-card set-danger">
                         <div class="set-danger-copy">
                             <strong>退出登录</strong>
@@ -316,6 +319,38 @@ const scrollToSection = (key: string) => {
     if (!el) return
     const top = el.getBoundingClientRect().top + window.scrollY - 96
     window.scrollTo({ top, behavior: 'smooth' })
+}
+
+// ── 分区导航键盘操作 ──
+// 采用 roving tabindex：整组导航只占一个 Tab 停留点，进组后用方向键 / Home / End 切换，
+// Enter 或 Space 再跳到对应分区（按钮原生语义即可）。鼠标滚动高亮同步到当前停留项。
+const navRef = ref<HTMLElement | null>(null)
+const activeNavIndex = computed(() => {
+    const index = sections.findIndex(section => section.key === activeSection.value)
+    return index >= 0 ? index : 0
+})
+
+const focusNavItem = (index: number) => {
+    const target = sections[Math.min(Math.max(index, 0), sections.length - 1)]
+    const buttons = navRef.value?.querySelectorAll<HTMLButtonElement>('.set-nav-item')
+    buttons?.[sections.indexOf(target)]?.focus()
+}
+
+const onNavKeydown = (event: KeyboardEvent, index: number) => {
+    const last = sections.length - 1
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        focusNavItem(index === last ? 0 : index + 1)
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        focusNavItem(index === 0 ? last : index - 1)
+    } else if (event.key === 'Home') {
+        event.preventDefault()
+        focusNavItem(0)
+    } else if (event.key === 'End') {
+        event.preventDefault()
+        focusNavItem(last)
+    }
 }
 
 // 滚动时高亮当前分区（取最后一个已越过视口上沿的分区）

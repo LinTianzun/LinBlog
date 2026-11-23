@@ -171,8 +171,10 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue'
-import PetYard3D from './PetYard3D.vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
+// 3D 场景依赖 three，打进 PetHomeRoom 的 chunk 会把宠物管理页撑大；
+// 改成异步组件后，3D 代码只在真正需要渲染时下载，失败仍走像素降级。
+const PetYard3D = defineAsyncComponent(() => import('./PetYard3D.vue'))
 import type {
     HomesteadDayPhaseDefinition,
     HomesteadWeatherDefinition,

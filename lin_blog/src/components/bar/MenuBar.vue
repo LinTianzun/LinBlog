@@ -18,11 +18,12 @@
                             <component :is="item.icon" />
                         </span>
                         <span class="menu-bar-name">{{ item.name }}</span>
-                        <router-link v-if="item.path === '/notes' && noLinkCount > 0" class="menu-bar-badge is-warn"
-                            to="/notes/tidy" :aria-label="`${noLinkCount} 篇笔记还没有双链，打开待整理清单`"
-                            :title="`${noLinkCount} 篇笔记还没有双链`" @click.stop>
+                        <button v-if="item.path === '/notes' && noLinkCount > 0" type="button"
+                            class="menu-bar-badge is-warn"
+                            :aria-label="`${noLinkCount} 篇笔记还没有双链，打开待整理清单`"
+                            :title="`${noLinkCount} 篇笔记还没有双链`" @click.stop="goNoteTidy">
                             {{ noLinkCount > 99 ? '99+' : noLinkCount }}
-                        </router-link>
+                        </button>
                         <span v-if="item.path === '/reportedComments' && pendingReportCount > 0"
                             class="menu-bar-badge" :aria-label="`${pendingReportCount} 条待处理举报`">
                             {{ pendingReportBadge }}
@@ -42,7 +43,7 @@
 
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
     navLinks
 } from '../../utils/menu'
@@ -55,6 +56,7 @@ import { hasMenuPermission } from '../../utils/menuPermissions'
 
 const session = useSessionStore()
 const route = useRoute()
+const router = useRouter()
 const pendingReportCount = ref(0)
 // 花园待整理：已发布但没有任何出发/反向链接的笔记数
 const noLinkCount = ref(0)
@@ -67,6 +69,11 @@ const isActive = (path: string): boolean => {
 const pendingReportBadge = computed(() =>
     pendingReportCount.value > 99 ? '99+' : String(pendingReportCount.value)
 )
+
+// 徽标不能嵌套在 <router-link>（<a> 不允许嵌套 <a>），改成按钮后手动导航
+const goNoteTidy = (): void => {
+    void router.push('/notes/tidy')
+}
 
 // 菜单权限映射见 utils/menuPermissions.ts（模块级常量，避免 setup 时序问题）
 const hasMenuAccess = (path: string): boolean => {
@@ -342,16 +349,19 @@ watch(
             height: 20px;
             box-sizing: border-box;
             flex: none;
+            margin: 0;
             place-items: center;
             padding: 0 6px;
             border: 1px solid color-mix(in srgb, @ecolor 24%, transparent);
             border-radius: 999px;
             background: color-mix(in srgb, @ecolor 10%, transparent);
             color: @ecolor;
+            font-family: inherit;
             font-size: 10px;
             font-weight: 750;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            cursor: pointer;
 
         &.is-warn {
             border-color: color-mix(in srgb, var(--wcolor, #ffaa1a) 28%, transparent);

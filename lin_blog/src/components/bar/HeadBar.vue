@@ -36,47 +36,9 @@
                 </span>
             </button>
 
-            <!-- 主题切换：与前台门户同款自研下拉，复用同一套预设与 applyThemePreset -->
-            <div ref="pickerRef" class="theme-picker">
-                <button ref="themeTriggerRef" type="button" class="theme-trigger" :class="{ open: themeOpen }"
-                    :title="`当前主题：${activePresetName}`" aria-haspopup="listbox"
-                    :aria-expanded="themeOpen" @click="toggleThemePanel"
-                    @keydown.down.prevent="openThemePanel('current')"
-                    @keydown.up.prevent="openThemePanel('last')">
-                    <span class="theme-dot" :style="{ background: activePresetPrimary }" aria-hidden="true" />
-                    <span class="theme-name">{{ activePresetName }}</span>
-                    <span class="theme-caret" aria-hidden="true">
-                        <IconDownOutline />
-                    </span>
-                </button>
-
-                <Transition name="theme-panel">
-                    <div v-if="themeOpen" class="theme-panel" role="listbox" aria-label="选择主题">
-                        <div class="theme-panel-head">
-                            <span>主题</span>
-                            <span class="theme-panel-hint">{{ themePresets.length }} 套</span>
-                        </div>
-                        <ul ref="themeListRef" class="theme-options" @keydown="onThemeListKeydown">
-                            <li v-for="(preset, index) in themePresets" :key="preset.id" role="presentation">
-                                <button type="button" class="theme-option" role="option"
-                                    :class="{ active: preset.id === activePresetId }"
-                                    :aria-selected="preset.id === activePresetId"
-                                    :style="{ animationDelay: `${Math.min(index, 10) * 24}ms` }"
-                                    @click="selectPreset(preset.id)">
-                                    <span class="option-swatch"
-                                        :style="{ background: preset.preview || `linear-gradient(135deg, ${preset.primary}, ${preset.background})` }"
-                                        aria-hidden="true" />
-                                    <span class="option-name">{{ preset.name }}</span>
-                                    <span v-if="preset.kind === 'gradient'" class="option-kind">渐变</span>
-                                    <span class="option-tick" aria-hidden="true">
-                                        <IconTickOutline />
-                                    </span>
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
-                </Transition>
-            </div>
+            <!-- 主题切换：与前台门户共用 ThemePicker（同一套预设、键盘交互与双向同步），
+                 后台只通过 CSS 变量保持顶栏按钮外观 -->
+            <ThemePicker class="admin-theme-picker" />
 
             <yk-button class="portal-button" type="secondary" @click="goPortal">
                 <IconAppOutline />
@@ -93,17 +55,15 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import unity from '../../assets/svg/unity.svg'
 import unityW from '../../assets/svg/unityWhite.svg'
+import ThemePicker from '../common/ThemePicker.vue'
 import { information } from '../reply/index.ts'
 import NotificationDrawer from '../notification/NotificationDrawer.vue'
 import { getNotificationUnreadCount, getUnreadCount } from '../../api/message'
 import { useThemeDark } from '../../utils/themeMode'
-import { onClickOutside } from '@vueuse/core'
-import { themePresets, findPreset } from '../../utils/themes'
-import { applyThemePreset, getStoredPresetId } from '../../utils/themePreset'
 import { useSessionStore } from '../../store/session'
 import {
     MESSAGE_POLL_INTERVAL,
@@ -115,90 +75,6 @@ import { logError } from '../../utils/clientLogger'
 
 const isDark = useThemeDark()
 const session = useSessionStore()
-
-// 主题预设下拉：与门户同一套数据与切换逻辑
-const activePresetId = ref(getStoredPresetId())
-const activePresetName = computed(() => findPreset(activePresetId.value).name)
-const activePresetPrimary = computed(() => findPreset(activePresetId.value).primary)
-const pickerRef = ref<HTMLElement | null>(null)
-const themeTriggerRef = ref<HTMLButtonElement | null>(null)
-const themeListRef = ref<HTMLElement | null>(null)
-const themeOpen = ref(false)
-
-const themeOptions = (): HTMLButtonElement[] => {
-    return Array.from(themeListRef.value?.querySelectorAll<HTMLButtonElement>('.theme-option') ?? [])
-}
-
-const focusThemeOption = (index: number) => {
-    const options = themeOptions()
-    if (!options.length) return
-    options[Math.min(Math.max(index, 0), options.length - 1)]?.focus()
-}
-
-const openThemePanel = async (position: 'current' | 'first' | 'last' = 'current') => {
-    themeOpen.value = true
-    await nextTick()
-    const current = themePresets.findIndex(preset => preset.id === activePresetId.value)
-    if (position === 'first') {
-        focusThemeOption(0)
-        return
-    }
-    if (position === 'last') {
-        focusThemeOption(themePresets.length - 1)
-        return
-    }
-    focusThemeOption(current >= 0 ? current : 0)
-}
-
-const toggleThemePanel = () => {
-    if (themeOpen.value) {
-        themeOpen.value = false
-        return
-    }
-    void openThemePanel()
-}
-
-const selectPreset = (presetId: string) => {
-    activePresetId.value = presetId
-    applyThemePreset(presetId)
-    themeOpen.value = false
-    void nextTick(() => themeTriggerRef.value?.focus())
-}
-
-const onThemeListKeydown = (event: KeyboardEvent) => {
-    const options = themeOptions()
-    const current = options.indexOf(document.activeElement as HTMLButtonElement)
-    if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        focusThemeOption(current < 0 ? 0 : (current + 1) % options.length)
-    } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        focusThemeOption(current < 0 ? options.length - 1 : (current - 1 + options.length) % options.length)
-    } else if (event.key === 'Home') {
-        event.preventDefault()
-        focusThemeOption(0)
-    } else if (event.key === 'End') {
-        event.preventDefault()
-        focusThemeOption(options.length - 1)
-    } else if (event.key === 'Escape') {
-        event.preventDefault()
-        themeOpen.value = false
-        void nextTick(() => themeTriggerRef.value?.focus())
-    } else if (event.key === 'Tab') {
-        themeOpen.value = false
-    }
-}
-
-onClickOutside(pickerRef, () => { themeOpen.value = false })
-const onGlobalKeydown = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape' || !themeOpen.value) return
-    themeOpen.value = false
-    void nextTick(() => themeTriggerRef.value?.focus())
-}
-const onPresetChange = (event: Event) => {
-    const presetId = (event as CustomEvent<{ presetId: string }>).detail?.presetId
-    if (presetId) activePresetId.value = presetId
-}
 
 const router = useRouter();
 const route = useRoute()
@@ -451,8 +327,6 @@ onMounted(() => {
     startUnreadPolling()
 
     window.addEventListener('user:avatar-change', onAvatarChange)
-    window.addEventListener('theme:preset-change', onPresetChange)
-    window.addEventListener('keydown', onGlobalKeydown)
     window.addEventListener('focus', startUnreadPolling)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
@@ -464,8 +338,6 @@ onUnmounted(() => {
     if (unreadPulseTimer !== undefined) window.clearTimeout(unreadPulseTimer)
     if (noticePulseTimer !== undefined) window.clearTimeout(noticePulseTimer)
     window.removeEventListener('user:avatar-change', onAvatarChange)
-    window.removeEventListener('theme:preset-change', onPresetChange)
-    window.removeEventListener('keydown', onGlobalKeydown)
     window.removeEventListener('focus', startUnreadPolling)
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener(MESSAGE_STATE_EVENT, handleMessageStateChange)
@@ -672,221 +544,130 @@ watch(canUseMessages, value => {
         font-size: 10px;
     }
 
-    // 主题下拉：与旁边的 yk-button 等高、同风格（secondary 按钮）
-    .theme-picker {
-        position: relative;
+    // 主题切换：结构与键盘交互来自共享 ThemePicker，这里只给后台顶栏外观。
+    .admin-theme-picker {
+        --theme-picker-accent: var(--pcolor);
+        --theme-picker-accent-soft: var(--pcolor1);
+        --theme-picker-text: var(--gray8);
+        --theme-picker-text-secondary: var(--font-color3);
+        --theme-picker-panel-bg: color-mix(in srgb, var(--bgColor1) 96%, transparent);
+        --theme-picker-panel-border: var(--gray1);
+        --theme-picker-panel-radius: @radius-l;
+        --theme-picker-panel-shadow: var(--admin-shadow-md, @shadow-m);
         display: inline-flex;
         align-items: center;
-    }
 
-    .theme-trigger {
-        display: inline-flex;
-        align-items: center;
-        gap: @space-s;
-        // 与旁边的「我的博客 / 退出」yk-button 对齐：等高 36px、同圆角、同内边距
-        height: 36px;
-        min-width: 36px;
-        padding: 0 16px;
-        border: 1px solid var(--gray1);
-        border-radius: 8px;
-        background: var(--gray1);
-        color: var(--gray8);
-        font-size: 14px;
-        font-family: inherit;
-        line-height: 1;
-        white-space: nowrap;
-        cursor: pointer;
-        transition: background-color @animatb, color @animatb, box-shadow @animatb;
-
-        &:hover {
-            border-color: var(--pcolor3);
-            background: var(--pcolor1);
-            color: var(--pcolor);
-        }
-
-        &:active {
-            background: var(--pcolor2);
-        }
-
-        &:focus-visible {
-            outline: none;
-            box-shadow: 0 0 0 3px @pcolor-2;
-        }
-
-        &.open {
-            border-color: var(--pcolor3);
-            background: var(--pcolor1);
-            color: var(--pcolor);
-        }
-
-        .theme-caret {
+        :deep(.theme-trigger) {
             display: inline-flex;
             align-items: center;
+            gap: @space-s;
+            // 与旁边的「我的博客 / 退出」yk-button 对齐：等高 36px、同圆角、同内边距
+            height: 36px;
+            min-width: 36px;
+            padding: 0 16px;
+            border: 1px solid var(--gray1);
+            border-radius: 8px;
+            background: var(--gray1);
+            color: var(--gray8);
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color @animatb, color @animatb, border-color @animatb, box-shadow @animatb;
+
+            &:hover {
+                border-color: var(--pcolor3);
+                background: var(--pcolor1);
+                color: var(--pcolor);
+            }
+
+            &:active {
+                background: var(--pcolor2);
+            }
+
+            &:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 3px @pcolor-2;
+            }
+
+            &.open {
+                border-color: var(--pcolor3);
+                background: var(--pcolor1);
+                color: var(--pcolor);
+            }
+        }
+
+        :deep(.theme-caret) {
             flex-shrink: 0;
-            font-size: 12px;
             opacity: 0.6;
             transition: transform @animatb, opacity @animatb;
         }
 
-        &.open .theme-caret {
+        :deep(.theme-trigger.open .theme-caret) {
             opacity: 1;
             transform: rotate(180deg);
         }
-    }
 
-    .theme-dot {
-        flex-shrink: 0;
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        box-shadow: inset 0 0 0 1px @line-color-s, inset 0 1px 2px rgba(0, 0, 0, 0.12);
-        transition: background 250ms ease;
-    }
+        :deep(.theme-dot) {
+            box-shadow: inset 0 0 0 1px @line-color-s, inset 0 1px 2px rgba(0, 0, 0, 0.12);
+        }
 
-    .theme-name {
-        max-width: 84px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
+        :deep(.theme-name) {
+            max-width: 84px;
+        }
 
-    .theme-panel {
-        position: absolute;
-        top: calc(100% + @space-s);
-        right: 0;
-        z-index: 40;
-        width: 248px;
-        padding: 10px;
-        background: color-mix(in srgb, var(--bgColor1) 96%, transparent);
-        border: 1px solid var(--gray1);
-        border-radius: @radius-l;
-        box-shadow: var(--admin-shadow-md, @shadow-m);
-        backdrop-filter: blur(18px);
-        transform-origin: top right;
-    }
+        :deep(.theme-panel) {
+            top: calc(100% + @space-s);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
 
-    .theme-panel-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 4px 8px 8px;
-        font-size: @size-ss;
-        color: @font-color-s;
+        :deep(.theme-panel-head) {
+            font-size: @size-ss;
+            color: @font-color-s;
+        }
 
-        .theme-panel-hint {
+        :deep(.theme-panel-hint) {
             padding: 1px 8px;
             border-radius: @radius-r;
-            background: @pcolor-1;
-            color: @pcolor;
             font-size: 11px;
         }
-    }
 
-    .theme-options {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        max-height: 340px;
-        overflow-y: auto;
-        scrollbar-width: thin;
-        scrollbar-color: @pcolor-3 transparent;
-
-        &::-webkit-scrollbar { width: 6px; }
-        &::-webkit-scrollbar-track { background: transparent; }
-        &::-webkit-scrollbar-thumb {
-            border-radius: @radius-r;
-            background: @font-color-s;
-            opacity: 0.3;
-        }
-    }
-
-    .theme-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        padding: 8px 10px;
-        border: none;
-        background: transparent;
-        border-radius: @radius-m;
-        color: @font-color-l;
-        font-size: @size-s;
-        font-family: inherit;
-        text-align: left;
-        cursor: pointer;
-        transition: background @animatb, color @animatb;
-        animation: theme-option-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
-
-        &:hover {
-            background: @gray-1;
+        :deep(.theme-options) {
+            scrollbar-color: @pcolor-3 transparent;
         }
 
-        &:focus-visible {
-            background: @gray-1;
-            outline: 2px solid var(--pcolor);
-            outline-offset: -2px;
+        :deep(.theme-option) {
+            border-radius: @radius-m;
+            color: @font-color-l;
+            font-size: @size-s;
+
+            &:hover,
+            &:focus-visible {
+                background: @gray-1;
+            }
+
+            &:focus-visible {
+                outline-offset: -2px;
+            }
+
+            &.active {
+                color: @pcolor;
+            }
         }
 
-        &.active {
+        :deep(.option-swatch) {
+            border-radius: @radius-m;
+            box-shadow: inset 0 0 0 1px @line-color-s;
+        }
+
+        :deep(.option-kind) {
+            background: var(--pcolor2);
+            color: var(--pcolor);
+        }
+
+        :deep(.option-tick) {
             color: @pcolor;
-            font-weight: 600;
-
-            .option-tick { opacity: 1; }
         }
-    }
-
-    .option-swatch {
-        flex-shrink: 0;
-        width: 22px;
-        height: 22px;
-        border-radius: @radius-m;
-        box-shadow: inset 0 0 0 1px @line-color-s;
-    }
-
-    .option-name {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    // 渐变主题的类型标记，与纯色主题区分
-    .option-kind {
-        flex-shrink: 0;
-        padding: 0 5px;
-        border-radius: 999px;
-        background: var(--pcolor2);
-        color: var(--pcolor);
-        font-size: 11px;
-        line-height: 16px;
-    }
-
-    .option-tick {
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        font-size: 14px;
-        color: @pcolor;
-        opacity: 0;
-        transition: opacity @animatb;
-    }
-
-    .theme-panel-enter-active,
-    .theme-panel-leave-active {
-        transition: opacity @animatb, transform @animatb;
-    }
-    .theme-panel-enter-from,
-    .theme-panel-leave-to {
-        opacity: 0;
-        transform: translateY(-6px) scale(0.96);
-    }
-
-    @keyframes theme-option-in {
-        from { opacity: 0; transform: translateY(4px); }
-        to { opacity: 1; transform: translateY(0); }
     }
 
     .portal-button,
@@ -904,11 +685,11 @@ watch(canUseMessages, value => {
             padding: 2px;
         }
 
-        .theme-name {
+        .admin-theme-picker :deep(.theme-name) {
             display: none;
         }
 
-        .theme-trigger {
+        .admin-theme-picker :deep(.theme-trigger) {
             // 窄屏收成方形图标按钮时，仍与图标按钮同高
             width: 36px;
             height: 36px;
@@ -917,7 +698,7 @@ watch(canUseMessages, value => {
             padding: 0;
         }
 
-        .theme-trigger .theme-caret {
+        .admin-theme-picker :deep(.theme-trigger .theme-caret) {
             display: none;
         }
     }

@@ -1,0 +1,27 @@
+// 统一的键盘焦点环 token 与规则。
+//
+// 之前后台（admin.less）与门户（portal.less）各写一份 :focus-visible 规则，
+// 输入类控件的例外名单两边不同步，出现了「输入框套两层蓝框」的问题。
+// 现在所有焦点样式都从这里出发，两种视觉只通过 CSS 变量区分。
+
+#app:not(.is-portal) {
+    // 后台用实色主色描边，页面底色多为浅色卡片
+    --focus-ring-color: var(--pcolor);
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px;
+}
+
+.portal-layout {
+    // 门户底色是玻璃拟态，用主色描边 + 更大偏移，避免压在图片上失去边界
+    --focus-ring-color: var(--portal-accent);
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 3px;
+}
+
+// 输入类控件由组件自身用边框色表达焦点（.yk-input__inner--*-focus 等），
+// 再叠加焦点环会变成双圈；这里统一排除，后台与门户不再各自维护例外名单。
+#app:not(.is-portal) :where(a, button, summary, [tabindex]):focus-visible,
+.portal-layout :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible:not(.yk-input__inner):not(.yk-input__widget):not(.yk-text-area):not(.yk-text-area *) {
+    outline: var(--focus-ring-width) var(--focus-ring-style, solid) var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}

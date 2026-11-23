@@ -362,18 +362,8 @@
     animation: portal-reveal var(--portal-transition-slow) both;
 }
 
-// 统一键盘焦点环：组件内若用背景/描边表达焦点，仍需保留清晰的轮廓，
-// 避免键盘用户在玻璃底与图片上失去当前位置。
-.portal-layout :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
-    outline: 2px solid var(--portal-accent);
-    outline-offset: 3px;
-}
-
-// 输入框的聚焦反馈由组件自己的边框色表达（1px accent 边框），
-// 再叠加上面的全局焦点环会变成“双圈蓝框”。输入框内部元素同样交给组件处理。
-.portal-layout :where(.yk-input__inner, .yk-input__widget, .yk-text-area, .yk-text-area *):focus-visible {
-    outline: none;
-}
+// 键盘焦点环统一由 style/focus.less 提供：门户玻璃底与图片上的焦点环仍由主色描边表达，
+// 输入类控件在那里统一排除，避免组件边框色再叠一层焦点环变成双圈。
 
 // 组件会把聚焦状态的类挂到 .yk-input__inner 上，类选择器优先级高于按钮的 secondary 样式，
 // 所以焦点态用同源的选择器补回浅色底，避免只剩一圈蓝边漂在白底上。

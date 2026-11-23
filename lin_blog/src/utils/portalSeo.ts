@@ -408,15 +408,20 @@ export function applyPortalSeo(config: PortalSeoConfig): void {
   upsertJsonLd(config.jsonLd)
 }
 
-export function applyPrivateSeo(title = 'LinBlog 管理后台'): void {
+// 站点名固定拼在标题末尾；调用方传入的 title 可以是模块内常量的子串
+// （'管理后台'、'后台'），静态替换后再由路由在切换时逐条拼装。
+const PRIVATE_TITLE_SUFFIX = ' | LinBlog'
+const PRIVATE_DESCRIPTION = 'LinBlog 管理后台'
+
+export function applyPrivateSeo(title = PRIVATE_DESCRIPTION): void {
   if (typeof document === 'undefined') return
-  const fullTitle = `${title} | LinBlog`
+  const fullTitle = title.endsWith(PRIVATE_TITLE_SUFFIX) ? title : `${title}${PRIVATE_TITLE_SUFFIX}`
   document.title = fullTitle
-  upsertMeta('name', 'description', 'LinBlog 管理后台')
+  upsertMeta('name', 'description', PRIVATE_DESCRIPTION)
   upsertMeta('name', 'robots', 'noindex,nofollow')
   upsertMeta('property', 'og:site_name', 'LinBlog')
   upsertMeta('property', 'og:title', fullTitle)
-  upsertMeta('property', 'og:description', 'LinBlog 管理后台')
+  upsertMeta('property', 'og:description', PRIVATE_DESCRIPTION)
   upsertMeta('property', 'og:type', 'website')
   upsertMeta('property', 'og:url', null)
   upsertMeta('property', 'og:image', null)

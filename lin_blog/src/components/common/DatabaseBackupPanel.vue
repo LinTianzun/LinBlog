@@ -43,7 +43,7 @@
             </div>
         </div>
 
-        <div v-if="overview?.capacity.maxBytes" class="db-backup-capacity">
+        <div v-if="overview?.capacity?.maxBytes" class="db-backup-capacity">
             <div class="db-backup-capacity-head">
                 <span>备份目录容量</span>
                 <span class="db-backup-level" :class="`is-${overview.capacity.level}`">
@@ -60,13 +60,13 @@
             </div>
         </div>
 
-        <p v-if="overview?.latest.lastFailure" class="db-backup-failure">
+        <p v-if="overview?.latest?.lastFailure" class="db-backup-failure">
             最近一次失败：{{ formatDate(overview.latest.lastFailure.created_at) }} ·
             {{ overview.latest.lastFailure.error_message || '未知原因' }}
         </p>
 
         <yk-text v-if="loading" type="secondary">正在加载备份列表…</yk-text>
-        <yk-empty v-else-if="!overview || overview.backups.length === 0" description="还没有数据库备份" />
+        <yk-empty v-else-if="!overview?.backups?.length" description="还没有数据库备份" />
 
         <ul v-else class="db-backup-list">
             <li v-for="file in overview.backups" :key="file.filename" class="db-backup-item">
@@ -123,12 +123,12 @@ const message = ref('')
 const messageType = ref<'ok' | 'error'>('ok')
 
 const latestSuccessText = computed(() => {
-    const last = overview.value?.latest.lastSuccess
+    const last = overview.value?.latest?.lastSuccess
     if (!last) return '暂无记录'
     return formatDate(last.created_at)
 })
 const latestSuccessNote = computed(() => {
-    const last = overview.value?.latest.lastSuccess
+    const last = overview.value?.latest?.lastSuccess
     if (!last) return '尚未成功备份'
     const trigger = last.trigger_type === 'scheduled' ? '定时' : '手动'
     const rows = last.row_count == null ? '?' : formatCount(last.row_count)
@@ -136,21 +136,21 @@ const latestSuccessNote = computed(() => {
 })
 
 const latestDrillText = computed(() => {
-    const last = overview.value?.latest.lastDrill
+    const last = overview.value?.latest?.lastDrill
     if (!last) return '尚未演练'
     return last.status === 'success' ? '已通过' : '失败'
 })
 const latestDrillNote = computed(() => {
-    const last = overview.value?.latest.lastDrill
+    const last = overview.value?.latest?.lastDrill
     if (!last) return '建议每月执行一次'
     return formatDate(last.created_at)
 })
 
 const capacityPercent = computed(() =>
-    Math.min(Math.max(Number(overview.value?.capacity.usedPercent ?? 0), 0), 100)
+    Math.min(Math.max(Number(overview.value?.capacity?.usedPercent ?? 0), 0), 100)
 )
 const capacityLabel = computed(() => {
-    const level = overview.value?.capacity.level
+    const level = overview.value?.capacity?.level
     if (level === 'critical') return '超出上限'
     if (level === 'warning') return '接近上限'
     return '容量正常'

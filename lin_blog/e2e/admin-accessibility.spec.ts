@@ -33,6 +33,34 @@ test('后台侧栏标记当前页面', async ({ page }) => {
   await expect(current).toContainText('系统设置')
 })
 
+test('系统设置分区导航支持方向键与当前分区标记', async ({ page }) => {
+  await seedSession(page, { id: 1, isSuperAdmin: true, permissions: [] })
+  await installApiMock(page)
+  await page.goto('/setting')
+
+  const nav = page.getByRole('navigation', { name: '设置分区' })
+  await expect(nav).toBeVisible({ timeout: 30_000 })
+  const first = nav.locator('.set-nav-item').first()
+  await expect(first).toHaveAttribute('aria-current', 'true')
+
+  // roving tabindex：只有当前项可 Tab 进入，方向键在组内移动
+  await expect(nav.locator('.set-nav-item[tabindex="0"]')).toHaveCount(1)
+  await first.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(nav.locator('.set-nav-item.is-active')).toHaveCount(1)
+  const focused = nav.locator('.set-nav-item:focus')
+  await expect(focused).toHaveCount(1)
+  await page.keyboard.press('End')
+  await expect(nav.locator('.set-nav-item:focus')).toContainText('系统信息')
+  await page.keyboard.press('Home')
+  await expect(nav.locator('.set-nav-item:focus')).toContainText('账号资料')
+
+  // Enter 跳到对应分区，并把当前分区同步给 aria-current
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await expect(nav.locator('.set-nav-item[aria-current="true"]')).toContainText('系统信息')
+})
+
 test('后台主题选择器支持方向键与 Enter', async ({ page }) => {
   await seedSession(page)
   await installApiMock(page)

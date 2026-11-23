@@ -11,6 +11,7 @@ import { libraryIcons } from './utils/libraryIcons'
 
 import './style.less'
 import './style/theme-presets.less'
+import './style/focus.less'
 import './style/portal.less'
 import './style/admin.less'
 import { initThemePreset } from './utils/themePreset'
